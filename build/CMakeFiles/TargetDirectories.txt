@@ -1,0 +1,3 @@
+/home/linus/Projects/Optimization/build/CMakeFiles/optimization.dir
+/home/linus/Projects/Optimization/build/CMakeFiles/edit_cache.dir
+/home/linus/Projects/Optimization/build/CMakeFiles/rebuild_cache.dir
