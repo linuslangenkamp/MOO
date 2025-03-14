@@ -8,8 +8,9 @@
 //  cmake --build build && cd build && ./gdopt_experimental && cd ..
 
 int main() {
-    Collocation fLGR = Collocation();
+    Collocation radau = Collocation();
     Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
+
     Problem problem = Problem();
     problem.x_size = 1;
     problem.x_bounds = {{2, 4}};
@@ -23,7 +24,10 @@ int main() {
     problem.full.g_bounds = {{1, 2}};
     problem.boundary.r_size = 1;
     problem.boundary.r_bounds = {{125, 2555}};
-    NLP nlp = NLP(problem, fLGR, mesh);
+
+    Trajectory guess = {{0, 1}, {{1, 5}}, {{0, 2}, {3, 1}}, {1, 2}, InterpolationMethod::LINEAR};
+
+    NLP nlp = NLP(problem, radau, mesh, guess);
     for (const auto& v : nlp.off_acc_xu) {
         std::cout << Util::vectorToString(v) << std::endl;
     }

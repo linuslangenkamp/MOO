@@ -6,12 +6,14 @@
 #include "mesh.h"
 #include "collocation.h"
 #include "util.h"
+#include "nlp_state.h"
 
 struct NLP {
-    NLP(Problem& problem, Collocation& collocation, Mesh& mesh)
+    NLP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
         : problem(std::make_shared<Problem>(problem)),
           collocation(std::make_shared<Collocation>(collocation)),
-          mesh(std::make_shared<Mesh>(mesh)) {
+          mesh(std::make_shared<Mesh>(mesh)),
+          guess(std::make_shared<Trajectory>(guess)) {
         init();
     }
 
@@ -22,22 +24,22 @@ struct NLP {
     int nnz_hes = 0;         // nnz Hessian in the NLP
 
     // current iterates
-    std::unique_ptr<double[]> curr_x_scaled;
+    std::unique_ptr<double[]> curr_x;
 
     // scaled variable bounds
-    std::unique_ptr<double[]> x_bounds_l;
-    std::unique_ptr<double[]> x_bounds_u;
+    std::unique_ptr<double[]> x_lb;
+    std::unique_ptr<double[]> x_ub;
 
     // nlp function data
     double curr_obj;
-    std::unique_ptr<double[]>curr_grad;
-    std::unique_ptr<double[]>curr_g;
-    std::unique_ptr<double[]> curr_jac_values;
-    std::unique_ptr<double[]> curr_hes_values;
+    std::unique_ptr<double[]> curr_grad;
+    std::unique_ptr<double[]> curr_g;
+    std::unique_ptr<double[]> curr_jac;
+    std::unique_ptr<double[]> curr_hes;
 
     // scaled constraint bounds
-    std::unique_ptr<double[]> g_bounds_l;
-    std::unique_ptr<double[]> g_bounds_u;
+    std::unique_ptr<double[]> g_lb;
+    std::unique_ptr<double[]> g_ub;
 
     // COO sparsity patterns
     std::unique_ptr<int[]> i_row_jac;
@@ -46,9 +48,11 @@ struct NLP {
     std::unique_ptr<int[]> j_col_hes;
 
     // structures
-    std::shared_ptr<Mesh> mesh;
-    std::shared_ptr<Problem> problem;
-    std::shared_ptr<Collocation> collocation;
+    std::shared_ptr<Mesh> mesh;                // grid / mesh
+    std::shared_ptr<Problem> problem;          // continuous GDOP
+    std::shared_ptr<Collocation> collocation;  // collocation data
+    std::shared_ptr<Trajectory> guess;         // initial guess / trajectory, will be interpolated accordingly
+    NLP_State evaluation_state;                // simple state to check which actions are / have to be performed for an iteration
 
     // offsets
     int off_x;         // offset #xVars
@@ -77,8 +81,16 @@ struct NLP {
     void init();
     void initSizesOffsets();
     void initBounds();
-    void initInitialPoint();
+    void initStartingPoint();
 
+    // get callback data
+    void callback_evaluation();
+    void callback_jacobian();
+    void callback_hessian();
+
+    // nlp solver calls
+    void eval_f();
+    void eval_f_safe(const double* nlp_solver_x, bool new_x);
 
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
     // TODO: use these later, fill one time and then scale at the end of calculations

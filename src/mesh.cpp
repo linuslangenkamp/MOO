@@ -18,7 +18,7 @@ Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps)
     for (int i = 0; i < intervals; i++) {
         grid[i] = i * h;
     }
-    grid[intervals - 1] = tf;
+    grid[intervals] = tf;
 
     for (int i = 0; i < intervals; i++) {
         delta_t[i] = h;
@@ -42,4 +42,80 @@ std::vector<std::vector<int>> Mesh::createAccOffsetXU(int off_x, int off_xu) {
         }
     }
     return off_acc_xu;
+}
+
+Trajectory Trajectory::interpolate(Mesh& mesh, Collocation& collocation) {
+    switch (interpolation) {
+        case InterpolationMethod::LINEAR:
+            return linearInterpolation(mesh, collocation);
+        default:
+            throw std::runtime_error("Unknown interpolation method!");
+    }
+}
+
+Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation) {
+    Trajectory new_guess;
+
+    std::vector<double> new_t = {0};
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            double new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
+            new_t.push_back(new_time);
+        }
+    }
+
+    new_guess.t = new_t;
+    new_guess.x.resize(x.size());
+    new_guess.u.resize(u.size());
+
+    // interpolate x(t)
+    for (size_t k = 0; k < x.size(); k++) {
+        new_guess.x[k].resize(new_t.size());
+        for (size_t i = 0; i < new_t.size(); i++) {
+            double t_new = new_t[i];
+            auto it = std::lower_bound(t.begin(), t.end(), t_new);
+            if (it == t.begin()) {
+                new_guess.x[k][i] = x[k][0];
+            }
+            else if (it == t.end()) {
+                new_guess.x[k][i] = x[k].back();
+            }
+            else {
+                size_t idx = std::distance(t.begin(), it);
+                double t1 = t[idx - 1];
+                double t2 = t[idx];
+                double x1 = x[k][idx - 1];
+                double x2 = x[k][idx];
+                new_guess.x[k][i] = x1 + (t_new - t1) * (x2 - x1) / (t2 - t1);
+            }
+        }
+    }
+
+    // interpolate u(t)
+    for (size_t k = 0; k < u.size(); k++) {
+        new_guess.u[k].resize(new_t.size());
+        for (size_t i = 0; i < new_t.size(); i++) {
+            double t_new = new_t[i];
+            auto it = std::lower_bound(t.begin(), t.end(), t_new);
+            if (it == t.begin()) {
+                new_guess.u[k][i] = u[k][0];
+            }
+            else if (it == t.end()) {
+                new_guess.u[k][i] = u[k].back();
+            }
+            else {
+                size_t idx = std::distance(t.begin(), it);
+                double t1 = t[idx - 1];
+                double t2 = t[idx];
+                double u1 = u[k][idx - 1];
+                double u2 = u[k][idx];
+                new_guess.u[k][i] = u1 + (t_new - t1) * (u2 - u1) / (t2 - t1);
+            }
+        }
+    }
+
+    // static parameters
+    new_guess.p = p;
+
+    return new_guess;
 }

@@ -2,6 +2,13 @@
 #define OPT_MESH_H
 
 #include <vector>
+#include <functional>
+
+#include "collocation.h"
+
+enum class InterpolationMethod {
+    LINEAR = 0
+};
 
 struct Mesh {
     Mesh(int intervals, double tf, std::vector<double> grid, std::vector<double> delta_t, std::vector<int> nodes, std::vector<std::vector<int>> acc_nodes, int node_count)
@@ -19,6 +26,18 @@ struct Mesh {
 
     static Mesh createEquidistantMeshFixedDegree(int intervals, double tf, int p);
     std::vector<std::vector<int>> createAccOffsetXU(int off_x, int off_xu);
+};
+
+// given some data trajectories t, x(t), u(t), p -> interpolate w.r.t. mesh and collocation scheme -> new fitting guess
+struct Trajectory {
+    std::vector<double> t;
+    std::vector<std::vector<double>> x;
+    std::vector<std::vector<double>> u;
+    std::vector<double> p;
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
+
+    Trajectory interpolate(Mesh& mesh, Collocation& collocation);
+    Trajectory linearInterpolation(Mesh& mesh, Collocation& collocation);
 };
 
 #endif  // OPT_MESH_H

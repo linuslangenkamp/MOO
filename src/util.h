@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -23,11 +24,12 @@ namespace Util {
         out << std::fixed << std::setprecision(15);
         if (!vec.empty()) {
             out << vec[0];
-            for (size_t i = 1; i < vec.size(); ++i) {
+            for (size_t i = 1; i < vec.size(); i++) {
                 out << ", " << vec[i];
             }
         }
         return out.str();
     }
 }
+
 #endif  // OPT_UTIL_H

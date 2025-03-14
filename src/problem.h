@@ -22,8 +22,8 @@ struct HessianSparsity {
 };
 
 struct Bounds {
-    double LB;
-    double UB;
+    double lb;
+    double ub;
 };
 
 struct JacobianLFG {
@@ -79,7 +79,7 @@ struct FullSweep {
     // Idea: Call Fullsweep.setValues(), Fullsweep.callEval(), callJac(), callHess() -> Just iterate over COO
     // function evals / diffs are on openmodelica side, 
 
-    std::vector<FunctionLFG> functions_LFG;
+    std::vector<FunctionLFG> lfg;
 
     std::vector<Bounds> g_bounds; // g^L <= g(x, u, p, t) <= g^U :: path constraints
 
@@ -89,6 +89,7 @@ struct FullSweep {
     int g_index_start, g_index_end;
     int f_size;
     int g_size;
+    bool has_lagrange;
 
     // create this based on some input data for the Fullsweep. Create the Grad
     FullSweep() {
@@ -118,12 +119,13 @@ struct FullSweep {
 
 struct BoundarySweep {
     // M, R :: assert x0 Size == xf Size
-    std::vector<FunctionMR> functions_MR;
+    std::vector<FunctionMR> mr;
 
+    bool has_mayer;
     int M_index_start, M_index_end;
     int r_index_start, r_index_end;
     int r_size; // assert; check with fixed initial states, these should not be contained here!
-
+    
     std::vector<Bounds> r_bounds; // r^L <= r(x0, xf, p) dt <= r^U :: boundary constraints
 
     inline void fillInputData(double* x0, double* xf, double* p) {
