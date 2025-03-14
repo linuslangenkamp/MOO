@@ -1,28 +1,29 @@
 #include "nlp.h"
-/*
-void NLP::scaleCurrentIterate() {
-    // x_scaled = x_D_scaling^(-1) * (x_unscaled + (-1) * x_a_scaling)
-    Linalg::dsaxpy(numberVars, x_unscaled.get(), x_a_scaling.get(), x_D_scaling.get(), -1, true, x_scaled.get());
-};
 
-void NLP::unscaleCurrentIterate() { //D * x + beta * y or D^(-1) * x + beta * y
-    // x_unscaled = x_D_scaling * x_scaled + 1 * x_a_scaling
-    Linalg::dgmv(numberVars, x_scaled.get(), x_a_scaling.get(), x_D_scaling.get(), 1, false, x_unscaled.get());
-};
+void NLP::initSizesOffsets() {
+    off_x = problem->xSize;
+    off_u = problem->uSize;
+    off_p = problem->pSize;
+    off_xu = off_x + off_u;
+    off_acc_xu = mesh->createAccOffsetXU(off_x, off_xu);
+    off_xu_total = off_acc_xu.back().back() + off_xu;
+    number_vars = off_xu_total + problem->pSize;
+    number_constraints;
+}
 
-void NLP::scaleEvalData() {
-    // in place
-    std::unique_ptr<double> evalMR_a_scaling; // shift scaling vector
-    std::unique_ptr<double> evalMR_D_scaling; // diagonal scaling matrix
-};
+void NLP::init() {
+    // init all the structures for optimization
+    // n, m, nnz_jac, nnz_hess
+    // (create scaling), create NLP bounds
+    // sparsity pattern
+    initSizesOffsets();
 
-void NLP::scaleJacobianData() {
-    // in place
 
-};
+    // calculate n, m, nnz_jac, nnz_hes
+    // create Jacobian and Hessian Sparsity patterns on the way
 
-void NLP::scaleHessianData() {
-    // in place
+    // #constraints
+    //m = sz(problem->A) + sz(problem->R) + (sz(problem->F) + sz(problem->G)) * rk.steps * mesh.intervals;
 
-};
-*/
+
+}

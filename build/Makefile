@@ -153,6 +153,30 @@ src/collocation.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/collocation.cpp.s
 .PHONY : src/collocation.cpp.s
 
+src/linalg.o: src/linalg.cpp.o
+.PHONY : src/linalg.o
+
+# target to build an object file
+src/linalg.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/linalg.cpp.o
+.PHONY : src/linalg.cpp.o
+
+src/linalg.i: src/linalg.cpp.i
+.PHONY : src/linalg.i
+
+# target to preprocess a source file
+src/linalg.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/linalg.cpp.i
+.PHONY : src/linalg.cpp.i
+
+src/linalg.s: src/linalg.cpp.s
+.PHONY : src/linalg.s
+
+# target to generate assembly for a file
+src/linalg.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/linalg.cpp.s
+.PHONY : src/linalg.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -176,6 +200,54 @@ src/main.s: src/main.cpp.s
 src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
+
+src/mesh.o: src/mesh.cpp.o
+.PHONY : src/mesh.o
+
+# target to build an object file
+src/mesh.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/mesh.cpp.o
+.PHONY : src/mesh.cpp.o
+
+src/mesh.i: src/mesh.cpp.i
+.PHONY : src/mesh.i
+
+# target to preprocess a source file
+src/mesh.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/mesh.cpp.i
+.PHONY : src/mesh.cpp.i
+
+src/mesh.s: src/mesh.cpp.s
+.PHONY : src/mesh.s
+
+# target to generate assembly for a file
+src/mesh.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/mesh.cpp.s
+.PHONY : src/mesh.cpp.s
+
+src/nlp.o: src/nlp.cpp.o
+.PHONY : src/nlp.o
+
+# target to build an object file
+src/nlp.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/nlp.cpp.o
+.PHONY : src/nlp.cpp.o
+
+src/nlp.i: src/nlp.cpp.i
+.PHONY : src/nlp.i
+
+# target to preprocess a source file
+src/nlp.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/nlp.cpp.i
+.PHONY : src/nlp.cpp.i
+
+src/nlp.s: src/nlp.cpp.s
+.PHONY : src/nlp.s
+
+# target to generate assembly for a file
+src/nlp.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/optimization.dir/build.make CMakeFiles/optimization.dir/src/nlp.cpp.s
+.PHONY : src/nlp.cpp.s
 
 src/problem.o: src/problem.cpp.o
 .PHONY : src/problem.o
@@ -213,9 +285,18 @@ help:
 	@echo "... src/collocation.o"
 	@echo "... src/collocation.i"
 	@echo "... src/collocation.s"
+	@echo "... src/linalg.o"
+	@echo "... src/linalg.i"
+	@echo "... src/linalg.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/mesh.o"
+	@echo "... src/mesh.i"
+	@echo "... src/mesh.s"
+	@echo "... src/nlp.o"
+	@echo "... src/nlp.i"
+	@echo "... src/nlp.s"
 	@echo "... src/problem.o"
 	@echo "... src/problem.i"
 	@echo "... src/problem.s"

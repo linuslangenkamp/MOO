@@ -12,21 +12,21 @@
 
 struct JacobianLFG {
     // coordinate format jacobian for LFGH functions
-    std::vector<std::tuple<uint32_t, double*>> dx;
-    std::vector<std::tuple<uint32_t, double*>> du;
-    std::vector<std::tuple<uint32_t, double*>> dp;
+    std::vector<std::tuple<int, double*>> dx;
+    std::vector<std::tuple<int, double*>> du;
+    std::vector<std::tuple<int, double*>> dp;
 };
 
 struct HessianLFG {
     // coordinate format hessian for LFG functions
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dx_dx;
+    std::vector<std::tuple<int, int, double*>> dx_dx;
 
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> du_dx;
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> du_du;
+    std::vector<std::tuple<int, int, double*>> du_dx;
+    std::vector<std::tuple<int, int, double*>> du_du;
 
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dp_dx;
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dp_du;
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dp_dp;
+    std::vector<std::tuple<int, int, double*>> dp_dx;
+    std::vector<std::tuple<int, int, double*>> dp_du;
+    std::vector<std::tuple<int, int, double*>> dp_dp;
 };
 
 struct FunctionLFG {
@@ -39,22 +39,21 @@ struct FunctionLFG {
 // used for Mayer term (M), boundary constraints (R)
  
 struct JacobianMR {
-    std::vector<std::tuple<uint32_t, double*>> dx0;
-    std::vector<std::tuple<uint32_t, double*>> dxf;
-    std::vector<std::tuple<uint32_t, double*>> dp;
+    std::vector<std::tuple<int, double*>> dx0;
+    std::vector<std::tuple<int, double*>> dxf;
+    std::vector<std::tuple<int, double*>> dp;
 };
 
 struct HessianMR {
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dx0_dx0;
+    std::vector<std::tuple<int, int, double*>> dx0_dx0;
     
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dxf_dx0;
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dxf_dxf;
+    std::vector<std::tuple<int, int, double*>> dxf_dx0;
+    std::vector<std::tuple<int, int, double*>> dxf_dxf;
 
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dp_dx0;
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dp_dxf;
-    std::vector<std::tuple<uint32_t, uint32_t, double*>> dp_dp;
+    std::vector<std::tuple<int, int, double*>> dp_dx0;
+    std::vector<std::tuple<int, int, double*>> dp_dxf;
+    std::vector<std::tuple<int, int, double*>> dp_dp;
 };
-
 
 struct FunctionMR {
     double* eval;
@@ -62,9 +61,6 @@ struct FunctionMR {
     HessianMR hessCOO;
 };
 
-// TODO: where do we add nominals? or is the problem scaled automatically in OpenModelica?
-// TODO: add a scaling / nominal wrapper, which updates the func-evals depending on nominal values
-// TOOD: add scaling for variables
 struct FullSweep {
     // Idea: Call Fullsweep.setValues(), Fullsweep.callEval(), callJac(), callHess() -> Just iterate over COO
     // function evals / diffs are on openmodelica side, 
@@ -74,9 +70,11 @@ struct FullSweep {
     std::vector<std::tuple<double, double>> gBounds; // g^L <= g(x, u, p, t) <= g^U :: path constraints
 
     // L, F, G indices in functionLFGH vector
-    uint32_t LIndexStart, LIndexEnd;
-    uint32_t FIndexStart, FIndexEnd;
-    uint32_t GIndexStart, GIndexEnd;
+    int LIndexStart, LIndexEnd;
+    int FIndexStart, FIndexEnd;
+    int GIndexStart, GIndexEnd;
+    int fSize;
+    int gSize;
 
     // create this based on some input data for the Fullsweep. Create the Grad
     FullSweep() {
@@ -107,9 +105,10 @@ struct FullSweep {
 struct BoundarySweep {
     // M, R :: assert x0 Size == xf Size
     std::vector<FunctionMR> functionsMR;
-    
-    uint32_t MIndexStart, MIndexEnd;
-    uint32_t RIndexStart, RIndexEnd;
+
+    int MIndexStart, MIndexEnd;
+    int RIndexStart, RIndexEnd;
+    int rSize; // assert; check with fixed initial states, these should not be contained here!
 
     std::vector<std::tuple<double, double>> rBounds; // r^L <= r(x0, xf, p) dt <= r^U :: boundary constraints
 
@@ -138,12 +137,13 @@ struct Problem {
     FullSweep fullSweep;
     BoundarySweep boundarySweep;
 
-    std::vector<std::tuple<double, double>> xBounds, uBounds;
+    std::vector<std::tuple<double, double>> xBounds;
+    std::vector<std::tuple<double, double>> uBounds;
     std::vector<std::tuple<double, double>> pBounds;
 
-    uint32_t xSize;
-    uint32_t uSize;
-    uint32_t pSize;
+    int xSize;
+    int uSize;
+    int pSize;
 };
 
 #endif  // OPT_PROBLEM_H

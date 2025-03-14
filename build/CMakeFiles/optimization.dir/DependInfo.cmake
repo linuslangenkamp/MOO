@@ -9,7 +9,10 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/linus/Projects/Optimization/src/collocation.cpp" "CMakeFiles/optimization.dir/src/collocation.cpp.o" "gcc" "CMakeFiles/optimization.dir/src/collocation.cpp.o.d"
+  "/home/linus/Projects/Optimization/src/linalg.cpp" "CMakeFiles/optimization.dir/src/linalg.cpp.o" "gcc" "CMakeFiles/optimization.dir/src/linalg.cpp.o.d"
   "/home/linus/Projects/Optimization/src/main.cpp" "CMakeFiles/optimization.dir/src/main.cpp.o" "gcc" "CMakeFiles/optimization.dir/src/main.cpp.o.d"
+  "/home/linus/Projects/Optimization/src/mesh.cpp" "CMakeFiles/optimization.dir/src/mesh.cpp.o" "gcc" "CMakeFiles/optimization.dir/src/mesh.cpp.o.d"
+  "/home/linus/Projects/Optimization/src/nlp.cpp" "CMakeFiles/optimization.dir/src/nlp.cpp.o" "gcc" "CMakeFiles/optimization.dir/src/nlp.cpp.o.d"
   "/home/linus/Projects/Optimization/src/problem.cpp" "CMakeFiles/optimization.dir/src/problem.cpp.o" "gcc" "CMakeFiles/optimization.dir/src/problem.cpp.o.d"
   )
 

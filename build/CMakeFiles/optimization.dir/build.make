@@ -83,10 +83,24 @@ CMakeFiles/optimization.dir/src/collocation.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/optimization.dir/src/collocation.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/linus/Projects/Optimization/src/collocation.cpp -o CMakeFiles/optimization.dir/src/collocation.cpp.s
 
+CMakeFiles/optimization.dir/src/linalg.cpp.o: CMakeFiles/optimization.dir/flags.make
+CMakeFiles/optimization.dir/src/linalg.cpp.o: /home/linus/Projects/Optimization/src/linalg.cpp
+CMakeFiles/optimization.dir/src/linalg.cpp.o: CMakeFiles/optimization.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/optimization.dir/src/linalg.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/optimization.dir/src/linalg.cpp.o -MF CMakeFiles/optimization.dir/src/linalg.cpp.o.d -o CMakeFiles/optimization.dir/src/linalg.cpp.o -c /home/linus/Projects/Optimization/src/linalg.cpp
+
+CMakeFiles/optimization.dir/src/linalg.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/optimization.dir/src/linalg.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/linus/Projects/Optimization/src/linalg.cpp > CMakeFiles/optimization.dir/src/linalg.cpp.i
+
+CMakeFiles/optimization.dir/src/linalg.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/optimization.dir/src/linalg.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/linus/Projects/Optimization/src/linalg.cpp -o CMakeFiles/optimization.dir/src/linalg.cpp.s
+
 CMakeFiles/optimization.dir/src/main.cpp.o: CMakeFiles/optimization.dir/flags.make
 CMakeFiles/optimization.dir/src/main.cpp.o: /home/linus/Projects/Optimization/src/main.cpp
 CMakeFiles/optimization.dir/src/main.cpp.o: CMakeFiles/optimization.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/optimization.dir/src/main.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/optimization.dir/src/main.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/optimization.dir/src/main.cpp.o -MF CMakeFiles/optimization.dir/src/main.cpp.o.d -o CMakeFiles/optimization.dir/src/main.cpp.o -c /home/linus/Projects/Optimization/src/main.cpp
 
 CMakeFiles/optimization.dir/src/main.cpp.i: cmake_force
@@ -97,10 +111,38 @@ CMakeFiles/optimization.dir/src/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/optimization.dir/src/main.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/linus/Projects/Optimization/src/main.cpp -o CMakeFiles/optimization.dir/src/main.cpp.s
 
+CMakeFiles/optimization.dir/src/mesh.cpp.o: CMakeFiles/optimization.dir/flags.make
+CMakeFiles/optimization.dir/src/mesh.cpp.o: /home/linus/Projects/Optimization/src/mesh.cpp
+CMakeFiles/optimization.dir/src/mesh.cpp.o: CMakeFiles/optimization.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/optimization.dir/src/mesh.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/optimization.dir/src/mesh.cpp.o -MF CMakeFiles/optimization.dir/src/mesh.cpp.o.d -o CMakeFiles/optimization.dir/src/mesh.cpp.o -c /home/linus/Projects/Optimization/src/mesh.cpp
+
+CMakeFiles/optimization.dir/src/mesh.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/optimization.dir/src/mesh.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/linus/Projects/Optimization/src/mesh.cpp > CMakeFiles/optimization.dir/src/mesh.cpp.i
+
+CMakeFiles/optimization.dir/src/mesh.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/optimization.dir/src/mesh.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/linus/Projects/Optimization/src/mesh.cpp -o CMakeFiles/optimization.dir/src/mesh.cpp.s
+
+CMakeFiles/optimization.dir/src/nlp.cpp.o: CMakeFiles/optimization.dir/flags.make
+CMakeFiles/optimization.dir/src/nlp.cpp.o: /home/linus/Projects/Optimization/src/nlp.cpp
+CMakeFiles/optimization.dir/src/nlp.cpp.o: CMakeFiles/optimization.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/optimization.dir/src/nlp.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/optimization.dir/src/nlp.cpp.o -MF CMakeFiles/optimization.dir/src/nlp.cpp.o.d -o CMakeFiles/optimization.dir/src/nlp.cpp.o -c /home/linus/Projects/Optimization/src/nlp.cpp
+
+CMakeFiles/optimization.dir/src/nlp.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/optimization.dir/src/nlp.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/linus/Projects/Optimization/src/nlp.cpp > CMakeFiles/optimization.dir/src/nlp.cpp.i
+
+CMakeFiles/optimization.dir/src/nlp.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/optimization.dir/src/nlp.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/linus/Projects/Optimization/src/nlp.cpp -o CMakeFiles/optimization.dir/src/nlp.cpp.s
+
 CMakeFiles/optimization.dir/src/problem.cpp.o: CMakeFiles/optimization.dir/flags.make
 CMakeFiles/optimization.dir/src/problem.cpp.o: /home/linus/Projects/Optimization/src/problem.cpp
 CMakeFiles/optimization.dir/src/problem.cpp.o: CMakeFiles/optimization.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/optimization.dir/src/problem.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/optimization.dir/src/problem.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/optimization.dir/src/problem.cpp.o -MF CMakeFiles/optimization.dir/src/problem.cpp.o.d -o CMakeFiles/optimization.dir/src/problem.cpp.o -c /home/linus/Projects/Optimization/src/problem.cpp
 
 CMakeFiles/optimization.dir/src/problem.cpp.i: cmake_force
@@ -114,18 +156,24 @@ CMakeFiles/optimization.dir/src/problem.cpp.s: cmake_force
 # Object files for target optimization
 optimization_OBJECTS = \
 "CMakeFiles/optimization.dir/src/collocation.cpp.o" \
+"CMakeFiles/optimization.dir/src/linalg.cpp.o" \
 "CMakeFiles/optimization.dir/src/main.cpp.o" \
+"CMakeFiles/optimization.dir/src/mesh.cpp.o" \
+"CMakeFiles/optimization.dir/src/nlp.cpp.o" \
 "CMakeFiles/optimization.dir/src/problem.cpp.o"
 
 # External object files for target optimization
 optimization_EXTERNAL_OBJECTS =
 
 optimization: CMakeFiles/optimization.dir/src/collocation.cpp.o
+optimization: CMakeFiles/optimization.dir/src/linalg.cpp.o
 optimization: CMakeFiles/optimization.dir/src/main.cpp.o
+optimization: CMakeFiles/optimization.dir/src/mesh.cpp.o
+optimization: CMakeFiles/optimization.dir/src/nlp.cpp.o
 optimization: CMakeFiles/optimization.dir/src/problem.cpp.o
 optimization: CMakeFiles/optimization.dir/build.make
 optimization: CMakeFiles/optimization.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable optimization"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/linus/Projects/Optimization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX executable optimization"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/optimization.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
