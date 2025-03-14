@@ -4,16 +4,18 @@
 #include <vector>
 
 struct Mesh {
-    Mesh(int intervals, double tf, std::vector<double> grid, std::vector<double> deltaT, std::vector<int> steps, std::vector<int> cum_steps)
-        : intervals(intervals), tf(tf), grid(std::move(grid)), deltaT(std::move(deltaT)), steps(std::move(steps)), cum_steps(std::move(cum_steps))  {
+    Mesh(int intervals, double tf, std::vector<double> grid, std::vector<double> delta_t, std::vector<int> nodes, std::vector<std::vector<int>> acc_nodes, int node_count)
+        : intervals(intervals), tf(tf), grid(std::move(grid)), delta_t(std::move(delta_t)), nodes(std::move(nodes)),
+          acc_nodes(std::move(acc_nodes)), node_count(node_count) {
     }
 
-    int intervals;
-    double tf;
-    std::vector<double> grid;   // grid base points
-    std::vector<double> deltaT; // step size h for each interval
-    std::vector<int> steps;     // number of collocation nodes p for each interval
-    std::vector<int> cum_steps; // cum_steps[k] = sum_{i=0}^{k} steps[i] -> cum_steps[-1] = # collocation nodes in total
+    int intervals;                            // number of intervals
+    int node_count;                           // number of collocation nodes (sum over all intervals)
+    double tf;                                // final time
+    std::vector<double> grid;                 // grid base points
+    std::vector<double> delta_t;              // step size h for each interval
+    std::vector<int> nodes;                   // number of collocation nodes p for each interval
+    std::vector<std::vector<int>> acc_nodes;  // number of nodes to the left of index (i, j)
 
     static Mesh createEquidistantMeshFixedDegree(int intervals, double tf, int p);
     std::vector<std::vector<int>> createAccOffsetXU(int off_x, int off_xu);

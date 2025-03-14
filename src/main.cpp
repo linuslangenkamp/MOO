@@ -8,18 +8,26 @@
 //  cmake --build build && cd build && ./gdopt_experimental && cd ..
 
 int main() {
-    const Collocation fLGR = Collocation();
+    Collocation fLGR = Collocation();
     Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
-    Problem model = Problem();
-    model.xSize = 3;
-    model.uSize = 2;
-    model.pSize = 1;
-    std::cout << "Y" << std::endl;
-    NLP nlp = NLP(model, fLGR, mesh);
+    Problem problem = Problem();
+    problem.x_size = 1;
+    problem.x_bounds = {{2, 4}};
+    problem.x0_fixed = {std::nullopt};
+    problem.xf_fixed = {std::nullopt};
+    problem.u_size = 2;
+    problem.u_bounds = {{2, 4}, {-1, 2}};
+    problem.p_size = 0;
+    problem.full.f_size = 1;
+    problem.full.g_size = 1;
+    problem.full.g_bounds = {{1, 2}};
+    problem.boundary.r_size = 1;
+    problem.boundary.r_bounds = {{125, 2555}};
+    NLP nlp = NLP(problem, fLGR, mesh);
     for (const auto& v : nlp.off_acc_xu) {
-    std::cout << Util::vectorToString(v) << std::endl;
-
+        std::cout << Util::vectorToString(v) << std::endl;
     }
     std::cout << nlp.number_vars << std::endl;
+    std::cout << nlp.number_constraints << std::endl;
     return 0;
 }

@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 #include <tuple>
+#include <optional>
 #include <vector>
 
 const double PLUS_INFINITY = std::numeric_limits<double>::infinity();
