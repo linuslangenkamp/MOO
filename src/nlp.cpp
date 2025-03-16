@@ -189,13 +189,16 @@ void NLP::eval_grad_f() {
         for (int i = 0; i < mesh->intervals; i++) {
             for (int j = 0; j < mesh->nodes[i]; j++) {
                 for (auto& dL_dx : problem->full.lfg[0].jac.dx) {
-                    curr_grad[off_acc_xu[i][j] + dL_dx.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*dL_dx.value);
+                    curr_grad[off_acc_xu[i][j] + dL_dx.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] *
+                                                                (*(dL_dx.value + problem->full.jac_size * mesh->acc_nodes[i][j]));
                 }
                 for (auto& dL_du : problem->full.lfg[0].jac.du) {
-                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*dL_du.value);
+                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * 
+                                                                        (*(dL_du.value + problem->full.jac_size * mesh->acc_nodes[i][j]));
                 }
                 for (auto& dL_dp : problem->full.lfg[0].jac.dp) {
-                    curr_grad[off_xu_total + dL_dp.index] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*dL_dp.value);
+                    curr_grad[off_xu_total + dL_dp.index] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * 
+                                                             (*(dL_dp.value + problem->full.jac_size * mesh->acc_nodes[i][j]));
                 }
             }
         }
