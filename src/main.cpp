@@ -24,7 +24,6 @@ int main() {
     problem.full.g_bounds = {{1, 2}};
     problem.boundary.r_size = 1;
     problem.boundary.r_bounds = {{125, 2555}};
-
     Trajectory guess = {{0, 1}, {{1, 5}}, {{0, 2}, {3, 1}}, {1, 2}, InterpolationMethod::LINEAR};
 
     NLP nlp = NLP(problem, radau, mesh, guess);

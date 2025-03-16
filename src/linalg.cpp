@@ -10,14 +10,11 @@ namespace Linalg {
      * @param y         Second Vector
      * @return double   transpose(vec1) * vec2
      */
-    double dot(const size_t size, const double* x, const double* y) {
-        size_t i;
+    double dot(const int size, const double* x, const double* y) {
         double ret = 0;
-
-        for (i = 0; i < size; i++) {
+        for (int i = 0; i < size; i++) {
             ret += x[i] * y[i];
         }
-
         return ret;
     }
 
@@ -33,8 +30,8 @@ namespace Linalg {
      * @param invD      Invert Matrix D
      * @param out       Vector to fill
      */
-    void dsaxpy(const size_t size, const double* x, const double* y, const double* D, double beta, bool invD, double* out) {
-        size_t i;
+    void dsaxpy(const int size, const double* x, const double* y, const double* D, double beta, bool invD, double* out) {
+        int i;
 
         if (invD) {
             for (i = 0; i < size; i++) {
@@ -59,8 +56,8 @@ namespace Linalg {
      * @param invD      Invert Matrix D
      * @param out       Vector to fill
      */
-    void dgmv(const size_t size, const double* x, const double* y, const double* D, double beta, bool invD, double* out) {
-        size_t i;
+    void dgmv(const int size, const double* x, const double* y, const double* D, double beta, bool invD, double* out) {
+        int i;
 
         if (invD) {
             for (i = 0; i < size; i++) {

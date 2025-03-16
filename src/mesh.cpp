@@ -44,6 +44,16 @@ std::vector<std::vector<int>> Mesh::createAccOffsetXU(int off_x, int off_xu) {
     return off_acc_xu;
 }
 
+std::vector<std::vector<int>> Mesh::createAccOffsetFG(int off_fg) {
+    std::vector<std::vector<int>> acc_fg = acc_nodes;
+    for (int i = 0; i < intervals; i++) {
+        for (int j = 0; j < nodes[i] ; j++) {
+            acc_fg[i][j] *= off_fg;
+        }
+    }
+    return acc_fg;
+}
+
 Trajectory Trajectory::interpolate(Mesh& mesh, Collocation& collocation) {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
@@ -69,9 +79,9 @@ Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation)
     new_guess.u.resize(u.size());
 
     // interpolate x(t)
-    for (size_t k = 0; k < x.size(); k++) {
+    for (int k = 0; k < x.size(); k++) {
         new_guess.x[k].resize(new_t.size());
-        for (size_t i = 0; i < new_t.size(); i++) {
+        for (int i = 0; i < new_t.size(); i++) {
             double t_new = new_t[i];
             auto it = std::lower_bound(t.begin(), t.end(), t_new);
             if (it == t.begin()) {
@@ -81,7 +91,7 @@ Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation)
                 new_guess.x[k][i] = x[k].back();
             }
             else {
-                size_t idx = std::distance(t.begin(), it);
+                int idx = std::distance(t.begin(), it);
                 double t1 = t[idx - 1];
                 double t2 = t[idx];
                 double x1 = x[k][idx - 1];
@@ -92,9 +102,9 @@ Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation)
     }
 
     // interpolate u(t)
-    for (size_t k = 0; k < u.size(); k++) {
+    for (int k = 0; k < u.size(); k++) {
         new_guess.u[k].resize(new_t.size());
-        for (size_t i = 0; i < new_t.size(); i++) {
+        for (int i = 0; i < new_t.size(); i++) {
             double t_new = new_t[i];
             auto it = std::lower_bound(t.begin(), t.end(), t_new);
             if (it == t.begin()) {
@@ -104,7 +114,7 @@ Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation)
                 new_guess.u[k][i] = u[k].back();
             }
             else {
-                size_t idx = std::distance(t.begin(), it);
+                int idx = std::distance(t.begin(), it);
                 double t1 = t[idx - 1];
                 double t2 = t[idx];
                 double u1 = u[k][idx - 1];

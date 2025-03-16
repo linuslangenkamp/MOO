@@ -21,11 +21,12 @@ struct Mesh {
     double tf;                                // final time
     std::vector<double> grid;                 // grid base points
     std::vector<double> delta_t;              // step size h for each interval
-    std::vector<int> nodes;                   // number of collocation nodes p for each interval
+    std::vector<int>    nodes;                // number of collocation nodes p for each interval
     std::vector<std::vector<int>> acc_nodes;  // number of nodes to the left of index (i, j)
 
     static Mesh createEquidistantMeshFixedDegree(int intervals, double tf, int p);
     std::vector<std::vector<int>> createAccOffsetXU(int off_x, int off_xu);
+    std::vector<std::vector<int>> createAccOffsetFG(int off_fg);
 };
 
 // given some data trajectories t, x(t), u(t), p -> interpolate w.r.t. mesh and collocation scheme -> new fitting guess

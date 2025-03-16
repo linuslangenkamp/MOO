@@ -24,7 +24,7 @@ namespace Util {
         out << std::fixed << std::setprecision(15);
         if (!vec.empty()) {
             out << vec[0];
-            for (size_t i = 1; i < vec.size(); i++) {
+            for (int i = 1; i < vec.size(); i++) {
                 out << ", " << vec[i];
             }
         }

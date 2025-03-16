@@ -15,10 +15,13 @@ void NLP::initSizesOffsets() {
     off_u = problem->u_size;
     off_p = problem->p_size;
     off_xu = off_x + off_u;
-    off_acc_xu = mesh->createAccOffsetXU(off_x, off_xu);
-    off_xu_total = off_acc_xu.back().back() + off_xu;
+    off_acc_xu = mesh->createAccOffsetXU(off_x, off_xu);          // variables  x_ij offset
+    off_last_xu = off_acc_xu.back().back();                       // variables final grid point x_ij
+    off_xu_total = off_last_xu + off_xu;                          // first parameter
     number_vars = off_xu_total + problem->p_size;
-    number_constraints = problem->boundary.r_size + (problem->full.f_size + problem->full.g_size) * mesh->node_count;
+    off_acc_fg = mesh->createAccOffsetFG(problem->full.fg_size);  // constraint f_ij offset
+    off_fg_total = mesh->node_count * problem->full.fg_size;      // constraint r_0 offset
+    number_constraints = problem->boundary.r_size + off_fg_total;
 }
 
 void NLP::initBounds() {
@@ -68,19 +71,19 @@ void NLP::initBounds() {
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
-                g_lb[mesh->acc_nodes[i][j] + f_index] = 0;
-                g_ub[mesh->acc_nodes[i][j] + f_index] = 0;
+                g_lb[off_acc_fg[i][j] + f_index] = 0;
+                g_ub[off_acc_fg[i][j] + f_index] = 0;
             }
             for (int g_index = 0; g_index < problem->full.g_size; g_index++) {
-                g_lb[mesh->acc_nodes[i][j] + problem->full.f_size + g_index] = problem->full.g_bounds[g_index].lb;
-                g_ub[mesh->acc_nodes[i][j] + problem->full.f_size + g_index] = problem->full.g_bounds[g_index].ub;
+                g_lb[off_acc_fg[i][j] + problem->full.f_size + g_index] = problem->full.g_bounds[g_index].lb;
+                g_ub[off_acc_fg[i][j] + problem->full.f_size + g_index] = problem->full.g_bounds[g_index].ub;
             }
         }
     }
 
     for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
-        g_lb[mesh->node_count + r_index] = problem->boundary.r_bounds[r_index].lb;
-        g_ub[mesh->node_count + r_index] = problem->boundary.r_bounds[r_index].ub;
+        g_lb[off_fg_total + r_index] = problem->boundary.r_bounds[r_index].lb;
+        g_ub[off_fg_total + r_index] = problem->boundary.r_bounds[r_index].ub;
     }
 }
 
@@ -108,7 +111,15 @@ void NLP::initStartingPoint() {
     }
 }
 
-void NLP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
+/* nlp function evaluations happen in two stages:
+ * 1. fill the input buffers -> evaluate all continuous callback functions and fill the output buffers
+ * 2. evaluate the nlp function by accessing the structures and double* defined in problem, simply use the filled buffers
+ * 
+ * since all functions are evaluated in step 2, this can always be executed in parallel even if the callbacks were not parallel!
+ * because of this structure, before every nlp evaluation check_new_x has to be performed and step 1 has to be executed in case
+ */
+
+void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
     evaluation_state.check_reset(new_x);
     if (!evaluation_state.x_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
@@ -116,6 +127,10 @@ void NLP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
         std::memcpy(curr_x.get(), nlp_solver_x, number_vars * sizeof(double));
         evaluation_state.x_unscaled = true;
     }
+}
+
+void NLP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
+    check_new_x(nlp_solver_x, new_x);
     if (evaluation_state.eval_f) {
         return;
     }
@@ -125,17 +140,40 @@ void NLP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
     }
 }
 
+void NLP::eval_g_safe(const double* nlp_solver_x, bool new_x) {
+    check_new_x(nlp_solver_x, new_x);
+    if (evaluation_state.eval_g) {
+        return;
+    }
+    else {
+        callback_evaluation();
+        eval_g();
+    }
+}
+
+
+void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
+    check_new_x(nlp_solver_x, new_x);
+    if (evaluation_state.grad_f) {
+        return;
+    }
+    else {
+        callback_jacobian();
+        eval_grad_f();
+    }
+};
+
 void NLP::eval_f() {
     double mayer = 0;
     if (problem->boundary.has_mayer) {
-        mayer = (*problem->boundary.mr[0].eval);
+        mayer = problem->boundary.getEvalM();
     };
 
     double lagrange = 0;
     if (problem->full.has_lagrange) {
         for (int i = 0; i < mesh->intervals; i++) {
             for (int j = 0; j < mesh->nodes[i]; j++) {
-                lagrange += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(problem->full.lfg[0].eval + mesh->acc_nodes[i][j]));
+                lagrange += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * problem->full.getEvalL(mesh->acc_nodes[i][j]);
             }
         }
     }
@@ -143,6 +181,62 @@ void NLP::eval_f() {
     curr_obj = mayer + lagrange;
 }
 
+
+void NLP::eval_grad_f() {
+    std::memset(curr_grad.get(), 0, number_vars * sizeof(double));
+
+    if (problem->full.has_lagrange) {
+        for (int i = 0; i < mesh->intervals; i++) {
+            for (int j = 0; j < mesh->nodes[i]; j++) {
+                for (auto& dL_dx : problem->full.lfg[0].jac.dx) {
+                    curr_grad[off_acc_xu[i][j] + dL_dx.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*dL_dx.value);
+                }
+                for (auto& dL_du : problem->full.lfg[0].jac.du) {
+                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*dL_du.value);
+                }
+                for (auto& dL_dp : problem->full.lfg[0].jac.dp) {
+                    curr_grad[off_xu_total + dL_dp.index] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*dL_dp.value);
+                }
+            }
+        }
+    }
+    if (problem->boundary.has_mayer) {
+        for (auto& dM_dx0 : problem->boundary.mr[0].jac.dx0) {
+            curr_grad[dM_dx0.index] = (*dM_dx0.value);
+        }
+        for (auto& dM_dxf : problem->boundary.mr[0].jac.dxf) {
+            curr_grad[off_last_xu + dM_dxf.index] += (*dM_dxf.value);
+        }
+        for (auto& dM_dp : problem->boundary.mr[0].jac.dp) {
+            curr_grad[off_xu_total + dM_dp.index] += (*dM_dp.value);
+        }
+    }
+};
+
+void NLP::eval_g() {
+    std::memset(curr_g.get(), 0, number_constraints * sizeof(double));
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int f = problem->full.f_index_start; f < problem->full.f_index_end; f++) {
+            collocation->diff_matrix_multiply(mesh->nodes[i], off_x, off_xu, problem->full.fg_size,
+                                              &curr_x[off_acc_xu[i][0]],   // x_{i-1, m_{i-1}} == x_{i, 0}, base point states
+                                              &curr_x[off_acc_xu[i][1]],   // x_{i, 1}, collocation point states
+                                              &curr_g[off_acc_fg[i][0]]);  // constraint start index 
+        }
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
+                curr_g[off_acc_fg[i][j] + f_index] -= mesh->delta_t[i] * problem->full.getEvalF(f_index, mesh->acc_nodes[i][j]);
+            }
+            for (int g_index = 0; g_index < problem->full.g_size; g_index++) {
+                curr_g[off_acc_fg[i][j] + problem->full.f_size + g_index] += problem->full.getEvalG(g_index, mesh->acc_nodes[i][j]);
+            }
+        }
+    }
+    for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
+        curr_g[off_fg_total + r_index] = problem->boundary.getEvalR(r_index);
+    }
+}
+
+// TODO: how to perform the data filling and evaluations
 void NLP::callback_evaluation() {
     // TODO: how to interface here
     // problem->full.fillInputData();

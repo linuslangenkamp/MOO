@@ -83,13 +83,18 @@ struct FullSweep {
 
     std::vector<Bounds> g_bounds; // g^L <= g(x, u, p, t) <= g^U :: path constraints
 
-    // L, F, G indices in functionLFGH vector
-    int L_index_start, L_index_end;
+    //  F, G indices in lfg vector
     int f_index_start, f_index_end;
     int g_index_start, g_index_end;
     int f_size;
     int g_size;
+    int fg_size;
     bool has_lagrange;
+
+    // sizes of 1 chunk in the data array - which has to be defined somewhere, maybe in NLP
+    int eval_size; // eval_size == g_index_end == number of functions in lfg
+    int jac_size;
+    int hes_size;
 
     // create this based on some input data for the Fullsweep. Create the Grad
     FullSweep() {
@@ -115,6 +120,42 @@ struct FullSweep {
     inline void callHess(double* hesData) {
         // TODO: think about this part
     }
+
+    inline double getEvalL(const int offset) {
+        return *(lfg[0].eval + offset * eval_size);
+    }
+
+    inline double getEvalF(const int f_index, const int offset) {
+        return *(lfg[f_index_start + f_index].eval + offset * eval_size);
+    }
+
+    inline double getEvalG(const int g_index, const int offset) {
+        return *(lfg[g_index_start + g_index].eval + offset * eval_size);
+    }
+
+    inline double getJacL_X_Value(const int x_index, const int offset) {
+        return *(lfg[0].jac.dx[x_index].value + offset * jac_size);
+    }
+
+    inline int getJacL_X_Index(const int x_index) {
+        return lfg[0].jac.dx[x_index].index;
+    }
+  
+    inline double getJacL_U_Value(const int u_index, const int offset) {
+        return *(lfg[0].jac.du[u_index].value + offset * jac_size);
+    }
+
+    inline int getJacL_U_Index(const int u_index) {
+        return lfg[0].jac.du[u_index].index;
+    }
+
+    inline double getJacL_P_Value(const int p_index) {
+        return *(lfg[0].jac.dp[p_index].value);
+    }
+
+    inline int getJacL_P_Index(const int p_index) {
+        return lfg[0].jac.dp[p_index].index;
+    }  
 };
 
 struct BoundarySweep {
@@ -122,11 +163,10 @@ struct BoundarySweep {
     std::vector<FunctionMR> mr;
 
     bool has_mayer;
-    int M_index_start, M_index_end;
     int r_index_start, r_index_end;
     int r_size; // assert; check with fixed initial states, these should not be contained here!
     
-    std::vector<Bounds> r_bounds; // r^L <= r(x0, xf, p) dt <= r^U :: boundary constraints
+    std::vector<Bounds> r_bounds; // r^L <= r(x0, xf, p) <= r^U :: boundary constraints
 
     inline void fillInputData(double* x0, double* xf, double* p) {
         // TODO: think about this part
@@ -146,6 +186,14 @@ struct BoundarySweep {
 
     inline void callHess(double* hesData) {
         // TODO: think about this part
+    }
+
+    inline double getEvalM() {
+        return *(mr[0].eval);
+    }
+
+    inline double getEvalR(const int r_index) {
+        return *(mr[r_index].eval);
     }
 };
 

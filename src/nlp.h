@@ -59,10 +59,13 @@ struct NLP {
     int off_u;         // offset #uVars
     int off_p;         // offset #pVars
     int off_xu;        // number of vars for one collocation grid point
-    int off_xu_total;  // first parameter variable
+    int off_last_xu;   // last collocation grid point *x_nm, u_nm
+    int off_xu_total;  // first parameter variable index
+    int off_fg_total;  // first boundary constraint index
 
     // note off_acc_xu[0][0] = off_x for time t = first collocation node, since there are no controls at time t=0
     std::vector<std::vector<int>> off_acc_xu;  // offset to NLP_X index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
+    std::vector<std::vector<int>> off_acc_fg;  // offset to NLP_G index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
 
     // evaluation data (problem double* point to these arrays)
     std::unique_ptr<double[]> eval_data_LFG;
@@ -89,8 +92,13 @@ struct NLP {
     void callback_hessian();
 
     // nlp solver calls
+    void check_new_x(const double* nlp_solver_x, bool new_x);
     void eval_f();
     void eval_f_safe(const double* nlp_solver_x, bool new_x);
+    void eval_g();
+    void eval_g_safe(const double* nlp_solver_x, bool new_x);
+    void eval_grad_f();
+    void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
 
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
     // TODO: use these later, fill one time and then scale at the end of calculations
