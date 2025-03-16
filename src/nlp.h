@@ -31,11 +31,12 @@ struct NLP {
     std::unique_ptr<double[]> x_ub;
 
     // nlp function data
-    double curr_obj;
-    std::unique_ptr<double[]> curr_grad;
-    std::unique_ptr<double[]> curr_g;
-    std::unique_ptr<double[]> curr_jac;
-    std::unique_ptr<double[]> curr_hes;
+    double curr_obj;                      // current objective value
+    std::unique_ptr<double[]> curr_grad;  // current gradient of the objective function
+    std::unique_ptr<double[]> curr_g;     // current constraint function evaluation
+    std::unique_ptr<double[]> curr_jac;   // current jacobian of the constraints
+    std::unique_ptr<double[]> der_jac;    // constant derivative matrix part of the jacobian
+    std::unique_ptr<double[]> curr_hes;   // current hessian of the lagrangian
 
     // scaled constraint bounds
     std::unique_ptr<double[]> g_lb;
@@ -64,27 +65,29 @@ struct NLP {
     int off_fg_total;  // first boundary constraint index
 
     // note off_acc_xu[0][0] = off_x for time t = first collocation node, since there are no controls at time t=0
-    std::vector<std::vector<int>> off_acc_xu;  // offset to NLP_X index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
-    std::vector<std::vector<int>> off_acc_fg;  // offset to NLP_G index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
+    std::vector<std::vector<int>> off_acc_xu;  // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
+    std::vector<std::vector<int>> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
+    std::vector<int> off_acc_jac;              // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
+    /* TODO: maybe set these in fullsweep or boundarysweep, they dont need to be here, alloc them there w.r.t. macros in nlp.cpp!
     // evaluation data (problem double* point to these arrays)
     std::unique_ptr<double[]> eval_data_LFG;
-    std::unique_ptr<double[]> jac_data_LFG_D; // contains the derivative matrix blocks, which must be calculated only once -> use memcpy _D -> stdjac
     std::unique_ptr<double[]> jac_data_LFG;
     std::unique_ptr<double[]> hes_data_LFG;
-
-    // offset for iterating over the data array
-    int nnz_jac_LFG = 0;
-    int nnz_hes_LFG = 0;
 
     std::unique_ptr<double[]> eval_data_MR;
     std::unique_ptr<double[]>  jac_data_MR;
     std::unique_ptr<double[]>  hes_data_MR;
+    */
 
     void init();
     void initSizesOffsets();
     void initBounds();
     void initStartingPoint();
+    void initJacobian();
+    void calculateJacobianNonzeros();
+    void initJacobianSparsityPattern();
+    void initHessianSparsity();
 
     // get callback data
     void callback_evaluation();

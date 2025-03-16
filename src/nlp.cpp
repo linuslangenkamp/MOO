@@ -1,5 +1,10 @@
 #include "nlp.h"
 
+// some convenience macros, define the offsets / number of elements in the callback function data arrays
+#define EVAL_OFFSET_IJ problem->full.eval_size * mesh->acc_nodes[i][j]
+#define JAC_OFFSET_IJ problem->full.jac_size * mesh->acc_nodes[i][j]
+#define HES_OFFSET_IJ problem->full.hes_size * mesh->acc_nodes[i][j]
+
 void NLP::init() {
     // init all the structures for optimization
     // n, m, nnz_jac, nnz_hess
@@ -8,6 +13,7 @@ void NLP::init() {
     initSizesOffsets();
     initBounds();
     initStartingPoint();
+    initJacobian();
 }
 
 void NLP::initSizesOffsets() {
@@ -111,6 +117,162 @@ void NLP::initStartingPoint() {
     }
 }
 
+void NLP::initJacobian() {
+    calculateJacobianNonzeros();
+    initJacobianSparsityPattern();
+}
+
+void NLP::calculateJacobianNonzeros() {
+    // stage 1: calculate nnz of blocks and number of collisions, where df_k / dx_k != 0. these are contained by default because of the D-Matrix
+    int nnz_r = 0;
+    int nnz_f_g = 0;
+    int diagonal_collisions = 0;
+    for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
+        for (const auto& df_k_dx : problem->full.lfg[problem->full.f_index_start + f_index].jac.dx) {
+            if (df_k_dx.index == f_index) {
+                diagonal_collisions++;
+            }
+        }
+        nnz_f_g += problem->full.lfg[problem->full.f_index_start + f_index].jac.dx.size() +
+                   problem->full.lfg[problem->full.f_index_start + f_index].jac.du.size() +
+                   problem->full.lfg[problem->full.f_index_start + f_index].jac.dp.size();
+    }
+    for (int g_index = 0; g_index < problem->full.g_size; g_index++) {
+            nnz_f_g += problem->full.lfg[problem->full.g_index_start + g_index].jac.dx.size() +
+                       problem->full.lfg[problem->full.g_index_start + g_index].jac.du.size() +
+                       problem->full.lfg[problem->full.g_index_start + g_index].jac.dp.size();
+    }
+
+    // nnz of block i can be calculated as m_i * ((m_i + 2) * #f + #g - coll(df_i, dx_i)), where m_i is the number of nodes on that interval
+    off_acc_jac.reserve(mesh->intervals + 1);
+    off_acc_jac.emplace_back(0);
+    for (int i = 0; i < mesh->intervals; i++) {
+        off_acc_jac.emplace_back(off_acc_jac[i - 1] + mesh->nodes[i] * (mesh->nodes[i] + 2) * problem->full.f_size + problem->full.g_size - diagonal_collisions);
+    }
+
+    for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
+            nnz_r += problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dx0.size() +
+                     problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dxf.size() +
+                     problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dp.size();
+    }
+
+    // set nnz of NLP_JAC_G
+    nnz_jac = off_acc_jac.back() + nnz_r;
+
+    // allocate memory
+    curr_jac  = std::make_unique<double[]>(nnz_jac);
+    der_jac   = std::make_unique<double[]>(nnz_jac);
+    i_row_jac = std::make_unique<int[]>(nnz_jac);
+    j_col_jac = std::make_unique<int[]>(nnz_jac);
+    std::memset(der_jac.get(), 0, nnz_jac * sizeof(double));
+}
+
+void NLP::initJacobianSparsityPattern() {
+    // stage 2: calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
+    for (int i = 0; i < mesh->intervals; i++) {
+        int nnz_index = off_acc_jac[i]; // make local var: possible block parallelization
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
+                int eqn_index = off_acc_fg[i][j] + f_index;
+
+                // dColl / dx for x_{i-1, m_{i-1}} base point states
+                i_row_jac[nnz_index] = eqn_index;
+                j_col_jac[nnz_index] = (i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]) + f_index;
+                der_jac[nnz_index]   = collocation->D[mesh->nodes[i]][j + 1][0];
+                nnz_index++;
+
+                // dColl / dx for x_{i, j} collocation point states
+                for (int k = 0; k < mesh->nodes[i]; k++) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][k] + f_index;
+                    der_jac[nnz_index]   = collocation->D[mesh->nodes[i]][j + 1][k + 1];
+                    nnz_index++;
+                }
+
+                // df / dx
+                for (auto& df_dx : problem->full.lfg[problem->full.f_index_start + f_index].jac.dx) {
+                    if (df_dx.index != f_index) {
+                        i_row_jac[nnz_index] = eqn_index;
+                        j_col_jac[nnz_index] = off_acc_xu[i][j] + df_dx.index;
+                        nnz_index++;
+                    }
+                }
+
+                // df / du
+                for (auto& df_du : problem->full.lfg[problem->full.f_index_start + f_index].jac.du) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + df_du.index;
+                    nnz_index++;
+                }
+
+                // df / dp
+                for (auto& df_dp : problem->full.lfg[problem->full.f_index_start + f_index].jac.dp) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_xu_total + df_dp.index;
+                    nnz_index++;
+                }
+            }
+
+            for (int g_index = 0; g_index < problem->full.g_size; g_index++) {
+                int eqn_index = off_acc_fg[i][j] + problem->full.f_size + g_index;
+
+                // dg / dx
+                for (auto& dg_dx : problem->full.lfg[problem->full.g_index_start + g_index].jac.dx) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][j] + dg_dx.index;
+                    nnz_index++;
+                }
+
+                // dg / du
+                for (auto& dg_du : problem->full.lfg[problem->full.g_index_start + g_index].jac.du) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + dg_du.index;
+                    nnz_index++;
+                }
+
+                // dg / dp
+                for (auto& dg_dp : problem->full.lfg[problem->full.g_index_start + g_index].jac.dp) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_xu_total+ dg_dp.index;
+                    nnz_index++;
+                }
+            }
+        }
+        assert(nnz_index == off_acc_jac[i + 1]);
+    }
+
+    int nnz_index = off_acc_jac.back();
+    for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
+        int eqn_index = off_fg_total + r_index;
+
+        // dr / dx0
+        for (auto& dr_dx0 : problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dx0) {
+            i_row_jac[nnz_index] = eqn_index;
+            j_col_jac[nnz_index] = dr_dx0.index;
+            nnz_index++;
+        }
+
+        // dg / dxf
+        for (auto& dr_dxf : problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dxf) {
+            i_row_jac[nnz_index] = eqn_index;
+            j_col_jac[nnz_index] = off_last_xu + dr_dxf.index;
+            nnz_index++;
+        }
+
+        // dg / dp
+        for (auto& dr_dp: problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dp) {
+            i_row_jac[nnz_index] = eqn_index;
+            j_col_jac[nnz_index] = off_xu_total + dr_dp.index;
+            nnz_index++;
+        }
+    }
+    assert(nnz_index == nnz_jac);
+}
+
+void NLP::initHessianSparsity() {
+
+}
+
 /* nlp function evaluations happen in two stages:
  * 1. fill the input buffers -> evaluate all continuous callback functions and fill the output buffers
  * 2. evaluate the nlp function by accessing the structures and double* defined in problem, simply use the filled buffers
@@ -151,7 +313,6 @@ void NLP::eval_g_safe(const double* nlp_solver_x, bool new_x) {
     }
 }
 
-
 void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (evaluation_state.grad_f) {
@@ -189,16 +350,13 @@ void NLP::eval_grad_f() {
         for (int i = 0; i < mesh->intervals; i++) {
             for (int j = 0; j < mesh->nodes[i]; j++) {
                 for (auto& dL_dx : problem->full.lfg[0].jac.dx) {
-                    curr_grad[off_acc_xu[i][j] + dL_dx.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] *
-                                                                (*(dL_dx.value + problem->full.jac_size * mesh->acc_nodes[i][j]));
+                    curr_grad[off_acc_xu[i][j] + dL_dx.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_dx.value + JAC_OFFSET_IJ));
                 }
                 for (auto& dL_du : problem->full.lfg[0].jac.du) {
-                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * 
-                                                                        (*(dL_du.value + problem->full.jac_size * mesh->acc_nodes[i][j]));
+                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_du.value + JAC_OFFSET_IJ));
                 }
                 for (auto& dL_dp : problem->full.lfg[0].jac.dp) {
-                    curr_grad[off_xu_total + dL_dp.index] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * 
-                                                             (*(dL_dp.value + problem->full.jac_size * mesh->acc_nodes[i][j]));
+                    curr_grad[off_xu_total + dL_dp.index] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_dp.value + JAC_OFFSET_IJ));
                 }
             }
         }
@@ -221,9 +379,9 @@ void NLP::eval_g() {
     for (int i = 0; i < mesh->intervals; i++) {
         for (int f = problem->full.f_index_start; f < problem->full.f_index_end; f++) {
             collocation->diff_matrix_multiply(mesh->nodes[i], off_x, off_xu, problem->full.fg_size,
-                                              &curr_x[off_acc_xu[i][0]],   // x_{i-1, m_{i-1}} == x_{i, 0}, base point states
-                                              &curr_x[off_acc_xu[i][1]],   // x_{i, 1}, collocation point states
-                                              &curr_g[off_acc_fg[i][0]]);  // constraint start index 
+                                              &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
+                                              &curr_x[off_acc_xu[i][0]],                                        // collocation point states
+                                              &curr_g[off_acc_fg[i][0]]);                                       // constraint start index 
         }
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full.f_size; f_index++) {

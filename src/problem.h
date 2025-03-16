@@ -132,30 +132,6 @@ struct FullSweep {
     inline double getEvalG(const int g_index, const int offset) {
         return *(lfg[g_index_start + g_index].eval + offset * eval_size);
     }
-
-    inline double getJacL_X_Value(const int x_index, const int offset) {
-        return *(lfg[0].jac.dx[x_index].value + offset * jac_size);
-    }
-
-    inline int getJacL_X_Index(const int x_index) {
-        return lfg[0].jac.dx[x_index].index;
-    }
-  
-    inline double getJacL_U_Value(const int u_index, const int offset) {
-        return *(lfg[0].jac.du[u_index].value + offset * jac_size);
-    }
-
-    inline int getJacL_U_Index(const int u_index) {
-        return lfg[0].jac.du[u_index].index;
-    }
-
-    inline double getJacL_P_Value(const int p_index) {
-        return *(lfg[0].jac.dp[p_index].value);
-    }
-
-    inline int getJacL_P_Index(const int p_index) {
-        return lfg[0].jac.dp[p_index].index;
-    }  
 };
 
 struct BoundarySweep {

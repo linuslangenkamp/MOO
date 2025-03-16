@@ -23,7 +23,7 @@ void Collocation::diff_matrix_multiply(const int scheme, const int x_size, const
 
             // col > 0 -> x_new
             for (int col = 1; col < scheme + 1; col++) {
-                out[out_row] += D[scheme][row][col] * x_new[xu_size * (col - 1) + x_index];
+                out[out_row] += D[scheme][row][col] * x_new[(col - 1) * xu_size + x_index];
             }
         }
     }

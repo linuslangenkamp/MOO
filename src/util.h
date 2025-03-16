@@ -1,6 +1,7 @@
 #ifndef OPT_UTIL_H
 #define OPT_UTIL_H
 
+#include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
+#include <span>
 #include <tuple>
 #include <optional>
 #include <vector>
@@ -18,6 +20,7 @@ const double PLUS_INFINITY = std::numeric_limits<double>::infinity();
 const double MINUS_INFINITY = -std::numeric_limits<double>::infinity();
 
 namespace Util {
+
     template <typename T>
     std::string vectorToString(const std::vector<T>& vec) {
         std::stringstream out;
