@@ -11,7 +11,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
-#include <span>
+#include <set>
 #include <tuple>
 #include <optional>
 #include <vector>
@@ -33,6 +33,30 @@ namespace Util {
         }
         return out.str();
     }
+
+    struct OrderedIndexSet {
+        struct Compare {
+            bool operator()(const std::pair<int, int>& a, const std::pair<int, int>& b) const {
+                if (a.first != b.first) {
+                    return a.first < b.first;
+                } else {
+                    return a.second < b.second;
+                }
+            }
+        };
+
+        std::set<std::pair<int, int>, Compare> set;
+
+        void insertSparsity(std::vector<HessianSparsity>& hes, int row_off, int col_off) {
+            for (auto& coo : hes) {
+                set.insert({coo.index1 + row_off, coo.index2 + col_off});
+            }
+        }
+
+        inline size_t size() const {
+            return set.size();
+        }
+    };
 }
 
 #endif  // OPT_UTIL_H

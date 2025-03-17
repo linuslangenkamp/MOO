@@ -270,17 +270,34 @@ void NLP::initHessian() {
 }
 
 void NLP::calculateHessianNonzeros() {
-    int x0_x0 = 0; // (M, r) for t = t0
-    int x_x = 0;   // (L, f, g) for t = tij w/o t = tf
-    int u_x = 0;   // (L, f, g) for t = tij
-    int u_u = 0;   // (L, f, g) for t = tij
-    int p_x = 0;   // (L, f, g) for t = tij w/o t = tf
-    int p_u = 0;   // (L, f, g) for t = tij
-    int p_p = 0;   // (L, f, g, M, r) 
-    int x0_xf = 0; // (M, r)
-    int xf_xf = 0; // (L, f, g, M, r) for t = tf
-    int p_x0 = 0;  // (M, r)
-    int p_xf = 0;  // (L, f, g, M, r) for t = tf
+    Util::OrderedIndexSet A, B, C, D, E, F, G, H;
+    for (auto& mr : problem->boundary.mr) {
+        A.insertSparsity(mr.hes.dx0_dx0, 0, 0);
+        C.insertSparsity(mr.hes.dxf_dx0, 0, 0);
+        D.insertSparsity(mr.hes.dxf_dxf, 0, 0);
+        E.insertSparsity(mr.hes.dp_dx0,  0, 0);
+        G.insertSparsity(mr.hes.dp_dxf,  0, 0);
+        H.insertSparsity(mr.hes.dp_dp,   0, 0);
+    }
+    for (auto& lfg : problem->full.lfg) {
+        B.insertSparsity(lfg.hes.dx_dx, 0, 0);
+        B.insertSparsity(lfg.hes.du_dx, off_x, 0);
+        B.insertSparsity(lfg.hes.du_du, off_x, off_x);
+        D.insertSparsity(lfg.hes.dx_dx, 0, 0);
+        D.insertSparsity(lfg.hes.du_dx, off_x, 0);
+        D.insertSparsity(lfg.hes.du_du, off_x, off_x);
+        F.insertSparsity(lfg.hes.dp_dx, 0, 0);
+        F.insertSparsity(lfg.hes.dp_du, 0, off_x);
+        G.insertSparsity(lfg.hes.dp_dx, 0, 0);
+        G.insertSparsity(lfg.hes.dp_du, 0, off_x);
+        H.insertSparsity(lfg.hes.dp_dp, 0, 0);
+    }
+
+    nnz_hes = (B.size() + F.size()) * (mesh->node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
+
+    i_row_hes = std::make_unique<int[]>(nnz_hes);
+    j_col_hes = std::make_unique<int[]>(nnz_hes);
+    curr_hes  = std::make_unique<double[]>(nnz_hes);
 }
 
 /* nlp function evaluations happen in two stages:
