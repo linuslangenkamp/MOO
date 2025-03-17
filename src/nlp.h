@@ -102,6 +102,8 @@ struct NLP {
     void eval_g_safe(const double* nlp_solver_x, bool new_x);
     void eval_grad_f();
     void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
+    void eval_jac_g();
+    void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
 
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
     // TODO: use these later, fill one time and then scale at the end of calculations
