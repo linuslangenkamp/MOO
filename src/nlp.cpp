@@ -10,6 +10,7 @@ void NLP::init() {
     initBounds();
     initStartingPoint();
     initJacobian();
+    initHessian();
 }
 
 void NLP::initSizesOffsets() {
@@ -264,8 +265,22 @@ void NLP::initJacobianSparsityPattern() {
     assert(nnz_index == nnz_jac);
 }
 
-void NLP::initHessianSparsity() {
+void NLP::initHessian() {
+    calculateHessianNonzeros();
+}
 
+void NLP::calculateHessianNonzeros() {
+    int x0_x0 = 0; // (M, r) for t = t0
+    int x_x = 0;   // (L, f, g) for t = tij w/o t = tf
+    int u_x = 0;   // (L, f, g) for t = tij
+    int u_u = 0;   // (L, f, g) for t = tij
+    int p_x = 0;   // (L, f, g) for t = tij w/o t = tf
+    int p_u = 0;   // (L, f, g) for t = tij
+    int p_p = 0;   // (L, f, g, M, r) 
+    int x0_xf = 0; // (M, r)
+    int xf_xf = 0; // (L, f, g, M, r) for t = tf
+    int p_x0 = 0;  // (M, r)
+    int p_xf = 0;  // (L, f, g, M, r) for t = tf
 }
 
 /* nlp function evaluations happen in two stages:

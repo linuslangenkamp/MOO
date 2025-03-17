@@ -1,6 +1,7 @@
 #ifndef OPT_NLP_H
 #define OPT_NLP_H
 
+#include "block_sparsity.h"
 #include "linalg.h"
 #include "problem.h"
 #include "mesh.h"
@@ -69,6 +70,66 @@ struct NLP {
     std::vector<std::vector<int>> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
     std::vector<int> off_acc_jac;              // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
+    // hessian sparsity helpers
+    BlockSparsity hess_a = BlockSparsity::createSquare(problem->x_size);
+    BlockSparsity hess_b = BlockSparsity::createDLD(problem->x_size, problem->u_size);
+    BlockSparsity hess_c = BlockSparsity::createSquare(problem->x_size);
+    BlockSparsity hess_d = BlockSparsity::createDLD(problem->x_size, problem->u_size);
+    BlockSparsity hess_e = BlockSparsity::createRectangular(problem->p_size, problem->x_size);
+    BlockSparsity hess_f = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size);
+    BlockSparsity hess_g = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size);
+    BlockSparsity hess_h = BlockSparsity::createSquare(problem->p_size);
+
+/* 
+Hessian Sparsity Layout (lower triangle):
+
+     | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm | p |
+-------------------------------------------------------------------|
+ x00 |  X  |         |         |         |           |         |   |
+-------------------------------------------------------------------|
+ x01 |     |  X   0  |         |         |           |         |   |
+ u01 |     |  X   X  |         |         |           |         |   |
+ ------------------------------------------------------------------|
+ x02 |     |         |  X   0  |         |           |         |   |
+ u02 |     |         |  X   x  |         |           |         |   |
+ ------------------------------------------------------------------|
+ x** |     |         |         |  X   0  |           |         |   |
+ u** |     |         |         |  X   X  |           |         |   |
+ ------------------------------------------------------------------|
+ xnm1|     |         |         |         |   X   0   |         |   |
+ unm1|     |         |         |         |   X   X   |         |   |
+-------------------------------------------------------------------|
+ xnm |  X  |         |         |         |           |  X   0  |   |
+ unm |     |         |         |         |           |  X   X  |   |
+-------------------------------------------------------------------|
+  p  |  X  |  X   X  |  X   X  |  X   X  |   X   X   |  X   X  | X |
+-------------------------------------------------------------------*
+
+     | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm | p |
+-------------------------------------------------------------------|
+ x00 |  A  |         |         |         |           |         |   |
+-------------------------------------------------------------------|
+ x01 |     |    B    |         |         |           |         |   |
+ u01 |     |         |         |         |           |         |   |
+ ------------------------------------------------------------------|
+ x02 |     |         |    B    |         |           |         |   |
+ u02 |     |         |         |         |           |         |   |
+ ------------------------------------------------------------------|
+ x** |     |         |         |    B    |           |         |   |
+ u** |     |         |         |         |           |         |   |
+ ------------------------------------------------------------------|
+ xnm1|     |         |         |         |     B     |         |   |
+ unm1|     |         |         |         |           |         |   |
+-------------------------------------------------------------------|
+ xnm |  C  |         |         |         |           |    D    |   |
+ unm |     |         |         |         |           |         |   |
+-------------------------------------------------------------------|
+  p  |  E  |    F    |    F    |    F    |     F     |    G    | H |
+-------------------------------------------------------------------*
+where A=sq(x) B=DLD(x, u), C=sq(x), D=DLD(x, u), E=rect(p, x), F=rect(p, x + u), G=rect(p, x + u), H=sq(p, p)
+*/
+
+
     /* TODO: maybe set these in fullsweep or boundarysweep, they dont need to be here, alloc them there w.r.t. macros in nlp.cpp!
     // evaluation data (problem double* point to these arrays)
     std::unique_ptr<double[]> eval_data_LFG;
@@ -87,7 +148,8 @@ struct NLP {
     void initJacobian();
     void calculateJacobianNonzeros();
     void initJacobianSparsityPattern();
-    void initHessianSparsity();
+    void initHessian();
+    void calculateHessianNonzeros();
 
     // get callback data
     void callback_evaluation();
