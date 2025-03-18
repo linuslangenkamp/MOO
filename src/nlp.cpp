@@ -115,11 +115,11 @@ void NLP::initStartingPoint() {
 }
 
 void NLP::initJacobian() {
-    calculateJacobianNonzeros();
+    initJacobianNonzeros();
     initJacobianSparsityPattern();
 }
 
-void NLP::calculateJacobianNonzeros() {
+void NLP::initJacobianNonzeros() {
     // stage 1: calculate nnz of blocks and number of collisions, where df_k / dx_k != 0. these are contained by default because of the D-Matrix
     int nnz_r = 0;
     int nnz_f_g = 0;
@@ -266,11 +266,7 @@ void NLP::initJacobianSparsityPattern() {
 }
 
 void NLP::initHessian() {
-    initSparsityHessian();
-}
-
-void NLP::initSparsityHessian() {
-    // takes O(nnz(A) + nnz(B) + ...+ nnz(H))
+    // takes O(nnz(A) + nnz(B) + ...+ nnz(H)) for creation of ** Maps and O(nnz(Hessian)) for creation of Hessian sparsity pattern
 
     // stage 1: calculate IndexSet and nnz
     OrderedIndexSet A, B, C, D, E, F, G, H;
@@ -304,10 +300,13 @@ void NLP::initSparsityHessian() {
 
     // stage 2: build int** (row, col) -> int index for all block structures
     // can be exact (no offset needed) or non exact (offset for full block or even rowwise needed)
+    // also init sparsity pattern (i_row_hes, j_col_hes) for all exact blocks
     int hes_nnz_counter = 0;
 
     // A: exact
     for (auto& [row, col] : A.set) {
+        i_row_hes[hes_nnz_counter] = row; // x_0
+        j_col_hes[hes_nnz_counter] = col; // x_0
         hes_a.insert(row, col, hes_nnz_counter++);
     }
 
@@ -317,6 +316,20 @@ void NLP::initSparsityHessian() {
         hes_b.insert(row, col, block_b_nnz++);
     }
     hes_b.off_prev = hes_a.nnz;  // set size of A block as offset
+
+    // init B hessian pattern O(node_count * nnz(L_{xu, xu} ∪ f_{xu, xu} ∪ g_{xu, xu})) - expensive, parallel execution should be possible
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            if (i != mesh->intervals - 1 && j != mesh->nodes[mesh->intervals - 1] - 1) {
+                for (auto& [row, col] : B.set) {
+                    int xu_hes_index = hes_b.get(row, col, mesh->acc_nodes[i][j]);
+                    i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
+                    j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
+                }
+            }
+        }
+    }
+
     hes_nnz_counter += block_b_nnz * (mesh->node_count - 1);
 
     // C, D: exact with row dependence
@@ -326,15 +339,21 @@ void NLP::initSparsityHessian() {
     std::vector<std::pair<int, int>> D_flat(D.set.begin(), D.set.end());
     for (int x_index = 0; x_index < problem->x_size; x_index++) {
         while (C_flat[c_index].first == x_index) {
+            i_row_hes[hes_nnz_counter] = off_last_xu + C_flat[c_index].first; // x_{nm}
+            j_col_hes[hes_nnz_counter] = C_flat[c_index].second;              // x_0
             hes_c.insert(C_flat[c_index].first, C_flat[c_index].second, hes_nnz_counter++);
             c_index++;
         }
         while (D_flat[d_index].first == x_index) {
+            i_row_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].first;  // x_{nm}
+            j_col_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].second; // x_{nm}
             hes_d.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
             d_index++;
         }
     }
     for (;d_index < D_flat.size(); d_index++) {
+        i_row_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].first;  // u_{nm}
+        j_col_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].second; // xu_{nm}
         hes_d.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
     }
 
@@ -349,6 +368,8 @@ void NLP::initSparsityHessian() {
     std::vector<std::pair<int, int>> H_flat(H.set.begin(), H.set.end());
     for (int p_index = 0; p_index < problem->p_size; p_index++) {
         while (E_flat[e_index].first == p_index) {
+            i_row_hes[hes_nnz_counter] = off_xu_total + E_flat[e_index].first; // p
+            j_col_hes[hes_nnz_counter] = E_flat[e_index].second;               // x_0
             hes_e.insert(E_flat[e_index].first, E_flat[e_index].second, hes_nnz_counter++);
             e_index++;
         }
@@ -363,16 +384,33 @@ void NLP::initSparsityHessian() {
         hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
 
         while (G_flat[g_index].first == p_index) {
+            i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first; // p
+            j_col_hes[hes_nnz_counter] = off_last_xu + G_flat[g_index].second; // xu_{nm}
             hes_g.insert(G_flat[g_index].first, G_flat[g_index].second, hes_nnz_counter++);
             g_index++;
         }
 
         while (H_flat[h_index].first == p_index) {
+            i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first;  // p
+            j_col_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].second; // p
             hes_h.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
             h_index++;
         }
     }
     assert(hes_nnz_counter == nnz_hes);
+
+    // init F hessian pattern O(node_count * nnz(L_{p, xu} ∪ f_{p, xu} ∪ g_{p, xu})) - expensive, parallel execution should be possible
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            if (i != mesh->intervals - 1 && j != mesh->nodes[mesh->intervals - 1] - 1) {
+                for (auto& [row, col] : F.set) {
+                    int xu_hes_index = hes_b.get(row, col, mesh->acc_nodes[i][j]);
+                    i_row_hes[xu_hes_index] = off_xu_total + row;     // p
+                    j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
+                }
+            }
+        }
+    }
 }
 
 /* nlp function evaluations happen in two stages:

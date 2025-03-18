@@ -152,10 +152,9 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     void initBounds();
     void initStartingPoint();
     void initJacobian();
-    void calculateJacobianNonzeros();
+    void initJacobianNonzeros();
     void initJacobianSparsityPattern();
     void initHessian();
-    void initSparsityHessian();
 
     // get callback data
     void callback_evaluation();
