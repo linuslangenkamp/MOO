@@ -70,8 +70,8 @@ struct NLP {
     int off_fg_total;  // first boundary constraint index
 
     // note off_acc_xu[0][0] = off_x for time t = first collocation node, since there are no controls at time t=0
-    FixedVector<FixedVector<int>> off_acc_xu;  // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
-    FixedVector<FixedVector<int>> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
+    FixedMultiVector<int, 2> off_acc_xu;  // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
+    FixedMultiVector<int, 2> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
     FixedVector<int>          off_acc_jac_fg;  // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps
