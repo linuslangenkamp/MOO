@@ -266,11 +266,14 @@ void NLP::initJacobianSparsityPattern() {
 }
 
 void NLP::initHessian() {
-    calculateHessianNonzeros();
+    initSparsityHessian();
 }
 
-void NLP::calculateHessianNonzeros() {
-    Util::OrderedIndexSet A, B, C, D, E, F, G, H;
+void NLP::initSparsityHessian() {
+    // takes O(nnz(A) + nnz(B) + ...+ nnz(H))
+
+    // stage 1: calculate IndexSet and nnz
+    OrderedIndexSet A, B, C, D, E, F, G, H;
     for (auto& mr : problem->boundary.mr) {
         A.insertSparsity(mr.hes.dx0_dx0, 0, 0);
         C.insertSparsity(mr.hes.dxf_dx0, 0, 0);
@@ -298,6 +301,78 @@ void NLP::calculateHessianNonzeros() {
     i_row_hes = std::make_unique<int[]>(nnz_hes);
     j_col_hes = std::make_unique<int[]>(nnz_hes);
     curr_hes  = std::make_unique<double[]>(nnz_hes);
+
+    // stage 2: build int** (row, col) -> int index for all block structures
+    // can be exact (no offset needed) or non exact (offset for full block or even rowwise needed)
+    int hes_nnz_counter = 0;
+
+    // A: exact
+    for (auto& [row, col] : A.set) {
+        hes_a.insert(row, col, hes_nnz_counter++);
+    }
+
+    // B: non exact, thus local counter
+    int block_b_nnz = 0;
+    for (auto& [row, col] : B.set) {
+        hes_b.insert(row, col, block_b_nnz++);
+    }
+    hes_b.off_prev = hes_a.nnz;  // set size of A block as offset
+    hes_nnz_counter += block_b_nnz * (mesh->node_count - 1);
+
+    // C, D: exact with row dependence
+    int c_index = 0;
+    int d_index = 0;
+    std::vector<std::pair<int, int>> C_flat(C.set.begin(), C.set.end());
+    std::vector<std::pair<int, int>> D_flat(D.set.begin(), D.set.end());
+    for (int x_index = 0; x_index < problem->x_size; x_index++) {
+        while (C_flat[c_index].first == x_index) {
+            hes_c.insert(C_flat[c_index].first, C_flat[c_index].second, hes_nnz_counter++);
+            c_index++;
+        }
+        while (D_flat[d_index].first == x_index) {
+            hes_d.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
+            d_index++;
+        }
+    }
+    for (;d_index < D_flat.size(); d_index++) {
+        hes_d.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
+    }
+
+    // E, F, G, H: partially exact (all except F) with row dependence
+    int e_index = 0;
+    int f_index = 0;
+    int g_index = 0;
+    int h_index = 0;
+    std::vector<std::pair<int, int>> E_flat(E.set.begin(), E.set.end());
+    std::vector<std::pair<int, int>> F_flat(F.set.begin(), F.set.end());
+    std::vector<std::pair<int, int>> G_flat(G.set.begin(), G.set.end());
+    std::vector<std::pair<int, int>> H_flat(H.set.begin(), H.set.end());
+    for (int p_index = 0; p_index < problem->p_size; p_index++) {
+        while (E_flat[e_index].first == p_index) {
+            hes_e.insert(E_flat[e_index].first, E_flat[e_index].second, hes_nnz_counter++);
+            e_index++;
+        }
+
+        int row_f_nnz = 0;
+        hes_f.row_offset_prev[p_index] = hes_nnz_counter; // E_{p_index, :} offset
+        while (F_flat[f_index].first == p_index) {
+            hes_f.insert(F_flat[f_index].first, F_flat[f_index].second, row_f_nnz++);
+            f_index++;
+        }
+        hes_f.row_size[p_index] = row_f_nnz; // F_{p_index, :} size -> offset for next F blocks
+        hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
+
+        while (G_flat[g_index].first == p_index) {
+            hes_g.insert(G_flat[g_index].first, G_flat[g_index].second, hes_nnz_counter++);
+            g_index++;
+        }
+
+        while (H_flat[h_index].first == p_index) {
+            hes_h.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
+            h_index++;
+        }
+    }
+    assert(hes_nnz_counter == nnz_hes);
 }
 
 /* nlp function evaluations happen in two stages:

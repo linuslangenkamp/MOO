@@ -70,40 +70,47 @@ struct NLP {
     std::vector<std::vector<int>> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
     std::vector<int> off_acc_jac;              // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
-    // hessian sparsity helpers
-    BlockSparsity hess_a = BlockSparsity::createSquare(problem->x_size);
-    BlockSparsity hess_b = BlockSparsity::createDLD(problem->x_size, problem->u_size);
-    BlockSparsity hess_c = BlockSparsity::createSquare(problem->x_size);
-    BlockSparsity hess_d = BlockSparsity::createDLD(problem->x_size, problem->u_size);
-    BlockSparsity hess_e = BlockSparsity::createRectangular(problem->p_size, problem->x_size);
-    BlockSparsity hess_f = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size);
-    BlockSparsity hess_g = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size);
-    BlockSparsity hess_h = BlockSparsity::createSquare(problem->p_size);
+    // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps
+    BlockSparsity hes_a = BlockSparsity::createLowerTriangular(problem->x_size, BlockType::Exact);
+    BlockSparsity hes_b = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::RowOffset);
+    BlockSparsity hes_c = BlockSparsity::createSquare(problem->x_size, BlockType::Exact);
+    BlockSparsity hes_d = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::Exact);
+    BlockSparsity hes_e = BlockSparsity::createRectangular(problem->p_size, problem->x_size, BlockType::Exact);
+    BlockSparsity hes_f = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::RowOffset);
+    BlockSparsity hes_g = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::Exact);
+    BlockSparsity hes_h = BlockSparsity::createLowerTriangular(problem->p_size, BlockType::Exact);
 
-/* 
+/*
 Hessian Sparsity Layout (lower triangle):
+    L: lower triangular matrix with diagonal
+    X: square / rectangular matrix
+    Note that blocks [[L, 0], [X, L]] are also triangular
 
      | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm | p |
 -------------------------------------------------------------------|
- x00 |  X  |         |         |         |           |         |   |
+ x00 |  L  |         |         |         |           |         |   |
 -------------------------------------------------------------------|
- x01 |     |  X   0  |         |         |           |         |   |
- u01 |     |  X   X  |         |         |           |         |   |
+ x01 |     |  L   0  |         |         |           |         |   |
+ u01 |     |  X   L  |         |         |           |         |   |
  ------------------------------------------------------------------|
- x02 |     |         |  X   0  |         |           |         |   |
- u02 |     |         |  X   x  |         |           |         |   |
+ x02 |     |         |  L   0  |         |           |         |   |
+ u02 |     |         |  X   L  |         |           |         |   |
  ------------------------------------------------------------------|
- x** |     |         |         |  X   0  |           |         |   |
- u** |     |         |         |  X   X  |           |         |   |
+ x** |     |         |         |  L   0  |           |         |   |
+ u** |     |         |         |  X   L  |           |         |   |
  ------------------------------------------------------------------|
- xnm1|     |         |         |         |   X   0   |         |   |
- unm1|     |         |         |         |   X   X   |         |   |
+ xnm1|     |         |         |         |   L   0   |         |   |
+ unm1|     |         |         |         |   X   L   |         |   |
 -------------------------------------------------------------------|
- xnm |  X  |         |         |         |           |  X   0  |   |
- unm |     |         |         |         |           |  X   X  |   |
+ xnm |  X  |         |         |         |           |  L   0  |   |
+ unm |     |         |         |         |           |  X   L  |   |
 -------------------------------------------------------------------|
-  p  |  X  |  X   X  |  X   X  |  X   X  |   X   X   |  X   X  | X |
+  p  |  X  |  X   X  |  X   X  |  X   X  |   X   X   |  X   X  | L |
 -------------------------------------------------------------------*
+
+Block Sparsity Patterns: A - H
+where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
+      F=rect(p, x + u), G=rect(p, x + u), H=triang(p, p)
 
      | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm | p |
 -------------------------------------------------------------------|
@@ -126,7 +133,6 @@ Hessian Sparsity Layout (lower triangle):
 -------------------------------------------------------------------|
   p  |  E  |    F    |    F    |    F    |     F     |    G    | H |
 -------------------------------------------------------------------*
-where A=sq(x) B=DLD(x, u), C=sq(x), D=DLD(x, u), E=rect(p, x), F=rect(p, x + u), G=rect(p, x + u), H=sq(p, p)
 */
 
 
@@ -149,7 +155,7 @@ where A=sq(x) B=DLD(x, u), C=sq(x), D=DLD(x, u), E=rect(p, x), F=rect(p, x + u),
     void calculateJacobianNonzeros();
     void initJacobianSparsityPattern();
     void initHessian();
-    void calculateHessianNonzeros();
+    void initSparsityHessian();
 
     // get callback data
     void callback_evaluation();

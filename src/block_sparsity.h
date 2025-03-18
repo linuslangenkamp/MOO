@@ -1,55 +1,141 @@
 #include "util.h"
+#include "problem.h"
+
+enum class BlockType {
+    Exact,
+    Offset,
+    RowOffset,
+};
 
 struct BlockSparsity {
+    BlockType type;
     std::unique_ptr<std::unique_ptr<int[]>[]> block;
     int nnz;
 
-    /* creates a dense diagonal, lower, diagonal block structure (DLD)
-       0 | 1 2    0 | 1 2
-       -------    -------
-       1 | x 0    1 | D 0
-       2 | x x    2 | L D
+    // block F only
+    std::unique_ptr<int[]> row_offset_prev;
+    std::unique_ptr<int[]> row_size;
 
-       size_1 = size of D_11, size_2 = size of D_22
+    // block B only
+    int off_prev;
+
+    /* creates a dense lower triangular (with diagonal) block structure
+       0 | 1 2 . s
+       -----------
+       1 | x      
+       2 | x x    
+       . | x x x  
+       s | x x x x
     */
-    static BlockSparsity createDLD(const int size_1, const int size_2) {
+    static BlockSparsity createLowerTriangular(const int size, const BlockType block_type) {
         BlockSparsity b;
-        int size_total = size_1 + size_2;
-        b.block = std::make_unique<std::unique_ptr<int[]>[]>(size_total);
-        for (int i = 0; i < size_1; i++) {
-            b.block[i] = std::make_unique<int[]>(size_1);
+        b.block = std::make_unique<std::unique_ptr<int[]>[]>(size);
+        for (int i = 0; i < size; i++) {
+            b.block[i] = std::make_unique<int[]>(i+1);
         }
-        for (int i = size_1; i < size_total; i++) {
-            b.block[i] = std::make_unique<int[]>(size_total);
+        switch (block_type) {
+            case BlockType::Offset:
+                b.off_prev = 0;
+                break;
+            case BlockType::RowOffset:
+                b.row_offset_prev = std::make_unique<int[]>(size);
+                b.row_size = std::make_unique<int[]>(size);
+                break;
+            default:
+                break;
         }
         return b;
     }
 
     /* creates a dense rectangular block structure Rows x Cols
-       0 | 2
-       -----
-       1 | x
+       0 | 1 2 . C
+       -----------
+       1 | x x x x
+       . | x x x x
+       R | x x x x
     */
-    static BlockSparsity createRectangular(const int rows, const int cols) {
+    static BlockSparsity createRectangular(const int rows, const int cols, const BlockType block_type) {
         BlockSparsity b;
         b.block = std::make_unique<std::unique_ptr<int[]>[]>(rows);
         for (int i = 0; i < rows; i++) {
             b.block[i] = std::make_unique<int[]>(cols);
         }
+        switch (block_type) {
+            case BlockType::Offset:
+                b.off_prev = 0;
+                break;
+            case BlockType::RowOffset:
+                b.row_offset_prev = std::make_unique<int[]>(rows);
+                b.row_size = std::make_unique<int[]>(rows);
+                break;
+            default:
+                break;
+        }
         return b;
     }
 
     /* creates a dense square block structure Size x Size
-       0 | 1
-       -----
-       1 | x
+       0 | 1 . C
+       -----------
+       1 | x x x
+       . | x x x
+       R | x x x
     */
-    inline static BlockSparsity createSquare(const int size) {
-        return createRectangular(size, size);
+    inline static BlockSparsity createSquare(const int size, const BlockType block_type) {
+        return createRectangular(size, size, block_type);
     }
 
-    void insert(const int i, const int j, const int index) {
-        block[i][j] = index;
+    inline void insert(const int row, const int col, const int index) {
+        block[row][col] = index;
         nnz++;
+    }
+
+    inline int get(const int row, const int col) {
+        switch (type) {
+            case BlockType::Exact:
+                return block[row][col];
+            default:
+               throw std::runtime_error("Unknown BlockType in BlockSparsity::get().");
+        }
+    }
+
+
+    inline int get(const int row, const int col, const int block_count) {
+        switch (type) {
+            // for A -> B: row, col, offset_prev - #nnz at end of blocktype (e.g. |A|), block_count (e.g. (i,j) = (0, 2) => 2)
+            case BlockType::Offset:
+                return off_prev + nnz * block_count + block[row][col];
+
+            // for E -> F
+            case BlockType::RowOffset:
+                return row_offset_prev[row] + row_size[row] * block_count + block[row][col];
+                
+            default:
+               return get(row, col);
+        }
+    }
+};
+
+struct OrderedIndexSet {
+    struct Compare {
+        bool operator()(const std::pair<int, int>& a, const std::pair<int, int>& b) const {
+            if (a.first != b.first) {
+                return a.first < b.first;
+            } else {
+                return a.second < b.second;
+            }
+        }
+    };
+
+    std::set<std::pair<int, int>, Compare> set;
+
+    void insertSparsity(std::vector<HessianSparsity>& hes, int row_off, int col_off) {
+        for (auto& coo : hes) {
+            set.insert({coo.index1 + row_off, coo.index2 + col_off});
+        }
+    }
+
+    inline size_t size() const {
+        return set.size();
     }
 };
