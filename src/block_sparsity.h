@@ -1,3 +1,6 @@
+#ifndef OPT_BLOCK_SPARSITY_H
+#define OPT_BLOCK_SPARSITY_H
+
 #include "util.h"
 #include "problem.h"
 
@@ -143,3 +146,5 @@ struct OrderedIndexSet {
         return set.size();
     }
 };
+
+#endif // OPT_BLOCK_SPARSITY_H

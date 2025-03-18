@@ -2,12 +2,14 @@
 #define OPT_NLP_H
 
 #include "block_sparsity.h"
+#include "fixed_vector.h"
 #include "linalg.h"
 #include "problem.h"
 #include "mesh.h"
 #include "collocation.h"
 #include "util.h"
 #include "nlp_state.h"
+
 
 struct NLP {
     NLP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
@@ -25,31 +27,31 @@ struct NLP {
     int nnz_hes = 0;         // nnz Hessian in the NLP
 
     // current iterates
-    std::unique_ptr<double[]> curr_x;      // current NLP primal variables
-    std::unique_ptr<double[]> curr_lambda; // current NLP dual variables
-    double                    sigma_f;     // current objective weight in hessian
+    FixedVector<double> curr_x;      // current NLP primal variables
+    FixedVector<double> curr_lambda; // current NLP dual variables
+    double              sigma_f;     // current objective weight in hessian
 
     // scaled variable bounds
-    std::unique_ptr<double[]> x_lb;
-    std::unique_ptr<double[]> x_ub;
+    FixedVector<double> x_lb;
+    FixedVector<double> x_ub;
 
     // nlp function data
-    double curr_obj;                      // current NLP objective value
-    std::unique_ptr<double[]> curr_grad;  // current NLP gradient of the objective function
-    std::unique_ptr<double[]> curr_g;     // current NLP constraint function evaluation
-    std::unique_ptr<double[]> curr_jac;   // current NLP jacobian of the constraints
-    std::unique_ptr<double[]> der_jac;    // constant NLP derivative matrix part of the jacobian
-    std::unique_ptr<double[]> curr_hes;   // current NLP hessian of the lagrangian
+    double curr_obj;                // current NLP objective value
+    FixedVector<double> curr_grad;  // current NLP gradient of the objective function
+    FixedVector<double> curr_g;     // current NLP constraint function evaluation
+    FixedVector<double> curr_jac;   // current NLP jacobian of the constraints
+    FixedVector<double> der_jac;    // constant NLP derivative matrix part of the jacobian
+    FixedVector<double> curr_hes;   // current NLP hessian of the lagrangian
 
     // scaled constraint bounds
-    std::unique_ptr<double[]> g_lb;
-    std::unique_ptr<double[]> g_ub;
+    FixedVector<double> g_lb;
+    FixedVector<double> g_ub;
 
     // COO sparsity patterns
-    std::unique_ptr<int[]> i_row_jac;
-    std::unique_ptr<int[]> j_col_jac;
-    std::unique_ptr<int[]> i_row_hes;
-    std::unique_ptr<int[]> j_col_hes;
+    FixedVector<int> i_row_jac;
+    FixedVector<int> j_col_jac;
+    FixedVector<int> i_row_hes;
+    FixedVector<int> j_col_hes;
 
     // structures
     std::shared_ptr<Mesh> mesh;                // grid / mesh
@@ -68,9 +70,9 @@ struct NLP {
     int off_fg_total;  // first boundary constraint index
 
     // note off_acc_xu[0][0] = off_x for time t = first collocation node, since there are no controls at time t=0
-    std::vector<std::vector<int>> off_acc_xu;  // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
-    std::vector<std::vector<int>> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
-    std::vector<int> off_acc_jac;              // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
+    FixedVector<FixedVector<int>> off_acc_xu;  // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
+    FixedVector<FixedVector<int>> off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
+    FixedVector<int>          off_acc_jac_fg;  // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps
     BlockSparsity hes_a = BlockSparsity::createLowerTriangular(problem->x_size, BlockType::Exact);
@@ -160,9 +162,9 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     void initHessian();
 
     // hessian updates
-    void updateHessianLFG(double* values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+    void updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
                           const BlockSparsity* ptr_map_p_xu, const double factor);
-    void updateHessianMR(double* values, const HessianMR& hes, const double factor);
+    void updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor);
 
     // get callback data
     void callback_evaluation();

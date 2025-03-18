@@ -30,13 +30,13 @@ void NLP::initSizesOffsets() {
 void NLP::initBounds() {
     // TODO: perform scaling before the bounds are set!
 
-    curr_x    = std::make_unique<double[]>(number_vars);
-    curr_grad = std::make_unique<double[]>(number_vars);
-    x_lb      = std::make_unique<double[]>(number_vars);
-    x_ub      = std::make_unique<double[]>(number_vars);
-    curr_g    = std::make_unique<double[]>(number_constraints);
-    g_lb      = std::make_unique<double[]>(number_constraints);
-    g_ub      = std::make_unique<double[]>(number_constraints);
+    curr_x    = FixedVector<double>(number_vars);
+    curr_grad = FixedVector<double>(number_vars);
+    x_lb      = FixedVector<double>(number_vars);
+    x_ub      = FixedVector<double>(number_vars);
+    curr_g    = FixedVector<double>(number_constraints);
+    g_lb      = FixedVector<double>(number_constraints);
+    g_ub      = FixedVector<double>(number_constraints);
 
     // standard bounds, but checking for x0_fixed or xf_fixed
     for (int x_index = 0; x_index < off_x; x_index++) {
@@ -141,10 +141,9 @@ void NLP::initJacobianNonzeros() {
     }
 
     // nnz of block i can be calculated as m_i * ((m_i + 2) * #f + #g - coll(df_i, dx_i)), where m_i is the number of nodes on that interval
-    off_acc_jac.reserve(mesh->intervals + 1);
-    off_acc_jac.emplace_back(0);
+    off_acc_jac_fg = FixedVector<int>(mesh->intervals + 1);
     for (int i = 0; i < mesh->intervals; i++) {
-        off_acc_jac.emplace_back(off_acc_jac[i - 1] + mesh->nodes[i] * ((mesh->nodes[i] + 2) * problem->full.f_size + problem->full.g_size - diagonal_collisions));
+        off_acc_jac_fg[i+1] = off_acc_jac_fg[i] + mesh->nodes[i] * ((mesh->nodes[i] + 2) * problem->full.f_size + problem->full.g_size - diagonal_collisions);
     }
 
     for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
@@ -153,20 +152,19 @@ void NLP::initJacobianNonzeros() {
                      problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dp.size();
     }
 
-    nnz_jac = off_acc_jac.back() + nnz_r;
+    nnz_jac = off_acc_jac_fg.back() + nnz_r;
 
     // allocate memory
-    curr_jac  = std::make_unique<double[]>(nnz_jac);
-    der_jac   = std::make_unique<double[]>(nnz_jac);
-    i_row_jac = std::make_unique<int[]>(nnz_jac);
-    j_col_jac = std::make_unique<int[]>(nnz_jac);
-    std::memset(der_jac.get(), 0, nnz_jac * sizeof(double));
+    curr_jac  = FixedVector<double>(nnz_jac);
+    der_jac   = FixedVector<double>(nnz_jac);
+    i_row_jac = FixedVector<int>(nnz_jac);
+    j_col_jac = FixedVector<int>(nnz_jac);
 }
 
 void NLP::initJacobianSparsityPattern() {
     // stage 2: calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
     for (int i = 0; i < mesh->intervals; i++) {
-        int nnz_index = off_acc_jac[i]; // make local var: possible block parallelization
+        int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
                 int eqn_index = off_acc_fg[i][j] + f_index;
@@ -234,10 +232,10 @@ void NLP::initJacobianSparsityPattern() {
                 }
             }
         }
-        assert(nnz_index == off_acc_jac[i + 1]);
+        assert(nnz_index == off_acc_jac_fg[i + 1]);
     }
 
-    int nnz_index = off_acc_jac.back();
+    int nnz_index = off_acc_jac_fg.back();
     for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
         int eqn_index = off_fg_total + r_index;
 
@@ -294,9 +292,9 @@ void NLP::initHessian() {
 
     nnz_hes = (B.size() + F.size()) * (mesh->node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
 
-    i_row_hes = std::make_unique<int[]>(nnz_hes);
-    j_col_hes = std::make_unique<int[]>(nnz_hes);
-    curr_hes  = std::make_unique<double[]>(nnz_hes);
+    i_row_hes = FixedVector<int>(nnz_hes);
+    j_col_hes = FixedVector<int>(nnz_hes);
+    curr_hes  = FixedVector<double>(nnz_hes);
 
     // stage 2: build int** (row, col) -> int index for all block structures
     // can be exact (no offset needed) or non exact (offset for full block or even rowwise needed)
@@ -426,7 +424,7 @@ void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
     if (!evaluation_state.x_set_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
         // rn we just memset the data to curr_x
-        std::memcpy(curr_x.get(), nlp_solver_x, number_vars * sizeof(double));
+        curr_x.assign(nlp_solver_x, number_vars);
         evaluation_state.x_set_unscaled = true;
     }
 }
@@ -434,7 +432,7 @@ void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
 void NLP::check_new_lambda_sigma(const double* nlp_solver_lambda, const double sigma) {
     if (!evaluation_state.lambda_set) {
         sigma_f = sigma;
-        std::memcpy(curr_lambda.get(), nlp_solver_lambda, number_constraints * sizeof(double));
+        curr_lambda.assign(nlp_solver_lambda, number_constraints);
         evaluation_state.lambda_set = true;
     }
 }
@@ -515,8 +513,7 @@ void NLP::eval_f() {
 
 
 void NLP::eval_grad_f() {
-    std::memset(curr_grad.get(), 0, number_vars * sizeof(double));
-
+    curr_grad.fill_zero();
     if (problem->full.has_lagrange) {
         for (int i = 0; i < mesh->intervals; i++) {
             for (int j = 0; j < mesh->nodes[i]; j++) {
@@ -546,7 +543,7 @@ void NLP::eval_grad_f() {
 };
 
 void NLP::eval_g() {
-    std::memset(curr_g.get(), 0, number_constraints * sizeof(double));
+    curr_g.fill_zero();
     for (int i = 0; i < mesh->intervals; i++) {
         for (int f = problem->full.f_index_start; f < problem->full.f_index_end; f++) {
             collocation->diff_matrix_multiply(mesh->nodes[i], off_x, off_xu, problem->full.fg_size,
@@ -570,10 +567,10 @@ void NLP::eval_g() {
 
 void NLP::eval_jac_g() {
     // copy constant part into curr_jac
-    std::memcpy(curr_jac.get(), der_jac.get(), nnz_jac * sizeof(double));
+    curr_jac = der_jac;
 
     for (int i = 0; i < mesh->intervals; i++) {
-        int nnz_index = off_acc_jac[i]; // make local var: possible block parallelization
+        int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
                 // index of possible collision in df_i / dx_i
@@ -620,10 +617,10 @@ void NLP::eval_jac_g() {
                 }
             }
         }
-        assert(nnz_index == off_acc_jac[i + 1]);
+        assert(nnz_index == off_acc_jac_fg[i + 1]);
     }
 
-    int nnz_index = off_acc_jac.back();
+    int nnz_index = off_acc_jac_fg.back();
     for (int r_index = 0; r_index < problem->boundary.r_size; r_index++) {
 
         // dr / dx0
@@ -645,6 +642,7 @@ void NLP::eval_jac_g() {
 };
 
 void NLP::eval_hes() {
+    curr_hes.fill_zero();
     int lagrange_offset = (int) problem->full.has_lagrange;  // correction for array accesses
     int mayer_offset    = (int) problem->boundary.has_mayer; // correction for array accesses
     for (int i = 0; i < mesh->intervals; i++) {
@@ -663,29 +661,29 @@ void NLP::eval_hes() {
                 ptr_map_p_xu  = &hes_g;
             }
             if (problem->full.has_lagrange) {
-                updateHessianLFG(curr_hes.get(), problem->full.lfg[0].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
+                updateHessianLFG(curr_hes, problem->full.lfg[0].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
                                  sigma_f * mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j]);
             }
             for (int f_index = problem->full.f_index_start; f_index < problem->full.f_index_end; f_index++) {
-                updateHessianLFG(curr_hes.get(), problem->full.lfg[f_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
+                updateHessianLFG(curr_hes, problem->full.lfg[f_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
                                  -curr_lambda[off_acc_fg[i][j] + f_index - lagrange_offset] * mesh->delta_t[i]);
             }
             for (int g_index = problem->full.g_index_start; g_index < problem->full.g_index_end; g_index++) {
-                updateHessianLFG(curr_hes.get(), problem->full.lfg[g_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
+                updateHessianLFG(curr_hes, problem->full.lfg[g_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
                                  curr_lambda[off_acc_fg[i][j] + g_index - lagrange_offset]);
             }
         }
     }
     if (problem->boundary.has_mayer) {
-        updateHessianMR(curr_hes.get(), problem->boundary.mr[0].hes, sigma_f);
+        updateHessianMR(curr_hes, problem->boundary.mr[0].hes, sigma_f);
     }
 
     for (int r_index = problem->boundary.r_index_start; r_index < problem->boundary.r_index_end; r_index++) {
-        updateHessianMR(curr_hes.get(), problem->boundary.mr[r_index].hes, curr_lambda[off_fg_total + r_index - mayer_offset]);
+        updateHessianMR(curr_hes, problem->boundary.mr[r_index].hes, curr_lambda[off_fg_total + r_index - mayer_offset]);
     }
 }
 
-void NLP::updateHessianLFG(double* values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+void NLP::updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
                            const BlockSparsity* ptr_map_p_xu, const double factor) {
     const int block_count = mesh->acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
@@ -708,7 +706,7 @@ void NLP::updateHessianLFG(double* values, const HessianLFG& hes, const int i, c
     } 
 }
 
-void NLP::updateHessianMR(double* values, const HessianMR& hes, const double factor) {
+void NLP::updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
         values[hes_a.access(dx0_dx0.index1, dx0_dx0.index2)] += factor * (*(dx0_dx0.value));
     }

@@ -9,10 +9,10 @@
  * @return Mesh      Mesh
  */
 Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps) {
-    std::vector<double> grid(intervals + 1);
-    std::vector<double> delta_t(intervals);
-    std::vector<int> nodes(intervals);
-    std::vector<std::vector<int>> acc_nodes(intervals, std::vector<int>(steps, 0));
+    FixedVector<double> grid(intervals + 1);
+    FixedVector<double> delta_t(intervals);
+    FixedVector<int> nodes(intervals);
+    FixedVector<FixedVector<int>> acc_nodes(intervals, [&]{return FixedVector<int>(steps);});
 
     double h = tf / intervals;
     for (int i = 0; i < intervals; i++) {
@@ -31,21 +31,21 @@ Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps)
     return {intervals, tf, std::move(grid), std::move(delta_t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
-std::vector<std::vector<int>> Mesh::createAccOffsetXU(int off_x, int off_xu) {
-    std::vector<std::vector<int>> off_acc_xu(intervals);
+FixedVector<FixedVector<int>> Mesh::createAccOffsetXU(int off_x, int off_xu) {
+    FixedVector<FixedVector<int>> off_acc_xu(intervals);
     int off = off_x;
     for (int i = 0; i < intervals; i++) {
-        off_acc_xu[i].reserve(nodes[i]);
+        off_acc_xu[i] = FixedVector<int>(nodes[i]);
         for (int j = 0; j < nodes[i]; j++) {
-            off_acc_xu[i].emplace_back(off);
+            off_acc_xu[i][j] = off;
             off += off_xu;
         }
     }
     return off_acc_xu;
 }
 
-std::vector<std::vector<int>> Mesh::createAccOffsetFG(int off_fg) {
-    std::vector<std::vector<int>> acc_fg = acc_nodes;
+FixedVector<FixedVector<int>> Mesh::createAccOffsetFG(int off_fg) {
+    FixedVector<FixedVector<int>> acc_fg = acc_nodes;
     for (int i = 0; i < intervals; i++) {
         for (int j = 0; j < nodes[i] ; j++) {
             acc_fg[i][j] *= off_fg;

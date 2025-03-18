@@ -19,20 +19,4 @@
 const double PLUS_INFINITY = std::numeric_limits<double>::infinity();
 const double MINUS_INFINITY = -std::numeric_limits<double>::infinity();
 
-namespace Util {
-
-    template <typename T>
-    std::string vectorToString(const std::vector<T>& vec) {
-        std::stringstream out;
-        out << std::fixed << std::setprecision(15);
-        if (!vec.empty()) {
-            out << vec[0];
-            for (int i = 1; i < vec.size(); i++) {
-                out << ", " << vec[i];
-            }
-        }
-        return out.str();
-    }
-}
-
 #endif  // OPT_UTIL_H
