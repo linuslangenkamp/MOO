@@ -8,7 +8,10 @@ enum class BlockType {
 };
 
 struct BlockSparsity {
+    // use traditional C-like struct with type, because the polymorphism is very simple
     BlockType type;
+
+    // data for all block types
     std::unique_ptr<std::unique_ptr<int[]>[]> block;
     int nnz;
 
@@ -90,17 +93,18 @@ struct BlockSparsity {
         nnz++;
     }
 
-    inline int get(const int row, const int col) {
+    // mapping (row, col) -> index in some larger sparsity structure
+    inline int access(const int row, const int col) const {
         switch (type) {
             case BlockType::Exact:
                 return block[row][col];
             default:
-               throw std::runtime_error("Unknown BlockType in BlockSparsity::get().");
+               throw std::runtime_error("Unknown BlockType in BlockSparsity::access().");
         }
     }
 
-
-    inline int get(const int row, const int col, const int block_count) {
+    // mapping (row, col, block_count) -> index in some larger sparsity structure
+    inline int access(const int row, const int col, const int block_count) const {
         switch (type) {
             // for A -> B: row, col, offset_prev - #nnz at end of blocktype (e.g. |A|), block_count (e.g. (i,j) = (0, 2) => 2)
             case BlockType::Offset:
@@ -111,7 +115,7 @@ struct BlockSparsity {
                 return row_offset_prev[row] + row_size[row] * block_count + block[row][col];
                 
             default:
-               return get(row, col);
+               return access(row, col);
         }
     }
 };

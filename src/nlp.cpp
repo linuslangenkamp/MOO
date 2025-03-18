@@ -322,7 +322,7 @@ void NLP::initHessian() {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (i != mesh->intervals - 1 && j != mesh->nodes[mesh->intervals - 1] - 1) {
                 for (auto& [row, col] : B.set) {
-                    int xu_hes_index = hes_b.get(row, col, mesh->acc_nodes[i][j]);
+                    int xu_hes_index = hes_b.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -404,7 +404,7 @@ void NLP::initHessian() {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (i != mesh->intervals - 1 && j != mesh->nodes[mesh->intervals - 1] - 1) {
                 for (auto& [row, col] : F.set) {
-                    int xu_hes_index = hes_b.get(row, col, mesh->acc_nodes[i][j]);
+                    int xu_hes_index = hes_b.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_xu_total + row;     // p
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -423,11 +423,19 @@ void NLP::initHessian() {
 
 void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
     evaluation_state.check_reset(new_x);
-    if (!evaluation_state.x_unscaled) {
+    if (!evaluation_state.x_set_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
         // rn we just memset the data to curr_x
         std::memcpy(curr_x.get(), nlp_solver_x, number_vars * sizeof(double));
-        evaluation_state.x_unscaled = true;
+        evaluation_state.x_set_unscaled = true;
+    }
+}
+
+void NLP::check_new_lambda_sigma(const double* nlp_solver_lambda, const double sigma) {
+    if (!evaluation_state.lambda_set) {
+        sigma_f = sigma;
+        std::memcpy(curr_lambda.get(), nlp_solver_lambda, number_constraints * sizeof(double));
+        evaluation_state.lambda_set = true;
     }
 }
 
@@ -472,6 +480,18 @@ void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     else {
         callback_jacobian();
         eval_jac_g();
+    }
+ }
+
+ void NLP::eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x) {
+    check_new_x(nlp_solver_x, new_x);
+    check_new_lambda_sigma(nlp_solver_lambda, sigma_f);
+    if (evaluation_state.hes_lag) {
+        return;
+    }
+    else {
+        callback_hessian();
+        eval_hes();
     }
  }
 
@@ -623,6 +643,91 @@ void NLP::eval_jac_g() {
     }
     assert(nnz_index == nnz_jac);
 };
+
+void NLP::eval_hes() {
+    int lagrange_offset = (int) problem->full.has_lagrange;  // correction for array accesses
+    int mayer_offset    = (int) problem->boundary.has_mayer; // correction for array accesses
+    for (int i = 0; i < mesh->intervals; i++) {
+        // insert buffer for parallel execution here / pass the buffer in updateHessian(double*) calls
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            // make sure to be in the right ptr_map region, B and F are only valid for i,j != n,m
+            //                                              D and G are only valid for i,j == n,m
+            const BlockSparsity* ptr_map_xu_xu;
+            const BlockSparsity* ptr_map_p_xu;
+            if (i != mesh->intervals - 1 && j != mesh->nodes[mesh->intervals - 1] - 1) {
+                ptr_map_xu_xu = &hes_b;
+                ptr_map_p_xu  = &hes_f;
+            }
+            else {
+                ptr_map_xu_xu = &hes_d;
+                ptr_map_p_xu  = &hes_g;
+            }
+            if (problem->full.has_lagrange) {
+                updateHessianLFG(curr_hes.get(), problem->full.lfg[0].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
+                                 sigma_f * mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j]);
+            }
+            for (int f_index = problem->full.f_index_start; f_index < problem->full.f_index_end; f_index++) {
+                updateHessianLFG(curr_hes.get(), problem->full.lfg[f_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
+                                 -curr_lambda[off_acc_fg[i][j] + f_index - lagrange_offset] * mesh->delta_t[i]);
+            }
+            for (int g_index = problem->full.g_index_start; g_index < problem->full.g_index_end; g_index++) {
+                updateHessianLFG(curr_hes.get(), problem->full.lfg[g_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
+                                 curr_lambda[off_acc_fg[i][j] + g_index - lagrange_offset]);
+            }
+        }
+    }
+    if (problem->boundary.has_mayer) {
+        updateHessianMR(curr_hes.get(), problem->boundary.mr[0].hes, sigma_f);
+    }
+
+    for (int r_index = problem->boundary.r_index_start; r_index < problem->boundary.r_index_end; r_index++) {
+        updateHessianMR(curr_hes.get(), problem->boundary.mr[r_index].hes, curr_lambda[off_fg_total + r_index - mayer_offset]);
+    }
+}
+
+void NLP::updateHessianLFG(double* values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+                           const BlockSparsity* ptr_map_p_xu, const double factor) {
+    const int block_count = mesh->acc_nodes[i][j];
+    for (const auto& dx_dx : hes.dx_dx) {
+        values[ptr_map_xu_xu->access(dx_dx.index1, dx_dx.index2, block_count)] += factor * (*(dx_dx.value + HES_OFFSET_IJ));
+    }
+    for (const auto& du_dx : hes.du_dx) {
+        values[ptr_map_xu_xu->access(off_x + du_dx.index1, du_dx.index2, block_count)] += factor * (*(du_dx.value + HES_OFFSET_IJ));
+    }
+    for (const auto& du_du : hes.du_du) {
+        values[ptr_map_xu_xu->access(off_x + du_du.index1, off_x + du_du.index2, block_count)] += factor * (*(du_du.value + HES_OFFSET_IJ));
+    }
+    for (const auto& dp_dx : hes.dp_dx) {
+        values[ptr_map_p_xu->access(dp_dx.index1, dp_dx.index2, block_count)] += factor * (*(dp_dx.value + HES_OFFSET_IJ));
+    }
+    for (const auto& dp_du : hes.dp_du) {
+        values[ptr_map_p_xu->access(dp_du.index1, off_x + dp_du.index2, block_count)] += factor * (*(dp_du.value + HES_OFFSET_IJ));
+    }
+    for (const auto& dp_dp : hes.dp_dp) {
+        values[hes_h.access(dp_dp.index1, dp_dp.index2)] += factor * (*(dp_dp.value + HES_OFFSET_IJ));
+    } 
+}
+
+void NLP::updateHessianMR(double* values, const HessianMR& hes, const double factor) {
+    for (const auto& dx0_dx0 : hes.dx0_dx0) {
+        values[hes_a.access(dx0_dx0.index1, dx0_dx0.index2)] += factor * (*(dx0_dx0.value));
+    }
+    for (const auto& dxf_dx0 : hes.dxf_dx0) {
+        values[hes_c.access(dxf_dx0.index1, dxf_dx0.index2)] += factor * (*(dxf_dx0.value));
+    }
+    for (const auto& dxf_dxf : hes.dxf_dxf) {
+        values[hes_d.access(dxf_dxf.index1, dxf_dxf.index2)] += factor * (*(dxf_dxf.value));
+    }
+    for (const auto& dp_dx0 : hes.dp_dx0) {
+        values[hes_e.access(dp_dx0.index1,  dp_dx0.index2)]  += factor * (*(dp_dx0.value));
+    }
+    for (const auto& dp_dxf : hes.dp_dxf) {
+        values[hes_g.access(dp_dxf.index1,  dp_dxf.index2)]  += factor * (*(dp_dxf.value));
+    }
+    for (const auto& dp_dp : hes.dp_dp) {
+        values[hes_h.access(dp_dp.index1,   dp_dp.index2)]   += factor * (*(dp_dp.value));
+    }
+}
 
 // TODO: how to perform the data filling and evaluations
 void NLP::callback_evaluation() {

@@ -11,11 +11,11 @@ struct Collocation {
     const std::vector<std::vector<double>> c =
 #include "../data/radauConstantsC.data"
 
-    // nodes including -1, i.e. [-1, c1, c2, ..., cm]
+    // nodes including 0, i.e. [0, c1, c2, ..., cm]
     const std::vector<std::vector<double>> c0 =
 #include "../data/radauConstantsC0.data"
 
-    // quadrature weights {}, {2}, ...
+    // quadrature weights {}, {1}, ...
     const std::vector<std::vector<double>> b =
 #include "../data/radauConstantsB.data"
 

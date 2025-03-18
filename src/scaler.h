@@ -4,13 +4,13 @@
 
 /*
 void NLP::scaleCurrentIterate() {
-    // x_scaled = x_D_scaling^(-1) * (x_unscaled + (-1) * x_a_scaling)
-    Linalg::dsaxpy(numberVars, x_unscaled.get(), x_a_scaling.get(), x_D_scaling.get(), -1, true, x_scaled.get());
+    // x_scaled = x_D_scaling^(-1) * (x_set_unscaled + (-1) * x_a_scaling)
+    Linalg::dsaxpy(numberVars, x_set_unscaled.get(), x_a_scaling.get(), x_D_scaling.get(), -1, true, x_scaled.get());
 };
 
 void NLP::unscaleCurrentIterate() { //D * x + beta * y or D^(-1) * x + beta * y
-    // x_unscaled = x_D_scaling * x_scaled + 1 * x_a_scaling
-    Linalg::dgmv(numberVars, x_scaled.get(), x_a_scaling.get(), x_D_scaling.get(), 1, false, x_unscaled.get());
+    // x_set_unscaled = x_D_scaling * x_scaled + 1 * x_a_scaling
+    Linalg::dgmv(numberVars, x_scaled.get(), x_a_scaling.get(), x_D_scaling.get(), 1, false, x_set_unscaled.get());
 };
 
 void NLP::scaleEvalData() {

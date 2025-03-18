@@ -25,19 +25,21 @@ struct NLP {
     int nnz_hes = 0;         // nnz Hessian in the NLP
 
     // current iterates
-    std::unique_ptr<double[]> curr_x;
+    std::unique_ptr<double[]> curr_x;      // current NLP primal variables
+    std::unique_ptr<double[]> curr_lambda; // current NLP dual variables
+    double                    sigma_f;     // current objective weight in hessian
 
     // scaled variable bounds
     std::unique_ptr<double[]> x_lb;
     std::unique_ptr<double[]> x_ub;
 
     // nlp function data
-    double curr_obj;                      // current objective value
-    std::unique_ptr<double[]> curr_grad;  // current gradient of the objective function
-    std::unique_ptr<double[]> curr_g;     // current constraint function evaluation
-    std::unique_ptr<double[]> curr_jac;   // current jacobian of the constraints
-    std::unique_ptr<double[]> der_jac;    // constant derivative matrix part of the jacobian
-    std::unique_ptr<double[]> curr_hes;   // current hessian of the lagrangian
+    double curr_obj;                      // current NLP objective value
+    std::unique_ptr<double[]> curr_grad;  // current NLP gradient of the objective function
+    std::unique_ptr<double[]> curr_g;     // current NLP constraint function evaluation
+    std::unique_ptr<double[]> curr_jac;   // current NLP jacobian of the constraints
+    std::unique_ptr<double[]> der_jac;    // constant NLP derivative matrix part of the jacobian
+    std::unique_ptr<double[]> curr_hes;   // current NLP hessian of the lagrangian
 
     // scaled constraint bounds
     std::unique_ptr<double[]> g_lb;
@@ -147,6 +149,7 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     std::unique_ptr<double[]>  hes_data_MR;
     */
 
+    // init nlp and sparsity
     void init();
     void initSizesOffsets();
     void initBounds();
@@ -156,6 +159,11 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     void initJacobianSparsityPattern();
     void initHessian();
 
+    // hessian updates
+    void updateHessianLFG(double* values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+                          const BlockSparsity* ptr_map_p_xu, const double factor);
+    void updateHessianMR(double* values, const HessianMR& hes, const double factor);
+
     // get callback data
     void callback_evaluation();
     void callback_jacobian();
@@ -163,6 +171,7 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
 
     // nlp solver calls
     void check_new_x(const double* nlp_solver_x, bool new_x);
+    void check_new_lambda_sigma(const double* nlp_solver_lambda, const double sigma);
     void eval_f();
     void eval_f_safe(const double* nlp_solver_x, bool new_x);
     void eval_g();
@@ -171,6 +180,8 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
     void eval_jac_g();
     void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
+    void eval_hes();
+    void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x);
 
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
     // TODO: use these later, fill one time and then scale at the end of calculations
