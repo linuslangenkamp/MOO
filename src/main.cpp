@@ -12,7 +12,9 @@ int main() {
     FixedField<double, 1> q(2);
     std::vector<double> vec = {7, 8, 9, 10, 11};
     FixedVector<double> z(vec.begin(), vec.end());
+    q.assign(&vec[2], 2);
     std::cout << q[1] << std::endl;
+    q.print();
     Collocation radau = Collocation();
     Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
 

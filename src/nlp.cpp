@@ -333,8 +333,8 @@ void NLP::initHessian() {
     // C, D: exact with row dependence
     int c_index = 0;
     int d_index = 0;
-    std::vector<std::pair<int, int>> C_flat(C.set.begin(), C.set.end());
-    std::vector<std::pair<int, int>> D_flat(D.set.begin(), D.set.end());
+    FixedVector<std::pair<int, int>> C_flat(C.set.begin(), C.set.end());
+    FixedVector<std::pair<int, int>> D_flat(D.set.begin(), D.set.end());
     for (int x_index = 0; x_index < problem->x_size; x_index++) {
         while (C_flat[c_index].first == x_index) {
             i_row_hes[hes_nnz_counter] = off_last_xu + C_flat[c_index].first; // x_{nm}
@@ -360,10 +360,10 @@ void NLP::initHessian() {
     int f_index = 0;
     int g_index = 0;
     int h_index = 0;
-    std::vector<std::pair<int, int>> E_flat(E.set.begin(), E.set.end());
-    std::vector<std::pair<int, int>> F_flat(F.set.begin(), F.set.end());
-    std::vector<std::pair<int, int>> G_flat(G.set.begin(), G.set.end());
-    std::vector<std::pair<int, int>> H_flat(H.set.begin(), H.set.end());
+    FixedVector<std::pair<int, int>> E_flat(E.set.begin(), E.set.end());
+    FixedVector<std::pair<int, int>> F_flat(F.set.begin(), F.set.end());
+    FixedVector<std::pair<int, int>> G_flat(G.set.begin(), G.set.end());
+    FixedVector<std::pair<int, int>> H_flat(H.set.begin(), H.set.end());
     for (int p_index = 0; p_index < problem->p_size; p_index++) {
         while (E_flat[e_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + E_flat[e_index].first; // p

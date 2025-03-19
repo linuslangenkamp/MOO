@@ -47,7 +47,7 @@ public:
 
     // assign based on iterator begin() and end(), guard only iterator
     template<typename It, std::enable_if_t<is_iterator_v<It>, int> = 0>
-    constexpr FixedVector(It first, It last) : FixedVector(last - first) {
+    constexpr FixedVector(It first, It last) : FixedVector(static_cast<std::size_t>(std::distance(first, last))) {
         assign(first, last);
     }
 
@@ -98,7 +98,7 @@ public:
 
     template<typename It>
     constexpr void assign(It first, It last, std::size_t offset = 0) {
-        assert(last - first <= _size - offset);
+        assert(static_cast<std::size_t>(std::distance(first, last)) <= _size - offset);
 
         std::copy(first, last, _data.get() + offset);
     }
@@ -145,6 +145,17 @@ public:
 
     constexpr const bool empty() const noexcept {
         return (_size == 0);
+    }
+
+    void print() const {
+        std::cout << "[";
+        for (std::size_t i = 0; i < _size; i++) {
+            std::cout << _data[i];
+            if (i < _size - 1) {
+                std::cout << ", ";
+            }
+        }
+        std::cout << "]" << std::endl;
     }
 
 private:
