@@ -5,6 +5,18 @@
 #include <memory>
 #include <algorithm>
 #include <functional>
+#include <type_traits>
+
+// helpers to distinguish iterator and range base field initialization
+template<typename It, typename = void>
+struct is_iterator : std::false_type {};
+
+template<typename It>
+struct is_iterator<It, std::void_t<
+    typename std::iterator_traits<It>::iterator_category >> : std::true_type {};
+
+template<typename It>
+inline constexpr bool is_iterator_v = is_iterator<It>::value;
 
 /**
  * @brief Templated, zero-initialized vector with fixed size.
@@ -30,18 +42,21 @@ public:
     constexpr FixedVector(const FixedVector &other) : FixedVector(other._size) {
         *this = other;
     }
-    /*
-    template<typename... Args>
-    explicit FixedVector(std::size_t first, Args... rest) : FixedVector(first) {
-        _init_variadic(rest...);
-    }
-    */
+
     FixedVector(FixedVector &&other) noexcept = default;
 
-    // assign based on iterator begin() and end()
-    template<typename It>
+    // assign based on iterator begin() and end(), guard only iterator
+    template<typename It, std::enable_if_t<is_iterator_v<It>, int> = 0>
     constexpr FixedVector(It first, It last) : FixedVector(last - first) {
         assign(first, last);
+    }
+
+    // recursive constructor for nested FixedVector / FixedField
+    template<typename... Args>
+    FixedVector(std::size_t size, Args&&... args) : _size{size}, _data{std::make_unique<T[]>(size)} {
+        for (std::size_t i = 0; i < size; i++) {
+            _data[i] = T(std::forward<Args>(args)...);
+        }
     }
 
     // access vector at index 0 <= index < vec.size()
@@ -135,32 +150,19 @@ public:
 private:
     std::size_t _size;
     std::unique_ptr<T[]> _data;
-
-    template<typename... Args>
-    void _init_variadic(std::size_t first, Args... rest) {
-        for (std::size_t i = 0; i < _size; i++) {
-            _data[i] = FixedVector<T>(first, rest...);
-        }
-    }
-
-    void _init_variadic(std::size_t first) {
-        for (std::size_t i = 0; i < _size; i++) {
-            _data[i] = FixedVector<T>(first);
-        }
-    }
 };
 
 template<typename T, std::size_t Dim>
-struct FixedMultiVectorRecursive {
-    using type = FixedVector<typename FixedMultiVectorRecursive<T, Dim - 1>::type>;
+struct FixedFieldRecursive {
+    using type = FixedVector<typename FixedFieldRecursive<T, Dim - 1>::type>;
 };
 
 template<typename T>
-struct FixedMultiVectorRecursive<T, 1> {
+struct FixedFieldRecursive<T, 1> {
     using type = FixedVector<T>;
 };
 
 template<typename T, std::size_t Dim>
-using FixedMultiVector = typename FixedMultiVectorRecursive<T, Dim>::type;
+using FixedField = typename FixedFieldRecursive<T, Dim>::type;
 
 #endif // OPT_FIXED_VECTOR_H

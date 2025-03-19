@@ -8,6 +8,11 @@
 //  cmake --build build && cd build && ./gdopt_experimental && cd ..
 
 int main() {
+    FixedField<double, 3> x(1, 2, 5);
+    FixedField<double, 1> q(2);
+    std::vector<double> vec = {7, 8, 9, 10, 11};
+    FixedVector<double> z(vec.begin(), vec.end());
+    std::cout << q[1] << std::endl;
     Collocation radau = Collocation();
     Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
 
@@ -27,8 +32,8 @@ int main() {
     problem.boundary.r_bounds = {{125, 2555}};
     Trajectory guess = {{0, 1}, {{1, 5}}, {{0, 2}, {3, 1}}, {1, 2}, InterpolationMethod::LINEAR};
 
-    NLP nlp = NLP(problem, radau, mesh, guess);
-    std::cout << nlp.number_vars << std::endl;
-    std::cout << nlp.number_constraints << std::endl;
+    //NLP nlp = NLP(problem, radau, mesh, guess);
+    //std::cout << nlp.number_vars << std::endl;
+    //std::cout << nlp.number_constraints << std::endl;
     return 0;
 }
