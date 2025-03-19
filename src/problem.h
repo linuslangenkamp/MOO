@@ -1,7 +1,7 @@
 #ifndef OPT_PROBLEM_H
 #define OPT_PROBLEM_H
 
-#include "util.h"
+#include "base/util.h"
 
 /* FullSweep: Evaluation of L(), f(), g() for a given z_{i,j} = (x_{i,j}, u_{i,j}, p, t_{i,j})^T
  * + first and second derivatives

@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "collocation.h"
-#include "util.h"
 #include "nlp.h"
 #include "problem.h"
 

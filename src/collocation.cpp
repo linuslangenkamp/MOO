@@ -1,6 +1,4 @@
 #include "collocation.h"
-#include "linalg.h"
-#include "util.h"
 
 double Collocation::integrate(const double* values, const int scheme) {
     /*

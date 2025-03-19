@@ -2,7 +2,7 @@
 #define OPT_MESH_H
 
 #include "collocation.h"
-#include "fixed_vector.h"
+#include "base/fixed_vector.h"
 
 
 enum class InterpolationMethod {
@@ -15,12 +15,12 @@ struct Mesh {
           acc_nodes(std::move(acc_nodes)), node_count(node_count) {
     }
 
-    int intervals;                            // number of intervals
-    int node_count;                           // number of collocation nodes (sum over all intervals)
-    double tf;                                // final time
-    FixedVector<double> grid;                 // grid base points
-    FixedVector<double> delta_t;              // step size h for each interval
-    FixedVector<int>    nodes;                // number of collocation nodes p for each interval
+    int intervals;                 // number of intervals
+    int node_count;                // number of collocation nodes (sum over all intervals)
+    double tf;                     // final time
+    FixedVector<double> grid;      // grid base points
+    FixedVector<double> delta_t;   // step size h for each interval
+    FixedVector<int>    nodes;     // number of collocation nodes p for each interval
     FixedField<int, 2> acc_nodes;  // number of nodes to the left of index (i, j)
 
     static Mesh createEquidistantMeshFixedDegree(int intervals, double tf, int p);

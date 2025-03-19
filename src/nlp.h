@@ -1,14 +1,15 @@
 #ifndef OPT_NLP_H
 #define OPT_NLP_H
 
-#include "block_sparsity.h"
-#include "fixed_vector.h"
-#include "linalg.h"
+#include "base/block_sparsity.h"
+#include "base/fixed_vector.h"
+#include "base/linalg.h"
+#include "base/nlp_state.h"
+#include "base/util.h"
+
 #include "problem.h"
 #include "mesh.h"
 #include "collocation.h"
-#include "util.h"
-#include "nlp_state.h"
 
 
 struct NLP {
