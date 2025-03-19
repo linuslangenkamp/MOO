@@ -1,7 +1,10 @@
 #ifndef OPT_BLOCK_SPARSITY_H
 #define OPT_BLOCK_SPARSITY_H
 
-#include "util.h"
+#include <set>
+#include <memory>
+#include <stdexcept>
+
 #include "../problem.h"
 
 enum class BlockType {

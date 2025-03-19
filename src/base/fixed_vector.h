@@ -1,11 +1,13 @@
 #ifndef OPT_FIXED_VECTOR_H
 #define OPT_FIXED_VECTOR_H
 
-#include <cstdint>
-#include <memory>
 #include <algorithm>
-#include <functional>
+#include <cstdint>
+#include <cstring>
+#include <cassert>
+#include <memory>
 #include <type_traits>
+#include <iostream>
 
 // helpers to distinguish iterator and range base field initialization
 template<typename It, typename = void>
@@ -34,10 +36,6 @@ public:
     constexpr FixedVector() noexcept : _size{0}, _data{} {}
 
     explicit FixedVector(std::size_t size) : _size{size}, _data{std::make_unique<T[]>(size)} {}
-
-    FixedVector(std::size_t size, const std::function<T()> & generator) : FixedVector(size) {
-        std::generate(_data.get(), _data.get() + _size, generator);
-    }
 
     constexpr FixedVector(const FixedVector &other) : FixedVector(other._size) {
         *this = other;
