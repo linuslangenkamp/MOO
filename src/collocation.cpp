@@ -9,6 +9,7 @@ double Collocation::integrate(const double* values, const int scheme) {
     return Linalg::dot(scheme, values, b[scheme].data());
 };
 
+// TODO: rewrite with FixedVector
 // TODO: check this again
 void Collocation::diff_matrix_multiply(const int scheme, const int x_size, const int xu_size, const int fg_size,
                                        const double* x_prev, const double* x_new, double* out) {

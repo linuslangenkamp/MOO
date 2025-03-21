@@ -87,6 +87,7 @@ public:
         memset(_data.get(), 0, _size * sizeof(T));
     }
 
+    // fills the vector with some data with given len: vector[offset] = data[0], ..., vector[offset + len - 1] = data[len - 1]
     constexpr void assign(const T* data, std::size_t len, std::size_t offset = 0) {
         assert(data != nullptr);
         assert(len <= _size - offset);
@@ -94,11 +95,27 @@ public:
         memcpy(_data.get() + offset, data, len * sizeof(T));
     }
 
+    // assign the vector from a given iterator: vector[offset] = first, ..., vector[offset + len - 1] = last
     template<typename It>
     constexpr void assign(It first, It last, std::size_t offset = 0) {
         assert(static_cast<std::size_t>(std::distance(first, last)) <= _size - offset);
 
         std::copy(first, last, _data.get() + offset);
+    }
+
+    // write from vector -> data_buffer: data[i] = vector[offset + i], ..., data[len - 1] = vector[offset + len - 1],
+    constexpr void writeTo(T* data, std::size_t len, std::size_t offset = 0) const {
+        assert(data != nullptr);
+        assert(len <= _size - offset);
+
+        memcpy(data, _data.get() + offset, len * sizeof(T));
+    }
+
+    // write from vector -> data_buffer: data[0] = vector[0], ..., data[_size - 1] = vector[_size - 1]
+    constexpr void writeTo(T* data) const {
+        assert(data != nullptr);
+
+        memcpy(data, _data.get(), _size * sizeof(T));
     }
 
     constexpr std::size_t size() const {

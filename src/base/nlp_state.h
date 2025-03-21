@@ -11,7 +11,7 @@ struct NLP_State {
     bool jac_g          = false;
     bool hes_lag        = false;
 
-    void check_reset(bool new_x) {
+    void check_reset_x(bool new_x) {
         if (new_x) {
             x_set_unscaled = false;
             lambda_set     = false;
@@ -19,6 +19,13 @@ struct NLP_State {
             eval_g         = false;
             grad_f         = false;
             jac_g          = false;
+            hes_lag        = false; 
+        }
+    };
+
+    void check_reset_lambda(bool new_lambda) {
+        if (new_lambda) {
+            lambda_set     = false;
             hes_lag        = false; 
         }
     };

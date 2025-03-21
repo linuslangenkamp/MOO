@@ -12,7 +12,7 @@ public:
 
     virtual ~IpoptSolver() = default;
 
-    IpoptAdapter adapter;
+    Ipopt::SmartPtr<IpoptAdapter> adapter;
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
 
     void optimize() override;

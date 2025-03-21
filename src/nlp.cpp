@@ -8,7 +8,6 @@
 void NLP::init() {
     initSizesOffsets();
     initBounds();
-    initStartingPoint();
     initJacobian();
     initHessian();
 }
@@ -420,7 +419,7 @@ void NLP::initHessian() {
  */
 
 void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
-    evaluation_state.check_reset(new_x);
+    evaluation_state.check_reset_x(new_x);
     if (!evaluation_state.x_set_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
         // rn we just memset the data to curr_x
@@ -429,11 +428,18 @@ void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
     }
 }
 
-void NLP::check_new_lambda_sigma(const double* nlp_solver_lambda, const double sigma) {
+void NLP::check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda) {
+    evaluation_state.check_reset_lambda(new_lambda);
     if (!evaluation_state.lambda_set) {
-        sigma_f = sigma;
         curr_lambda.assign(nlp_solver_lambda, number_constraints);
         evaluation_state.lambda_set = true;
+    }
+}
+
+void NLP::check_new_sigma(const double sigma_f) {
+    if (sigma_f != curr_sigma_f) {
+        curr_sigma_f = sigma_f;
+        evaluation_state.hes_lag = false;
     }
 }
 
@@ -481,9 +487,10 @@ void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     }
  }
 
- void NLP::eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x) {
+ void NLP::eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x, bool new_lambda) {
     check_new_x(nlp_solver_x, new_x);
-    check_new_lambda_sigma(nlp_solver_lambda, sigma_f);
+    check_new_lambda(nlp_solver_lambda, new_lambda);
+    check_new_sigma(sigma_f);
     if (evaluation_state.hes_lag) {
         return;
     }
@@ -662,7 +669,7 @@ void NLP::eval_hes() {
             }
             if (problem->full.has_lagrange) {
                 updateHessianLFG(curr_hes, problem->full.lfg[0].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
-                                 sigma_f * mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j]);
+                                 curr_sigma_f * mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j]);
             }
             for (int f_index = problem->full.f_index_start; f_index < problem->full.f_index_end; f_index++) {
                 updateHessianLFG(curr_hes, problem->full.lfg[f_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
@@ -675,7 +682,7 @@ void NLP::eval_hes() {
         }
     }
     if (problem->boundary.has_mayer) {
-        updateHessianMR(curr_hes, problem->boundary.mr[0].hes, sigma_f);
+        updateHessianMR(curr_hes, problem->boundary.mr[0].hes, curr_sigma_f);
     }
 
     for (int r_index = problem->boundary.r_index_start; r_index < problem->boundary.r_index_end; r_index++) {

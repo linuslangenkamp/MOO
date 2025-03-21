@@ -32,7 +32,7 @@ struct NLP {
     // current iterates
     FixedVector<double> curr_x;      // current NLP primal variables
     FixedVector<double> curr_lambda; // current NLP dual variables
-    double              sigma_f;     // current objective weight in hessian
+    double              curr_sigma_f;     // current objective weight in hessian
 
     // scaled variable bounds
     FixedVector<double> x_lb;
@@ -176,7 +176,8 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
 
     // nlp solver calls
     void check_new_x(const double* nlp_solver_x, bool new_x);
-    void check_new_lambda_sigma(const double* nlp_solver_lambda, const double sigma);
+    void check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda);
+    void check_new_sigma(const double obj_factor);
     void eval_f();
     void eval_f_safe(const double* nlp_solver_x, bool new_x);
     void eval_g();
@@ -186,7 +187,7 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     void eval_jac_g();
     void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
     void eval_hes();
-    void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x);
+    void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
 
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
     // TODO: use these later, fill one time and then scale at the end of calculations

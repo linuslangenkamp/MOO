@@ -3,13 +3,13 @@
 IpoptSolver::IpoptSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings)
     : NLPSolver(nlp, solver_settings),
       app(IpoptApplicationFactory()),
-      adapter(IpoptAdapter(nlp)) {
+      adapter(new IpoptAdapter(nlp)) {
     initIpoptApplication();
 }
 
 // simple wrapper to adapter
 void IpoptSolver::optimize() {
-    Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(&adapter);
+    Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(adapter);
 
     if (status == Ipopt::Solve_Succeeded) {
         std::cout << "[Ipopt Interface] Optimization with succeeded!" << std::endl;
