@@ -171,7 +171,7 @@ struct BoundarySweep {
     }
 
     inline double getEvalR(const int r_index) {
-        return *(mr[r_index].eval);
+        return *(mr[r_index_start + r_index].eval);
     }
 };
 
