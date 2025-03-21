@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "../problem.h"
+#include "fixed_vector.h"
 
 enum class BlockType {
     Exact,
@@ -18,12 +19,12 @@ struct BlockSparsity {
     BlockType type;
 
     // data for all block types
-    std::unique_ptr<std::unique_ptr<int[]>[]> block;
+    FixedField<int, 2> block;
     int nnz;
 
     // block F only
-    std::unique_ptr<int[]> row_offset_prev;
-    std::unique_ptr<int[]> row_size;
+    FixedVector<int> row_offset_prev;
+    FixedVector<int> row_size;
 
     // block B only
     int off_prev;
@@ -38,17 +39,17 @@ struct BlockSparsity {
     */
     static BlockSparsity createLowerTriangular(const int size, const BlockType block_type) {
         BlockSparsity b;
-        b.block = std::make_unique<std::unique_ptr<int[]>[]>(size);
+        b.block = FixedField<int, 2>(size);
         for (int i = 0; i < size; i++) {
-            b.block[i] = std::make_unique<int[]>(i+1);
+            b.block[i] = FixedVector<int>(i + 1);
         }
         switch (block_type) {
             case BlockType::Offset:
                 b.off_prev = 0;
                 break;
             case BlockType::RowOffset:
-                b.row_offset_prev = std::make_unique<int[]>(size);
-                b.row_size = std::make_unique<int[]>(size);
+                b.row_offset_prev = FixedVector<int>(size);
+                b.row_size = FixedVector<int>(size);
                 break;
             default:
                 break;
@@ -65,17 +66,15 @@ struct BlockSparsity {
     */
     static BlockSparsity createRectangular(const int rows, const int cols, const BlockType block_type) {
         BlockSparsity b;
-        b.block = std::make_unique<std::unique_ptr<int[]>[]>(rows);
-        for (int i = 0; i < rows; i++) {
-            b.block[i] = std::make_unique<int[]>(cols);
-        }
+        b.block = FixedField<int, 2>(rows, cols);
+
         switch (block_type) {
             case BlockType::Offset:
                 b.off_prev = 0;
                 break;
             case BlockType::RowOffset:
-                b.row_offset_prev = std::make_unique<int[]>(rows);
-                b.row_size = std::make_unique<int[]>(rows);
+                b.row_offset_prev = FixedVector<int>(rows);
+                b.row_size = FixedVector<int>(rows);
                 break;
             default:
                 break;

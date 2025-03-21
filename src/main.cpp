@@ -17,7 +17,7 @@ int main() {
     q.print();
     Collocation radau = Collocation();
     Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
-
+    BlockSparsity::createLowerTriangular(5, BlockType::Offset);
     Problem problem = Problem();
     problem.x_size = 1;
     problem.x_bounds = {{2, 4}};
