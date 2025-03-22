@@ -29,7 +29,6 @@ bool IpoptAdapter::get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number
 
 bool IpoptAdapter::get_scaling_parameters(Ipopt::Number& obj_scaling, bool& use_x_scaling, Ipopt::Index n, Ipopt::Number* x_scaling,
                                           bool& use_g_scaling, Ipopt::Index m, Ipopt::Number* g_scaling) {
-    // TODO: add scaling here aswell or as option?
     use_x_scaling = false;
     use_g_scaling = false;
     return true;

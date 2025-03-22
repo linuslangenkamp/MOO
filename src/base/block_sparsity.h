@@ -23,11 +23,11 @@ struct BlockSparsity {
     FixedField<int, 2> block;
     int nnz;
 
-    // block F only
+    // for row-based offsets (e.g. block F in GDOP)
     FixedVector<int> row_offset_prev;
     FixedVector<int> row_size;
 
-    // block B only
+    // for constant offsets (e.g. block B in GDOP)
     int off_prev;
 
     /* creates a dense lower triangular (with diagonal) block structure

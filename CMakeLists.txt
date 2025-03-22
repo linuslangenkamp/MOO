@@ -35,7 +35,7 @@ set(SOURCES
     src/base/collocation.cpp
     src/main.cpp
     src/base/mesh.cpp
-    src/gdop/gdop.cpp
+    src/impl/gdop/gdop.cpp
     src/base/linalg.cpp
     src/interfaces/ipopt_adapter.cpp
     src/interfaces/ipopt_solver.cpp
@@ -51,7 +51,7 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
 #add_dependencies(optimization ipopt-ext mumps-ext)
 
-target_compile_options(optimization PRIVATE -ffast-math) # -fopenmp -lgomp
+target_compile_options(optimization PRIVATE ) # -fopenmp -lgomp -ffast-math -O3
 
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
 target_link_libraries(optimization PRIVATE lapack blas dl gfortran)

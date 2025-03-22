@@ -1,8 +1,8 @@
 #include <iostream>
 
 #include "base/collocation.h"
-#include "gdop/gdop.h"
-#include "gdop/problem.h"
+#include "impl/gdop/gdop.h"
+#include "impl/gdop/problem.h"
 #include "interfaces/ipopt_solver.h"
 
 

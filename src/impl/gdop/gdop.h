@@ -95,17 +95,6 @@ class GDOP : public NLP {
     void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
     void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
     void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
-
-    /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
-    // TODO: use these later, fill one time and then scale at the end of calculations
-    // these have the same sizes as the curr_'s, just divide element wise
-    //FixedVector<double> curr_x_unscaled;
-    double curr_obj_nominal = 1;
-    FixedVector<double> curr_grad_nominal;
-    FixedVector<double> curr_g_nominal;
-    FixedVector<double> curr_jac_values_nominal;
-    FixedVectordouble> curr_hes_values_nominal;
-    */
 };
 
 #endif  // OPT_GDOP_H

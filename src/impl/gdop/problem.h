@@ -1,5 +1,5 @@
-#ifndef OPT_PROBLEM_H
-#define OPT_PROBLEM_H
+#ifndef OPT_GDOP_PROBLEM_H
+#define OPT_GDOP_PROBLEM_H
 
 #include <optional>
 #include <memory>
@@ -30,6 +30,10 @@ struct FullSweep {
     int jac_size;
     int hes_size;
 
+    FixedVector<double> evalBuffer;
+    FixedVector<double> jacBuffer;
+    FixedVector<double> hesBuffer;
+
     // create this based on some input data for the Fullsweep. Create the Grad
     FullSweep() {
         // now just use as: fillInputData() -> iterate over function COO's
@@ -41,17 +45,17 @@ struct FullSweep {
         // fill the OM buffer (should be scoped / parallelizable / localized)
     };
 
-    inline void callEval(double* evalData) {
+    inline void callEval() {
         // TODO: think about this part
         // get data array from solver
         // calculate eval 
    }
 
-    inline void callJac(double* jacData) {
+    inline void callJac() {
         // TODO: think about this part
     }
 
-    inline void callHess(double* hesData) {
+    inline void callHess() {
         // TODO: think about this part
     }
 
@@ -78,23 +82,27 @@ struct BoundarySweep {
     
     std::vector<Bounds> r_bounds; // r^L <= r(x0, xf, p) <= r^U :: boundary constraints
 
+    FixedVector<double> evalBuffer;
+    FixedVector<double> jacBuffer;
+    FixedVector<double> hesBuffer;
+
     inline void fillInputData(double* x0, double* xf, double* p) {
         // TODO: think about this part
         // unscale
         // fill the OM buffer
     };
     
-    inline void callEval(double* evalData) {
+    inline void callEval() {
         // TODO: think about this part
         // get data array from solver
         // calculate eval 
    }
 
-    inline void callJac(double* jacData) {
+    inline void callJac() {
         // TODO: think about this part
     }
 
-    inline void callHess(double* hesData) {
+    inline void callHess() {
         // TODO: think about this part
     }
 
@@ -123,4 +131,4 @@ struct Problem {
     int p_size;
 };
 
-#endif // OPT_PROBLEM_H
+#endif // OPT_GDOP_PROBLEM_H
