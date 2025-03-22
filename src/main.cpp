@@ -5,7 +5,6 @@
 #include "problem.h"
 #include "interfaces/ipopt_solver.h"
 
-//  cmake --build build && cd build && ./gdopt_experimental && cd ..
 
 int main() {
     FixedField<double, 3> x(1, 2, 5);
