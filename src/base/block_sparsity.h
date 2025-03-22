@@ -5,8 +5,9 @@
 #include <memory>
 #include <stdexcept>
 
-#include "../problem.h"
 #include "fixed_vector.h"
+#include "nlp_structs.h"
+
 
 enum class BlockType {
     Exact,
@@ -140,7 +141,7 @@ struct OrderedIndexSet {
 
     void insertSparsity(std::vector<HessianSparsity>& hes, int row_off, int col_off) {
         for (auto& coo : hes) {
-            set.insert({coo.index1 + row_off, coo.index2 + col_off});
+            set.insert({coo.row + row_off, coo.col + col_off});
         }
     }
 

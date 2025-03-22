@@ -32,11 +32,10 @@ ProcessorCount(N)
 #)
 
 set(SOURCES
-    src/collocation.cpp
+    src/base/collocation.cpp
     src/main.cpp
-    src/mesh.cpp
-    src/gdop.cpp
-    src/problem.cpp
+    src/base/mesh.cpp
+    src/gdop/gdop.cpp
     src/base/linalg.cpp
     src/interfaces/ipopt_adapter.cpp
     src/interfaces/ipopt_solver.cpp

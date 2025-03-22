@@ -3,6 +3,7 @@
 
 #include "../base/fixed_vector.h"
 
+// TODO: maybe add the scaler to the NLP and only do the setup in the generic NLP implementation, then the scaler is always called on the iterates
 
 // generic NLP base class - can be used with the generic NLP_Solver interface
 // allows for a nice abstraction / to use any NLP solver when implementing this NLP

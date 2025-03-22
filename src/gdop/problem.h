@@ -5,79 +5,11 @@
 #include <memory>
 #include <vector>
 
-/* FullSweep: Evaluation of L(), f(), g() for a given z_{i,j} = (x_{i,j}, u_{i,j}, p, t_{i,j})^T
- * + first and second derivatives
- */
+#include "../base/nlp_structs.h"
 
-// LFG - generic global function f(x, u, p, t)
-// used for Lagrange term (L), dynamic (F), path (G)
-
-struct JacobianSparsity {
-    int index;
-    double* value;
-};
-
-struct HessianSparsity {
-    int index1;
-    int index2;
-    double* value;
-};
-
-struct Bounds {
-    double lb;
-    double ub;
-};
-
-struct JacobianLFG {
-    // coordinate format jacobian for LFGH functions
-    std::vector<JacobianSparsity> dx;
-    std::vector<JacobianSparsity> du;
-    std::vector<JacobianSparsity> dp;
-};
-
-struct HessianLFG {
-    // coordinate format hessian for LFG functions
-    std::vector<HessianSparsity> dx_dx;
-    std::vector<HessianSparsity> du_dx;
-    std::vector<HessianSparsity> du_du;
-    std::vector<HessianSparsity> dp_dx;
-    std::vector<HessianSparsity> dp_du;
-    std::vector<HessianSparsity> dp_dp;
-};
-
-struct FunctionLFG {
-    double* eval;
-    JacobianLFG jac;
-    HessianLFG hes;
-};
-
-// MR - generic boundary function r(x(t0), x(tf), p, t0, tf)
-// used for Mayer term (M), boundary constraints (R)
- 
-struct JacobianMR {
-    std::vector<JacobianSparsity> dx0;
-    std::vector<JacobianSparsity> dxf;
-    std::vector<JacobianSparsity> dp;
-};
-
-struct HessianMR {
-    std::vector<HessianSparsity> dx0_dx0;
-    
-    std::vector<HessianSparsity> dxf_dx0;
-    std::vector<HessianSparsity> dxf_dxf;
-
-    std::vector<HessianSparsity> dp_dx0;
-    std::vector<HessianSparsity> dp_dxf;
-    std::vector<HessianSparsity> dp_dp;
-};
-
-struct FunctionMR {
-    double* eval;
-    JacobianMR jac;
-    HessianMR hes;
-};
 
 struct FullSweep {
+    // Evaluation of L(), f(), g() for a given z_{i,j} = (x_{i,j}, u_{i,j}, p, t_{i,j})^T + first and second derivatives
     // Idea: Call Fullsweep.setValues(), Fullsweep.callEval(), callJac(), callHess() -> Just iterate over COO
     // function evals / diffs are on openmodelica side, 
 
@@ -191,4 +123,4 @@ struct Problem {
     int p_size;
 };
 
-#endif  // OPT_PROBLEM_H
+#endif // OPT_PROBLEM_H

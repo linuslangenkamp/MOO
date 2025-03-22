@@ -130,7 +130,7 @@ void GDOP::initJacobianNonzeros() {
     int diagonal_collisions = 0;
     for (int f_index = 0; f_index < problem->full.f_size; f_index++) {
         for (const auto& df_k_dx : problem->full.lfg[problem->full.f_index_start + f_index].jac.dx) {
-            if (df_k_dx.index == f_index) {
+            if (df_k_dx.col == f_index) {
                 diagonal_collisions++;
             }
         }
@@ -189,9 +189,9 @@ void GDOP::initJacobianSparsityPattern() {
 
                 // df / dx
                 for (auto& df_dx : problem->full.lfg[problem->full.f_index_start + f_index].jac.dx) {
-                    if (df_dx.index != f_index) {
+                    if (df_dx.col != f_index) {
                         i_row_jac[nnz_index] = eqn_index;
-                        j_col_jac[nnz_index] = off_acc_xu[i][j] + df_dx.index;
+                        j_col_jac[nnz_index] = off_acc_xu[i][j] + df_dx.col;
                         nnz_index++;
                     }
                 }
@@ -199,14 +199,14 @@ void GDOP::initJacobianSparsityPattern() {
                 // df / du
                 for (auto& df_du : problem->full.lfg[problem->full.f_index_start + f_index].jac.du) {
                     i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + df_du.index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + df_du.col;
                     nnz_index++;
                 }
 
                 // df / dp
                 for (auto& df_dp : problem->full.lfg[problem->full.f_index_start + f_index].jac.dp) {
                     i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_xu_total + df_dp.index;
+                    j_col_jac[nnz_index] = off_xu_total + df_dp.col;
                     nnz_index++;
                 }
             }
@@ -217,21 +217,21 @@ void GDOP::initJacobianSparsityPattern() {
                 // dg / dx
                 for (auto& dg_dx : problem->full.lfg[problem->full.g_index_start + g_index].jac.dx) {
                     i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_acc_xu[i][j] + dg_dx.index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][j] + dg_dx.col;
                     nnz_index++;
                 }
 
                 // dg / du
                 for (auto& dg_du : problem->full.lfg[problem->full.g_index_start + g_index].jac.du) {
                     i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + dg_du.index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + dg_du.col;
                     nnz_index++;
                 }
 
                 // dg / dp
                 for (auto& dg_dp : problem->full.lfg[problem->full.g_index_start + g_index].jac.dp) {
                     i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_xu_total+ dg_dp.index;
+                    j_col_jac[nnz_index] = off_xu_total+ dg_dp.col;
                     nnz_index++;
                 }
             }
@@ -246,21 +246,21 @@ void GDOP::initJacobianSparsityPattern() {
         // dr / dx0
         for (auto& dr_dx0 : problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dx0) {
             i_row_jac[nnz_index] = eqn_index;
-            j_col_jac[nnz_index] = dr_dx0.index;
+            j_col_jac[nnz_index] = dr_dx0.col;
             nnz_index++;
         }
 
         // dg / dxf
         for (auto& dr_dxf : problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dxf) {
             i_row_jac[nnz_index] = eqn_index;
-            j_col_jac[nnz_index] = off_last_xu + dr_dxf.index;
+            j_col_jac[nnz_index] = off_last_xu + dr_dxf.col;
             nnz_index++;
         }
 
         // dg / dp
         for (auto& dr_dp: problem->boundary.mr[problem->boundary.r_index_start + r_index].jac.dp) {
             i_row_jac[nnz_index] = eqn_index;
-            j_col_jac[nnz_index] = off_xu_total + dr_dp.index;
+            j_col_jac[nnz_index] = off_xu_total + dr_dp.col;
             nnz_index++;
         }
     }
@@ -530,26 +530,26 @@ void GDOP::eval_grad_f() {
         for (int i = 0; i < mesh->intervals; i++) {
             for (int j = 0; j < mesh->nodes[i]; j++) {
                 for (auto& dL_dx : problem->full.lfg[0].jac.dx) {
-                    curr_grad[off_acc_xu[i][j] + dL_dx.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_dx.value + JAC_OFFSET_IJ));
+                    curr_grad[off_acc_xu[i][j] + dL_dx.col] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_dx.value + JAC_OFFSET_IJ));
                 }
                 for (auto& dL_du : problem->full.lfg[0].jac.du) {
-                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.index] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_du.value + JAC_OFFSET_IJ));
+                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.col] = mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_du.value + JAC_OFFSET_IJ));
                 }
                 for (auto& dL_dp : problem->full.lfg[0].jac.dp) {
-                    curr_grad[off_xu_total + dL_dp.index] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_dp.value + JAC_OFFSET_IJ));
+                    curr_grad[off_xu_total + dL_dp.col] += mesh->delta_t[i] * collocation->b[mesh->nodes[i]][j] * (*(dL_dp.value + JAC_OFFSET_IJ));
                 }
             }
         }
     }
     if (problem->boundary.has_mayer) {
         for (auto& dM_dx0 : problem->boundary.mr[0].jac.dx0) {
-            curr_grad[dM_dx0.index] = (*dM_dx0.value);
+            curr_grad[dM_dx0.col] = (*dM_dx0.value);
         }
         for (auto& dM_dxf : problem->boundary.mr[0].jac.dxf) {
-            curr_grad[off_last_xu + dM_dxf.index] += (*dM_dxf.value);
+            curr_grad[off_last_xu + dM_dxf.col] += (*dM_dxf.value);
         }
         for (auto& dM_dp : problem->boundary.mr[0].jac.dp) {
-            curr_grad[off_xu_total + dM_dp.index] += (*dM_dp.value);
+            curr_grad[off_xu_total + dM_dp.col] += (*dM_dp.value);
         }
     }
 };
@@ -593,7 +593,7 @@ void GDOP::eval_jac_g() {
 
                 // df / dx
                 for (auto& df_dx : problem->full.lfg[problem->full.f_index_start + f_index].jac.dx) {
-                    if (df_dx.index != f_index) {
+                    if (df_dx.col != f_index) {
                         curr_jac[nnz_index++] = -mesh->delta_t[i] * (*(df_dx.value + JAC_OFFSET_IJ));
                     } 
                     else {
@@ -699,43 +699,43 @@ void GDOP::updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, 
                            const BlockSparsity* ptr_map_p_xu, const double factor) {
     const int block_count = mesh->acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
-        values[ptr_map_xu_xu->access(dx_dx.index1, dx_dx.index2, block_count)] += factor * (*(dx_dx.value + HES_OFFSET_IJ));
+        values[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += factor * (*(dx_dx.value + HES_OFFSET_IJ));
     }
     for (const auto& du_dx : hes.du_dx) {
-        values[ptr_map_xu_xu->access(off_x + du_dx.index1, du_dx.index2, block_count)] += factor * (*(du_dx.value + HES_OFFSET_IJ));
+        values[ptr_map_xu_xu->access(off_x + du_dx.row, du_dx.col, block_count)] += factor * (*(du_dx.value + HES_OFFSET_IJ));
     }
     for (const auto& du_du : hes.du_du) {
-        values[ptr_map_xu_xu->access(off_x + du_du.index1, off_x + du_du.index2, block_count)] += factor * (*(du_du.value + HES_OFFSET_IJ));
+        values[ptr_map_xu_xu->access(off_x + du_du.row, off_x + du_du.col, block_count)] += factor * (*(du_du.value + HES_OFFSET_IJ));
     }
     for (const auto& dp_dx : hes.dp_dx) {
-        values[ptr_map_p_xu->access(dp_dx.index1, dp_dx.index2, block_count)] += factor * (*(dp_dx.value + HES_OFFSET_IJ));
+        values[ptr_map_p_xu->access(dp_dx.row, dp_dx.col, block_count)] += factor * (*(dp_dx.value + HES_OFFSET_IJ));
     }
     for (const auto& dp_du : hes.dp_du) {
-        values[ptr_map_p_xu->access(dp_du.index1, off_x + dp_du.index2, block_count)] += factor * (*(dp_du.value + HES_OFFSET_IJ));
+        values[ptr_map_p_xu->access(dp_du.row, off_x + dp_du.col, block_count)] += factor * (*(dp_du.value + HES_OFFSET_IJ));
     }
     for (const auto& dp_dp : hes.dp_dp) {
-        values[hes_h.access(dp_dp.index1, dp_dp.index2)] += factor * (*(dp_dp.value + HES_OFFSET_IJ));
+        values[hes_h.access(dp_dp.row, dp_dp.col)] += factor * (*(dp_dp.value + HES_OFFSET_IJ));
     } 
 }
 
 void GDOP::updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
-        values[hes_a.access(dx0_dx0.index1, dx0_dx0.index2)] += factor * (*(dx0_dx0.value));
+        values[hes_a.access(dx0_dx0.row, dx0_dx0.col)] += factor * (*(dx0_dx0.value));
     }
     for (const auto& dxf_dx0 : hes.dxf_dx0) {
-        values[hes_c.access(dxf_dx0.index1, dxf_dx0.index2)] += factor * (*(dxf_dx0.value));
+        values[hes_c.access(dxf_dx0.row, dxf_dx0.col)] += factor * (*(dxf_dx0.value));
     }
     for (const auto& dxf_dxf : hes.dxf_dxf) {
-        values[hes_d.access(dxf_dxf.index1, dxf_dxf.index2)] += factor * (*(dxf_dxf.value));
+        values[hes_d.access(dxf_dxf.row, dxf_dxf.col)] += factor * (*(dxf_dxf.value));
     }
     for (const auto& dp_dx0 : hes.dp_dx0) {
-        values[hes_e.access(dp_dx0.index1,  dp_dx0.index2)]  += factor * (*(dp_dx0.value));
+        values[hes_e.access(dp_dx0.row,  dp_dx0.col)]  += factor * (*(dp_dx0.value));
     }
     for (const auto& dp_dxf : hes.dp_dxf) {
-        values[hes_g.access(dp_dxf.index1,  dp_dxf.index2)]  += factor * (*(dp_dxf.value));
+        values[hes_g.access(dp_dxf.row,  dp_dxf.col)]  += factor * (*(dp_dxf.value));
     }
     for (const auto& dp_dp : hes.dp_dp) {
-        values[hes_h.access(dp_dp.index1,   dp_dp.index2)]   += factor * (*(dp_dp.value));
+        values[hes_h.access(dp_dp.row,   dp_dp.col)]   += factor * (*(dp_dp.value));
     }
 }
 

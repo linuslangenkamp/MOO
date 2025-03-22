@@ -2,7 +2,7 @@
 #define OPT_MESH_H
 
 #include "collocation.h"
-#include "base/fixed_vector.h"
+#include "fixed_vector.h"
 
 
 enum class InterpolationMethod {

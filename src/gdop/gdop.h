@@ -3,16 +3,17 @@
 
 #include <cassert>
 
-#include "base/block_sparsity.h"
-#include "base/fixed_vector.h"
-#include "base/linalg.h"
-#include "base/nlp_state.h"
-#include "base/constants.h"
-#include "interfaces/nlp.h"
+#include "../base/block_sparsity.h"
+#include "../base/constants.h"
+#include "../base/fixed_vector.h"
+#include "../base/linalg.h"
+#include "../base/nlp_state.h"
+#include "../base/nlp_structs.h"
+#include "../base/mesh.h"
+#include "../base/collocation.h"
+#include "../interfaces/nlp.h"
 
 #include "problem.h"
-#include "mesh.h"
-#include "collocation.h"
 
 
 class GDOP : public NLP {
@@ -47,6 +48,7 @@ class GDOP : public NLP {
     FixedVector<int> off_acc_jac_fg;  // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps
+    // for further info see hessian layout at the bottom
     BlockSparsity hes_a = BlockSparsity::createLowerTriangular(problem->x_size, BlockType::Exact);
     BlockSparsity hes_b = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::RowOffset);
     BlockSparsity hes_c = BlockSparsity::createSquare(problem->x_size, BlockType::Exact);
@@ -55,6 +57,58 @@ class GDOP : public NLP {
     BlockSparsity hes_f = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::RowOffset);
     BlockSparsity hes_g = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::Exact);
     BlockSparsity hes_h = BlockSparsity::createLowerTriangular(problem->p_size, BlockType::Exact);
+
+    // init nlp and sparsity
+    void init();
+    void initSizesOffsets();
+    void initBuffers();
+    void initBounds();
+    void initStartingPoint();
+    void initJacobian();
+    void initJacobianNonzeros();
+    void initJacobianSparsityPattern();
+    void initHessian();
+
+    // hessian updates
+    void updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+                          const BlockSparsity* ptr_map_p_xu, const double factor);
+    void updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor);
+
+    // get callback data
+    void callback_evaluation();
+    void callback_jacobian();
+    void callback_hessian();
+
+    // nlp solver calls
+    void check_new_x(const double* nlp_solver_x, bool new_x);
+    void check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda);
+    void check_new_sigma(const double obj_factor);
+    void eval_f();
+    void eval_g();
+    void eval_grad_f();
+    void eval_jac_g();
+    void eval_hes();
+
+    // virtuals in NLP
+    void eval_f_safe(const double* nlp_solver_x, bool new_x);
+    void eval_g_safe(const double* nlp_solver_x, bool new_x);
+    void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
+    void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
+    void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
+
+    /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
+    // TODO: use these later, fill one time and then scale at the end of calculations
+    // these have the same sizes as the curr_'s, just divide element wise
+    //FixedVector<double> curr_x_unscaled;
+    double curr_obj_nominal = 1;
+    FixedVector<double> curr_grad_nominal;
+    FixedVector<double> curr_g_nominal;
+    FixedVector<double> curr_jac_values_nominal;
+    FixedVectordouble> curr_hes_values_nominal;
+    */
+};
+
+#endif  // OPT_GDOP_H
 
 /*
 Hessian Sparsity Layout (lower triangle):
@@ -110,55 +164,3 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
   p  |  E  |    F    |    F    |    F    |     F     |    G    | H |
 -------------------------------------------------------------------*
 */
-
-    // init nlp and sparsity
-    void init();
-    void initSizesOffsets();
-    void initBuffers();
-    void initBounds();
-    void initStartingPoint();
-    void initJacobian();
-    void initJacobianNonzeros();
-    void initJacobianSparsityPattern();
-    void initHessian();
-
-    // hessian updates
-    void updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
-                          const BlockSparsity* ptr_map_p_xu, const double factor);
-    void updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor);
-
-    // get callback data
-    void callback_evaluation();
-    void callback_jacobian();
-    void callback_hessian();
-
-    // nlp solver calls
-    void check_new_x(const double* nlp_solver_x, bool new_x);
-    void check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda);
-    void check_new_sigma(const double obj_factor);
-    void eval_f();
-    void eval_g();
-    void eval_grad_f();
-    void eval_jac_g();
-    void eval_hes();
-
-    // virtuals in NLP
-    void eval_f_safe(const double* nlp_solver_x, bool new_x);
-    void eval_g_safe(const double* nlp_solver_x, bool new_x);
-    void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
-    void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
-    void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
-
-    /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
-    // TODO: use these later, fill one time and then scale at the end of calculations
-    // these have the same sizes as the curr_'s, just divide element wise
-    //FixedVector<double> curr_x_unscaled;
-    double curr_obj_nominal = 1;
-    FixedVector<double> curr_grad_nominal;
-    FixedVector<double> curr_g_nominal;
-    FixedVector<double> curr_jac_values_nominal;
-    FixedVectordouble> curr_hes_values_nominal;
-    */
-};
-
-#endif  // OPT_GDOP_H
