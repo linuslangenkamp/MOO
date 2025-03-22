@@ -1,5 +1,5 @@
-#ifndef OPT_NLP_H
-#define OPT_NLP_H
+#ifndef OPT_GDOP_H
+#define OPT_GDOP_H
 
 #include <cassert>
 
@@ -8,53 +8,22 @@
 #include "base/linalg.h"
 #include "base/nlp_state.h"
 #include "base/constants.h"
+#include "interfaces/nlp.h"
 
 #include "problem.h"
 #include "mesh.h"
 #include "collocation.h"
 
 
-struct NLP {
-    NLP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
-        : problem(std::make_shared<Problem>(problem)),
+class GDOP : public NLP {
+    GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
+        : NLP(),
+          problem(std::make_shared<Problem>(problem)),
           collocation(std::make_shared<Collocation>(collocation)),
           mesh(std::make_shared<Mesh>(mesh)),
           guess(std::make_shared<Trajectory>(guess)) {
         init();
     }
-
-    // NLP stuff itself
-    int number_vars;         // total number of variables in the NLP
-    int number_constraints;  // total number of constraints in the NLP
-    int nnz_jac = 0;         // nnz Jacobian in the NLP
-    int nnz_hes = 0;         // nnz Hessian in the NLP
-
-    // current iterates
-    FixedVector<double> curr_x;      // current NLP primal variables
-    FixedVector<double> curr_lambda; // current NLP dual variables
-    double              curr_sigma_f;     // current objective weight in hessian
-
-    // scaled variable bounds
-    FixedVector<double> x_lb;
-    FixedVector<double> x_ub;
-
-    // nlp function data
-    double curr_obj;                // current NLP objective value
-    FixedVector<double> curr_grad;  // current NLP gradient of the objective function
-    FixedVector<double> curr_g;     // current NLP constraint function evaluation
-    FixedVector<double> curr_jac;   // current NLP jacobian of the constraints
-    FixedVector<double> der_jac;    // constant NLP derivative matrix part of the jacobian
-    FixedVector<double> curr_hes;   // current NLP hessian of the lagrangian
-
-    // scaled constraint bounds
-    FixedVector<double> g_lb;
-    FixedVector<double> g_ub;
-
-    // COO sparsity patterns
-    FixedVector<int> i_row_jac;
-    FixedVector<int> j_col_jac;
-    FixedVector<int> i_row_hes;
-    FixedVector<int> j_col_hes;
 
     // structures
     std::shared_ptr<Mesh> mesh;                // grid / mesh
@@ -142,21 +111,10 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
 -------------------------------------------------------------------*
 */
 
-
-    /* TODO: maybe set these in fullsweep or boundarysweep, they dont need to be here, alloc them there w.r.t. macros in nlp.cpp!
-    // evaluation data (problem double* point to these arrays)
-    std::unique_ptr<double[]> eval_data_LFG;
-    std::unique_ptr<double[]> jac_data_LFG;
-    std::unique_ptr<double[]> hes_data_LFG;
-
-    std::unique_ptr<double[]> eval_data_MR;
-    std::unique_ptr<double[]>  jac_data_MR;
-    std::unique_ptr<double[]>  hes_data_MR;
-    */
-
     // init nlp and sparsity
     void init();
     void initSizesOffsets();
+    void initBuffers();
     void initBounds();
     void initStartingPoint();
     void initJacobian();
@@ -179,14 +137,16 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     void check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda);
     void check_new_sigma(const double obj_factor);
     void eval_f();
-    void eval_f_safe(const double* nlp_solver_x, bool new_x);
     void eval_g();
-    void eval_g_safe(const double* nlp_solver_x, bool new_x);
     void eval_grad_f();
-    void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
     void eval_jac_g();
-    void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
     void eval_hes();
+
+    // virtuals in NLP
+    void eval_f_safe(const double* nlp_solver_x, bool new_x);
+    void eval_g_safe(const double* nlp_solver_x, bool new_x);
+    void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
+    void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
     void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
 
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
@@ -201,4 +161,4 @@ where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
     */
 };
 
-#endif  // OPT_NLP_H
+#endif  // OPT_GDOP_H

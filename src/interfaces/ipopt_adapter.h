@@ -1,14 +1,14 @@
 #ifndef OPT_IPOPT_ADAPTER_H
 #define OPT_IPOPT_ADAPTER_H
 
-#include "../nlp.h"
-
 #include <IpTNLP.hpp>
 #include <IpIpoptData.hpp>
 #include <IpDenseVector.hpp>
 #include <IpSmartPtr.hpp>
 #include "IpIpoptApplication.hpp"
 #include "IpSolveStatistics.hpp"
+
+#include "nlp.h"
 
 
 class IpoptAdapter : public Ipopt::TNLP {

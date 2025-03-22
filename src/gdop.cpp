@@ -1,18 +1,20 @@
-#include "nlp.h"
+#include "gdop.h"
 
 // some convenience macros, define the offsets / number of elements in the callback function data arrays
 #define EVAL_OFFSET_IJ problem->full.eval_size * mesh->acc_nodes[i][j]
 #define JAC_OFFSET_IJ problem->full.jac_size * mesh->acc_nodes[i][j]
 #define HES_OFFSET_IJ problem->full.hes_size * mesh->acc_nodes[i][j]
 
-void NLP::init() {
+void GDOP::init() {
     initSizesOffsets();
+    initBuffers();
     initBounds();
     initJacobian();
     initHessian();
+    initStartingPoint();
 }
 
-void NLP::initSizesOffsets() {
+void GDOP::initSizesOffsets() {
     off_x = problem->x_size;
     off_u = problem->u_size;
     off_p = problem->p_size;
@@ -26,16 +28,19 @@ void NLP::initSizesOffsets() {
     number_constraints = problem->boundary.r_size + off_fg_total;
 }
 
-void NLP::initBounds() {
-    // TODO: perform scaling before the bounds are set!
-
+void GDOP::initBuffers() {
     curr_x    = FixedVector<double>(number_vars);
+    init_x    = FixedVector<double>(number_vars);
     curr_grad = FixedVector<double>(number_vars);
     x_lb      = FixedVector<double>(number_vars);
     x_ub      = FixedVector<double>(number_vars);
     curr_g    = FixedVector<double>(number_constraints);
     g_lb      = FixedVector<double>(number_constraints);
     g_ub      = FixedVector<double>(number_constraints);
+}
+
+void GDOP::initBounds() {
+    // TODO: perform scaling before the bounds are set!
 
     // standard bounds, but checking for x0_fixed or xf_fixed
     for (int x_index = 0; x_index < off_x; x_index++) {
@@ -89,36 +94,36 @@ void NLP::initBounds() {
     }
 }
 
-void NLP::initStartingPoint() {
+void GDOP::initStartingPoint() {
     Trajectory new_guess = guess->interpolate(*mesh, *collocation);
 
     for (int x_index = 0; x_index < off_x; x_index++) {
-        curr_x[x_index] = new_guess.x[x_index][0];
+        init_x[x_index] = new_guess.x[x_index][0];
     }
 
     int index = 1;
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
-                curr_x[off_acc_xu[i][j] + x_index] = new_guess.x[x_index][index];
+                init_x[off_acc_xu[i][j] + x_index] = new_guess.x[x_index][index];
             }
             for (int u_index = 0; u_index < off_u; u_index++) {
-                curr_x[off_acc_xu[i][j] + off_x + u_index] = new_guess.u[u_index][index];
+                init_x[off_acc_xu[i][j] + off_x + u_index] = new_guess.u[u_index][index];
             }
             index++;
         }
     }
     for (int p_index = 0; p_index < off_p; p_index++) {
-        curr_x[off_xu_total + p_index] = new_guess.p[p_index];
+        init_x[off_xu_total + p_index] = new_guess.p[p_index];
     }
 }
 
-void NLP::initJacobian() {
+void GDOP::initJacobian() {
     initJacobianNonzeros();
     initJacobianSparsityPattern();
 }
 
-void NLP::initJacobianNonzeros() {
+void GDOP::initJacobianNonzeros() {
     // stage 1: calculate nnz of blocks and number of collisions, where df_k / dx_k != 0. these are contained by default because of the D-Matrix
     int nnz_r = 0;
     int nnz_f_g = 0;
@@ -160,7 +165,7 @@ void NLP::initJacobianNonzeros() {
     j_col_jac = FixedVector<int>(nnz_jac);
 }
 
-void NLP::initJacobianSparsityPattern() {
+void GDOP::initJacobianSparsityPattern() {
     // stage 2: calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
     for (int i = 0; i < mesh->intervals; i++) {
         int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
@@ -262,7 +267,7 @@ void NLP::initJacobianSparsityPattern() {
     assert(nnz_index == nnz_jac);
 }
 
-void NLP::initHessian() {
+void GDOP::initHessian() {
     // takes O(nnz(A) + nnz(B) + ...+ nnz(H)) for creation of ** Maps and O(nnz(Hessian)) for creation of Hessian sparsity pattern
 
     // stage 1: calculate IndexSet and nnz
@@ -418,7 +423,7 @@ void NLP::initHessian() {
  * because of this structure, before every nlp evaluation check_new_x has to be performed and step 1 has to be executed in case
  */
 
-void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
+void GDOP::check_new_x(const double* nlp_solver_x, bool new_x) {
     evaluation_state.check_reset_x(new_x);
     if (!evaluation_state.x_set_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
@@ -428,7 +433,7 @@ void NLP::check_new_x(const double* nlp_solver_x, bool new_x) {
     }
 }
 
-void NLP::check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda) {
+void GDOP::check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda) {
     evaluation_state.check_reset_lambda(new_lambda);
     if (!evaluation_state.lambda_set) {
         curr_lambda.assign(nlp_solver_lambda, number_constraints);
@@ -436,14 +441,14 @@ void NLP::check_new_lambda(const double* nlp_solver_lambda, const bool new_lambd
     }
 }
 
-void NLP::check_new_sigma(const double sigma_f) {
+void GDOP::check_new_sigma(const double sigma_f) {
     if (sigma_f != curr_sigma_f) {
         curr_sigma_f = sigma_f;
         evaluation_state.hes_lag = false;
     }
 }
 
-void NLP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
+void GDOP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (evaluation_state.eval_f) {
         return;
@@ -454,7 +459,7 @@ void NLP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
     }
 }
 
-void NLP::eval_g_safe(const double* nlp_solver_x, bool new_x) {
+void GDOP::eval_g_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (evaluation_state.eval_g) {
         return;
@@ -465,7 +470,7 @@ void NLP::eval_g_safe(const double* nlp_solver_x, bool new_x) {
     }
 }
 
-void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
+void GDOP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (evaluation_state.grad_f) {
         return;
@@ -476,7 +481,7 @@ void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     }
 };
 
- void NLP::eval_jac_g_safe(const double* nlp_solver_x, bool new_x) {
+ void GDOP::eval_jac_g_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (evaluation_state.jac_g) {
         return;
@@ -487,7 +492,7 @@ void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     }
  }
 
- void NLP::eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x, bool new_lambda) {
+ void GDOP::eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x, bool new_lambda) {
     check_new_x(nlp_solver_x, new_x);
     check_new_lambda(nlp_solver_lambda, new_lambda);
     check_new_sigma(sigma_f);
@@ -500,7 +505,7 @@ void NLP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     }
  }
 
-void NLP::eval_f() {
+void GDOP::eval_f() {
     double mayer = 0;
     if (problem->boundary.has_mayer) {
         mayer = problem->boundary.getEvalM();
@@ -519,7 +524,7 @@ void NLP::eval_f() {
 }
 
 
-void NLP::eval_grad_f() {
+void GDOP::eval_grad_f() {
     curr_grad.fill_zero();
     if (problem->full.has_lagrange) {
         for (int i = 0; i < mesh->intervals; i++) {
@@ -549,7 +554,7 @@ void NLP::eval_grad_f() {
     }
 };
 
-void NLP::eval_g() {
+void GDOP::eval_g() {
     curr_g.fill_zero();
     for (int i = 0; i < mesh->intervals; i++) {
         for (int f = problem->full.f_index_start; f < problem->full.f_index_end; f++) {
@@ -572,7 +577,7 @@ void NLP::eval_g() {
     }
 }
 
-void NLP::eval_jac_g() {
+void GDOP::eval_jac_g() {
     // copy constant part into curr_jac
     curr_jac = der_jac;
 
@@ -648,7 +653,7 @@ void NLP::eval_jac_g() {
     assert(nnz_index == nnz_jac);
 };
 
-void NLP::eval_hes() {
+void GDOP::eval_hes() {
     curr_hes.fill_zero();
     int lagrange_offset = (int) problem->full.has_lagrange;  // correction for array accesses
     int mayer_offset    = (int) problem->boundary.has_mayer; // correction for array accesses
@@ -690,7 +695,7 @@ void NLP::eval_hes() {
     }
 }
 
-void NLP::updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+void GDOP::updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
                            const BlockSparsity* ptr_map_p_xu, const double factor) {
     const int block_count = mesh->acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
@@ -713,7 +718,7 @@ void NLP::updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, c
     } 
 }
 
-void NLP::updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor) {
+void GDOP::updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
         values[hes_a.access(dx0_dx0.index1, dx0_dx0.index2)] += factor * (*(dx0_dx0.value));
     }
@@ -735,21 +740,21 @@ void NLP::updateHessianMR(FixedVector<double>& values, const HessianMR& hes, con
 }
 
 // TODO: how to perform the data filling and evaluations
-void NLP::callback_evaluation() {
+void GDOP::callback_evaluation() {
     // TODO: how to interface here
     // problem->full.fillInputData();
     evaluation_state.eval_f = true;
     evaluation_state.eval_g = true;
 }
 
-void NLP::callback_jacobian() {
+void GDOP::callback_jacobian() {
     // TODO: how to interface here
     // problem->full.fillInputData();
     evaluation_state.grad_f = true;
     evaluation_state.jac_g = true;
 }
 
-void NLP::callback_hessian() {
+void GDOP::callback_hessian() {
     // TODO: how to interface here
     // problem->full.fillInputData();
     evaluation_state.hes_lag = true;

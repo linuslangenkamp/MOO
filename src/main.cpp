@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include "collocation.h"
-#include "nlp.h"
+#include "gdop.h"
 #include "problem.h"
 #include "interfaces/ipopt_solver.h"
 
@@ -37,7 +37,7 @@ int main() {
     //NLP nlp = NLP(problem, radau, mesh, guess);
     //std::cout << nlp.number_vars << std::endl;
     //std::cout << nlp.number_constraints << std::endl;
-    std::shared_ptr<NLP> a;
+    std::shared_ptr<GDOP> a;
     std::shared_ptr<std::unordered_map<std::string, std::string>> b;
     IpoptSolver ipopt = IpoptSolver(a, b);
     ipopt.optimize();

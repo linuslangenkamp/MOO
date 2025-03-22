@@ -23,8 +23,7 @@ bool IpoptAdapter::get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number
     assert(init_x == true);
     assert(init_lambda == false);
     assert(init_z == false);
-    nlp->initStartingPoint();
-    nlp->curr_x.writeTo(x);
+    nlp->init_x.writeTo(x);
     return true;
 };
 

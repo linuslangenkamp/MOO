@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <memory>
 
-#include "../nlp.h"
+#include "nlp.h"
 
 
 class NLPSolver {

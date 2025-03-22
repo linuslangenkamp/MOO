@@ -1,5 +1,6 @@
 #include "ipopt_solver.h"
 
+
 IpoptSolver::IpoptSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings)
     : NLPSolver(nlp, solver_settings),
       app(IpoptApplicationFactory()),

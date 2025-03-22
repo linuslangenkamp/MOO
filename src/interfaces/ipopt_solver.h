@@ -6,6 +6,7 @@
 #include "nlp_solver.h"
 #include "ipopt_adapter.h"
 
+
 class IpoptSolver : NLPSolver {
 public:
     IpoptSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings);
