@@ -6,58 +6,62 @@
 #include <vector>
 
 #include "../base/nlp_structs.h"
+#include "../base/mesh.h"
 
 
-struct FullSweep {
+class FullSweep {
+public:
     // Evaluation of L(), f(), g() for a given z_{i,j} = (x_{i,j}, u_{i,j}, p, t_{i,j})^T + first and second derivatives
-    // Idea: Call Fullsweep.setValues(), Fullsweep.callEval(), callJac(), callHess() -> Just iterate over COO
-    // function evals / diffs are on openmodelica side, 
+    // Idea: Call Fullsweep.setValues(), Fullsweep.callbackEval(), callbackJac(), callHess() -> Just iterate over COO
+    // function evals / diffs are on callback interfaced side
 
-    std::vector<FunctionLFG> lfg;
-
-    std::vector<Bounds> g_bounds; // g^L <= g(x, u, p, t) <= g^U :: path constraints
-
-    //  F, G indices in lfg vector
-    int f_index_start, f_index_end;
-    int g_index_start, g_index_end;
-    int f_size;
-    int g_size;
-    int fg_size;
-    bool has_lagrange;
-
-    // sizes of 1 chunk in the data array - which has to be defined somewhere, maybe in NLP
-    int eval_size; // eval_size == g_index_end == number of functions in lfg
-    int jac_size;
-    int hes_size;
-
-    FixedVector<double> evalBuffer;
-    FixedVector<double> jacBuffer;
-    FixedVector<double> hesBuffer;
-
-    // create this based on some input data for the Fullsweep. Create the Grad
-    FullSweep() {
-        // now just use as: fillInputData() -> iterate over function COO's
+    FullSweep(FixedVector<FunctionLFG>& lfg, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, bool has_lagrange,
+              int f_size, int g_size, int x_size, int u_size, int p_size)
+    : lfg(std::move(lfg)), mesh(mesh), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), has_lagrange(has_lagrange), f_index_start((int) has_lagrange),
+      f_index_end(f_index_start + f_size), g_index_start(f_index_end), g_index_end(g_index_start + g_size), x_size(x_size),
+      u_size(u_size), p_size(p_size), g_bounds(std::move(g_bounds)), eval_size(lfg.size()) {
+        for (const auto& func : lfg) {
+            jac_size += func.jac.nnz();
+            hes_size += func.hes.nnz();
+        }
+        eval_buffer = FixedVector<double>(mesh->node_count * eval_size);
+        jac_buffer = FixedVector<double>(mesh->node_count * jac_size);
+        hes_buffer = FixedVector<double>(mesh->node_count * hes_size);
     };
 
-    inline void fillInputData(double* x, double* u, double* p, double* t) {
-        // TODO: think about this part
-        // input unscaled values for x, u, p, t at some (i, j)
-        // fill the OM buffer (should be scoped / parallelizable / localized)
-    };
+    FixedVector<FunctionLFG> lfg;
+    std::shared_ptr<Mesh> mesh;
 
-    inline void callEval() {
-        // TODO: think about this part
-        // get data array from solver
-        // calculate eval 
-   }
+    FixedVector<Bounds> g_bounds;
 
-    inline void callJac() {
-        // TODO: think about this part
-    }
+    bool has_lagrange = false;
+    int f_index_start = 0;
+    int f_index_end = 0;
+    int g_index_start = 0;
+    int g_index_end = 0;
+    int f_size = 0;
+    int g_size = 0;
+    int fg_size = 0;
 
-    inline void callHess() {
-        // TODO: think about this part
-    }
+    int x_size = 0;
+    int u_size = 0;
+    int p_size = 0;
+
+    // sizes of 1 chunk in the data array
+    int eval_size = 0;
+    int jac_size = 0;
+    int hes_size = 0;
+
+    FixedVector<double> eval_buffer;
+    FixedVector<double> jac_buffer;
+    FixedVector<double> hes_buffer; // can lead to several memory consumption / order of a few GB, so maybe rethink this for large scale problems
+
+    // fill eval_buffer, jac_buffer, hes_buffer
+    virtual void callbackEval(const double* xu_nlp, const double* p) = 0;
+
+    virtual void callbackJac(const double* xu_nlp, const double* p) = 0;
+
+    virtual void callbackHes(const double* xu_nlp, const double* p) = 0;
 
     inline double getEvalL(const int offset) {
         return *(lfg[0].eval + offset * eval_size);
@@ -72,39 +76,47 @@ struct FullSweep {
     }
 };
 
-struct BoundarySweep {
-    // M, R :: assert x0 Size == xf Size
-    std::vector<FunctionMR> mr;
+class BoundarySweep {
+public:
 
-    bool has_mayer;
-    int r_index_start, r_index_end;
-    int r_size; // assert; check with fixed initial states, these should not be contained here!
-    
-    std::vector<Bounds> r_bounds; // r^L <= r(x0, xf, p) <= r^U :: boundary constraints
-
-    FixedVector<double> evalBuffer;
-    FixedVector<double> jacBuffer;
-    FixedVector<double> hesBuffer;
-
-    inline void fillInputData(double* x0, double* xf, double* p) {
-        // TODO: think about this part
-        // unscale
-        // fill the OM buffer
+    BoundarySweep(FixedVector<FunctionMR>& mr, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds, bool has_mayer,
+                  int r_size, int x_size, int p_size)
+    : mr(std::move(mr)), mesh(mesh), r_size(r_size), has_mayer(has_mayer), r_index_start((int) has_mayer),
+      r_index_end(r_index_start + r_size), x_size(x_size), p_size(p_size), r_bounds(std::move(r_bounds)) {
+        int jac_buffer_size = 0;
+        int hes_buffer_size = 0;
+        for (const auto& func : mr) {
+            jac_buffer_size += func.jac.nnz();
+            hes_buffer_size += func.hes.nnz();
+        }
+        eval_buffer = FixedVector<double>(r_index_end);
+        jac_buffer = FixedVector<double>(jac_buffer_size);
+        hes_buffer = FixedVector<double>(hes_buffer_size);
     };
-    
-    inline void callEval() {
-        // TODO: think about this part
-        // get data array from solver
-        // calculate eval 
-   }
 
-    inline void callJac() {
-        // TODO: think about this part
-    }
+    // M, R :: assert x0 Size == xf Size
+    FixedVector<FunctionMR> mr;
+    std::shared_ptr<Mesh> mesh;
 
-    inline void callHess() {
-        // TODO: think about this part
-    }
+    FixedVector<Bounds> r_bounds;
+
+    bool has_mayer = false;
+    int r_index_start = 0;
+    int r_index_end = 0;
+    int r_size = 0; // assert; check with fixed initial states, these should not be contained here!
+
+    int x_size = 0;
+    int p_size = 0;
+
+    FixedVector<double> eval_buffer;
+    FixedVector<double> jac_buffer;
+    FixedVector<double> hes_buffer;
+
+    virtual void callbackEval(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
+
+    virtual void callbackJac(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
+
+    virtual void callbackHes(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
 
     inline double getEvalM() {
         return *(mr[0].eval);
@@ -115,16 +127,25 @@ struct BoundarySweep {
     }
 };
 
-struct Problem {
-    FullSweep full;
-    BoundarySweep boundary;
+class BaseProblem {
+public:
+    BaseProblem(std::unique_ptr<FullSweep> full, std::unique_ptr<BoundarySweep> boundary, FixedVector<Bounds>& x_bounds,
+               FixedVector<Bounds>& u_bounds, FixedVector<Bounds>& p_bounds, FixedVector<std::optional<double>>& x0_fixed,
+               FixedVector<std::optional<double>>& xf_fixed)
+    : full(std::move(full)), boundary(std::move(boundary)), x_size(full->x_size), u_size(full->u_size), p_size(full->p_size),
+      x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)), p_bounds(std::move(p_bounds)),
+      x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)) {
+    };
+    
+    std::unique_ptr<FullSweep> full;
+    std::unique_ptr<BoundarySweep> boundary;
 
-    std::vector<Bounds> x_bounds;
-    std::vector<Bounds> u_bounds;
-    std::vector<Bounds> p_bounds;
+    FixedVector<Bounds> x_bounds;
+    FixedVector<Bounds> u_bounds;
+    FixedVector<Bounds> p_bounds;
 
-    std::vector<std::optional<double>> x0_fixed; // set value if a state has a fixed initial value, remove the constraint from r()!
-    std::vector<std::optional<double>> xf_fixed; // set value if a state has a fixed final value, remove the constraint from r()!
+    FixedVector<std::optional<double>> x0_fixed; // set value if a state has a fixed initial value, remove the constraint from r()!
+    FixedVector<std::optional<double>> xf_fixed; // set value if a state has a fixed final value, remove the constraint from r()!
 
     int x_size;
     int u_size;

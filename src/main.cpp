@@ -16,8 +16,8 @@ int main() {
     q.print();
     Collocation radau = Collocation();
     Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
-    BlockSparsity::createLowerTriangular(5, BlockType::Offset);
-    Problem problem = Problem();
+    /*BlockSparsity::createLowerTriangular(5, BlockType::Offset);
+    BaseProblem problem = BaseProblem();
     problem.x_size = 1;
     problem.x_bounds = {{2, 4}};
     problem.x0_fixed = {std::nullopt};
@@ -25,12 +25,12 @@ int main() {
     problem.u_size = 2;
     problem.u_bounds = {{2, 4}, {-1, 2}};
     problem.p_size = 0;
-    problem.full.f_size = 1;
-    problem.full.g_size = 1;
-    problem.full.fg_size = 2;
-    problem.full.g_bounds = {{1, 2}};
-    problem.boundary.r_size = 1;
-    problem.boundary.r_bounds = {{125, 2555}};
+    problem.full->f_size = 1;
+    problem.full->g_size = 1;
+    problem.full->fg_size = 2;
+    problem.full->g_bounds = {{1, 2}};
+    problem.boundary->r_size = 1;
+    problem.boundary->r_bounds = {{125, 2555}};
     Trajectory guess = {{0, 1}, {{1, 5}}, {{0, 2}, {3, 1}}, {1, 2}, InterpolationMethod::LINEAR};
 
     //NLP nlp = NLP(problem, radau, mesh, guess);
@@ -39,6 +39,6 @@ int main() {
     std::shared_ptr<GDOP> a;
     std::shared_ptr<std::unordered_map<std::string, std::string>> b;
     IpoptSolver ipopt = IpoptSolver(a, b);
-    ipopt.optimize();
+    ipopt.optimize();*/
     return 0;
 }

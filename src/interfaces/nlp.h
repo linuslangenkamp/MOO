@@ -47,11 +47,11 @@ public:
     FixedVector<int> i_row_hes; // row COO of the Hessian
     FixedVector<int> j_col_hes; // column COO of the Hessian
 
-    virtual void eval_f_safe(const double* nlp_solver_x, bool new_x) = 0;
-    virtual void eval_g_safe(const double* nlp_solver_x, bool new_x) = 0;
-    virtual void eval_grad_f_safe(const double* nlp_solver_x, bool new_x) = 0;
-    virtual void eval_jac_g_safe(const double* nlp_solver_x, bool new_x) = 0;
-    virtual void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda) = 0;
+    virtual void eval_f_safe(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_obj
+    virtual void eval_g_safe(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_g
+    virtual void eval_grad_f_safe(const double* nlp_solver_x, bool new_x) = 0; // fill curr_grad
+    virtual void eval_jac_g_safe(const double* nlp_solver_x, bool new_x) = 0;  // fill curr_jac
+    virtual void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda) = 0; // fill curr_hes
 };
 
 #endif  // OPT_NLP_H

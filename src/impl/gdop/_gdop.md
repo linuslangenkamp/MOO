@@ -3,7 +3,7 @@
 This folder contains an NLP implementation of the following dynamic optimization problem:
 
 $$
-\min_{u(t), p} M(x(t_0), x(t_f), p) + \int_{t_0}^{t_f} L(x, u, p, t) \, dt
+\min_{u(t), p} M(x_0, x_f, p) + \int_{t_0}^{t_f} L(x, u, p, t) \, dt
 $$
 
 subject to:
@@ -12,7 +12,7 @@ $$
 \begin{aligned}
     \frac{dx}{dt} &= f(x, u, p, t),  & \forall t &\in [t_0, t_f] \\
     g^{LB} &\leq g(x, u, p, t) \leq g^{UB},  & \forall t &\in [t_0, t_f] \\
-    r^{LB} &\leq r(x(t_0), x(t_f), p) \leq r^{UB}
+    r^{LB} &\leq r(x_0, x_f, p) \leq r^{UB}
 \end{aligned}
 $$
 

@@ -17,10 +17,10 @@
 
 
 class GDOP : public NLP {
-    GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
+    GDOP(std::shared_ptr<BaseProblem> problem, std::unique_ptr<Collocation> collocation, Mesh& mesh, Trajectory& guess)
         : NLP(),
-          problem(std::make_shared<Problem>(problem)),
-          collocation(std::make_shared<Collocation>(collocation)),
+          problem(problem),
+          collocation(std::move(collocation)),
           mesh(std::make_shared<Mesh>(mesh)),
           guess(std::make_shared<Trajectory>(guess)) {
         init();
@@ -28,8 +28,8 @@ class GDOP : public NLP {
 
     // structures
     std::shared_ptr<Mesh> mesh;                // grid / mesh
-    std::shared_ptr<Problem> problem;          // continuous GDOP
-    std::shared_ptr<Collocation> collocation;  // collocation data
+    std::shared_ptr<BaseProblem> problem;      // continuous GDOP
+    std::unique_ptr<Collocation> collocation;  // collocation data
     std::shared_ptr<Trajectory> guess;         // initial guess / trajectory, will be interpolated accordingly
     NLP_State evaluation_state;                // simple state to check which actions are / have to be performed for an iteration
 

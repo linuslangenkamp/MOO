@@ -27,6 +27,10 @@ struct JacobianLFG {
     std::vector<JacobianSparsity> dx;
     std::vector<JacobianSparsity> du;
     std::vector<JacobianSparsity> dp;
+
+    inline int nnz() const {
+        return dx.size() + du.size() + dp.size();
+    }
 };
 
 struct HessianLFG {
@@ -37,6 +41,10 @@ struct HessianLFG {
     std::vector<HessianSparsity> dp_dx;
     std::vector<HessianSparsity> dp_du;
     std::vector<HessianSparsity> dp_dp;
+
+    inline int nnz() const {
+        return dx_dx.size() + du_dx.size() + du_du.size() + dp_dx.size() + dp_du.size() + dp_dp.size();
+    }
 };
 
 struct FunctionLFG {
@@ -53,6 +61,10 @@ struct JacobianMR {
     std::vector<JacobianSparsity> dx0;
     std::vector<JacobianSparsity> dxf;
     std::vector<JacobianSparsity> dp;
+
+    inline int nnz() const {
+        return dx0.size() + dxf.size() + dp.size();
+    }
 };
 
 struct HessianMR {
@@ -63,6 +75,10 @@ struct HessianMR {
     std::vector<HessianSparsity> dp_dx0;
     std::vector<HessianSparsity> dp_dxf;
     std::vector<HessianSparsity> dp_dp;
+
+    inline int nnz() const {
+        return dx0_dx0.size() + dxf_dx0.size() + dxf_dxf.size() + dp_dx0.size() + dp_dxf.size() + dp_dp.size();
+    }
 };
 
 struct FunctionMR {
