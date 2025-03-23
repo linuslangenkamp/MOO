@@ -5,9 +5,51 @@
 #include "impl/gdop/problem.h"
 #include "interfaces/ipopt_solver.h"
 
+#include "impl/gdop/test_problem_impl.h"
 
 int main() {
-    FixedField<double, 3> x(1, 2, 5);
+    Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
+    std::unique_ptr<Collocation> radau = std::make_unique<Collocation>();
+
+    // M(x) = x^2
+    FixedVector<FunctionMR> mr(1);
+    mr[0].jac.dxf.push_back(JacobianSparsity({0, nullptr}));
+    mr[0].hes.dxf_dxf.push_back(HessianSparsity({0, 0, nullptr}));
+
+    // f(x, u) = cos(x) + u
+    FixedVector<FunctionLFG> lfg(1);
+    lfg[0].jac.dx.push_back(JacobianSparsity({0, nullptr}));
+    lfg[0].jac.du.push_back(JacobianSparsity({0, nullptr}));
+    lfg[0].hes.dx_dx.push_back(HessianSparsity({0, 0, nullptr}));
+
+    FixedVector<Bounds> g_bounds(0);
+    FixedVector<Bounds> r_bounds(0);
+
+    FullSweepTestImpl fs = FullSweepTestImpl(lfg, std::make_shared<Mesh>(mesh), g_bounds);
+    BoundarySweepTestImpl bs = BoundarySweepTestImpl(mr, std::make_shared<Mesh>(mesh), r_bounds);
+
+    FixedVector<Bounds> x_bounds(1);
+    FixedVector<Bounds> u_bounds(1);
+    FixedVector<Bounds> p_bounds(0);
+    FixedVector<std::optional<double>> x0_fixed(1);
+    FixedVector<std::optional<double>> xf_fixed(1);
+    x_bounds[0].lb = -1;
+    x_bounds[0].ub = 1;
+    u_bounds[0].lb = -1;
+    u_bounds[0].ub = 1;
+
+    Problem problem(std::make_unique<FullSweepTestImpl>(fs), std::make_unique<BoundarySweepTestImpl>(bs), 
+        x_bounds, u_bounds, p_bounds, x0_fixed, xf_fixed);
+
+    // 0 guess
+    Trajectory initial_guess = {{0, 1}, {{0, 0}}, {{0, 0}}, {}, InterpolationMethod::LINEAR};
+
+    GDOP gdop(std::make_shared<Problem>(std::move(problem)), std::move(radau), mesh, initial_guess);
+
+    IpoptSolver ipopt_solver(std::make_shared<GDOP>(std::move(gdop)), NULL);
+    ipopt_solver.optimize();
+
+    /*FixedField<double, 3> x(1, 2, 5);
     FixedField<double, 1> q(2);
     std::vector<double> vec = {7, 8, 9, 10, 11};
     FixedVector<double> z(vec.begin(), vec.end());
@@ -15,9 +57,8 @@ int main() {
     std::cout << q[1] << std::endl;
     q.print();
     Collocation radau = Collocation();
-    Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
-    /*BlockSparsity::createLowerTriangular(5, BlockType::Offset);
-    BaseProblem problem = BaseProblem();
+    BlockSparsity::createLowerTriangular(5, BlockType::Offset);
+    Problem problem = Problem();
     problem.x_size = 1;
     problem.x_bounds = {{2, 4}};
     problem.x0_fixed = {std::nullopt};

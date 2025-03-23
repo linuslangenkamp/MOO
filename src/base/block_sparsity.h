@@ -40,7 +40,9 @@ struct BlockSparsity {
     */
     static BlockSparsity createLowerTriangular(const int size, const BlockType block_type) {
         BlockSparsity b;
+        b.type = block_type;
         b.block = FixedField<int, 2>(size);
+
         for (int i = 0; i < size; i++) {
             b.block[i] = FixedVector<int>(i + 1);
         }
@@ -67,6 +69,7 @@ struct BlockSparsity {
     */
     static BlockSparsity createRectangular(const int rows, const int cols, const BlockType block_type) {
         BlockSparsity b;
+        b.type = block_type;
         b.block = FixedField<int, 2>(rows, cols);
 
         switch (block_type) {

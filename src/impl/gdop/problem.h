@@ -17,9 +17,9 @@ public:
 
     FullSweep(FixedVector<FunctionLFG>& lfg, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, bool has_lagrange,
               int f_size, int g_size, int x_size, int u_size, int p_size)
-    : lfg(std::move(lfg)), mesh(mesh), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), has_lagrange(has_lagrange), f_index_start((int) has_lagrange),
+    : lfg(lfg), mesh(mesh), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), has_lagrange(has_lagrange), f_index_start((int) has_lagrange),
       f_index_end(f_index_start + f_size), g_index_start(f_index_end), g_index_end(g_index_start + g_size), x_size(x_size),
-      u_size(u_size), p_size(p_size), g_bounds(std::move(g_bounds)), eval_size(lfg.size()) {
+      u_size(u_size), p_size(p_size), g_bounds(g_bounds), eval_size(lfg.size()) {
         for (const auto& func : lfg) {
             jac_size += func.jac.nnz();
             hes_size += func.hes.nnz();
@@ -47,7 +47,7 @@ public:
     int u_size = 0;
     int p_size = 0;
 
-    // sizes of 1 chunk in the data array
+    // sizes of 1 buffer chuck
     int eval_size = 0;
     int jac_size = 0;
     int hes_size = 0;
@@ -81,8 +81,8 @@ public:
 
     BoundarySweep(FixedVector<FunctionMR>& mr, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds, bool has_mayer,
                   int r_size, int x_size, int p_size)
-    : mr(std::move(mr)), mesh(mesh), r_size(r_size), has_mayer(has_mayer), r_index_start((int) has_mayer),
-      r_index_end(r_index_start + r_size), x_size(x_size), p_size(p_size), r_bounds(std::move(r_bounds)) {
+    : mr(mr), mesh(mesh), r_size(r_size), has_mayer(has_mayer), r_index_start((int) has_mayer),
+      r_index_end(r_index_start + r_size), x_size(x_size), p_size(p_size), r_bounds(r_bounds) {
         int jac_buffer_size = 0;
         int hes_buffer_size = 0;
         for (const auto& func : mr) {
@@ -127,14 +127,14 @@ public:
     }
 };
 
-class BaseProblem {
+class Problem {
 public:
-    BaseProblem(std::unique_ptr<FullSweep> full, std::unique_ptr<BoundarySweep> boundary, FixedVector<Bounds>& x_bounds,
+    Problem(std::unique_ptr<FullSweep> full, std::unique_ptr<BoundarySweep> boundary, FixedVector<Bounds>& x_bounds,
                FixedVector<Bounds>& u_bounds, FixedVector<Bounds>& p_bounds, FixedVector<std::optional<double>>& x0_fixed,
                FixedVector<std::optional<double>>& xf_fixed)
-    : full(std::move(full)), boundary(std::move(boundary)), x_size(full->x_size), u_size(full->u_size), p_size(full->p_size),
-      x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)), p_bounds(std::move(p_bounds)),
-      x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)) {
+    : full(std::move(full)), boundary(std::move(boundary)), x_size(this->full->x_size), u_size(this->full->u_size), p_size(this->full->p_size),
+      x_bounds(x_bounds), u_bounds(u_bounds), p_bounds(p_bounds),
+      x0_fixed(x0_fixed), xf_fixed(xf_fixed) {
     };
     
     std::unique_ptr<FullSweep> full;

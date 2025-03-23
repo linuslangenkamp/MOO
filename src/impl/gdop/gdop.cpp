@@ -125,8 +125,9 @@ void GDOP::initJacobian() {
 
 void GDOP::initJacobianNonzeros() {
     // stage 1: calculate nnz of blocks and number of collisions, where df_k / dx_k != 0. these are contained by default because of the D-Matrix
+    int nnz_f = 0;
+    int nnz_g = 0;
     int nnz_r = 0;
-    int nnz_f_g = 0;
     int diagonal_collisions = 0;
     for (int f_index = 0; f_index < problem->full->f_size; f_index++) {
         for (const auto& df_k_dx : problem->full->lfg[problem->full->f_index_start + f_index].jac.dx) {
@@ -134,20 +135,16 @@ void GDOP::initJacobianNonzeros() {
                 diagonal_collisions++;
             }
         }
-        nnz_f_g += problem->full->lfg[problem->full->f_index_start + f_index].jac.dx.size() +
-                   problem->full->lfg[problem->full->f_index_start + f_index].jac.du.size() +
-                   problem->full->lfg[problem->full->f_index_start + f_index].jac.dp.size();
+        nnz_f += problem->full->lfg[problem->full->f_index_start + f_index].jac.nnz();
     }
     for (int g_index = 0; g_index < problem->full->g_size; g_index++) {
-            nnz_f_g += problem->full->lfg[problem->full->g_index_start + g_index].jac.dx.size() +
-                       problem->full->lfg[problem->full->g_index_start + g_index].jac.du.size() +
-                       problem->full->lfg[problem->full->g_index_start + g_index].jac.dp.size();
+            nnz_g += problem->full->lfg[problem->full->g_index_start + g_index].jac.nnz();
     }
 
     // nnz of block i can be calculated as m_i * ((m_i + 2) * #f + #g - coll(df_i, dx_i)), where m_i is the number of nodes on that interval
     off_acc_jac_fg = FixedVector<int>(mesh->intervals + 1);
     for (int i = 0; i < mesh->intervals; i++) {
-        off_acc_jac_fg[i+1] = off_acc_jac_fg[i] + mesh->nodes[i] * ((mesh->nodes[i] + 2) * problem->full->f_size + problem->full->g_size - diagonal_collisions);
+        off_acc_jac_fg[i+1] = off_acc_jac_fg[i] + mesh->nodes[i] * ((mesh->nodes[i] + 1) * off_x + nnz_f + nnz_g - diagonal_collisions);
     }
 
     for (int r_index = 0; r_index < problem->boundary->r_size; r_index++) {
@@ -172,7 +169,7 @@ void GDOP::initJacobianSparsityPattern() {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full->f_size; f_index++) {
                 int eqn_index = off_acc_fg[i][j] + f_index;
-
+                // TODO: this order is WRONG
                 // dColl / dx for x_{i-1, m_{i-1}} base point states
                 i_row_jac[nnz_index] = eqn_index;
                 j_col_jac[nnz_index] = (i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]) + f_index;
@@ -231,7 +228,7 @@ void GDOP::initJacobianSparsityPattern() {
                 // dg / dp
                 for (auto& dg_dp : problem->full->lfg[problem->full->g_index_start + g_index].jac.dp) {
                     i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_xu_total+ dg_dp.col;
+                    j_col_jac[nnz_index] = off_xu_total + dg_dp.col;
                     nnz_index++;
                 }
             }
@@ -340,13 +337,13 @@ void GDOP::initHessian() {
     FixedVector<std::pair<int, int>> C_flat(C.set.begin(), C.set.end());
     FixedVector<std::pair<int, int>> D_flat(D.set.begin(), D.set.end());
     for (int x_index = 0; x_index < problem->x_size; x_index++) {
-        while (C_flat[c_index].first == x_index) {
+        while (c_index < C_flat.size() && C_flat[c_index].first == x_index) {
             i_row_hes[hes_nnz_counter] = off_last_xu + C_flat[c_index].first; // x_{nm}
             j_col_hes[hes_nnz_counter] = C_flat[c_index].second;              // x_0
             hes_c.insert(C_flat[c_index].first, C_flat[c_index].second, hes_nnz_counter++);
             c_index++;
         }
-        while (D_flat[d_index].first == x_index) {
+        while (d_index < D_flat.size() && D_flat[d_index].first == x_index) {
             i_row_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].first;  // x_{nm}
             j_col_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].second; // x_{nm}
             hes_d.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
@@ -369,35 +366,37 @@ void GDOP::initHessian() {
     FixedVector<std::pair<int, int>> G_flat(G.set.begin(), G.set.end());
     FixedVector<std::pair<int, int>> H_flat(H.set.begin(), H.set.end());
     for (int p_index = 0; p_index < problem->p_size; p_index++) {
-        while (E_flat[e_index].first == p_index) {
+        while (e_index < E_flat.size() && E_flat[e_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + E_flat[e_index].first; // p
             j_col_hes[hes_nnz_counter] = E_flat[e_index].second;               // x_0
             hes_e.insert(E_flat[e_index].first, E_flat[e_index].second, hes_nnz_counter++);
             e_index++;
         }
+        
 
         int row_f_nnz = 0;
         hes_f.row_offset_prev[p_index] = hes_nnz_counter; // E_{p_index, :} offset
-        while (F_flat[f_index].first == p_index) {
+        while (f_index < F_flat.size() && F_flat[f_index].first == p_index) {
             hes_f.insert(F_flat[f_index].first, F_flat[f_index].second, row_f_nnz++);
             f_index++;
         }
+        
         hes_f.row_size[p_index] = row_f_nnz; // F_{p_index, :} size -> offset for next F blocks
         hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
-
-        while (G_flat[g_index].first == p_index) {
+        while (f_index < F_flat.size() && G_flat[g_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first; // p
             j_col_hes[hes_nnz_counter] = off_last_xu + G_flat[g_index].second; // xu_{nm}
             hes_g.insert(G_flat[g_index].first, G_flat[g_index].second, hes_nnz_counter++);
             g_index++;
         }
-
-        while (H_flat[h_index].first == p_index) {
+        
+        while (g_index < H_flat.size() && H_flat[h_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first;  // p
             j_col_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].second; // p
             hes_h.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
             h_index++;
         }
+        
     }
     assert(hes_nnz_counter == nnz_hes);
 

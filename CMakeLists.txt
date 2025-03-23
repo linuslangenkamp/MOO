@@ -39,6 +39,7 @@ set(SOURCES
     src/base/linalg.cpp
     src/interfaces/ipopt_adapter.cpp
     src/interfaces/ipopt_solver.cpp
+    src/impl/gdop/test_problem_impl.cpp
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/base ${CMAKE_SOURCE_DIR}/src/interfaces)
