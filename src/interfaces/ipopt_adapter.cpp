@@ -59,8 +59,10 @@ bool IpoptAdapter::eval_jac_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x
         nlp->j_col_jac.writeTo(jCol);
         jac_sparsity_set = true;
     }
-    nlp->eval_jac_g_safe(x, new_x);
-    nlp->curr_jac.writeTo(values);
+    else {
+        nlp->eval_jac_g_safe(x, new_x);
+        nlp->curr_jac.writeTo(values);
+    }
     return true;
 };
 
@@ -71,8 +73,10 @@ bool IpoptAdapter::eval_h(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ip
         nlp->j_col_hes.writeTo(jCol);
         hes_sparsity_set = true;
     }
-    nlp->eval_hes_safe(x, lambda, obj_factor, new_x, new_lambda);
-    nlp->curr_hes.writeTo(values);
+    else {
+        nlp->eval_hes_safe(x, lambda, obj_factor, new_x, new_lambda);
+        nlp->curr_hes.writeTo(values);
+    }
     return true;
 };
 

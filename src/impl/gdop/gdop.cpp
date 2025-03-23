@@ -29,14 +29,15 @@ void GDOP::initSizesOffsets() {
 }
 
 void GDOP::initBuffers() {
-    curr_x    = FixedVector<double>(number_vars);
-    init_x    = FixedVector<double>(number_vars);
-    curr_grad = FixedVector<double>(number_vars);
-    x_lb      = FixedVector<double>(number_vars);
-    x_ub      = FixedVector<double>(number_vars);
-    curr_g    = FixedVector<double>(number_constraints);
-    g_lb      = FixedVector<double>(number_constraints);
-    g_ub      = FixedVector<double>(number_constraints);
+    curr_x      = FixedVector<double>(number_vars);
+    init_x      = FixedVector<double>(number_vars);
+    curr_grad   = FixedVector<double>(number_vars);
+    x_lb        = FixedVector<double>(number_vars);
+    x_ub        = FixedVector<double>(number_vars);
+    curr_lambda = FixedVector<double>(number_constraints);
+    curr_g      = FixedVector<double>(number_constraints);
+    g_lb        = FixedVector<double>(number_constraints);
+    g_ub        = FixedVector<double>(number_constraints);
 }
 
 void GDOP::initBounds() {
