@@ -62,7 +62,7 @@ public:
     virtual void callbackJac(const double* xu_nlp, const double* p) = 0;
 
     virtual void callbackHes(const double* xu_nlp, const double* p) = 0;
-
+    
     inline double getEvalL(const int offset) {
         return *(lfg[0].eval + offset * eval_size);
     }
@@ -133,8 +133,8 @@ public:
                FixedVector<Bounds>& u_bounds, FixedVector<Bounds>& p_bounds, FixedVector<std::optional<double>>& x0_fixed,
                FixedVector<std::optional<double>>& xf_fixed)
     : full(std::move(full)), boundary(std::move(boundary)), x_size(this->full->x_size), u_size(this->full->u_size), p_size(this->full->p_size),
-      x_bounds(x_bounds), u_bounds(u_bounds), p_bounds(p_bounds),
-      x0_fixed(x0_fixed), xf_fixed(xf_fixed) {
+      x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)), p_bounds(std::move(p_bounds)),
+      x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)) {
     };
     
     std::unique_ptr<FullSweep> full;

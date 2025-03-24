@@ -38,11 +38,11 @@ int main() {
     u_bounds[0].lb = -1;
     u_bounds[0].ub = 1;
 
-    Problem problem(std::make_unique<FullSweepTestImpl>(fs), std::make_unique<BoundarySweepTestImpl>(bs), 
+    Problem problem(std::make_unique<FullSweepTestImpl>(std::move(fs)), std::make_unique<BoundarySweepTestImpl>(std::move(bs)), 
         x_bounds, u_bounds, p_bounds, x0_fixed, xf_fixed);
 
     // 0 guess
-    Trajectory initial_guess = {{0, 1}, {{0, 0}}, {{0, 0}}, {}, InterpolationMethod::LINEAR};
+    Trajectory initial_guess = {{0, 1}, {{0, 0.5}}, {{0, 1}}, {}, InterpolationMethod::LINEAR};
 
     GDOP gdop(std::make_shared<Problem>(std::move(problem)), std::move(radau), mesh, initial_guess);
 
