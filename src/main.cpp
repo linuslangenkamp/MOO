@@ -8,7 +8,7 @@
 #include "impl/gdop/test_problem_impl.h"
 
 int main() {
-    Mesh mesh = Mesh::createEquidistantMeshFixedDegree(10, 1, 3);
+    Mesh mesh = Mesh::createEquidistantMeshFixedDegree(25, 1, 3);
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>();
 
     // M(x) = x^2
@@ -32,6 +32,7 @@ int main() {
     FixedVector<Bounds> u_bounds(1);
     FixedVector<Bounds> p_bounds(0);
     FixedVector<std::optional<double>> x0_fixed(1);
+    x0_fixed[0] = 0.5;
     FixedVector<std::optional<double>> xf_fixed(1);
     x_bounds[0].lb = -1;
     x_bounds[0].ub = 1;
@@ -42,7 +43,7 @@ int main() {
         x_bounds, u_bounds, p_bounds, x0_fixed, xf_fixed);
 
     // 0 guess
-    Trajectory initial_guess = {{0, 1}, {{1, -1.0}}, {{0, 1}}, {}, InterpolationMethod::LINEAR};
+    Trajectory initial_guess = {{0, 1}, {{0.5, 0.5}}, {{0, 1}}, {}, InterpolationMethod::LINEAR};
 
     GDOP gdop(std::make_shared<Problem>(std::move(problem)), std::move(radau), mesh, initial_guess);
 

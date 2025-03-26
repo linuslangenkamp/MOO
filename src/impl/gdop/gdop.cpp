@@ -474,7 +474,7 @@ void GDOP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
 
  void GDOP::eval_jac_g_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
-    if (evaluation_state.jac_g) {
+    if (!evaluation_state.jac_g) {
         callback_jacobian();
     }
     eval_jac_g();
@@ -484,7 +484,7 @@ void GDOP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     check_new_lambda(nlp_solver_lambda, new_lambda);
     check_new_sigma(sigma_f);
-    if (evaluation_state.hes_lag) {
+    if (!evaluation_state.hes_lag) {
         callback_hessian();
     }
     eval_hes();

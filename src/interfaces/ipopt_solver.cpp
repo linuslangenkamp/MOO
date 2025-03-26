@@ -32,4 +32,7 @@ void IpoptSolver::initIpoptApplication() {
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetStringValue("mu_strategy", "adaptive");
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
+    app->Options()->SetIntegerValue("max_iter", 15);
+    app->Options()->SetStringValue("linear_solver", "MUMPS");
+    app->Options()->SetStringValue("timing_statistics", "yes");
 }
