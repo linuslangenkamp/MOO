@@ -41,7 +41,7 @@ BoundarySweepTestImpl::BoundarySweepTestImpl(FixedVector<FunctionMR>& mr_in, std
     }
 
 void BoundarySweepTestImpl::callbackEval(const double* x0_nlp, const double* xf_nlp, const double* p) {
-    eval_buffer[0] = xf_nlp[0] * xf_nlp[0] - 1;
+    eval_buffer[0] = xf_nlp[0] * xf_nlp[0];
 }
 
 void BoundarySweepTestImpl::callbackJac(const double* x0_nlp, const double* xf_nlp, const double* p) {

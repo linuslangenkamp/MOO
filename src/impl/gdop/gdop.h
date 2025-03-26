@@ -3,15 +3,15 @@
 
 #include <cassert>
 
-#include "../base/block_sparsity.h"
-#include "../base/constants.h"
-#include "../base/fixed_vector.h"
-#include "../base/linalg.h"
-#include "../base/nlp_state.h"
-#include "../base/nlp_structs.h"
-#include "../base/mesh.h"
-#include "../base/collocation.h"
-#include "../interfaces/nlp.h"
+#include "../../base/block_sparsity.h"
+#include "../../base/constants.h"
+#include "../../base/fixed_vector.h"
+#include "../../base/linalg.h"
+#include "../../base/nlp_state.h"
+#include "../../base/nlp_structs.h"
+#include "../../base/mesh.h"
+#include "../../base/collocation.h"
+#include "../../interfaces/nlp.h"
 
 #include "problem.h"
 

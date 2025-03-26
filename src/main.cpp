@@ -42,7 +42,7 @@ int main() {
         x_bounds, u_bounds, p_bounds, x0_fixed, xf_fixed);
 
     // 0 guess
-    Trajectory initial_guess = {{0, 1}, {{0, 0.5}}, {{0, 1}}, {}, InterpolationMethod::LINEAR};
+    Trajectory initial_guess = {{0, 1}, {{1, -1.0}}, {{0, 1}}, {}, InterpolationMethod::LINEAR};
 
     GDOP gdop(std::make_shared<Problem>(std::move(problem)), std::move(radau), mesh, initial_guess);
 
