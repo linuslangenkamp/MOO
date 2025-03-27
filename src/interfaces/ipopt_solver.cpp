@@ -27,7 +27,7 @@ void IpoptSolver::initIpoptApplication() {
     }
 
     // set all the settings here
-    app->Options()->SetNumericValue("tol", 1e-6);
+    app->Options()->SetNumericValue("tol", 1e-12);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetStringValue("mu_strategy", "adaptive");

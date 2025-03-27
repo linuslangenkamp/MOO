@@ -170,15 +170,16 @@ void GDOP::initJacobianSparsityPattern() {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full->f_size; f_index++) {
                 int eqn_index = off_acc_fg[i][j] + f_index;
-                // TODO: this order is WRONG
-                // dColl / dx for x_{i-1, m_{i-1}} base point states
+
+                // dColl / dx for x_{i-1, m_{i-1}} base point states (k = -1, prev state)
                 i_row_jac[nnz_index] = eqn_index;
                 j_col_jac[nnz_index] = (i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]) + f_index;
                 der_jac[nnz_index]   = collocation->D[mesh->nodes[i]][j + 1][0];
                 nnz_index++;
 
-                // dColl / dx for x_{i, j} collocation point states
-                for (int k = 0; k < mesh->nodes[i]; k++) {
+                // dColl / dx for x_{i, j} collocation point states up to the collision
+                // this means the derivative matrix linear combinations x_ik have k < j
+                for (int k = 0; k < j; k++) {
                     i_row_jac[nnz_index] = eqn_index;
                     j_col_jac[nnz_index] = off_acc_xu[i][k] + f_index;
                     der_jac[nnz_index]   = collocation->D[mesh->nodes[i]][j + 1][k + 1];
@@ -192,12 +193,29 @@ void GDOP::initJacobianSparsityPattern() {
                         j_col_jac[nnz_index] = off_acc_xu[i][j] + df_dx.col;
                         nnz_index++;
                     }
+                    else {
+                        // handle the diagonal collision of the diagonal jacobian block
+                        // this means the derivative matrix linear combinations x_ik have k == j and df_k / dx_k != 0
+                        i_row_jac[nnz_index] = eqn_index;
+                        j_col_jac[nnz_index] = off_acc_xu[i][j] + df_dx.col; // here df_dx and f_index collide!! (could also be written with dx_dx = f_index), which is nz element of the derivaitve matrix part
+                        der_jac[nnz_index] = collocation->D[mesh->nodes[i]][j + 1][j + 1];
+                        nnz_index++;
+                    }
                 }
 
                 // df / du
                 for (auto& df_du : problem->full->lfg[problem->full->f_index_start + f_index].jac.du) {
                     i_row_jac[nnz_index] = eqn_index;
                     j_col_jac[nnz_index] = off_acc_xu[i][j] + off_x + df_du.col;
+                    nnz_index++;
+                }
+
+                // dColl / dx for x_{i, j} collocation point states after the collision / diagonal block in block jacobian
+                // this means the derivative matrix linear combinations x_ik have k > j
+                for (int k = j + 1; k < mesh->nodes[i]; k++) {
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_acc_xu[i][k] + f_index;
+                    der_jac[nnz_index]   = collocation->D[mesh->nodes[i]][j + 1][k + 1];
                     nnz_index++;
                 }
 
@@ -570,26 +588,21 @@ void GDOP::eval_jac_g() {
         int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem->full->f_size; f_index++) {
-                // index of possible collision in df_i / dx_i
-                int collision_index = nnz_index + j + 1;
+                // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
+                nnz_index += j + 1;
 
-                // offset of constant differentiation matrix part
-                nnz_index += mesh->nodes[i] + 1;
-
-                // df / dx
+                // df / dx, j == k collision is included implicitly (thus, use -= and not = - like for the others)
                 for (auto& df_dx : problem->full->lfg[problem->full->f_index_start + f_index].jac.dx) {
-                    if (df_dx.col != f_index) {
-                        curr_jac[nnz_index++] = -mesh->delta_t[i] * (*(df_dx.value + JAC_OFFSET_IJ));
-                    } 
-                    else {
-                        curr_jac[collision_index] -= mesh->delta_t[i] * (*(df_dx.value + JAC_OFFSET_IJ));
-                    }
+                    curr_jac[nnz_index++] -= mesh->delta_t[i] * (*(df_dx.value + JAC_OFFSET_IJ));
                 }
 
                 // df / du
                 for (auto& df_du : problem->full->lfg[problem->full->f_index_start + f_index].jac.du) {
                     curr_jac[nnz_index++] = -mesh->delta_t[i] * (*(df_du.value + JAC_OFFSET_IJ));
                 }
+
+                // offset for all remaining diagonal matrix blocks: d_{jk} * I at t_ik with k > j
+                 nnz_index += mesh->nodes[i] - j - 1;
 
                 // df / dp
                 for (auto& df_dp : problem->full->lfg[problem->full->f_index_start + f_index].jac.dp) {
