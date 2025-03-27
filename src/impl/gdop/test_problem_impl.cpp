@@ -3,8 +3,8 @@
 // a first cpp implementation of the GDOP Problem
 
 
-FullSweepTestImpl::FullSweepTestImpl(FixedVector<FunctionLFG>& lfg_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds)
-    : FullSweep(lfg_in, mesh, g_bounds, false, 1, 0, 1, 1, 0) {
+FullSweepTestImpl::FullSweepTestImpl(FixedVector<FunctionLFG>&& lfg_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds)
+    : FullSweep(std::move(lfg_in), mesh, g_bounds, false, 1, 0, 1, 1, 0) {
         lfg[0].eval = &eval_buffer[0];
         lfg[0].jac.dx[0].value = &jac_buffer[0];
         lfg[0].jac.du[0].value = &jac_buffer[1];
@@ -33,8 +33,8 @@ void FullSweepTestImpl::callbackHes(const double* xu_nlp, const double* p) {
     }
 }
 
-BoundarySweepTestImpl::BoundarySweepTestImpl(FixedVector<FunctionMR>& mr_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds)
-    : BoundarySweep(mr_in, mesh, r_bounds, true, 0, 1, 0) {
+BoundarySweepTestImpl::BoundarySweepTestImpl(FixedVector<FunctionMR>&& mr_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds)
+    : BoundarySweep(std::move(mr_in), mesh, r_bounds, true, 0, 1, 0) {
         mr[0].eval = &eval_buffer[0];
         mr[0].jac.dxf[0].value = &jac_buffer[0];
         mr[0].hes.dxf_dxf[0].value = &hes_buffer[0];

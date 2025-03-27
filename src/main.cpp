@@ -25,8 +25,8 @@ int main() {
     FixedVector<Bounds> g_bounds(0);
     FixedVector<Bounds> r_bounds(0);
 
-    FullSweepTestImpl fs = FullSweepTestImpl(lfg, std::make_shared<Mesh>(mesh), g_bounds);
-    BoundarySweepTestImpl bs = BoundarySweepTestImpl(mr, std::make_shared<Mesh>(mesh), r_bounds);
+    FullSweepTestImpl fs = FullSweepTestImpl(std::move(lfg), std::make_shared<Mesh>(mesh), g_bounds);
+    BoundarySweepTestImpl bs = BoundarySweepTestImpl(std::move(mr), std::make_shared<Mesh>(mesh), r_bounds);
 
     FixedVector<Bounds> x_bounds(1);
     FixedVector<Bounds> u_bounds(1);
@@ -49,6 +49,6 @@ int main() {
 
     IpoptSolver ipopt_solver(std::make_shared<GDOP>(std::move(gdop)), NULL);
     ipopt_solver.optimize();
-    
+
     return 0;
 }

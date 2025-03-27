@@ -15,9 +15,9 @@ public:
     // Idea: Call Fullsweep.setValues(), Fullsweep.callbackEval(), callbackJac(), callHess() -> Just iterate over COO
     // function evals / diffs are on callback interfaced side
 
-    FullSweep(FixedVector<FunctionLFG>& lfg, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, bool has_lagrange,
+    FullSweep(FixedVector<FunctionLFG>&& lfg_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, bool has_lagrange,
               int f_size, int g_size, int x_size, int u_size, int p_size)
-    : lfg(lfg), mesh(mesh), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), has_lagrange(has_lagrange), f_index_start((int) has_lagrange),
+    : lfg(std::move(lfg_in)), mesh(mesh), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), has_lagrange(has_lagrange), f_index_start((int) has_lagrange),
       f_index_end(f_index_start + f_size), g_index_start(f_index_end), g_index_end(g_index_start + g_size), x_size(x_size),
       u_size(u_size), p_size(p_size), g_bounds(g_bounds), eval_size(lfg.size()) {
         for (const auto& func : lfg) {
@@ -79,9 +79,9 @@ public:
 class BoundarySweep {
 public:
 
-    BoundarySweep(FixedVector<FunctionMR>& mr, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds, bool has_mayer,
+    BoundarySweep(FixedVector<FunctionMR>&& mr_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds, bool has_mayer,
                   int r_size, int x_size, int p_size)
-    : mr(mr), mesh(mesh), r_size(r_size), has_mayer(has_mayer), r_index_start((int) has_mayer),
+    : mr(std::move(mr_in)), mesh(mesh), r_size(r_size), has_mayer(has_mayer), r_index_start((int) has_mayer),
       r_index_end(r_index_start + r_size), x_size(x_size), p_size(p_size), r_bounds(r_bounds) {
         int jac_buffer_size = 0;
         int hes_buffer_size = 0;
