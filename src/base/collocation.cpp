@@ -1,5 +1,5 @@
 #include "collocation.h"
-
+#include "iostream"
 double Collocation::integrate(const double* values, const int scheme) {
     /*
     input: values - f(c_1), ..., f(c_m)

@@ -21,14 +21,14 @@ struct BlockSparsity {
 
     // data for all block types
     FixedField<int, 2> block;
-    int nnz;
+    int nnz = 0;
 
     // for row-based offsets (e.g. block F in GDOP)
     FixedVector<int> row_offset_prev;
     FixedVector<int> row_size;
 
     // for constant offsets (e.g. block B in GDOP)
-    int off_prev;
+    int off_prev = 0;
 
     /* creates a dense lower triangular (with diagonal) block structure
        0 | 1 2 . s
@@ -103,7 +103,7 @@ struct BlockSparsity {
     }
 
     // mapping (row, col) -> index in some larger sparsity structure
-    inline int access(const int row, const int col) const {
+    int access(const int row, const int col) const {
         switch (type) {
             case BlockType::Exact:
                 return block[row][col];
@@ -113,7 +113,7 @@ struct BlockSparsity {
     }
 
     // mapping (row, col, block_count) -> index in some larger sparsity structure
-    inline int access(const int row, const int col, const int block_count) const {
+    int access(const int row, const int col, const int block_count) const {
         switch (type) {
             // for A -> B: row, col, offset_prev - #nnz at end of blocktype (e.g. |A|), block_count (e.g. (i,j) = (0, 2) => 2)
             case BlockType::Offset:
@@ -142,13 +142,13 @@ struct OrderedIndexSet {
 
     std::set<std::pair<int, int>, Compare> set;
 
-    void insertSparsity(std::vector<HessianSparsity>& hes, int row_off, int col_off) {
-        for (auto& coo : hes) {
+    void insertSparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off) {
+        for (auto coo : hes) {
             set.insert({coo.row + row_off, coo.col + col_off});
         }
     }
 
-    inline size_t size() const {
+    inline std::size_t size() const {
         return set.size();
     }
 };

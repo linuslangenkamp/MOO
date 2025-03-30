@@ -4,13 +4,14 @@
 #include <cassert>
 
 #include "../../base/block_sparsity.h"
+#include "../../base/collocation.h"
 #include "../../base/constants.h"
 #include "../../base/fixed_vector.h"
 #include "../../base/linalg.h"
 #include "../../base/nlp_state.h"
 #include "../../base/nlp_structs.h"
 #include "../../base/mesh.h"
-#include "../../base/collocation.h"
+#include "../../base/util.h"
 #include "../../interfaces/nlp.h"
 
 #include "problem.h"
@@ -18,12 +19,12 @@
 
 class GDOP : public NLP {
 public:
-    GDOP(std::shared_ptr<Problem> problem, std::unique_ptr<Collocation> collocation, Mesh& mesh, Trajectory& guess)
+    GDOP(std::shared_ptr<Problem> problem, std::unique_ptr<Collocation> collocation, std::shared_ptr<Mesh> mesh, std::shared_ptr<Trajectory> guess)
         : NLP(),
+          mesh(mesh),
           problem(problem),
           collocation(std::move(collocation)),
-          mesh(std::make_shared<Mesh>(mesh)),
-          guess(std::make_shared<Trajectory>(guess)) {
+          guess(guess) {
         init();
     }
 
@@ -51,7 +52,7 @@ public:
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps
     // for further info see hessian layout at the bottom
     BlockSparsity hes_a = BlockSparsity::createLowerTriangular(problem->x_size, BlockType::Exact);
-    BlockSparsity hes_b = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::RowOffset);
+    BlockSparsity hes_b = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::Offset);
     BlockSparsity hes_c = BlockSparsity::createSquare(problem->x_size, BlockType::Exact);
     BlockSparsity hes_d = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::Exact);
     BlockSparsity hes_e = BlockSparsity::createRectangular(problem->p_size, problem->x_size, BlockType::Exact);

@@ -1,3 +1,4 @@
+
 #include <iostream>
 
 #include "base/collocation.h"
@@ -8,45 +9,50 @@
 #include "impl/gdop/test_problem_impl.h"
 
 int main() {
-    Mesh mesh = Mesh::createEquidistantMeshFixedDegree(1, 1, 100);
+    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(15000, 1, 3));
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>();
 
-    // M(x) = x^2
+    // M(x) = x2
     FixedVector<FunctionMR> mr(1);
-    mr[0].jac.dxf.push_back(JacobianSparsity({0, nullptr}));
-    mr[0].hes.dxf_dxf.push_back(HessianSparsity({0, 0, nullptr}));
+    mr[0].jac.dxf.push_back(JacobianSparsity({1, nullptr}));
 
-    // f(x, u) = cos(x) + u
-    FixedVector<FunctionLFG> lfg(1);
+    // x1' = -(u + u² / 2) * x1
+    FixedVector<FunctionLFG> lfg(2);
     lfg[0].jac.dx.push_back(JacobianSparsity({0, nullptr}));
     lfg[0].jac.du.push_back(JacobianSparsity({0, nullptr}));
-    lfg[0].hes.dx_dx.push_back(HessianSparsity({0, 0, nullptr}));
+    lfg[0].hes.du_dx.push_back(HessianSparsity({0, 0, nullptr}));
+    lfg[0].hes.du_du.push_back(HessianSparsity({0, 0, nullptr}));
+
+    // x2' = u * x1
+    lfg[1].jac.dx.push_back(JacobianSparsity({0, nullptr}));
+    lfg[1].jac.du.push_back(JacobianSparsity({0, nullptr}));
+    lfg[1].hes.du_dx.push_back(HessianSparsity({0, 0, nullptr}));
 
     FixedVector<Bounds> g_bounds(0);
     FixedVector<Bounds> r_bounds(0);
 
-    FullSweepTestImpl fs = FullSweepTestImpl(std::move(lfg), std::make_shared<Mesh>(mesh), g_bounds);
-    BoundarySweepTestImpl bs = BoundarySweepTestImpl(std::move(mr), std::make_shared<Mesh>(mesh), r_bounds);
+    std::unique_ptr<FullSweep> fs(new FullSweepTestImpl(std::move(lfg), mesh, g_bounds));
+    std::unique_ptr<BoundarySweep> bs(new BoundarySweepTestImpl(std::move(mr), mesh, r_bounds));
 
-    FixedVector<Bounds> x_bounds(1);
+    FixedVector<Bounds> x_bounds(2);
     FixedVector<Bounds> u_bounds(1);
     FixedVector<Bounds> p_bounds(0);
-    FixedVector<std::optional<double>> x0_fixed(1);
-    x0_fixed[0] = 0.5;
-    FixedVector<std::optional<double>> xf_fixed(1);
-    x_bounds[0].lb = -1;
-    x_bounds[0].ub = 1;
-    u_bounds[0].lb = -1;
-    u_bounds[0].ub = 1;
+    FixedVector<std::optional<double>> x0_fixed(2);
+    FixedVector<std::optional<double>> xf_fixed(2);
+    x0_fixed[0] = 1;
+    x0_fixed[1] = 0;
 
-    Problem problem(std::make_unique<FullSweepTestImpl>(std::move(fs)), std::make_unique<BoundarySweepTestImpl>(std::move(bs)), 
-        x_bounds, u_bounds, p_bounds, x0_fixed, xf_fixed);
+    u_bounds[0].lb = 0;
+    u_bounds[0].ub = 5;
+
+    auto problem = std::make_shared<Problem>(std::move(fs), std::move(bs), std::move(x_bounds), std::move(u_bounds), std::move(p_bounds), std::move(x0_fixed), std::move(xf_fixed));
     std::cout << sizeof(FunctionLFG) << std::endl;
     // 0 guess
-    Trajectory initial_guess = {{0, 1}, {{0.5, 0.5}}, {{0, 1}}, {}, InterpolationMethod::LINEAR};
+    std::shared_ptr<Trajectory> initial_guess(new Trajectory{{0, 1}, {{1, 1}, {0, 0}}, {{0.5, 0.5}}, {}, InterpolationMethod::LINEAR});
 
-    GDOP gdop(std::make_shared<Problem>(std::move(problem)), std::move(radau), mesh, initial_guess);
 
+    GDOP gdop(problem, std::move(radau), mesh, initial_guess);
+    
     IpoptSolver ipopt_solver(std::make_shared<GDOP>(std::move(gdop)), NULL);
     ipopt_solver.optimize();
 

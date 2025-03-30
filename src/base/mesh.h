@@ -3,6 +3,7 @@
 
 #include "collocation.h"
 #include "fixed_vector.h"
+#include "util.h"
 
 
 enum class InterpolationMethod {
@@ -10,9 +11,10 @@ enum class InterpolationMethod {
 };
 
 struct Mesh {
-    Mesh(int intervals, double tf, FixedVector<double> grid, FixedVector<double> delta_t, FixedVector<int> nodes, FixedField<int, 2> acc_nodes, int node_count)
-        : intervals(intervals), tf(tf), grid(std::move(grid)), delta_t(std::move(delta_t)), nodes(std::move(nodes)),
-          acc_nodes(std::move(acc_nodes)), node_count(node_count) {
+    Mesh(int intervals, double tf, FixedVector<double>&& grid, FixedVector<double>&& delta_t,
+         FixedVector<int>&& nodes, FixedField<int, 2>&& acc_nodes, int node_count)
+        : intervals(intervals), node_count(node_count), tf(tf), grid(std::move(grid)),
+          delta_t(std::move(delta_t)), nodes(std::move(nodes)), acc_nodes(std::move(acc_nodes)) {
     }
 
     int intervals;                 // number of intervals

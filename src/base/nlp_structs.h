@@ -3,9 +3,12 @@
 
 #include <vector>
 
+#include "constants.h"
+
+
 struct Bounds {
-    double lb;
-    double ub;
+    double lb = MINUS_INFINITY;
+    double ub = PLUS_INFINITY;
 };
 
 struct JacobianSparsity {

@@ -38,7 +38,9 @@ public:
     explicit FixedVector(std::size_t size) : _size{size}, _data{std::make_unique<T[]>(size)} {}
 
     constexpr FixedVector(const FixedVector &other) : FixedVector(other._size) {
-        *this = other;
+        for (std::size_t i = 0; i < _size; i++) {
+            (*this)[i] = T(other[i]);
+        }
     }
 
     FixedVector(FixedVector &&other) noexcept = default;
@@ -51,7 +53,7 @@ public:
 
     // recursive constructor for nested FixedVector / FixedField
     template<typename... Args>
-    FixedVector(std::size_t size, Args&&... args) : _size{size}, _data{std::make_unique<T[]>(size)} {
+    FixedVector(std::size_t size, Args&&... args) : FixedVector(size) {
         for (std::size_t i = 0; i < size; i++) {
             _data[i] = T(std::forward<Args>(args)...);
         }
@@ -75,7 +77,7 @@ public:
     constexpr FixedVector& operator=(const FixedVector &other) {
         assert(_size == other._size);
 
-        memcpy(_data.get(), other._data.get(), _size * sizeof(T));
+        std::copy(other._data.get(), other._data.get() + _size, _data.get());
 
         return *this;
     }
@@ -120,6 +122,10 @@ public:
 
     constexpr std::size_t size() const {
         return _size;
+    }
+
+    constexpr inline int int_size() const {
+        return static_cast<int>(_size);
     }
 
     constexpr T& back() {

@@ -30,12 +30,12 @@ public:
     FixedVector<double> x_ub; // upper bounds on NLP variables
 
     // nlp function data
-    double curr_obj;                // current NLP objective value
-    FixedVector<double> curr_grad;  // current NLP gradient of the objective function
-    FixedVector<double> curr_g;     // current NLP constraint function evaluation
-    FixedVector<double> curr_jac;   // current NLP jacobian of the constraints
-    FixedVector<double> der_jac;    // constant NLP derivative matrix part of the jacobian
-    FixedVector<double> curr_hes;   // current NLP hessian of the lagrangian
+    double curr_obj;                   // current NLP objective value
+    FixedVector<double> curr_grad;     // current NLP gradient of the objective function
+    FixedVector<double> curr_g;        // current NLP constraint function evaluation
+    FixedVector<double> curr_jac;      // current NLP jacobian of the constraints
+    FixedVector<double> const_der_jac; // constant NLP derivative matrix part of the jacobian
+    FixedVector<double> curr_hes;      // current NLP hessian of the lagrangian
 
     // scaled constraint bounds
     FixedVector<double> g_lb; // lower bounds on NLP constraints

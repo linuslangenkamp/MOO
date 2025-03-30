@@ -16,8 +16,6 @@ public:
     explicit IpoptAdapter(std::shared_ptr<NLP> nlp) : nlp(nlp) {}
 
     std::shared_ptr<NLP> nlp;
-    bool jac_sparsity_set = false;
-    bool hes_sparsity_set = false;
 
     bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override;
 

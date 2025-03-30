@@ -79,9 +79,9 @@ Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation)
     new_guess.u.resize(u.size());
 
     // interpolate x(t)
-    for (int k = 0; k < x.size(); k++) {
+    for (int k = 0; k < int_size(x); k++) {
         new_guess.x[k].resize(new_t.size());
-        for (int i = 0; i < new_t.size(); i++) {
+        for (int i = 0; i < int_size(new_t); i++) {
             double t_new = new_t[i];
             auto it = std::lower_bound(t.begin(), t.end(), t_new);
             if (it == t.begin()) {
@@ -102,9 +102,9 @@ Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation)
     }
 
     // interpolate u(t)
-    for (int k = 0; k < u.size(); k++) {
+    for (int k = 0; k < int_size(u); k++) {
         new_guess.u[k].resize(new_t.size());
-        for (int i = 0; i < new_t.size(); i++) {
+        for (int i = 0; i < int_size(new_t); i++) {
             double t_new = new_t[i];
             auto it = std::lower_bound(t.begin(), t.end(), t_new);
             if (it == t.begin()) {

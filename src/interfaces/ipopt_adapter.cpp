@@ -54,10 +54,9 @@ bool IpoptAdapter::eval_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ip
 
 bool IpoptAdapter::eval_jac_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Index m, Ipopt::Index nele_jac,
                               Ipopt::Index* iRow, Ipopt::Index* jCol, Ipopt::Number* values) {
-    if (!jac_sparsity_set) {
+    if (!values) {
         nlp->i_row_jac.writeTo(iRow);
         nlp->j_col_jac.writeTo(jCol);
-        jac_sparsity_set = true;
     }
     else {
         nlp->eval_jac_g_safe(x, new_x);
@@ -68,10 +67,9 @@ bool IpoptAdapter::eval_jac_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x
 
 bool IpoptAdapter::eval_h(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Number obj_factor, Ipopt::Index m, const Ipopt::Number* lambda,
                           bool new_lambda, Ipopt::Index nele_hess, Ipopt::Index* iRow, Ipopt::Index* jCol, Ipopt::Number* values) {
-    if (!hes_sparsity_set) {
+    if (!values) {
         nlp->i_row_hes.writeTo(iRow);
         nlp->j_col_hes.writeTo(jCol);
-        hes_sparsity_set = true;
     }
     else {
         nlp->eval_hes_safe(x, lambda, obj_factor, new_x, new_lambda);

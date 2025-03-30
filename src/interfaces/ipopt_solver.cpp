@@ -3,8 +3,8 @@
 
 IpoptSolver::IpoptSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings)
     : NLPSolver(nlp, solver_settings),
-      app(IpoptApplicationFactory()),
-      adapter(new IpoptAdapter(nlp)) {
+      adapter(new IpoptAdapter(nlp)),
+      app(IpoptApplicationFactory()) {
     initIpoptApplication();
 }
 
@@ -31,8 +31,13 @@ void IpoptSolver::initIpoptApplication() {
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetStringValue("mu_strategy", "adaptive");
+    app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
+    app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
+
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
-    app->Options()->SetIntegerValue("max_iter", 15);
+    app->Options()->SetIntegerValue("max_iter", 25);
     app->Options()->SetStringValue("linear_solver", "MUMPS");
     app->Options()->SetStringValue("timing_statistics", "yes");
+    app->Options()->SetIntegerValue("print_level", 5);
+    // app->Options()->SetStringValue("derivative_test", "second-order");
 }
