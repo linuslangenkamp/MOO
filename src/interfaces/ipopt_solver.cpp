@@ -27,17 +27,38 @@ void IpoptSolver::initIpoptApplication() {
     }
 
     // set all the settings here
+
+    // termination fallback
+    app->Options()->SetIntegerValue("max_iter", 25);
+    app->Options()->SetNumericValue("max_cpu_time", 3600);
+
+    // numeric values
     app->Options()->SetNumericValue("tol", 1e-12);
+    app->Options()->SetNumericValue("acceptable_tol", 1e-9);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
+    app->Options()->SetNumericValue("alpha_red_factor", 0.6);
+    
+    // strategies
     app->Options()->SetStringValue("mu_strategy", "adaptive");
     app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
     app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
-
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
-    app->Options()->SetIntegerValue("max_iter", 25);
+    
+    // subproblem
     app->Options()->SetStringValue("linear_solver", "MUMPS");
+
+    // constant derivatives
+    app->Options()->SetStringValue("grad_f_constant", "no");
+    app->Options()->SetStringValue("jac_c_constant", "no");
+    app->Options()->SetStringValue("jac_d_constant", "no");
+    app->Options()->SetStringValue("hessian_constant", "no");
+
+    // info
     app->Options()->SetStringValue("timing_statistics", "yes");
     app->Options()->SetIntegerValue("print_level", 5);
+
+    // testings
     // app->Options()->SetStringValue("derivative_test", "second-order");
+    // app->Options()->SetStringValue("hessian_approximation", "limited-memory");
 }

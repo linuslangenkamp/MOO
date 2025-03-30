@@ -53,7 +53,7 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
 add_dependencies(optimization ipopt-ext mumps-ext)
 
-target_compile_options(optimization PRIVATE -Wall -Werror -fno-rtti -Ofast -fno-var-tracking-assignments) # -fopenmp -lgomp -ffast-math -O3
+target_compile_options(optimization PRIVATE -Wall -Werror -fno-rtti -Ofast -fno-var-tracking-assignments) # -fopenmp -lgomp
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
 target_link_libraries(optimization PRIVATE lapack blas dl gfortran)
 if (COINHSL_FOUND)
