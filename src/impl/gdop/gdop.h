@@ -76,6 +76,11 @@ public:
                           const BlockSparsity* ptr_map_p_xu, const double factor);
     void updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor);
 
+    // inline methods to jump (i, j) callback buffer blocks
+    int eval_offset(int i, int j);
+    int jac_offset(int i, int j);
+    int hes_offset(int i, int j);
+
     // get callback data
     void callback_evaluation();
     void callback_jacobian();
