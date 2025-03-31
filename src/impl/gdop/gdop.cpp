@@ -601,6 +601,7 @@ void GDOP::eval_jac_g() {
                 // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
                 nnz_index += j + 1;
                 
+                // TODO: maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
                 int df_dx_counter = 0;
                 std::vector<JacobianSparsity>* df_dx = &problem->full->lfg[problem->full->f_index_start + f_index].jac.dx;
 

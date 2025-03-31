@@ -12,6 +12,9 @@ pkg_check_modules(COINHSL coinhsl)
 
 include(ProcessorCount)
 ProcessorCount(N)
+
+# CONFIGURE_COMMAND ./configure CFLAGS=-Ofast FCFLAGS=-Ofast\ -fopenmp --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+
 ##[[
 ExternalProject_Add(mumps-ext
     GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
@@ -32,6 +35,7 @@ ExternalProject_Add(ipopt-ext
     DEPENDS mumps-ext
 )
 #]]
+
 set(SOURCES
     src/base/collocation.cpp
     src/main.cpp
@@ -53,9 +57,9 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
 add_dependencies(optimization ipopt-ext mumps-ext)
 
-target_compile_options(optimization PRIVATE -Wall -Werror -fno-rtti -Ofast -fno-var-tracking-assignments) # -fopenmp -lgomp
+target_compile_options(optimization PRIVATE -Wall -Werror -fno-rtti -fno-var-tracking-assignments -Ofast -fopenmp) 
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
-target_link_libraries(optimization PRIVATE lapack blas dl gfortran)
+target_link_libraries(optimization PRIVATE lapack blas dl gfortran gomp)
 if (COINHSL_FOUND)
     target_link_libraries(optimization PRIVATE coinhsl)
 endif ()

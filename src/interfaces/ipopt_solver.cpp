@@ -13,7 +13,7 @@ void IpoptSolver::optimize() {
     Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(adapter);
 
     if (status == Ipopt::Solve_Succeeded) {
-        std::cout << "[Ipopt Interface] Optimization with succeeded!" << std::endl;
+        std::cout << "\n[Ipopt Interface] Optimization succeeded!" << std::endl;
     } else {
         std::cout << "[Ipopt Interface] Optimization failed with status: " << status << std::endl;
     }
@@ -29,7 +29,7 @@ void IpoptSolver::initIpoptApplication() {
     // set all the settings here
 
     // termination fallback
-    app->Options()->SetIntegerValue("max_iter", 25);
+    app->Options()->SetIntegerValue("max_iter", 250);
     app->Options()->SetNumericValue("max_cpu_time", 3600);
 
     // numeric values

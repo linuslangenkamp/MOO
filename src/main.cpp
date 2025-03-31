@@ -9,7 +9,7 @@
 #include "impl/gdop/test_problem_impl.h"
 
 int main() {
-    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(15000, 1, 3));
+    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(15, 1, 5));
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>();
 
     // M(x) = x2
@@ -46,10 +46,9 @@ int main() {
     u_bounds[0].ub = 5;
 
     auto problem = std::make_shared<Problem>(std::move(fs), std::move(bs), std::move(x_bounds), std::move(u_bounds), std::move(p_bounds), std::move(x0_fixed), std::move(xf_fixed));
-    std::cout << sizeof(FunctionLFG) << std::endl;
+
     // 0 guess
     std::shared_ptr<Trajectory> initial_guess(new Trajectory{{0, 1}, {{1, 1}, {0, 0}}, {{0.5, 0.5}}, {}, InterpolationMethod::LINEAR});
-
 
     GDOP gdop(problem, std::move(radau), mesh, initial_guess);
     
