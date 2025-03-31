@@ -347,6 +347,7 @@ void GDOP::initHessian() {
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
+                // TODO: maybe move this to outer loop
                 for (auto [row, col] : B.set) {
                     int xu_hes_index = hes_b.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
@@ -410,29 +411,27 @@ void GDOP::initHessian() {
         
         hes_f.row_size[p_index] = row_f_nnz; // F_{p_index, :} size -> offset for next F blocks
         hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
-        while (f_index < F_flat.int_size() && G_flat[g_index].first == p_index) {
+        while (g_index < G_flat.int_size() && G_flat[g_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first; // p
             j_col_hes[hes_nnz_counter] = off_last_xu + G_flat[g_index].second; // xu_{nm}
             hes_g.insert(G_flat[g_index].first, G_flat[g_index].second, hes_nnz_counter++);
             g_index++;
         }
         
-        while (g_index < H_flat.int_size() && H_flat[h_index].first == p_index) {
-            i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first;  // p
-            j_col_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].second; // p
+        while (h_index < H_flat.int_size() && H_flat[h_index].first == p_index) {
+            i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[h_index].first;  // p
+            j_col_hes[hes_nnz_counter] = off_xu_total + G_flat[h_index].second; // p
             hes_h.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
             h_index++;
         }
-        
     }
-    assert(hes_nnz_counter == nnz_hes);
 
     // init F hessian pattern O(node_count * nnz(L_{p, xu} ∪ f_{p, xu} ∪ g_{p, xu})) - expensive, parallel execution should be possible
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
                 for (auto& [row, col] : F.set) {
-                    int xu_hes_index = hes_b.access(row, col, mesh->acc_nodes[i][j]);
+                    int xu_hes_index = hes_f.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_xu_total + row;     // p
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }

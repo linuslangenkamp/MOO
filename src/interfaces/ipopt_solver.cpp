@@ -33,7 +33,7 @@ void IpoptSolver::initIpoptApplication() {
     app->Options()->SetNumericValue("max_cpu_time", 3600);
 
     // numeric values
-    app->Options()->SetNumericValue("tol", 1e-12);
+    app->Options()->SetNumericValue("tol", 1e-10);
     app->Options()->SetNumericValue("acceptable_tol", 1e-9);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);

@@ -77,7 +77,6 @@ public:
     void updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor);
 
     // inline methods to jump (i, j) callback buffer blocks
-    int eval_offset(int i, int j);
     int jac_offset(int i, int j);
     int hes_offset(int i, int j);
 

@@ -8,11 +8,12 @@
  * @param steps      Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps) {
+Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps, Collocation& collocation) {
     FixedVector<double> grid(intervals + 1);
     FixedVector<double> delta_t(intervals);
     FixedVector<int> nodes(intervals);
     FixedField<int, 2> acc_nodes(intervals, steps);
+    FixedField<double, 2> t(intervals, steps);
 
     double h = tf / intervals;
     for (int i = 0; i < intervals; i++) {
@@ -25,10 +26,11 @@ Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps)
         nodes[i] = steps;
         for (int j = 0; j < steps; j++) {
             acc_nodes[i][j] = steps * i + j;
+            t[i][j] = grid[i] + delta_t[i] * collocation.c[steps][j];
         }
     }
     int node_count = steps * intervals;
-    return {intervals, tf, std::move(grid), std::move(delta_t), std::move(nodes), std::move(acc_nodes), node_count};
+    return {intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
 FixedField<int, 2> Mesh::createAccOffsetXU(int off_x, int off_xu) {
