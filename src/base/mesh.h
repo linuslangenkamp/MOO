@@ -27,7 +27,7 @@ struct Mesh {
     FixedField<int, 2>    acc_nodes; // number of nodes to the left of index (i, j)
 
 
-    static Mesh createEquidistantMeshFixedDegree(int intervals, double tf, int p, Collocation& collocation); 
+    static Mesh createEquidistantMeshFixedDegree(double tf, int intervals, int p, Collocation& collocation); 
     FixedField<int, 2> createAccOffsetXU(int off_x, int off_xu);
     FixedField<int, 2> createAccOffsetFG(int off_fg);
 };

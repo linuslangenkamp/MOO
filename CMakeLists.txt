@@ -45,6 +45,7 @@ set(SOURCES
     src/interfaces/ipopt_solver.cpp
     src/impl/gdop/test_problem_impl.cpp
     src/interfaces/modelica/main_opt.cpp
+    stashed/steady_state/parameter_test.cpp
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/base ${CMAKE_SOURCE_DIR}/src/interfaces)

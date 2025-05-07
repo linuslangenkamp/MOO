@@ -9,8 +9,10 @@
 #include "impl/gdop/test_problem_impl.h"
 
 int main() {
-    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(15000, 1, 5));
-    std::unique_ptr<Collocation> radau = std::make_unique<Collocation>();
+    auto radau = Collocation();
+    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(1, 15000, 5, radau));
+
+    std::unique_ptr<Collocation> p_radau = std::make_unique<Collocation>(radau);
 
     // M(x) = x2
     FixedVector<FunctionMR> mr(1);

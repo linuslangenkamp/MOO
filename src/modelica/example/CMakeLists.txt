@@ -27,6 +27,7 @@ target_link_directories(include_test_cmk PRIVATE
 )
 
 target_link_libraries(include_test_cmk PRIVATE
+  optimization
   SimulationRuntimeC
   OpenModelicaRuntimeC
   omcgc
@@ -38,7 +39,6 @@ target_link_libraries(include_test_cmk PRIVATE
   pthread
   gfortran
   stdc++
-  optimization
 )
 
 set_target_properties(include_test_cmk PROPERTIES

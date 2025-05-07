@@ -10,7 +10,7 @@
 
 int example() {
     Collocation coll = Collocation();
-    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(25, 1, 100, coll));
+    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(100, 150, 5, coll));
 
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>(coll);
 
@@ -51,6 +51,8 @@ int example() {
     GDOP gdop(problem, std::move(radau), mesh, initial_guess);
     
     IpoptSolver ipopt_solver(std::make_shared<GDOP>(std::move(gdop)), NULL);
+
+    std::cout << "Call Optimization Steady State Example\n";
     ipopt_solver.optimize();
 
     return 0;

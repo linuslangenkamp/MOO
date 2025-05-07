@@ -8,7 +8,7 @@
  * @param steps      Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-Mesh Mesh::createEquidistantMeshFixedDegree(int intervals, double tf, int steps, Collocation& collocation) {
+Mesh Mesh::createEquidistantMeshFixedDegree(double tf, int intervals, int steps, Collocation& collocation) {
     FixedVector<double> grid(intervals + 1);
     FixedVector<double> delta_t(intervals);
     FixedVector<int> nodes(intervals);

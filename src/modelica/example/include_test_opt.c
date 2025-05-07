@@ -1,4 +1,10 @@
+//////////////////////////////////////////////////
+/* new stuff below */
 
+#define CALL_OPT_RUNTIME TRUE
+
+
+//////////////////////////////////////////////////
 
 #include "include_test_model.h"
 #include "simulation/solver/events.h"
@@ -7,7 +13,6 @@
 #define OMC_MAIN main
 #define OMC_CHAR char
 #define OMC_EXPORT extern
-
 
 static int rml_execution_failed()
 {
@@ -54,9 +59,11 @@ int OMC_MAIN(int argc, OMC_CHAR** argv)
   
     include_test_setupDataStruc(&data, threadData);
     res = _main_initRuntimeAndSimulation(argc, newargv, &data, threadData);
-    _main_OptimitationRuntime();
-    if(res == 0) {
+
+    if(res == 0 && !CALL_OPT_RUNTIME) {
       res = _main_SimulationRuntime(argc, newargv, &data, threadData);
+    } else if (res == 0 && CALL_OPT_RUNTIME) {
+      res = _main_OptimitationRuntime();
     }
     
     MMC_ELSE()

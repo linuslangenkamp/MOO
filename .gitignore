@@ -8,7 +8,7 @@
 *.swp
 *.bak
 
-# build files
+# build
 **/build/
 CMakeCache.txt
 CMakeFiles/
