@@ -5,19 +5,31 @@
 
 // TODO: maybe add the scaler to the NLP and only do the setup in the generic NLP implementation, then the scaler is always called on the iterates
 
-// generic NLP base class - can be used with the generic NLP_Solver interface
-// allows for a nice abstraction / to use any NLP solver when implementing this NLP
-// also all NLP members must be implemented for the solvers anyway :)
-// thus, GDOP is just an implementation of this NLP
+/* generic NLP base class - can be used with the generic NLP_Solver interface
+ * allows for a nice abstraction / to use any NLP solver when implementing this NLP
+ * 
+ *    min f(x)
+ * s.t.
+ *    g^{LB} <= g(x) <= g^{UB}
+ *    x^{LB} <=  x   <= x^{UB}
+ * 
+ * Callbacks:
+ *    eval_f()      => f(x)
+ *    eval_g()      => g(x)
+ *    eval_grad_f() => df/dx
+ *    eval_jac_g()  => dg/dx
+ *    eval_hes()    => sigma_f * d²f/dx² + sum_{i=1}^{m} lambda_i * d²(g_i)/dx²
+*/
+
 class NLP {
 public:
     NLP() = default;
 
     // NLP stuff itself
-    int number_vars;         // total number of variables in the NLP
-    int number_constraints;  // total number of constraints in the NLP
-    int nnz_jac = 0;         // nnz Jacobian in the NLP
-    int nnz_hes = 0;         // nnz Hessian in the NLP
+    int number_vars = 0;        // total number of variables in the NLP
+    int number_constraints = 0; // total number of constraints in the NLP
+    int nnz_jac = 0;            // nnz Jacobian in the NLP
+    int nnz_hes = 0;            // nnz Hessian in the NLP
 
     // current iterates
     FixedVector<double> init_x;       // initial NLP primal variables
@@ -34,7 +46,6 @@ public:
     FixedVector<double> curr_grad;     // current NLP gradient of the objective function
     FixedVector<double> curr_g;        // current NLP constraint function evaluation
     FixedVector<double> curr_jac;      // current NLP jacobian of the constraints
-    FixedVector<double> const_der_jac; // constant NLP derivative matrix part of the jacobian
     FixedVector<double> curr_hes;      // current NLP hessian of the lagrangian
 
     // scaled constraint bounds
@@ -46,12 +57,14 @@ public:
     FixedVector<int> j_col_jac; // column COO of the Jacobian
     FixedVector<int> i_row_hes; // row COO of the Hessian
     FixedVector<int> j_col_hes; // column COO of the Hessian
-
-    virtual void eval_f_safe(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_obj
-    virtual void eval_g_safe(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_g
-    virtual void eval_grad_f_safe(const double* nlp_solver_x, bool new_x) = 0; // fill curr_grad
-    virtual void eval_jac_g_safe(const double* nlp_solver_x, bool new_x) = 0;  // fill curr_jac
-    virtual void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda) = 0; // fill curr_hes
+    
+    // TODO: add a generic block BFGS routine, which can calculate blocks of the Lagrangian Hessian $\nabla_{xx} \mathcal{L}_{AA -> BB}$
+    
+    virtual void eval_f(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_obj
+    virtual void eval_g(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_g
+    virtual void eval_grad_f(const double* nlp_solver_x, bool new_x) = 0; // fill curr_grad
+    virtual void eval_jac_g(const double* nlp_solver_x, bool new_x) = 0;  // fill curr_jac
+    virtual void eval_hes(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda) = 0; // fill curr_hes
 };
 
 #endif  // OPT_NLP_H

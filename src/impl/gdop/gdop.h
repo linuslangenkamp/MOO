@@ -35,6 +35,9 @@ public:
     std::shared_ptr<Trajectory> guess;         // initial guess / trajectory, will be interpolated accordingly
     NLP_State evaluation_state;                // simple state to check which actions are / have to be performed for an iteration
 
+    // constant NLP derivative matrix part of the jacobian
+    FixedVector<double> const_der_jac;
+
     // offsets
     int off_x;         // offset #xVars
     int off_u;         // offset #uVars
@@ -89,18 +92,18 @@ public:
     void check_new_x(const double* nlp_solver_x, bool new_x);
     void check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda);
     void check_new_sigma(const double obj_factor);
-    void eval_f();
-    void eval_g();
-    void eval_grad_f();
-    void eval_jac_g();
-    void eval_hes();
+    void eval_f_internal();
+    void eval_g_internal();
+    void eval_grad_f_internal();
+    void eval_jac_g_internal();
+    void eval_hes_internal();
 
     // virtuals in NLP
-    void eval_f_safe(const double* nlp_solver_x, bool new_x);
-    void eval_g_safe(const double* nlp_solver_x, bool new_x);
-    void eval_grad_f_safe(const double* nlp_solver_x, bool new_x);
-    void eval_jac_g_safe(const double* nlp_solver_x, bool new_x);
-    void eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
+    void eval_f(const double* nlp_solver_x, bool new_x);
+    void eval_g(const double* nlp_solver_x, bool new_x);
+    void eval_grad_f(const double* nlp_solver_x, bool new_x);
+    void eval_jac_g(const double* nlp_solver_x, bool new_x);
+    void eval_hes(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
 };
 
 #endif  // OPT_GDOP_H

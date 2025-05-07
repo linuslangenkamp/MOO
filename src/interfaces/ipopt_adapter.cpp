@@ -35,19 +35,19 @@ bool IpoptAdapter::get_scaling_parameters(Ipopt::Number& obj_scaling, bool& use_
 };
 
 bool IpoptAdapter::eval_f(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Number& obj_value) {
-    nlp->eval_f_safe(x, new_x);
+    nlp->eval_f(x, new_x);
     obj_value = nlp->curr_obj;
     return true;
 };
 
 bool IpoptAdapter::eval_grad_f(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Number* grad_f) {
-    nlp->eval_grad_f_safe(x, new_x);
+    nlp->eval_grad_f(x, new_x);
     nlp->curr_grad.writeTo(grad_f);
     return true;
 };
 
 bool IpoptAdapter::eval_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Index m, Ipopt::Number* g) {
-    nlp->eval_g_safe(x, new_x);
+    nlp->eval_g(x, new_x);
     nlp->curr_g.writeTo(g);
     return true;
 };
@@ -59,7 +59,7 @@ bool IpoptAdapter::eval_jac_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x
         nlp->j_col_jac.writeTo(jCol);
     }
     else {
-        nlp->eval_jac_g_safe(x, new_x);
+        nlp->eval_jac_g(x, new_x);
         nlp->curr_jac.writeTo(values);
     }
     return true;
@@ -72,7 +72,7 @@ bool IpoptAdapter::eval_h(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ip
         nlp->j_col_hes.writeTo(jCol);
     }
     else {
-        nlp->eval_hes_safe(x, lambda, obj_factor, new_x, new_lambda);
+        nlp->eval_hes(x, lambda, obj_factor, new_x, new_lambda);
         nlp->curr_hes.writeTo(values);
     }
     return true;
@@ -82,11 +82,9 @@ void IpoptAdapter::finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
                                      const Ipopt::Number* z_U, Ipopt::Index m, const Ipopt::Number* g, const Ipopt::Number* lambda,
                                      Ipopt::Number obj_value, const Ipopt::IpoptData* ip_data, Ipopt::IpoptCalculatedQuantities* ip_cq) {
     // TODO: to implement
-    std::cout << "Optimal Parameters:" << std::endl;
+    std::cout << "Optimal Starting Value:" << std::endl;
     std::cout << std::setprecision(15);
-
-        std::cout << x[nlp->number_vars - 1] << std::endl;
-    
+    std::cout << x[nlp->number_vars - 1] << std::endl;
 };
 
 bool IpoptAdapter::intermediate_callback(Ipopt::AlgorithmMode mode, Ipopt::Index iter, Ipopt::Number obj_value, Ipopt::Number inf_pr, Ipopt::Number inf_du, Ipopt::Number mu, Ipopt::Number d_norm, Ipopt::Number regularization_size,

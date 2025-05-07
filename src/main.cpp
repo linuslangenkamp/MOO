@@ -10,7 +10,7 @@
 
 int main() {
     Collocation coll = Collocation();
-    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(250, 100, 9, coll));
+    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(25, 10, 9, coll));
 
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>(coll);
 
@@ -46,8 +46,7 @@ int main() {
 
     auto problem = std::make_shared<Problem>(std::move(fs), std::move(bs), std::move(x_bounds), std::move(u_bounds), std::move(p_bounds), std::move(x0_fixed), std::move(xf_fixed));
 
-    // 0 guess
-    std::shared_ptr<Trajectory> initial_guess(new Trajectory{{0, 100}, {{300, 301}}, {}, {300}, InterpolationMethod::LINEAR});
+    std::shared_ptr<Trajectory> initial_guess(new Trajectory{{0, 25}, {{300, 301}}, {}, {300}, InterpolationMethod::LINEAR});
 
     GDOP gdop(problem, std::move(radau), mesh, initial_guess);
     

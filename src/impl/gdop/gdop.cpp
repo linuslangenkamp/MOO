@@ -473,46 +473,46 @@ void GDOP::check_new_sigma(const double sigma_f) {
     }
 }
 
-void GDOP::eval_f_safe(const double* nlp_solver_x, bool new_x) {
+void GDOP::eval_f(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_f) {
         callback_evaluation();
     }
-    eval_f();
+    eval_f_internal();
 }
 
-void GDOP::eval_g_safe(const double* nlp_solver_x, bool new_x) {
+void GDOP::eval_g(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_g) {
         callback_evaluation();
     }
-    eval_g();
+    eval_g_internal();
 }
 
-void GDOP::eval_grad_f_safe(const double* nlp_solver_x, bool new_x) {
+void GDOP::eval_grad_f(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.grad_f) {
         callback_jacobian();
     }
-    eval_grad_f();
+    eval_grad_f_internal();
 };
 
- void GDOP::eval_jac_g_safe(const double* nlp_solver_x, bool new_x) {
+ void GDOP::eval_jac_g(const double* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.jac_g) {
         callback_jacobian();
     }
-    eval_jac_g();
+    eval_jac_g_internal();
  }
 
- void GDOP::eval_hes_safe(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x, bool new_lambda) {
+ void GDOP::eval_hes(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma_f, bool new_x, bool new_lambda) {
     check_new_x(nlp_solver_x, new_x);
     check_new_lambda(nlp_solver_lambda, new_lambda);
     check_new_sigma(sigma_f);
     if (!evaluation_state.hes_lag) {
         callback_hessian();
     }
-    eval_hes();
+    eval_hes_internal();
  }
 
 inline int GDOP::jac_offset(int i, int j) {
@@ -523,7 +523,7 @@ inline int GDOP::hes_offset(int i, int j) {
     return problem->full->hes_size * mesh->acc_nodes[i][j];
 }
 
-void GDOP::eval_f() {
+void GDOP::eval_f_internal() {
     double mayer = 0;
     if (problem->boundary->has_mayer) {
         mayer = problem->boundary->getEvalM();
@@ -542,7 +542,7 @@ void GDOP::eval_f() {
 }
 
 
-void GDOP::eval_grad_f() {
+void GDOP::eval_grad_f_internal() {
     curr_grad.fill_zero();
     if (problem->full->has_lagrange) {
         for (int i = 0; i < mesh->intervals; i++) {
@@ -572,7 +572,7 @@ void GDOP::eval_grad_f() {
     }
 };
 
-void GDOP::eval_g() {
+void GDOP::eval_g_internal() {
     curr_g.fill_zero();
     for (int i = 0; i < mesh->intervals; i++) {
         collocation->diff_matrix_multiply(mesh->nodes[i], off_x, off_xu, problem->full->fg_size,
@@ -593,7 +593,7 @@ void GDOP::eval_g() {
     }
 }
 
-void GDOP::eval_jac_g() {
+void GDOP::eval_jac_g_internal() {
     // copy constant part into curr_jac
     curr_jac = const_der_jac;
 
@@ -682,7 +682,7 @@ void GDOP::eval_jac_g() {
     assert(nnz_index == nnz_jac);
 };
 
-void GDOP::eval_hes() {
+void GDOP::eval_hes_internal() {
     curr_hes.fill_zero();
 
     int lagrange_offset = (int) problem->full->has_lagrange;  // correction for array accesses
