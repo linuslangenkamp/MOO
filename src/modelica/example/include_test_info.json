@@ -1,0 +1,14 @@
+{"format":"Transformational debugger info","version":1,
+"info":{"name":"include_test","description":""},
+"variables":{
+"x":{"comment":"","kind":"state","type":"Real","unit":"","displayUnit":"","source":{"info":{"file":"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo","lineStart":2,"lineEnd":2,"colStart":3,"colEnd":30}}},
+"der(x)":{"comment":"","kind":"derivative","type":"Real","unit":"","displayUnit":"","source":{"info":{"file":"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo","lineStart":2,"lineEnd":2,"colStart":3,"colEnd":30}}}
+},
+"equations":[{"eqIndex":0,"tag":"dummy"},
+{"eqIndex":1,"section":"initial","tag":"assign","defines":["x"],"uses":["$START.x"],"equation":["$START.x"],"source":{"info":{"file":"","lineStart":0,"lineEnd":0,"colStart":0,"colEnd":0}}},
+{"eqIndex":2,"tag":"alias","equation":[3],"section":"initial"},
+{"eqIndex":3,"section":"regular","tag":"assign","defines":["der(x)"],"uses":["x"],"equation":["x"],"source":{"info":{"file":"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo","lineStart":4,"lineEnd":4,"colStart":3,"colEnd":13}}}
+],
+"functions":[
+]
+}

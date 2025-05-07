@@ -1,0 +1,2 @@
+loadFile("include_test.mo");
+buildModel(include_test);

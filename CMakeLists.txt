@@ -38,18 +38,19 @@ ExternalProject_Add(ipopt-ext
 
 set(SOURCES
     src/base/collocation.cpp
-    src/main.cpp
     src/base/mesh.cpp
     src/impl/gdop/gdop.cpp
     src/base/linalg.cpp
     src/interfaces/ipopt_adapter.cpp
     src/interfaces/ipopt_solver.cpp
     src/impl/gdop/test_problem_impl.cpp
+    src/interfaces/modelica/main_opt.cpp
 )
 
 include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/base ${CMAKE_SOURCE_DIR}/src/interfaces)
 
-add_executable(optimization ${SOURCES})
+add_library(optimization SHARED ${SOURCES})
+target_include_directories(optimization PUBLIC include)
 
 target_include_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)
 
@@ -63,3 +64,5 @@ target_link_libraries(optimization PRIVATE lapack blas dl gfortran gomp)
 if (COINHSL_FOUND)
     target_link_libraries(optimization PRIVATE coinhsl)
 endif ()
+
+add_subdirectory(src/modelica/example)

@@ -8,9 +8,9 @@
 
 #include "impl/gdop/test_problem_impl.h"
 
-int main() {
+int example() {
     Collocation coll = Collocation();
-    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(25, 10, 9, coll));
+    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(25, 1, 100, coll));
 
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>(coll);
 
