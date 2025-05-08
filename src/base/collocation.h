@@ -3,8 +3,8 @@
 
 #include <vector>
 
-#include "base/constants.h"
-#include "base/linalg.h"
+#include "constants.h"
+#include "linalg.h"
 
 struct Collocation {
 

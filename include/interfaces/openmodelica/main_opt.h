@@ -4,8 +4,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-    int _main_OptimitationRuntime(void);
-    
+
+int _main_OptimitationRuntime();
+
 #ifdef __cplusplus
 };
 #endif

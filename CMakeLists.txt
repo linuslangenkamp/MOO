@@ -39,18 +39,28 @@ ExternalProject_Add(ipopt-ext
 set(SOURCES
     src/base/collocation.cpp
     src/base/mesh.cpp
-    src/impl/gdop/gdop.cpp
     src/base/linalg.cpp
-    src/interfaces/ipopt_adapter.cpp
-    src/interfaces/ipopt_solver.cpp
-    src/impl/gdop/test_problem_impl.cpp
-    src/interfaces/modelica/main_opt.cpp
+
+    src/nlp/instances/gdop/gdop.cpp
+    src/nlp/instances/gdop/test_problem_impl.cpp
+
+    src/nlp/solvers/ipopt/ipopt_adapter.cpp
+    src/nlp/solvers/ipopt/ipopt_solver.cpp
+
+    src/interfaces/openmodelica/main_opt.cpp
+
     stashed/steady_state/parameter_test.cpp
 )
 
-include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/base ${CMAKE_SOURCE_DIR}/src/interfaces)
 
 add_library(optimization SHARED ${SOURCES})
+
+target_include_directories(optimization
+  PUBLIC ${CMAKE_SOURCE_DIR}/include
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+)
+
+
 target_include_directories(optimization PUBLIC include)
 
 target_include_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)

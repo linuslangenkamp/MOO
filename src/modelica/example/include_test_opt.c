@@ -1,6 +1,8 @@
 //////////////////////////////////////////////////
 /* new stuff below */
 
+// OptimizationRuntime entry points
+extern int _main_OptimitationRuntime();
 #define CALL_OPT_RUNTIME TRUE
 
 
@@ -23,8 +25,6 @@ static int rml_execution_failed()
 }
 
 extern void include_test_setupDataStruc(DATA *data, threadData_t *threadData);
-
-extern int _main_OptimitationRuntime();
 
 int OMC_MAIN(int argc, OMC_CHAR** argv)
 {
@@ -63,7 +63,7 @@ int OMC_MAIN(int argc, OMC_CHAR** argv)
     if(res == 0 && !CALL_OPT_RUNTIME) {
       res = _main_SimulationRuntime(argc, newargv, &data, threadData);
     } else if (res == 0 && CALL_OPT_RUNTIME) {
-      res = _main_OptimitationRuntime();
+      res = _main_OptimitationRuntime(argc, newargv, &data, threadData);
     }
     
     MMC_ELSE()

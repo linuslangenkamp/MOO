@@ -5,8 +5,8 @@
 #include <memory>
 #include <vector>
 
-#include "../base/nlp_structs.h"
-#include "../base/mesh.h"
+#include <base/nlp_structs.h>
+#include <base/mesh.h>
 
 
 class FullSweep {
@@ -54,7 +54,7 @@ public:
 
     FixedVector<double> eval_buffer;
     FixedVector<double> jac_buffer;
-    FixedVector<double> hes_buffer; // can lead to several memory consumption / order of a few GB, so maybe rethink this for large scale problems
+    FixedVector<double> hes_buffer; // can lead to severe memory consumption / order of a few GB, so maybe rethink this for large scale problems
 
     // fill eval_buffer, jac_buffer, hes_buffer
     virtual void callbackEval(const double* xu_nlp, const double* p) = 0;

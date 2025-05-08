@@ -1,5 +1,7 @@
-#include "ipopt_adapter.h"
 #include <iomanip> 
+
+#include "ipopt_adapter.h"
+
 
 bool IpoptAdapter::get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) {
     n = nlp->number_vars;

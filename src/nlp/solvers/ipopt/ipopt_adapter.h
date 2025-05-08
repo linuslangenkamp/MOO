@@ -8,7 +8,7 @@
 #include "IpIpoptApplication.hpp"
 #include "IpSolveStatistics.hpp"
 
-#include "nlp.h"
+#include <nlp/nlp.h>
 
 
 class IpoptAdapter : public Ipopt::TNLP {

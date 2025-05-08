@@ -4,25 +4,50 @@
 #if defined(__cplusplus)
 extern "C" {
 #endif
-int include_test_mayer(DATA* data, modelica_real** res,short *i) {
-  throwStreamPrint(NULL, "The model was not compiled with -g=Optimica and the corresponding goal function. The optimization solver cannot be used.");
+/* objectiveFunction */
+int include_test_mayer(DATA* data, modelica_real** res, short * index_Dres)
+{
+  *res =  &(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* $OMC$objectMayerTerm variable */);
+  *index_Dres = 3;
+  return 0;
+  return  -1;
+}
+/* objectiveIntegrand */
+int include_test_lagrange(DATA* data, modelica_real** res, short * index_DresB, short *index_DresC)
+{
+  *res =  &(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */);
+  *index_DresB = 2;
+  *index_DresC = 2;
+  return 0;
+  return -1;
+}
+
+/* opt vars  */
+int include_test_pickUpBoundsForInputsInOptimization(DATA* data, modelica_real* min, modelica_real* max, modelica_real*nominal, modelica_boolean *useNominal, char ** name, modelica_real * start, modelica_real* startTimeOpt)
+{
+  min[0] = data->modelData->realVarsData[13].attribute /* u */.min;
+  max[0] = data->modelData->realVarsData[13].attribute /* u */.max;
+  nominal[0] = data->modelData->realVarsData[13].attribute /* u */.nominal;
+  useNominal[0] = data->modelData->realVarsData[13].attribute /* u */.useNominal;
+  name[0] =(char *) data->modelData->realVarsData[13].info /* u */.name;
+  start[0] = data->modelData->realVarsData[13].attribute /* u */.start;
+  *startTimeOpt = data->simulationInfo->startTime - 1.0;
   return 0;
 }
-int include_test_lagrange(DATA* data, modelica_real** res, short * i1, short*i2) {
-  throwStreamPrint(NULL, "The model was not compiled with -g=Optimica and the corresponding goal function. The optimization solver cannot be used.");
-  return 0;
+
+int include_test_setInputData(DATA *data, const modelica_boolean file)
+{
+ TRACE_PUSH
+   if(file){
+   }
+   data->simulationInfo->inputVars[0] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */);
+ TRACE_POP
+ return 0;
 }
-int include_test_pickUpBoundsForInputsInOptimization(DATA* data, modelica_real* min, modelica_real* max, modelica_real*nominal, modelica_boolean *useNominal, char ** name, modelica_real * start, modelica_real * startTimeOpt) {
-  throwStreamPrint(NULL, "The model was not compiled with -g=Optimica and the corresponding goal function. The optimization solver cannot be used.");
-  return 0;
-}
-int include_test_setInputData(DATA *data, const modelica_boolean file) {
-  throwStreamPrint(NULL, "The model was not compiled with -g=Optimica and the corresponding goal function. The optimization solver cannot be used.");
-  return 0;
-}
-int include_test_getTimeGrid(DATA *data, modelica_integer * nsi, modelica_real**t) {
-  throwStreamPrint(NULL, "The model was not compiled with -g=Optimica and the corresponding goal function. The optimization solver cannot be used.");
-  return 0;
+int include_test_getTimeGrid(DATA *data, modelica_integer * nsi, modelica_real**t){
+   *nsi=(-1 );
+   *t = (modelica_real*) malloc((*nsi+1)*sizeof(modelica_real));
+ return 0;
 }
 #if defined(__cplusplus)
 }

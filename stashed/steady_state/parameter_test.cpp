@@ -1,12 +1,12 @@
 
 #include <iostream>
 
-#include "base/collocation.h"
-#include "impl/gdop/gdop.h"
-#include "impl/gdop/problem.h"
-#include "interfaces/ipopt_solver.h"
+#include <base/collocation.h>
+#include <nlp/instances/gdop/gdop.h>
+#include <nlp/instances/gdop/problem.h>
+#include <nlp/solvers/ipopt/ipopt_solver.h>
 
-#include "impl/gdop/test_problem_impl.h"
+#include <nlp/instances/gdop/test_problem_impl.h>
 
 int example() {
     Collocation coll = Collocation();

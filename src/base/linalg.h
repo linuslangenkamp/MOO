@@ -1,8 +1,6 @@
 #ifndef OPT_LINALG_H
 #define OPT_LINALG_H
 
-#include <cstddef> 
-
 // these are possibly blas functions that can be replaced with proper BLAS later
 // for now its sufficient to memorize where these subroutines are used
 

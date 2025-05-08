@@ -5,15 +5,15 @@
  *
  * @param intervals  Number of Intervals
  * @param tf         Final Time
- * @param steps      Number of Nodes for each Interval
+ * @param stages     Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-Mesh Mesh::createEquidistantMeshFixedDegree(double tf, int intervals, int steps, Collocation& collocation) {
+Mesh Mesh::createEquidistantMeshFixedDegree(double tf, int intervals, int stages, Collocation& collocation) {
     FixedVector<double> grid(intervals + 1);
     FixedVector<double> delta_t(intervals);
     FixedVector<int> nodes(intervals);
-    FixedField<int, 2> acc_nodes(intervals, steps);
-    FixedField<double, 2> t(intervals, steps);
+    FixedField<int, 2> acc_nodes(intervals, stages);
+    FixedField<double, 2> t(intervals, stages);
 
     double h = tf / intervals;
     for (int i = 0; i < intervals; i++) {
@@ -23,13 +23,13 @@ Mesh Mesh::createEquidistantMeshFixedDegree(double tf, int intervals, int steps,
 
     for (int i = 0; i < intervals; i++) {
         delta_t[i] = h;
-        nodes[i] = steps;
-        for (int j = 0; j < steps; j++) {
-            acc_nodes[i][j] = steps * i + j;
-            t[i][j] = grid[i] + delta_t[i] * collocation.c[steps][j];
+        nodes[i] = stages;
+        for (int j = 0; j < stages; j++) {
+            acc_nodes[i][j] = stages * i + j;
+            t[i][j] = grid[i] + delta_t[i] * collocation.c[stages][j];
         }
     }
-    int node_count = steps * intervals;
+    int node_count = stages * intervals;
     return {intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 

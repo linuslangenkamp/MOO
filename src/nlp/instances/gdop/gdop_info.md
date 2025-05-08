@@ -20,5 +20,5 @@ Additionally, time-invariant box constraints are included, which can also be int
 
 ## Discretization
 
-The problem is discretized using a **Radau IIA collocation scheme** of arbitrary order (1–199) with 1-100 steps.
+The problem is discretized using a **Radau IIA collocation scheme** of arbitrary order (1–199) with 1-100 stages.
 The collocation scheme can differ from interval to interval. It is therefore possible to implement a hp-adaptive pseudospectral mesh refinement algorithm.

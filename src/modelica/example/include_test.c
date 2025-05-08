@@ -23,6 +23,7 @@ int include_test_input_function(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */) = data->simulationInfo->inputVars[0];
   
   TRACE_POP
   return 0;
@@ -32,6 +33,7 @@ int include_test_input_function_init(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
+  data->simulationInfo->inputVars[0] = data->modelData->realVarsData[13].attribute.start;
   
   TRACE_POP
   return 0;
@@ -41,6 +43,7 @@ int include_test_input_function_updateStartValues(DATA *data, threadData_t *thre
 {
   TRACE_PUSH
 
+  data->modelData->realVarsData[13].attribute.start = data->simulationInfo->inputVars[0];
   
   TRACE_POP
   return 0;
@@ -49,6 +52,7 @@ int include_test_input_function_updateStartValues(DATA *data, threadData_t *thre
 int include_test_inputNames(DATA *data, char ** names){
   TRACE_PUSH
 
+  names[0] = (char *) data->modelData->realVarsData[13].info.name;
   
   TRACE_POP
   return 0;
@@ -83,6 +87,10 @@ int include_test_output_function(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
+  data->simulationInfo->outputVars[0] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */);
+  data->simulationInfo->outputVars[1] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* $OMC$objectMayerTerm variable */);
+  data->simulationInfo->outputVars[2] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */);
+  data->simulationInfo->outputVars[3] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */);
   
   TRACE_POP
   return 0;
@@ -108,15 +116,135 @@ int include_test_setb_function(DATA *data, threadData_t *threadData)
 
 
 /*
-equation index: 3
+equation index: 14
 type: SIMPLE_ASSIGN
-$DER.x = x
+cost_l = -x2
 */
-void include_test_eqFunction_3(DATA *data, threadData_t *threadData)
+void include_test_eqFunction_14(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
-  const int equationIndexes[2] = {1,3};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* der(x) STATE_DER */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x STATE(1,x) */);
+  const int equationIndexes[2] = {1,14};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */) = (-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */));
+  TRACE_POP
+}
+/*
+equation index: 15
+type: SIMPLE_ASSIGN
+$OMC$objectLagrangeTerm = cost_l
+*/
+void include_test_eqFunction_15(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,15};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */);
+  TRACE_POP
+}
+/*
+equation index: 16
+type: SIMPLE_ASSIGN
+cost_m = -x2
+*/
+void include_test_eqFunction_16(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,16};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */) = (-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */));
+  TRACE_POP
+}
+/*
+equation index: 17
+type: SIMPLE_ASSIGN
+$OMC$objectMayerTerm = cost_m
+*/
+void include_test_eqFunction_17(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,17};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* $OMC$objectMayerTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */);
+  TRACE_POP
+}
+/*
+equation index: 18
+type: SIMPLE_ASSIGN
+k5 = exp(20.7 - 15599.838969404187 / u)
+*/
+void include_test_eqFunction_18(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,18};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[12]] /* k5 variable */) = exp(20.7 - (DIVISION_SIM(15599.838969404187,(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */),"u",equationIndexes)));
+  TRACE_POP
+}
+/*
+equation index: 19
+type: SIMPLE_ASSIGN
+k4 = exp(18.75 - 14190.821256038647 / u)
+*/
+void include_test_eqFunction_19(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,19};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[11]] /* k4 variable */) = exp(18.75 - (DIVISION_SIM(14190.821256038647,(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */),"u",equationIndexes)));
+  TRACE_POP
+}
+/*
+equation index: 20
+type: SIMPLE_ASSIGN
+k3 = exp(23.67 - 17008.856682769725 / u)
+*/
+void include_test_eqFunction_20(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,20};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[10]] /* k3 variable */) = exp(23.67 - (DIVISION_SIM(17008.856682769725,(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */),"u",equationIndexes)));
+  TRACE_POP
+}
+/*
+equation index: 21
+type: SIMPLE_ASSIGN
+k2 = exp(24.25 - 18820.450885668277 / u)
+*/
+void include_test_eqFunction_21(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,21};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[9]] /* k2 variable */) = exp(24.25 - (DIVISION_SIM(18820.450885668277,(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */),"u",equationIndexes)));
+  TRACE_POP
+}
+/*
+equation index: 22
+type: SIMPLE_ASSIGN
+k1 = exp(8.86 - 10215.37842190016 / u)
+*/
+void include_test_eqFunction_22(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,22};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[8]] /* k1 variable */) = exp(8.86 - (DIVISION_SIM(10215.37842190016,(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */),"u",equationIndexes)));
+  TRACE_POP
+}
+/*
+equation index: 23
+type: SIMPLE_ASSIGN
+$DER.x2 = k1 * x1 + k3 * x1 * x2 - k2 * x2
+*/
+void include_test_eqFunction_23(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,23};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[3]] /* der(x2) STATE_DER */) = ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[8]] /* k1 variable */)) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */)) + ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[10]] /* k3 variable */)) * (((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */)) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */))) - (((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[9]] /* k2 variable */)) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */)));
+  TRACE_POP
+}
+/*
+equation index: 24
+type: SIMPLE_ASSIGN
+$DER.x1 = (((-k4) - k5 - k3) * x2 - k1) * x1
+*/
+void include_test_eqFunction_24(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,24};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[2]] /* der(x1) STATE_DER */) = (((-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[11]] /* k4 variable */)) - (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[12]] /* k5 variable */) - (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[10]] /* k3 variable */)) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */)) - (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[8]] /* k1 variable */)) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */));
   TRACE_POP
 }
 
@@ -132,7 +260,27 @@ int include_test_functionDAE(DATA *data, threadData_t *threadData)
   data->simulationInfo->needToIterate = 0;
   data->simulationInfo->discreteCall = 1;
   include_test_functionLocalKnownVars(data, threadData);
-  include_test_eqFunction_3(data, threadData);
+  include_test_eqFunction_14(data, threadData);
+
+  include_test_eqFunction_15(data, threadData);
+
+  include_test_eqFunction_16(data, threadData);
+
+  include_test_eqFunction_17(data, threadData);
+
+  include_test_eqFunction_18(data, threadData);
+
+  include_test_eqFunction_19(data, threadData);
+
+  include_test_eqFunction_20(data, threadData);
+
+  include_test_eqFunction_21(data, threadData);
+
+  include_test_eqFunction_22(data, threadData);
+
+  include_test_eqFunction_23(data, threadData);
+
+  include_test_eqFunction_24(data, threadData);
   data->simulationInfo->discreteCall = 0;
   
 #if !defined(OMC_MINIMAL_RUNTIME)
@@ -153,21 +301,39 @@ int include_test_functionLocalKnownVars(DATA *data, threadData_t *threadData)
 }
 
 /* forwarded equations */
-extern void include_test_eqFunction_3(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_18(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_19(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_20(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_21(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_22(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_23(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_24(DATA* data, threadData_t *threadData);
 
 static void functionODE_system0(DATA *data, threadData_t *threadData)
 {
   int id;
 
-  static void (*const eqFunctions[1])(DATA*, threadData_t*) = {
-    include_test_eqFunction_3
+  static void (*const eqFunctions[7])(DATA*, threadData_t*) = {
+    include_test_eqFunction_18,
+    include_test_eqFunction_19,
+    include_test_eqFunction_20,
+    include_test_eqFunction_21,
+    include_test_eqFunction_22,
+    include_test_eqFunction_23,
+    include_test_eqFunction_24
   };
   
-  static const int eqIndices[1] = {
-    3
+  static const int eqIndices[7] = {
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24
   };
   
-  for (id = 0; id < 1; id++) {
+  for (id = 0; id < 7; id++) {
     eqFunctions[id](data, threadData);
     threadData->lastEquationSolved = eqIndices[id];
   }
@@ -209,12 +375,24 @@ void include_test_computeVarIndices(size_t* realIndex, size_t* integerIndex, siz
   stringIndex[0] = 0;
 
   /* stateVars */
-  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* x STATE(1,x) */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* x1 STATE(1) */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* x2 STATE(1) */
   
   /* derivativeVars */
-  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* der(x) STATE_DER */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* der(x1) STATE_DER */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* der(x2) STATE_DER */
   
   /* algVars */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* $OMC$objectLagrangeTerm variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* $OMC$objectMayerTerm variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* cost_l variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* cost_m variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* k1 variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* k2 variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* k3 variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* k4 variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* k5 variable */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* u variable */
   
   /* discreteAlgVars */
   
@@ -339,7 +517,7 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelFilePrefix = "include_test";
   data->modelData->resultFileName = NULL;
   data->modelData->modelDir = "/home/linus/Projects/Optimization/src/modelica/example";
-  data->modelData->modelGUID = "{8c3dd9d6-4bae-49f9-bcff-c3d5ae01f0f4}";
+  data->modelData->modelGUID = "{7a0c3295-e047-45b2-b6f3-e0fb83094dee}";
   #if defined(OPENMODELICA_XML_FROM_FILE_AT_RUNTIME)
   data->modelData->initXMLData = NULL;
   data->modelData->modelDataXml.infoXMLData = NULL;
@@ -369,8 +547,8 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelDataXml.fileName = "include_test_info.json";
   data->modelData->resourcesDir = NULL;
   data->modelData->runTestsuite = 0;
-  data->modelData->nStates = 1;
-  data->modelData->nVariablesRealArray = 2;
+  data->modelData->nStates = 2;
+  data->modelData->nVariablesRealArray = 14;
   data->modelData->nDiscreteReal = 0;
   data->modelData->nVariablesIntegerArray = 0;
   data->modelData->nVariablesBooleanArray = 0;
@@ -379,8 +557,8 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->nParametersInteger = 0;
   data->modelData->nParametersBoolean = 0;
   data->modelData->nParametersString = 0;
-  data->modelData->nInputVars = 0;
-  data->modelData->nOutputVars = 0;
+  data->modelData->nInputVars = 1;
+  data->modelData->nOutputVars = 4;
   data->modelData->nAliasReal = 0;
   data->modelData->nAliasInteger = 0;
   data->modelData->nAliasBoolean = 0;
@@ -393,7 +571,7 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelDataXml.modelInfoXmlLength = 0;
   data->modelData->modelDataXml.nFunctions = 0;
   data->modelData->modelDataXml.nProfileBlocks = 0;
-  data->modelData->modelDataXml.nEquations = 4;
+  data->modelData->modelDataXml.nEquations = 57;
   data->modelData->nMixedSystems = 0;
   data->modelData->nLinearSystems = 0;
   data->modelData->nNonLinearSystems = 0;

@@ -1,7 +1,7 @@
 #ifndef OPT_NLP_H
 #define OPT_NLP_H
 
-#include "../base/fixed_vector.h"
+#include <base/fixed_vector.h>
 
 // TODO: maybe add the scaler to the NLP and only do the setup in the generic NLP implementation, then the scaler is always called on the iterates
 

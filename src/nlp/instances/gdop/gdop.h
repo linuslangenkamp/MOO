@@ -3,16 +3,15 @@
 
 #include <cassert>
 
-#include "../../base/block_sparsity.h"
-#include "../../base/collocation.h"
-#include "../../base/constants.h"
-#include "../../base/fixed_vector.h"
-#include "../../base/linalg.h"
-#include "../../base/nlp_state.h"
-#include "../../base/nlp_structs.h"
-#include "../../base/mesh.h"
-#include "../../base/util.h"
-#include "../../interfaces/nlp.h"
+#include <base/block_sparsity.h>
+#include <base/collocation.h>
+#include <base/fixed_vector.h>
+#include <base/linalg.h>
+#include <base/nlp_state.h>
+#include <base/nlp_structs.h>
+#include <base/mesh.h>
+#include <base/util.h>
+#include <nlp/nlp.h>
 
 #include "problem.h"
 
@@ -52,7 +51,7 @@ public:
     FixedField<int, 2>   off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
     FixedVector<int> off_acc_jac_fg;  // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
-    // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps
+    // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
     // for further info see hessian layout at the bottom
     BlockSparsity hes_a = BlockSparsity::createLowerTriangular(problem->x_size, BlockType::Exact);
     BlockSparsity hes_b = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::Offset);

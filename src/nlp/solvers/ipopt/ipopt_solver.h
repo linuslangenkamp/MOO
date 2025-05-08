@@ -3,7 +3,7 @@
 
 #include <memory>
 
-#include "nlp_solver.h"
+#include <nlp/nlp_solver.h>
 #include "ipopt_adapter.h"
 
 
