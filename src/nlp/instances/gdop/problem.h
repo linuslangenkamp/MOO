@@ -12,7 +12,7 @@
 class FullSweep {
 public:
     // Evaluation of L(), f(), g() for a given z_{i,j} = (x_{i,j}, u_{i,j}, p, t_{i,j})^T + first and second derivatives
-    // Idea: Call Fullsweep.setValues(), Fullsweep.callbackEval(), callbackJac(), callHess() -> Just iterate over COO
+    // Idea: Call Fullsweep.setValues(), Fullsweep.callback_eval(), callback_jac(), callHess() -> Just iterate over COO
     // function evals / diffs are on callback interfaced side
 
     FullSweep(FixedVector<FunctionLFG>&& lfg_in, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, bool has_lagrange,
@@ -57,21 +57,21 @@ public:
     FixedVector<double> hes_buffer; // can lead to severe memory consumption / order of a few GB, so maybe rethink this for large scale problems
 
     // fill eval_buffer, jac_buffer, hes_buffer
-    virtual void callbackEval(const double* xu_nlp, const double* p) = 0;
+    virtual void callback_eval(const double* xu_nlp, const double* p) = 0;
 
-    virtual void callbackJac(const double* xu_nlp, const double* p) = 0;
+    virtual void callback_jac(const double* xu_nlp, const double* p) = 0;
 
-    virtual void callbackHes(const double* xu_nlp, const double* p) = 0;
+    virtual void callback_hes(const double* xu_nlp, const double* p) = 0;
     
-    inline double getEvalL(const int offset) {
+    inline double get_eval_l(const int offset) {
         return *(lfg[0].eval + offset * eval_size);
     }
 
-    inline double getEvalF(const int f_index, const int offset) {
+    inline double get_eval_f(const int f_index, const int offset) {
         return *(lfg[f_index_start + f_index].eval + offset * eval_size);
     }
 
-    inline double getEvalG(const int g_index, const int offset) {
+    inline double get_eval_g(const int g_index, const int offset) {
         return *(lfg[g_index_start + g_index].eval + offset * eval_size);
     }
 };
@@ -112,17 +112,17 @@ public:
     FixedVector<double> jac_buffer;
     FixedVector<double> hes_buffer;
 
-    virtual void callbackEval(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
+    virtual void callback_eval(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
 
-    virtual void callbackJac(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
+    virtual void callback_jac(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
 
-    virtual void callbackHes(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
+    virtual void callback_hes(const double* x0_nlp, const double* xf_nlp, const double* p) = 0;
 
-    inline double getEvalM() {
+    inline double get_eval_m() {
         return *(mr[0].eval);
     }
 
-    inline double getEvalR(const int r_index) {
+    inline double get_eval_r(const int r_index) {
         return *(mr[r_index_start + r_index].eval);
     }
 };

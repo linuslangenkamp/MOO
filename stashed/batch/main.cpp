@@ -10,7 +10,7 @@
 
 int main() {
     auto radau = Collocation();
-    auto mesh = std::make_shared<Mesh>(Mesh::createEquidistantMeshFixedDegree(1, 15000, 5, radau));
+    auto mesh = std::make_shared<Mesh>(Mesh::create_equidistant_fixed_stages(1, 15000, 5, radau));
 
     std::unique_ptr<Collocation> p_radau = std::make_unique<Collocation>(radau);
 

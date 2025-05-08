@@ -27,9 +27,9 @@ struct Mesh {
     FixedField<int, 2>    acc_nodes; // number of nodes to the left of index (i, j)
 
 
-    static Mesh createEquidistantMeshFixedDegree(double tf, int intervals, int p, Collocation& collocation); 
-    FixedField<int, 2> createAccOffsetXU(int off_x, int off_xu);
-    FixedField<int, 2> createAccOffsetFG(int off_fg);
+    static Mesh create_equidistant_fixed_stages(double tf, int intervals, int p, Collocation& collocation); 
+    FixedField<int, 2> create_acc_offset_xu(int off_x, int off_xu);
+    FixedField<int, 2> create_acc_offset_fg(int off_fg);
 };
 
 // given some data trajectories t, x(t), u(t), p -> interpolate w.r.t. mesh and collocation scheme -> new fitting guess
@@ -41,7 +41,7 @@ struct Trajectory {
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     Trajectory interpolate(Mesh& mesh, Collocation& collocation);
-    Trajectory linearInterpolation(Mesh& mesh, Collocation& collocation);
+    Trajectory linear_interpolation(Mesh& mesh, Collocation& collocation);
 };
 
 #endif  // OPT_MESH_H

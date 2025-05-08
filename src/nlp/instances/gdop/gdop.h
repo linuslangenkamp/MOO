@@ -53,30 +53,30 @@ public:
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
     // for further info see hessian layout at the bottom
-    BlockSparsity hes_a = BlockSparsity::createLowerTriangular(problem->x_size, BlockType::Exact);
-    BlockSparsity hes_b = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::Offset);
-    BlockSparsity hes_c = BlockSparsity::createSquare(problem->x_size, BlockType::Exact);
-    BlockSparsity hes_d = BlockSparsity::createLowerTriangular(problem->x_size + problem->u_size, BlockType::Exact);
-    BlockSparsity hes_e = BlockSparsity::createRectangular(problem->p_size, problem->x_size, BlockType::Exact);
-    BlockSparsity hes_f = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::RowOffset);
-    BlockSparsity hes_g = BlockSparsity::createRectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::Exact);
-    BlockSparsity hes_h = BlockSparsity::createLowerTriangular(problem->p_size, BlockType::Exact);
+    BlockSparsity hes_a = BlockSparsity::create_lower_triangular(problem->x_size, BlockType::Exact);
+    BlockSparsity hes_b = BlockSparsity::create_lower_triangular(problem->x_size + problem->u_size, BlockType::Offset);
+    BlockSparsity hes_c = BlockSparsity::create_square(problem->x_size, BlockType::Exact);
+    BlockSparsity hes_d = BlockSparsity::create_lower_triangular(problem->x_size + problem->u_size, BlockType::Exact);
+    BlockSparsity hes_e = BlockSparsity::create_rectangular(problem->p_size, problem->x_size, BlockType::Exact);
+    BlockSparsity hes_f = BlockSparsity::create_rectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::RowOffset);
+    BlockSparsity hes_g = BlockSparsity::create_rectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::Exact);
+    BlockSparsity hes_h = BlockSparsity::create_lower_triangular(problem->p_size, BlockType::Exact);
 
     // init nlp and sparsity
     void init();
-    void initSizesOffsets();
-    void initBuffers();
-    void initBounds();
-    void initStartingPoint();
-    void initJacobian();
-    void initJacobianNonzeros();
-    void initJacobianSparsityPattern();
-    void initHessian();
+    void init_sizes_offsets();
+    void init_buffers();
+    void init_bounds();
+    void init_starting_point();
+    void init_jacobian();
+    void init_jacobian_nonzeros();
+    void init_jacobian_sparsity_pattern();
+    void init_hessian();
 
     // hessian updates
-    void updateHessianLFG(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+    void update_hessian_lfg(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
                           const BlockSparsity* ptr_map_p_xu, const double factor);
-    void updateHessianMR(FixedVector<double>& values, const HessianMR& hes, const double factor);
+    void update_hessian_mr(FixedVector<double>& values, const HessianMR& hes, const double factor);
 
     // inline methods to jump (i, j) callback buffer blocks
     int jac_offset(int i, int j);

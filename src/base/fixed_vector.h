@@ -106,7 +106,7 @@ public:
     }
 
     // write from vector -> data_buffer: data[i] = vector[offset + i], ..., data[len - 1] = vector[offset + len - 1],
-    constexpr void writeTo(T* data, std::size_t len, std::size_t offset = 0) const {
+    constexpr void write_to(T* data, std::size_t len, std::size_t offset = 0) const {
         assert(data != nullptr);
         assert(len <= _size - offset);
 
@@ -114,7 +114,7 @@ public:
     }
 
     // write from vector -> data_buffer: data[0] = vector[0], ..., data[_size - 1] = vector[_size - 1]
-    constexpr void writeTo(T* data) const {
+    constexpr void write_to(T* data) const {
         assert(data != nullptr);
 
         memcpy(data, _data.get(), _size * sizeof(T));

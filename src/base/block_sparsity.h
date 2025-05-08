@@ -38,7 +38,7 @@ struct BlockSparsity {
        . | x x x  
        s | x x x x
     */
-    static BlockSparsity createLowerTriangular(const int size, const BlockType block_type) {
+    static BlockSparsity create_lower_triangular(const int size, const BlockType block_type) {
         BlockSparsity b;
         b.type = block_type;
         b.block = FixedField<int, 2>(size);
@@ -67,7 +67,7 @@ struct BlockSparsity {
        . | x x x x
        R | x x x x
     */
-    static BlockSparsity createRectangular(const int rows, const int cols, const BlockType block_type) {
+    static BlockSparsity create_rectangular(const int rows, const int cols, const BlockType block_type) {
         BlockSparsity b;
         b.type = block_type;
         b.block = FixedField<int, 2>(rows, cols);
@@ -93,8 +93,8 @@ struct BlockSparsity {
        . | x x x
        R | x x x
     */
-    inline static BlockSparsity createSquare(const int size, const BlockType block_type) {
-        return createRectangular(size, size, block_type);
+    inline static BlockSparsity create_square(const int size, const BlockType block_type) {
+        return create_rectangular(size, size, block_type);
     }
 
     inline void insert(const int row, const int col, const int index) {
@@ -142,7 +142,7 @@ struct OrderedIndexSet {
 
     std::set<std::pair<int, int>, Compare> set;
 
-    void insertSparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off) {
+    void insert_sparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off) {
         for (auto coo : hes) {
             set.insert({coo.row + row_off, coo.col + col_off});
         }

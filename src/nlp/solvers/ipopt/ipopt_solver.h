@@ -17,7 +17,7 @@ public:
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
 
     void optimize() override;
-    void initIpoptApplication();
+    void init_IpoptApplication();
 };
 
 #endif // OPT_IPOPT_SOLVER_H

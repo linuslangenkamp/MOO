@@ -5,7 +5,7 @@ IpoptSolver::IpoptSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordere
     : NLPSolver(nlp, solver_settings),
       adapter(new IpoptAdapter(nlp)),
       app(IpoptApplicationFactory()) {
-    initIpoptApplication();
+    init_IpoptApplication();
 }
 
 // simple wrapper to adapter
@@ -19,7 +19,7 @@ void IpoptSolver::optimize() {
     }
 }
 
-void IpoptSolver::initIpoptApplication() {
+void IpoptSolver::init_IpoptApplication() {
     Ipopt::ApplicationReturnStatus status = app->Initialize();
     if (status != Ipopt::Solve_Succeeded) {
         std::cout << "[Ipopt Interface] Error during application initialization!" << std::endl;

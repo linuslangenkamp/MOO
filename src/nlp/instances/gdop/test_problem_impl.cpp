@@ -18,7 +18,7 @@ FullSweepTestImpl::FullSweepTestImpl(FixedVector<FunctionLFG>&& lfg_in, std::sha
         lfg[1].jac.dx[0].value = &jac_buffer[2];
     }
 
-void FullSweepTestImpl::callbackEval(const double* xu_nlp, const double* p) {
+void FullSweepTestImpl::callback_eval(const double* xu_nlp, const double* p) {
     int sum_ij = 0;
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
@@ -31,7 +31,7 @@ void FullSweepTestImpl::callbackEval(const double* xu_nlp, const double* p) {
     }
 }
 
-void FullSweepTestImpl::callbackJac(const double* xu_nlp, const double* p) {
+void FullSweepTestImpl::callback_jac(const double* xu_nlp, const double* p) {
     for (int i = 0; i < mesh->node_count; i++) {
         const double* xu_ij = xu_nlp + (x_size + u_size) * i;
         double T = xu_ij[0];
@@ -41,7 +41,7 @@ void FullSweepTestImpl::callbackJac(const double* xu_nlp, const double* p) {
     }
 }
 
-void FullSweepTestImpl::callbackHes(const double* xu_nlp, const double* p) {
+void FullSweepTestImpl::callback_hes(const double* xu_nlp, const double* p) {
     for (int i = 0; i < mesh->node_count; i++) {
         hes_buffer[3 * i] = 2;
         hes_buffer[3 * i + 1] = -2;
@@ -56,15 +56,15 @@ BoundarySweepTestImpl::BoundarySweepTestImpl(FixedVector<FunctionMR>&& mr_in, st
         mr[0].jac.dp[0].value = &jac_buffer[1];
     }
 
-void BoundarySweepTestImpl::callbackEval(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweepTestImpl::callback_eval(const double* x0_nlp, const double* xf_nlp, const double* p) {
     eval_buffer[0] = x0_nlp[0] - p[0];
 }
 
-void BoundarySweepTestImpl::callbackJac(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweepTestImpl::callback_jac(const double* x0_nlp, const double* xf_nlp, const double* p) {
     jac_buffer[0] = 1;
     jac_buffer[1] = -1;
 }
 
-void BoundarySweepTestImpl::callbackHes(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweepTestImpl::callback_hes(const double* x0_nlp, const double* xf_nlp, const double* p) {
 
 };

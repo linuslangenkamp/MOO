@@ -19,7 +19,7 @@ FullSweepTestImpl::FullSweepTestImpl(FixedVector<FunctionLFG>&& lfg_in, std::sha
         lfg[1].hes.du_dx[0].value = &hes_buffer[2];
     }
 
-void FullSweepTestImpl::callbackEval(const double* xu_nlp, const double* p) {
+void FullSweepTestImpl::callback_eval(const double* xu_nlp, const double* p) {
     for (int i = 0; i < mesh->node_count; i++) {
         const double* xu_ij = xu_nlp + (x_size + u_size) * i;
         double x1 = xu_ij[0];
@@ -41,7 +41,7 @@ void FullSweepTestImpl::callbackJac(const double* xu_nlp, const double* p) {
     }
 }
 
-void FullSweepTestImpl::callbackHes(const double* xu_nlp, const double* p) {
+void FullSweepTestImpl::callback_hes(const double* xu_nlp, const double* p) {
     for (int i = 0; i < mesh->node_count; i++) {
         const double* xu_ij = xu_nlp + (x_size + u_size) * i;
         double x1 = xu_ij[0];
@@ -58,7 +58,7 @@ BoundarySweepTestImpl::BoundarySweepTestImpl(FixedVector<FunctionMR>&& mr_in, st
         mr[0].jac.dxf[0].value = &jac_buffer[0];
     }
 
-void BoundarySweepTestImpl::callbackEval(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweepTestImpl::callback_eval(const double* x0_nlp, const double* xf_nlp, const double* p) {
     eval_buffer[0] = -xf_nlp[1];
 }
 
@@ -66,6 +66,6 @@ void BoundarySweepTestImpl::callbackJac(const double* x0_nlp, const double* xf_n
     jac_buffer[0] = -1;
 }
 
-void BoundarySweepTestImpl::callbackHes(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweepTestImpl::callback_hes(const double* x0_nlp, const double* xf_nlp, const double* p) {
 
 };

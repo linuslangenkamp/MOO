@@ -8,7 +8,7 @@
  * @param stages     Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-Mesh Mesh::createEquidistantMeshFixedDegree(double tf, int intervals, int stages, Collocation& collocation) {
+Mesh Mesh::create_equidistant_fixed_stages(double tf, int intervals, int stages, Collocation& collocation) {
     FixedVector<double> grid(intervals + 1);
     FixedVector<double> delta_t(intervals);
     FixedVector<int> nodes(intervals);
@@ -33,7 +33,7 @@ Mesh Mesh::createEquidistantMeshFixedDegree(double tf, int intervals, int stages
     return {intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
-FixedField<int, 2> Mesh::createAccOffsetXU(int off_x, int off_xu) {
+FixedField<int, 2> Mesh::create_acc_offset_xu(int off_x, int off_xu) {
     FixedField<int, 2> off_acc_xu(intervals);
     int off = off_x;
     for (int i = 0; i < intervals; i++) {
@@ -46,7 +46,7 @@ FixedField<int, 2> Mesh::createAccOffsetXU(int off_x, int off_xu) {
     return off_acc_xu;
 }
 
-FixedField<int, 2> Mesh::createAccOffsetFG(int off_fg) {
+FixedField<int, 2> Mesh::create_acc_offset_fg(int off_fg) {
     FixedField<int, 2> acc_fg = acc_nodes;
     for (int i = 0; i < intervals; i++) {
         for (int j = 0; j < nodes[i] ; j++) {
@@ -59,13 +59,13 @@ FixedField<int, 2> Mesh::createAccOffsetFG(int off_fg) {
 Trajectory Trajectory::interpolate(Mesh& mesh, Collocation& collocation) {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
-            return linearInterpolation(mesh, collocation);
+            return linear_interpolation(mesh, collocation);
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
 }
 
-Trajectory Trajectory::linearInterpolation(Mesh& mesh, Collocation& collocation) {
+Trajectory Trajectory::linear_interpolation(Mesh& mesh, Collocation& collocation) {
     Trajectory new_guess;
 
     std::vector<double> new_t = {0};

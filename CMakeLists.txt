@@ -48,8 +48,9 @@ set(SOURCES
     src/nlp/solvers/ipopt/ipopt_solver.cpp
 
     src/interfaces/openmodelica/main_opt.cpp
+    src/interfaces/openmodelica/gdop_problem_impl.cpp
 
-    stashed/steady_state/parameter_test.cpp
+    # stashed/steady_state/parameter_test.cpp
 )
 
 
@@ -69,7 +70,7 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
 #add_dependencies(optimization ipopt-ext mumps-ext)
 
-target_compile_options(optimization PRIVATE -Wall -Werror -fno-rtti -fno-var-tracking-assignments -Ofast -fopenmp)
+target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Ofast -fopenmp)
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
 target_link_libraries(optimization PRIVATE lapack blas dl gfortran gomp)
 if (COINHSL_FOUND)
@@ -77,3 +78,44 @@ if (COINHSL_FOUND)
 endif ()
 
 add_subdirectory(src/modelica/example)
+
+
+##### INCLUDE OM SIMULATION RUNTIME
+
+target_link_directories(optimization PRIVATE
+  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/lib/x86_64-linux-gnu/omc
+)
+
+target_include_directories(optimization PRIVATE
+  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/c
+  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(optimization PRIVATE 
+    SimulationRuntimeC
+    OpenModelicaRuntimeC
+    omcgc
+    zlib
+    lapack
+    blas
+    gfortran
+    pthread
+    dl
+    m
+    stdc++
+)
+
+target_compile_definitions(optimization PRIVATE
+  OM_HAVE_PTHREADS
+  OMC_DLL_MAIN_DEFINE
+  OPENMODELICA_XML_FROM_FILE_AT_RUNTIME
+  OMC_MODEL_PREFIX=include_test
+  OMC_NUM_MIXED_SYSTEMS=0
+  OMC_NUM_LINEAR_SYSTEMS=0
+  OMC_NUM_NONLINEAR_SYSTEMS=0
+  OMC_NDELAY_EXPRESSIONS=0
+  OMC_NVAR_STRING=0
+)
+
+##### INCLUDE OM SIMULATION RUNTIME
