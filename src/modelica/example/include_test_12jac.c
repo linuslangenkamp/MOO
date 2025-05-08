@@ -102,7 +102,7 @@ void include_test_eqFunction_45(DATA *data, threadData_t *threadData, JACOBIAN *
 /*
 equation index: 46
 type: SIMPLE_ASSIGN
-$OMC$objectLagrangeTerm.$pDERC.dummyVarC = -x2.SeedC
+$OMC$objectMayerTerm.$pDERC.dummyVarC = x1.SeedC
 */
 void include_test_eqFunction_46(DATA *data, threadData_t *threadData, JACOBIAN *jacobian, JACOBIAN *parentJacobian)
 {
@@ -110,14 +110,14 @@ void include_test_eqFunction_46(DATA *data, threadData_t *threadData, JACOBIAN *
   const int baseClockIndex = 0;
   const int subClockIndex = 5;
   const int equationIndexes[2] = {1,46};
-  jacobian->resultVars[2] /* $OMC$objectLagrangeTerm.$pDERC.dummyVarC JACOBIAN_VAR */ = (-jacobian->seedVars[1] /* x2.SeedC SEED_VAR */);
+  jacobian->resultVars[3] /* $OMC$objectMayerTerm.$pDERC.dummyVarC JACOBIAN_VAR */ = jacobian->seedVars[0] /* x1.SeedC SEED_VAR */;
   TRACE_POP
 }
 
 /*
 equation index: 47
 type: SIMPLE_ASSIGN
-cost_l.$pDERC.dummyVarC = -x2.SeedC
+cost_m.$pDERC.dummyVarC = x1.SeedC
 */
 void include_test_eqFunction_47(DATA *data, threadData_t *threadData, JACOBIAN *jacobian, JACOBIAN *parentJacobian)
 {
@@ -125,14 +125,14 @@ void include_test_eqFunction_47(DATA *data, threadData_t *threadData, JACOBIAN *
   const int baseClockIndex = 0;
   const int subClockIndex = 6;
   const int equationIndexes[2] = {1,47};
-  jacobian->tmpVars[5] /* cost_l.$pDERC.dummyVarC JACOBIAN_TMP_VAR */ = (-jacobian->seedVars[1] /* x2.SeedC SEED_VAR */);
+  jacobian->tmpVars[6] /* cost_m.$pDERC.dummyVarC JACOBIAN_TMP_VAR */ = jacobian->seedVars[0] /* x1.SeedC SEED_VAR */;
   TRACE_POP
 }
 
 /*
 equation index: 48
 type: SIMPLE_ASSIGN
-$OMC$objectMayerTerm.$pDERC.dummyVarC = -x2.SeedC
+$OMC$objectLagrangeTerm.$pDERC.dummyVarC = -x2.SeedC
 */
 void include_test_eqFunction_48(DATA *data, threadData_t *threadData, JACOBIAN *jacobian, JACOBIAN *parentJacobian)
 {
@@ -140,14 +140,14 @@ void include_test_eqFunction_48(DATA *data, threadData_t *threadData, JACOBIAN *
   const int baseClockIndex = 0;
   const int subClockIndex = 7;
   const int equationIndexes[2] = {1,48};
-  jacobian->resultVars[3] /* $OMC$objectMayerTerm.$pDERC.dummyVarC JACOBIAN_VAR */ = (-jacobian->seedVars[1] /* x2.SeedC SEED_VAR */);
+  jacobian->resultVars[2] /* $OMC$objectLagrangeTerm.$pDERC.dummyVarC JACOBIAN_VAR */ = (-jacobian->seedVars[1] /* x2.SeedC SEED_VAR */);
   TRACE_POP
 }
 
 /*
 equation index: 49
 type: SIMPLE_ASSIGN
-cost_m.$pDERC.dummyVarC = -x2.SeedC
+cost_l.$pDERC.dummyVarC = -x2.SeedC
 */
 void include_test_eqFunction_49(DATA *data, threadData_t *threadData, JACOBIAN *jacobian, JACOBIAN *parentJacobian)
 {
@@ -155,7 +155,7 @@ void include_test_eqFunction_49(DATA *data, threadData_t *threadData, JACOBIAN *
   const int baseClockIndex = 0;
   const int subClockIndex = 8;
   const int equationIndexes[2] = {1,49};
-  jacobian->tmpVars[6] /* cost_m.$pDERC.dummyVarC JACOBIAN_TMP_VAR */ = (-jacobian->seedVars[1] /* x2.SeedC SEED_VAR */);
+  jacobian->tmpVars[5] /* cost_l.$pDERC.dummyVarC JACOBIAN_TMP_VAR */ = (-jacobian->seedVars[1] /* x2.SeedC SEED_VAR */);
   TRACE_POP
 }
 
@@ -650,7 +650,7 @@ int include_test_initialAnalyticJacobianC(DATA* data, threadData_t *threadData, 
   FILE* pFile = openSparsePatternFile(data, threadData, "include_test_JacC.bin");
   
   initJacobian(jacobian, 3, 4, 16, include_test_functionJacC_column, NULL, NULL);
-  jacobian->sparsePattern = allocSparsePattern(3, 8, 3);
+  jacobian->sparsePattern = allocSparsePattern(3, 9, 3);
   jacobian->availability = JACOBIAN_AVAILABLE;
   
   /* read lead index of compressed sparse column */
@@ -660,9 +660,9 @@ int include_test_initialAnalyticJacobianC(DATA* data, threadData_t *threadData, 
   }
   
   /* read sparse index */
-  count = omc_fread(jacobian->sparsePattern->index, sizeof(unsigned int), 8, pFile, FALSE);
-  if (count != 8) {
-    throwStreamPrint(threadData, "Error while reading row index list of sparsity pattern. Expected %d, got %zu", 8, count);
+  count = omc_fread(jacobian->sparsePattern->index, sizeof(unsigned int), 9, pFile, FALSE);
+  if (count != 9) {
+    throwStreamPrint(threadData, "Error while reading row index list of sparsity pattern. Expected %d, got %zu", 9, count);
   }
   
   /* write color array */

@@ -181,7 +181,7 @@ LOG_STDOUT        | info    | usage: /home/linus/Projects/Optimization/src/model
 |                 | |       | | <-noEventEmit>
 |                 | |       | |   do not emit event points to the result file
 |                 | |       | | <-noRestart>
-|                 | |       | |   disables the restart of the integration method after an event is performed, used by the methods: dassl, ida
+|                 | |       | |   disables the restart of the integration method after an event is performed, used by the methods: dassl, ida, gbode
 |                 | |       | | <-noRootFinding>
 |                 | |       | |   disables the internal root finding procedure of methods: dassl and ida.
 |                 | |       | | <-noScaling>

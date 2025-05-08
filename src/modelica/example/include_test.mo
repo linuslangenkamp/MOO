@@ -7,7 +7,7 @@ model include_test
   Real k4;
   Real k5;
   input Real u(start=700, min=650, max = 748.15);
-  output Real cost_m = -x2 annotation(isMayer=true);
+  output Real cost_m = -x2 + x1 + x2 annotation(isMayer=true);
   output Real cost_l = -x2 annotation(isLagrange=true);
 equation
   k1 = exp( 8.86 - 20300 / 1.9872 / u);

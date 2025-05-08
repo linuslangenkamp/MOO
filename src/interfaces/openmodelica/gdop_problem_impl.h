@@ -5,17 +5,19 @@
 
 #include <nlp/instances/gdop/problem.h>
 
-class FullSweepOM : public FullSweep {
+class FullSweep_OM : public FullSweep {
 public:
-    FullSweepOM(FixedVector<FunctionLFG>&& lfg, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds);
+    FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, 
+                           bool has_lagrange, int f_size, int g_size, int x_size, int u_size, int p_size);
     void callback_eval(const double* xu_nlp, const double* p) override;
     void callback_jac(const double* xu_nlp, const double* p) override;
     void callback_hes(const double* xu_nlp, const double* p) override;
 };
 
-class BoundarySweepOM : public BoundarySweep {
+class BoundarySweep_OM : public BoundarySweep {
 public:
-    BoundarySweepOM(FixedVector<FunctionMR>&& mr, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds);
+    BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds,
+                     bool has_mayer, int r_size, int x_size, int p_size);
     void callback_eval(const double* x0_nlp, const double* xf_nlp, const double* p) override;
     void callback_jac(const double* x0_nlp, const double* xf_nlp, const double* p) override;
     void callback_hes(const double* x0_nlp, const double* xf_nlp, const double* p) override;

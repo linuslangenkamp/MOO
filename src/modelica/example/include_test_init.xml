@@ -9,11 +9,11 @@
 
   OPENMODELICAHOME                    = "/home/linus/Projects/OpenModelica/build_cmake/install_cmake/bin/.."
 
-  guid                                = "{7a0c3295-e047-45b2-b6f3-e0fb83094dee}"
+  guid                                = "{057d5346-5392-4f1d-b520-c234268eec3e}"
 
   description                         = ""
-  generationTool                      = "OpenModelica Compiler v1.26.0-dev-51-g1b6c45e882-cmake"
-  generationDateAndTime               = "2025-05-07T18:20:31Z"
+  generationTool                      = "OpenModelica Compiler v1.26.0-dev-108-gda288b257f-cmake"
+  generationDateAndTime               = "2025-05-08T19:58:47Z"
 
   variableNamingConvention            = "structured"
 
@@ -125,7 +125,7 @@
     classIndex = "1" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
     fileName = "" startLine = "0" startColumn = "0" endLine = "0" endColumn = "0" fileWritable = "true">
-    <Real fixed="false" useNominal="false" />
+    <Real start="1.0" fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
     name = "cost_l"
@@ -146,8 +146,8 @@
     alias = "noAlias"
     classIndex = "3" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "10" startColumn = "3" endLine = "10" endColumn = "52" fileWritable = "true">
-    <Real fixed="false" useNominal="false" />
+    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "10" startColumn = "3" endLine = "10" endColumn = "62" fileWritable = "true">
+    <Real start="1.0" fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
     name = "k1"

@@ -118,49 +118,49 @@ int include_test_setb_function(DATA *data, threadData_t *threadData)
 /*
 equation index: 14
 type: SIMPLE_ASSIGN
-cost_l = -x2
+cost_m = x1 - x2 + x2
 */
 void include_test_eqFunction_14(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
   const int equationIndexes[2] = {1,14};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */) = (-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */));
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */) - (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */) + (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */);
   TRACE_POP
 }
 /*
 equation index: 15
 type: SIMPLE_ASSIGN
-$OMC$objectLagrangeTerm = cost_l
+$OMC$objectMayerTerm = cost_m
 */
 void include_test_eqFunction_15(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
   const int equationIndexes[2] = {1,15};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */);
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* $OMC$objectMayerTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */);
   TRACE_POP
 }
 /*
 equation index: 16
 type: SIMPLE_ASSIGN
-cost_m = -x2
+cost_l = -x2
 */
 void include_test_eqFunction_16(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
   const int equationIndexes[2] = {1,16};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */) = (-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */));
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */) = (-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */));
   TRACE_POP
 }
 /*
 equation index: 17
 type: SIMPLE_ASSIGN
-$OMC$objectMayerTerm = cost_m
+$OMC$objectLagrangeTerm = cost_l
 */
 void include_test_eqFunction_17(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
   const int equationIndexes[2] = {1,17};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* $OMC$objectMayerTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* cost_m variable */);
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* cost_l variable */);
   TRACE_POP
 }
 /*
@@ -517,7 +517,7 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelFilePrefix = "include_test";
   data->modelData->resultFileName = NULL;
   data->modelData->modelDir = "/home/linus/Projects/Optimization/src/modelica/example";
-  data->modelData->modelGUID = "{7a0c3295-e047-45b2-b6f3-e0fb83094dee}";
+  data->modelData->modelGUID = "{057d5346-5392-4f1d-b520-c234268eec3e}";
   #if defined(OPENMODELICA_XML_FROM_FILE_AT_RUNTIME)
   data->modelData->initXMLData = NULL;
   data->modelData->modelDataXml.infoXMLData = NULL;
