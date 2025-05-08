@@ -85,14 +85,15 @@ Problem* create_gdop_om(DATA* data, Mesh& mesh) {
     FixedVector<Bounds> g_bounds(size_g);
     FixedVector<Bounds> r_bounds(size_r);
 
-    int first_index_g = data->modelData->nVariablesReal - (data->modelData->nOptimizeConstraints + data->modelData->nOptimizeFinalConstraints);
-    int first_index_r = data->modelData->nVariablesReal - data->modelData->nOptimizeFinalConstraints;
-
+    int first_index_g = data->modelData->nVariablesReal - (size_g + size_r);
+    int first_index_r = data->modelData->nVariablesReal - size_r;
+    printf("%d\n", first_index_g);
     for (int g = 0; g < size_g; g++) {
         g_bounds[g].lb = data->modelData->realVarsData[first_index_g + g].attribute.min;
         g_bounds[g].ub = data->modelData->realVarsData[first_index_g + g].attribute.max;
-    }
-
+        
+    }    
+    printf("%f, %f\n", g_bounds[0].lb, g_bounds[0].ub);
     for (int r = 0; r < size_r; r++) {
         r_bounds[r].lb = data->modelData->realVarsData[first_index_r + r].attribute.min;
         r_bounds[r].ub = data->modelData->realVarsData[first_index_r + r].attribute.max;
@@ -103,10 +104,7 @@ Problem* create_gdop_om(DATA* data, Mesh& mesh) {
        => assume x(t_0) = x0 fixed, x(t_f) free to r constraint */
     FixedVector<std::optional<f64>> x0_fixed(size_x);
     FixedVector<std::optional<f64>> xf_fixed(size_x);
-    
-    for (int x = 0; x < size_x; x++) {
-        x0_fixed[x] =  data->modelData->realVarsData[x].attribute.start;
-    }
+
     
     
     /* set bounds and initial values */

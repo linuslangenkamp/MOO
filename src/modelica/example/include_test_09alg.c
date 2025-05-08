@@ -6,27 +6,27 @@ extern "C" {
 #endif
 
 /* forwarded equations */
-extern void include_test_eqFunction_14(DATA* data, threadData_t *threadData);
 extern void include_test_eqFunction_15(DATA* data, threadData_t *threadData);
 extern void include_test_eqFunction_16(DATA* data, threadData_t *threadData);
-extern void include_test_eqFunction_17(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_18(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_19(DATA* data, threadData_t *threadData);
 
 static void functionAlg_system0(DATA *data, threadData_t *threadData)
 {
   int id;
 
   static void (*const eqFunctions[4])(DATA*, threadData_t*) = {
-    include_test_eqFunction_14,
     include_test_eqFunction_15,
     include_test_eqFunction_16,
-    include_test_eqFunction_17
+    include_test_eqFunction_18,
+    include_test_eqFunction_19
   };
   
   static const int eqIndices[4] = {
-    14,
     15,
     16,
-    17
+    18,
+    19
   };
   
   for (id = 0; id < 4; id++) {

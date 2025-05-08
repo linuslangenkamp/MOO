@@ -33,6 +33,8 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* om_data, threadData_t
     // problem
     // fs, bs, set sparsity pattern and om_data
     // create solver => run()
-    example();
+    
+    
+    // example();
     return 0;
 }

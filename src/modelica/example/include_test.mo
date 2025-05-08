@@ -6,6 +6,7 @@ model include_test
   Real k3;
   Real k4;
   Real k5;
+  Real CONSTR(min=-1.25, max=1.25) = x1 * x2 annotation(isConstraint=true);
   input Real u(start=700, min=650, max = 748.15);
   output Real cost_m = -x2 + x1 + x2 annotation(isMayer=true);
   output Real cost_l = -x2 annotation(isLagrange=true);

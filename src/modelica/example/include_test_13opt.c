@@ -21,9 +21,11 @@ int include_test_lagrange(DATA* data, modelica_real** res, short * index_DresB, 
   return 0;
   return -1;
 }
+// set int* list of indices: we dont need more "include_test_pickUpBoundsForInputsInOptimization" is useless!
 void include_test_getInputVarIndices(DATA* data, int* input_var_indices) {
   input_var_indices[0] = 13;
 }
+
 /* opt vars  */
 int include_test_pickUpBoundsForInputsInOptimization(DATA* data, modelica_real* min, modelica_real* max, modelica_real*nominal, modelica_boolean *useNominal, char ** name, modelica_real * start, modelica_real* startTimeOpt)
 {

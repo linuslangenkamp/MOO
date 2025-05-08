@@ -7,15 +7,15 @@ extern "C" {
 #endif
 
 void include_test_functionInitialEquations_0(DATA *data, threadData_t *threadData);
+extern void include_test_eqFunction_25(DATA *data, threadData_t *threadData);
+
+extern void include_test_eqFunction_24(DATA *data, threadData_t *threadData);
+
 extern void include_test_eqFunction_22(DATA *data, threadData_t *threadData);
 
 extern void include_test_eqFunction_21(DATA *data, threadData_t *threadData);
 
 extern void include_test_eqFunction_20(DATA *data, threadData_t *threadData);
-
-extern void include_test_eqFunction_19(DATA *data, threadData_t *threadData);
-
-extern void include_test_eqFunction_18(DATA *data, threadData_t *threadData);
 
 
 /*
@@ -43,35 +43,38 @@ void include_test_eqFunction_7(DATA *data, threadData_t *threadData)
   (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* x2 STATE(1) */) = (data->modelData->realVarsData[1] /* x2 STATE(1) */).attribute .start;
   TRACE_POP
 }
-extern void include_test_eqFunction_16(DATA *data, threadData_t *threadData);
+extern void include_test_eqFunction_18(DATA *data, threadData_t *threadData);
+
+extern void include_test_eqFunction_19(DATA *data, threadData_t *threadData);
+
+extern void include_test_eqFunction_26(DATA *data, threadData_t *threadData);
 
 extern void include_test_eqFunction_17(DATA *data, threadData_t *threadData);
 
-extern void include_test_eqFunction_14(DATA *data, threadData_t *threadData);
+extern void include_test_eqFunction_23(DATA *data, threadData_t *threadData);
 
 extern void include_test_eqFunction_15(DATA *data, threadData_t *threadData);
 
-extern void include_test_eqFunction_23(DATA *data, threadData_t *threadData);
-
-extern void include_test_eqFunction_24(DATA *data, threadData_t *threadData);
+extern void include_test_eqFunction_16(DATA *data, threadData_t *threadData);
 
 OMC_DISABLE_OPT
 void include_test_functionInitialEquations_0(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
+  include_test_eqFunction_25(data, threadData);
+  include_test_eqFunction_24(data, threadData);
   include_test_eqFunction_22(data, threadData);
   include_test_eqFunction_21(data, threadData);
   include_test_eqFunction_20(data, threadData);
-  include_test_eqFunction_19(data, threadData);
-  include_test_eqFunction_18(data, threadData);
   include_test_eqFunction_6(data, threadData);
   include_test_eqFunction_7(data, threadData);
-  include_test_eqFunction_16(data, threadData);
+  include_test_eqFunction_18(data, threadData);
+  include_test_eqFunction_19(data, threadData);
+  include_test_eqFunction_26(data, threadData);
   include_test_eqFunction_17(data, threadData);
-  include_test_eqFunction_14(data, threadData);
-  include_test_eqFunction_15(data, threadData);
   include_test_eqFunction_23(data, threadData);
-  include_test_eqFunction_24(data, threadData);
+  include_test_eqFunction_15(data, threadData);
+  include_test_eqFunction_16(data, threadData);
   TRACE_POP
 }
 
