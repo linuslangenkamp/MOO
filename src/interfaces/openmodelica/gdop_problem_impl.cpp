@@ -37,7 +37,7 @@ void BoundarySweep_OM::callback_hes(const f64* x0_nlp, const f64* xf_nlp, const 
     // Dummy Hessian (does nothing)
 }
 
-std::shared_ptr<Problem> create_gdop_om(DATA* data, Mesh& mesh) {
+Problem* create_gdop_om(DATA* data, Mesh& mesh) {
     // sizes
     int size_x = data->modelData->nStates;
     int size_u = data->modelData->nInputVars;
@@ -55,21 +55,60 @@ std::shared_ptr<Problem> create_gdop_om(DATA* data, Mesh& mesh) {
     int size_g = data->modelData->nOptimizeConstraints;
     int size_r = data->modelData->nOptimizeFinalConstraints; // TODO: add *generic boundary* constraints later also at t=t0
 
-    // create functions and bounds
+    /* create functions and bounds */
     FixedVector<FunctionMR> mr((int)mayer + size_r);
     FixedVector<FunctionLFG> lfg((int)lagrange + size_x + size_g); // size_f == size_x
 
     /* create sparsity patterns */
 
+
+    /* variable bounds */
     FixedVector<Bounds> x_bounds(size_x);
     FixedVector<Bounds> u_bounds(size_u);
     FixedVector<Bounds> p_bounds(size_p);
 
+    for (int x = 0; x < size_x; x++) {
+        x_bounds[x].lb = data->modelData->realVarsData[x].attribute.min;
+        x_bounds[x].ub = data->modelData->realVarsData[x].attribute.max;
+    }
+
+    /* new generated function getInputVarIndices, just fills a index list */
+    auto u_data_indices = std::make_unique<int>(size_u);
+    data->callback->getInputVarIndices(data, u_data_indices.get());
+    for (int u = 0; u < size_u; u++) {
+        int u_index =  *(u_data_indices.get() + u);
+        u_bounds[u].lb = data->modelData->realVarsData[u_index].attribute.min;
+        u_bounds[u].ub = data->modelData->realVarsData[u_index].attribute.max;
+    }
+
+    /* constraint bounds */
     FixedVector<Bounds> g_bounds(size_g);
     FixedVector<Bounds> r_bounds(size_r);
 
+    int first_index_g = data->modelData->nVariablesReal - (data->modelData->nOptimizeConstraints + data->modelData->nOptimizeFinalConstraints);
+    int first_index_r = data->modelData->nVariablesReal - data->modelData->nOptimizeFinalConstraints;
+
+    for (int g = 0; g < size_g; g++) {
+        g_bounds[g].lb = data->modelData->realVarsData[first_index_g + g].attribute.min;
+        g_bounds[g].ub = data->modelData->realVarsData[first_index_g + g].attribute.max;
+    }
+
+    for (int r = 0; r < size_r; r++) {
+        r_bounds[r].lb = data->modelData->realVarsData[first_index_r + r].attribute.min;
+        r_bounds[r].ub = data->modelData->realVarsData[first_index_r + r].attribute.max;
+    }
+
+    /* for now we ignore xf fixed (need some steps in Backend to detect)
+       and also ignore x0 non fixed, since too complicated
+       => assume x(t_0) = x0 fixed, x(t_f) free to r constraint */
     FixedVector<std::optional<f64>> x0_fixed(size_x);
     FixedVector<std::optional<f64>> xf_fixed(size_x);
+    
+    for (int x = 0; x < size_x; x++) {
+        x0_fixed[x] =  data->modelData->realVarsData[x].attribute.start;
+    }
+    
+    
     /* set bounds and initial values */
 
     /*
@@ -78,6 +117,11 @@ std::shared_ptr<Problem> create_gdop_om(DATA* data, Mesh& mesh) {
     std::make_shared<Problem>(std::move(fs), std::move(bs), 
                                      std::move(x_bounds), std::move(u_bounds), std::move(p_bounds),
                                      std::move(x0_fixed), std::move(xf_fixed))
+    */
+
+    /*
+        for (size_t idx = 0; idx < 100; idx++)
+        printf("%s\n", (data->modelData->realVarsData[idx].info.name));
     */
 
     return NULL;

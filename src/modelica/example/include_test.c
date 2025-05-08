@@ -480,6 +480,7 @@ struct OpenModelicaGeneratedFunctionCallbacks include_test_callback = {
    include_test_linear_model_datarecovery_frame,
    include_test_mayer,
    include_test_lagrange,
+   include_test_getInputVarIndices,
    include_test_pickUpBoundsForInputsInOptimization,
    include_test_setInputData,
    include_test_getTimeGrid,
