@@ -10,7 +10,7 @@
 
 int example() {
     Collocation coll = Collocation();
-    auto mesh = std::make_shared<Mesh>(Mesh::create_equidistant_fixed_stages(100, 150, 5, coll));
+    auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(100, 150, 5, coll));
 
     std::unique_ptr<Collocation> radau = std::make_unique<Collocation>(coll);
 
@@ -35,22 +35,23 @@ int example() {
     r_bounds[0].lb = 0;
     r_bounds[0].ub = 0;
 
-    std::unique_ptr<FullSweep> fs(new FullSweepTestImpl(std::move(lfg), mesh, g_bounds));
-    std::unique_ptr<BoundarySweep> bs(new BoundarySweepTestImpl(std::move(mr), mesh, r_bounds));
+    std::unique_ptr<FullSweep> fs(new FullSweepTestImpl(std::move(lfg), *mesh, std::move(g_bounds)));
+    std::unique_ptr<BoundarySweep> bs(new BoundarySweepTestImpl(std::move(mr), *mesh, std::move(r_bounds)));
 
     FixedVector<Bounds> x_bounds(1);
     FixedVector<Bounds> u_bounds(0);
     FixedVector<Bounds> p_bounds(1);
-    FixedVector<std::optional<double>> x0_fixed(1);
-    FixedVector<std::optional<double>> xf_fixed(1);
+    FixedVector<std::optional<f64>> x0_fixed(1);
+    FixedVector<std::optional<f64>> xf_fixed(1);
 
-    auto problem = std::make_shared<Problem>(std::move(fs), std::move(bs), std::move(x_bounds), std::move(u_bounds), std::move(p_bounds), std::move(x0_fixed), std::move(xf_fixed));
+    auto problem = std::make_unique<Problem>(*fs, *bs, std::move(x_bounds), std::move(u_bounds), std::move(p_bounds), std::move(x0_fixed), std::move(xf_fixed));
 
-    std::shared_ptr<Trajectory> initial_guess(new Trajectory{{0, 25}, {{300, 301}}, {}, {300}, InterpolationMethod::LINEAR});
+    std::unique_ptr<Trajectory> initial_guess(new Trajectory{{0, 25}, {{300, 301}}, {}, {300}, InterpolationMethod::LINEAR});
 
-    GDOP gdop(problem, std::move(radau), mesh, initial_guess);
+    GDOP gdop(*problem, *radau, *mesh, *initial_guess);
     
-    IpoptSolver ipopt_solver(std::make_shared<GDOP>(std::move(gdop)), NULL);
+    std::unordered_map<std::string, std::string> flags;
+    IpoptSolver ipopt_solver(gdop, flags);
 
     std::cout << "Call Optimization Steady State Example\n";
     ipopt_solver.optimize();

@@ -9,13 +9,13 @@
 
 class NLPSolver {
 public:
-    NLPSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings)
+    NLPSolver(NLP& nlp, std::unordered_map<std::string, std::string>& solver_settings)
         : nlp(nlp), solver_settings(solver_settings) {}
 
     virtual ~NLPSolver() = default;
 
-    std::shared_ptr<NLP> nlp;
-    std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings;
+    NLP& nlp;
+    std::unordered_map<std::string, std::string>& solver_settings;
 
     virtual void optimize() = 0;
 };

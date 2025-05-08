@@ -3,23 +3,23 @@
 
 #include <vector>
 
-#include "constants.h"
+#include "util.h"
 
 
 struct Bounds {
-    double lb = MINUS_INFINITY;
-    double ub = PLUS_INFINITY;
+    f64 lb = MINUS_INFINITY;
+    f64 ub = PLUS_INFINITY;
 };
 
 struct JacobianSparsity {
     int col;
-    double* value;
+    f64* value;
 };
 
 struct HessianSparsity {
     int row;
     int col;
-    double* value;
+    f64* value;
 };
 
 // LFG - generic global function f(x, u, p, t)
@@ -51,7 +51,7 @@ struct HessianLFG {
 };
 
 struct FunctionLFG {
-    double* eval;
+    f64* eval;
     JacobianLFG jac;
     HessianLFG hes;
 };
@@ -85,7 +85,7 @@ struct HessianMR {
 };
 
 struct FunctionMR {
-    double* eval;
+    f64* eval;
     JacobianMR jac;
     HessianMR hes;
 };

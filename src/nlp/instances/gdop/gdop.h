@@ -18,24 +18,24 @@
 
 class GDOP : public NLP {
 public:
-    GDOP(std::shared_ptr<Problem> problem, std::unique_ptr<Collocation> collocation, std::shared_ptr<Mesh> mesh, std::shared_ptr<Trajectory> guess)
+    GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
         : NLP(),
           mesh(mesh),
           problem(problem),
-          collocation(std::move(collocation)),
+          collocation(collocation),
           guess(guess) {
         init();
     }
 
     // structures
-    std::shared_ptr<Mesh> mesh;                // grid / mesh
-    std::shared_ptr<Problem> problem;          // continuous GDOP
-    std::unique_ptr<Collocation> collocation;  // collocation data
-    std::shared_ptr<Trajectory> guess;         // initial guess / trajectory, will be interpolated accordingly
-    NLP_State evaluation_state;                // simple state to check which actions are / have to be performed for an iteration
+    Mesh& mesh;                  // grid / mesh
+    Problem& problem;            // continuous GDOP
+    Collocation& collocation;    // collocation data
+    Trajectory& guess;           // initial guess / trajectory, will be interpolated accordingly
+    NLP_State evaluation_state;  // simple state to check which actions are / have to be performed for an iteration
 
     // constant NLP derivative matrix part of the jacobian
-    FixedVector<double> const_der_jac;
+    FixedVector<f64> const_der_jac;
 
     // offsets
     int off_x;         // offset #xVars
@@ -53,14 +53,14 @@ public:
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
     // for further info see hessian layout at the bottom
-    BlockSparsity hes_a = BlockSparsity::create_lower_triangular(problem->x_size, BlockType::Exact);
-    BlockSparsity hes_b = BlockSparsity::create_lower_triangular(problem->x_size + problem->u_size, BlockType::Offset);
-    BlockSparsity hes_c = BlockSparsity::create_square(problem->x_size, BlockType::Exact);
-    BlockSparsity hes_d = BlockSparsity::create_lower_triangular(problem->x_size + problem->u_size, BlockType::Exact);
-    BlockSparsity hes_e = BlockSparsity::create_rectangular(problem->p_size, problem->x_size, BlockType::Exact);
-    BlockSparsity hes_f = BlockSparsity::create_rectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::RowOffset);
-    BlockSparsity hes_g = BlockSparsity::create_rectangular(problem->p_size, problem->x_size + problem->u_size, BlockType::Exact);
-    BlockSparsity hes_h = BlockSparsity::create_lower_triangular(problem->p_size, BlockType::Exact);
+    BlockSparsity hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
+    BlockSparsity hes_b = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Offset);
+    BlockSparsity hes_c = BlockSparsity::create_square(problem.x_size, BlockType::Exact);
+    BlockSparsity hes_d = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Exact);
+    BlockSparsity hes_e = BlockSparsity::create_rectangular(problem.p_size, problem.x_size, BlockType::Exact);
+    BlockSparsity hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
+    BlockSparsity hes_g = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::Exact);
+    BlockSparsity hes_h = BlockSparsity::create_lower_triangular(problem.p_size, BlockType::Exact);
 
     // init nlp and sparsity
     void init();
@@ -74,9 +74,9 @@ public:
     void init_hessian();
 
     // hessian updates
-    void update_hessian_lfg(FixedVector<double>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
-                          const BlockSparsity* ptr_map_p_xu, const double factor);
-    void update_hessian_mr(FixedVector<double>& values, const HessianMR& hes, const double factor);
+    void update_hessian_lfg(FixedVector<f64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+                          const BlockSparsity* ptr_map_p_xu, const f64 factor);
+    void update_hessian_mr(FixedVector<f64>& values, const HessianMR& hes, const f64 factor);
 
     // inline methods to jump (i, j) callback buffer blocks
     int jac_offset(int i, int j);
@@ -88,9 +88,9 @@ public:
     void callback_hessian();
 
     // nlp solver calls
-    void check_new_x(const double* nlp_solver_x, bool new_x);
-    void check_new_lambda(const double* nlp_solver_lambda, const bool new_lambda);
-    void check_new_sigma(const double obj_factor);
+    void check_new_x(const f64* nlp_solver_x, bool new_x);
+    void check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda);
+    void check_new_sigma(const f64 obj_factor);
     void eval_f_internal();
     void eval_g_internal();
     void eval_grad_f_internal();
@@ -98,11 +98,11 @@ public:
     void eval_hes_internal();
 
     // virtuals in NLP
-    void eval_f(const double* nlp_solver_x, bool new_x);
-    void eval_g(const double* nlp_solver_x, bool new_x);
-    void eval_grad_f(const double* nlp_solver_x, bool new_x);
-    void eval_jac_g(const double* nlp_solver_x, bool new_x);
-    void eval_hes(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda);
+    void eval_f(const f64* nlp_solver_x, bool new_x);
+    void eval_g(const f64* nlp_solver_x, bool new_x);
+    void eval_grad_f(const f64* nlp_solver_x, bool new_x);
+    void eval_jac_g(const f64* nlp_solver_x, bool new_x);
+    void eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma, bool new_x, bool new_lambda);
 };
 
 #endif  // OPT_GDOP_H

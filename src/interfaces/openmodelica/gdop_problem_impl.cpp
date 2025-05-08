@@ -1,43 +1,43 @@
 #include "gdop_problem_impl.h"
 
 // Dummy implementation of FullSweep_OM
-FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& g_bounds, 
+FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, Mesh& mesh, FixedVector<Bounds>&& g_bounds, 
                            bool has_lagrange, int f_size, int g_size, int x_size, int u_size, int p_size)
-    : FullSweep(std::move(lfg), mesh, g_bounds, has_lagrange, f_size, g_size, x_size, u_size, p_size) {
+    : FullSweep(std::move(lfg), mesh, std::move(g_bounds), has_lagrange, f_size, g_size, x_size, u_size, p_size) {
     // Dummy constructor (does nothing)
 }
-void FullSweep_OM::callback_eval(const double* xu_nlp, const double* p) {
+void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     // Dummy evaluation (does nothing)
 }
 
-void FullSweep_OM::callback_jac(const double* xu_nlp, const double* p) {
+void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
     // Dummy Jacobian (does nothing)
 }
 
-void FullSweep_OM::callback_hes(const double* xu_nlp, const double* p) {
+void FullSweep_OM::callback_hes(const f64* xu_nlp, const f64* p) {
     // Dummy Hessian (does nothing)
 }
 
 // Dummy implementation of BoundarySweep_OM
-BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::shared_ptr<Mesh> mesh, FixedVector<Bounds>& r_bounds,
+BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, Mesh& mesh, FixedVector<Bounds>&& r_bounds,
                                    bool has_mayer, int r_size, int x_size, int p_size)
-    : BoundarySweep(std::move(mr), mesh, r_bounds, has_mayer, r_size, x_size, p_size) {
+    : BoundarySweep(std::move(mr), mesh, std::move(r_bounds), has_mayer, r_size, x_size, p_size) {
     // Dummy constructor (does nothing)
 }
 
-void BoundarySweep_OM::callback_eval(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     // Dummy evaluation (does nothing)
 }
 
-void BoundarySweep_OM::callback_jac(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     // Dummy Jacobian (does nothing)
 }
 
-void BoundarySweep_OM::callback_hes(const double* x0_nlp, const double* xf_nlp, const double* p) {
+void BoundarySweep_OM::callback_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     // Dummy Hessian (does nothing)
 }
 
-std::shared_ptr<Problem> create_gdop_om(DATA* data, std::shared_ptr<Mesh> mesh) {
+std::shared_ptr<Problem> create_gdop_om(DATA* data, Mesh& mesh) {
     // sizes
     int size_x = data->modelData->nStates;
     int size_u = data->modelData->nInputVars;
@@ -46,8 +46,8 @@ std::shared_ptr<Problem> create_gdop_om(DATA* data, std::shared_ptr<Mesh> mesh) 
     // TODO: figure this out we get some derivative? ptrs i guess?
     short der_index_m = -1;
     short der_indices_l[2] = {-1, -1};
-    double* address_m;
-    double* address_l;
+    f64* address_m;
+    f64* address_l;
     // this is really ugly IMO, fix this when ready for master!
     bool mayer = (data->callback->mayer(data, &address_m, &der_index_m) >= 0);
     bool lagrange = (data->callback->lagrange(data, &address_l, &der_indices_l[0], &der_indices_l[1]) >= 0);
@@ -68,8 +68,8 @@ std::shared_ptr<Problem> create_gdop_om(DATA* data, std::shared_ptr<Mesh> mesh) 
     FixedVector<Bounds> g_bounds(size_g);
     FixedVector<Bounds> r_bounds(size_r);
 
-    FixedVector<std::optional<double>> x0_fixed(size_x);
-    FixedVector<std::optional<double>> xf_fixed(size_x);
+    FixedVector<std::optional<f64>> x0_fixed(size_x);
+    FixedVector<std::optional<f64>> xf_fixed(size_x);
     /* set bounds and initial values */
 
     /*

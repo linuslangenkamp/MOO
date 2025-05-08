@@ -13,9 +13,9 @@
 
 class IpoptAdapter : public Ipopt::TNLP {
 public:
-    explicit IpoptAdapter(std::shared_ptr<NLP> nlp) : nlp(nlp) {}
+    explicit IpoptAdapter(NLP& nlp) : nlp(nlp) {}
 
-    std::shared_ptr<NLP> nlp;
+    NLP& nlp;
 
     bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override;
 

@@ -15,8 +15,8 @@ void NLP::unscaleCurrentIterate() { //D * x + beta * y or D^(-1) * x + beta * y
 
 void NLP::scaleEvalData() {
     // in place
-    std::unique_ptr<double> evalMR_a_scaling; // shift scaling vector
-    std::unique_ptr<double> evalMR_D_scaling; // diagonal scaling matrix
+    std::unique_ptr<f64> evalMR_a_scaling; // shift scaling vector
+    std::unique_ptr<f64> evalMR_D_scaling; // diagonal scaling matrix
 };
 
 void NLP::scaleJacobianData() {
@@ -33,10 +33,10 @@ void NLP::scaleHessianData() {
     /* TODO: add external scaler class which can perform, no, nominal, adaptive scaling
     // TODO: use these later, fill one time and then scale at the end of calculations
     // these have the same sizes as the curr_'s, just divide element wise
-    //FixedVector<double> curr_x_unscaled;
-    double curr_obj_nominal = 1;
-    FixedVector<double> curr_grad_nominal;
-    FixedVector<double> curr_g_nominal;
-    FixedVector<double> curr_jac_values_nominal;
-    FixedVectordouble> curr_hes_values_nominal;
+    //FixedVector<f64> curr_x_unscaled;
+    f64 curr_obj_nominal = 1;
+    FixedVector<f64> curr_grad_nominal;
+    FixedVector<f64> curr_g_nominal;
+    FixedVector<f64> curr_jac_values_nominal;
+    FixedVectorf64> curr_hes_values_nominal;
     */

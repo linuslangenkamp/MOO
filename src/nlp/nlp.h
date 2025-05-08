@@ -32,25 +32,25 @@ public:
     int nnz_hes = 0;            // nnz Hessian in the NLP
 
     // current iterates
-    FixedVector<double> init_x;       // initial NLP primal variables
-    FixedVector<double> curr_x;       // current NLP primal variables
-    FixedVector<double> curr_lambda;  // current NLP dual variables
-    double              curr_sigma_f; // current objective weight in hessian
+    FixedVector<f64> init_x;       // initial NLP primal variables
+    FixedVector<f64> curr_x;       // current NLP primal variables
+    FixedVector<f64> curr_lambda;  // current NLP dual variables
+    f64              curr_sigma_f; // current objective weight in hessian
 
     // variable bounds
-    FixedVector<double> x_lb; // lower bounds on NLP variables
-    FixedVector<double> x_ub; // upper bounds on NLP variables
+    FixedVector<f64> x_lb; // lower bounds on NLP variables
+    FixedVector<f64> x_ub; // upper bounds on NLP variables
 
     // nlp function data
-    double curr_obj;                   // current NLP objective value
-    FixedVector<double> curr_grad;     // current NLP gradient of the objective function
-    FixedVector<double> curr_g;        // current NLP constraint function evaluation
-    FixedVector<double> curr_jac;      // current NLP jacobian of the constraints
-    FixedVector<double> curr_hes;      // current NLP hessian of the lagrangian
+    f64 curr_obj;                   // current NLP objective value
+    FixedVector<f64> curr_grad;     // current NLP gradient of the objective function
+    FixedVector<f64> curr_g;        // current NLP constraint function evaluation
+    FixedVector<f64> curr_jac;      // current NLP jacobian of the constraints
+    FixedVector<f64> curr_hes;      // current NLP hessian of the lagrangian
 
     // scaled constraint bounds
-    FixedVector<double> g_lb; // lower bounds on NLP constraints
-    FixedVector<double> g_ub; // upper bounds on NLP constraints
+    FixedVector<f64> g_lb; // lower bounds on NLP constraints
+    FixedVector<f64> g_ub; // upper bounds on NLP constraints
 
     // COO sparsity patterns
     FixedVector<int> i_row_jac; // row COO of the Jacobian
@@ -60,11 +60,11 @@ public:
     
     // TODO: add a generic block BFGS routine, which can calculate blocks of the Lagrangian Hessian $\nabla_{xx} \mathcal{L}_{AA -> BB}$
     
-    virtual void eval_f(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_obj
-    virtual void eval_g(const double* nlp_solver_x, bool new_x) = 0;      // fill curr_g
-    virtual void eval_grad_f(const double* nlp_solver_x, bool new_x) = 0; // fill curr_grad
-    virtual void eval_jac_g(const double* nlp_solver_x, bool new_x) = 0;  // fill curr_jac
-    virtual void eval_hes(const double* nlp_solver_x, const double* nlp_solver_lambda, double sigma, bool new_x, bool new_lambda) = 0; // fill curr_hes
+    virtual void eval_f(const f64* nlp_solver_x, bool new_x) = 0;      // fill curr_obj
+    virtual void eval_g(const f64* nlp_solver_x, bool new_x) = 0;      // fill curr_g
+    virtual void eval_grad_f(const f64* nlp_solver_x, bool new_x) = 0; // fill curr_grad
+    virtual void eval_jac_g(const f64* nlp_solver_x, bool new_x) = 0;  // fill curr_jac
+    virtual void eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma, bool new_x, bool new_lambda) = 0; // fill curr_hes
 };
 
 #endif  // OPT_NLP_H

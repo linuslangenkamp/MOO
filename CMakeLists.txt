@@ -50,7 +50,7 @@ set(SOURCES
     src/interfaces/openmodelica/main_opt.cpp
     src/interfaces/openmodelica/gdop_problem_impl.cpp
 
-    # stashed/steady_state/parameter_test.cpp
+     stashed/steady_state/parameter_test.cpp
 )
 
 

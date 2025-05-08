@@ -9,7 +9,7 @@
 
 class IpoptSolver : NLPSolver {
 public:
-    IpoptSolver(std::shared_ptr<NLP> nlp, std::shared_ptr<std::unordered_map<std::string, std::string>> solver_settings);
+    IpoptSolver(NLP& nlp, std::unordered_map<std::string, std::string>& solver_settings);
 
     virtual ~IpoptSolver() = default;
 
