@@ -23,6 +23,7 @@ public:
     void callback_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
 };
 
-Problem* create_gdop_om(DATA* data, Mesh& mesh);
+Problem* create_gdop_om(DATA* data, threadData_t* threadData, Mesh& mesh);
+void init_jacobian_omc(DATA* data, threadData_t* threadData);
 
 #endif // OPT_OM_GDOP_PROBLEM_IMPL

@@ -37,30 +37,32 @@ void BoundarySweep_OM::callback_hes(const f64* x0_nlp, const f64* xf_nlp, const 
     // Dummy Hessian (does nothing)
 }
 
-Problem* create_gdop_om(DATA* data, Mesh& mesh) {
-    // sizes
+/* initialize OpenModelica Jacobian with sparsity, seeds, etc. */
+void init_jacobian_om(DATA* data, threadData_t* threadData) {
+    bool jac_A = (bool)(data->callback->initialAnalyticJacobianA(data, threadData, &(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_A])) == 0);
+    bool jac_B = (bool)(data->callback->initialAnalyticJacobianB(data, threadData, &(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_B])) == 0);
+    bool jac_C = (bool)(data->callback->initialAnalyticJacobianC(data, threadData, &(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_C])) == 0);
+    bool jac_D = (bool)(data->callback->initialAnalyticJacobianD(data, threadData, &(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_D])) == 0);
+}
+
+Problem* create_gdop_om(DATA* data, threadData_t* threadData, Mesh& mesh) {
+    /* variable sizes */
     int size_x = data->modelData->nStates;
     int size_u = data->modelData->nInputVars;
     int size_p = 0; // TODO: add this feature
 
     // TODO: figure this out we get some derivative? ptrs i guess?
-    short der_index_m = -1;
-    short der_indices_l[2] = {-1, -1};
-    f64* address_m;
-    f64* address_l;
+    short der_index_mayer_realVars = -1;
+    short der_indices_lagrange_realVars[2] = {-1, -1};
+    f64* address_mayer_realVars;
+    f64* address_lagrange_realVars;
+
     // this is really ugly IMO, fix this when ready for master!
-    bool mayer = (data->callback->mayer(data, &address_m, &der_index_m) >= 0);
-    bool lagrange = (data->callback->lagrange(data, &address_l, &der_indices_l[0], &der_indices_l[1]) >= 0);
+    bool mayer = (data->callback->mayer(data, &address_mayer_realVars, &der_index_mayer_realVars) >= 0);
+    bool lagrange = (data->callback->lagrange(data, &address_lagrange_realVars, &der_indices_lagrange_realVars[0], &der_indices_lagrange_realVars[1]) >= 0);
 
     int size_g = data->modelData->nOptimizeConstraints;
     int size_r = data->modelData->nOptimizeFinalConstraints; // TODO: add *generic boundary* constraints later also at t=t0
-
-    /* create functions and bounds */
-    FixedVector<FunctionMR> mr((int)mayer + size_r);
-    FixedVector<FunctionLFG> lfg((int)lagrange + size_x + size_g); // size_f == size_x
-
-    /* create sparsity patterns */
-
 
     /* variable bounds */
     FixedVector<Bounds> x_bounds(size_x);
@@ -73,10 +75,10 @@ Problem* create_gdop_om(DATA* data, Mesh& mesh) {
     }
 
     /* new generated function getInputVarIndices, just fills a index list */
-    auto u_data_indices = std::make_unique<int>(size_u);
-    data->callback->getInputVarIndices(data, u_data_indices.get());
+    auto u_indices_realVars = std::make_unique<int>(size_u);
+    data->callback->getInputVarIndices(data, u_indices_realVars.get());
     for (int u = 0; u < size_u; u++) {
-        int u_index =  *(u_data_indices.get() + u);
+        int u_index = *(u_indices_realVars.get() + u);
         u_bounds[u].lb = data->modelData->realVarsData[u_index].attribute.min;
         u_bounds[u].ub = data->modelData->realVarsData[u_index].attribute.max;
     }
@@ -87,28 +89,36 @@ Problem* create_gdop_om(DATA* data, Mesh& mesh) {
 
     int first_index_g = data->modelData->nVariablesReal - (size_g + size_r);
     int first_index_r = data->modelData->nVariablesReal - size_r;
-    printf("%d\n", first_index_g);
     for (int g = 0; g < size_g; g++) {
         g_bounds[g].lb = data->modelData->realVarsData[first_index_g + g].attribute.min;
         g_bounds[g].ub = data->modelData->realVarsData[first_index_g + g].attribute.max;
-        
-    }    
-    printf("%f, %f\n", g_bounds[0].lb, g_bounds[0].ub);
+    }
+
     for (int r = 0; r < size_r; r++) {
         r_bounds[r].lb = data->modelData->realVarsData[first_index_r + r].attribute.min;
         r_bounds[r].ub = data->modelData->realVarsData[first_index_r + r].attribute.max;
     }
 
     /* for now we ignore xf fixed (need some steps in Backend to detect)
-       and also ignore x0 non fixed, since too complicated
-       => assume x(t_0) = x0 fixed, x(t_f) free to r constraint */
+     * and also ignore x0 non fixed, since too complicated
+     * => assume x(t_0) = x0 fixed, x(t_f) free to r constraint / maybe the old BE can do that already?!
+     * option: generate fixed final states individually
+     */
     FixedVector<std::optional<f64>> x0_fixed(size_x);
     FixedVector<std::optional<f64>> xf_fixed(size_x);
 
-    
-    
-    /* set bounds and initial values */
+    /* set *fixed* initial, final states */
+    for (int x = 0; x < size_x; x++) {
+        x0_fixed[x] = data->modelData->realVarsData[x].attribute.start;
+    }
 
+    /* create functions and bounds */
+    FixedVector<FunctionMR> mr((int)mayer + size_r);
+    FixedVector<FunctionLFG> lfg((int)lagrange + size_x + size_g); // size_f == size_x
+
+    /* create sparsity patterns */
+    init_jacobian_om(data, threadData);
+    
     /*
     std::unique_ptr<FullSweep> fs(new FullSweep_OM(std::move(lfg), mesh, g_bounds));
     std::unique_ptr<BoundarySweep> bs(new BoundarySweep_OM(std::move(mr), mesh, r_bounds));
@@ -117,12 +127,10 @@ Problem* create_gdop_om(DATA* data, Mesh& mesh) {
                                      std::move(x0_fixed), std::move(xf_fixed))
     */
 
-    /*
-        for (size_t idx = 0; idx < 100; idx++)
-        printf("%s\n", (data->modelData->realVarsData[idx].info.name));
-    */
+    
+    for (size_t idx = 0; idx < 12; idx++)
+    printf("%s\n", (data->modelData->realVarsData[idx].info.name));
+
 
     return NULL;
 }
-
-

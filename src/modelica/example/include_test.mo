@@ -9,7 +9,7 @@ model include_test
   Real CONSTR(min=-1.25, max=1.25) = x1 * x2 annotation(isConstraint=true);
   input Real u(start=700, min=650, max = 748.15);
   output Real cost_m = -x2 + x1 + x2 annotation(isMayer=true);
-  output Real cost_l = -x2 annotation(isLagrange=true);
+  //output Real cost_l = -x2 annotation(isLagrange=true);
 equation
   k1 = exp( 8.86 - 20300 / 1.9872 / u);
   k2 = exp(24.25 - 37400 / 1.9872 / u);
