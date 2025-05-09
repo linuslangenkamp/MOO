@@ -49,8 +49,9 @@ set(SOURCES
 
     src/interfaces/openmodelica/main_opt.cpp
     src/interfaces/openmodelica/gdop_problem_impl.cpp
+    src/interfaces/openmodelica/print_data_structures_om.cpp
 
-     stashed/steady_state/parameter_test.cpp
+    stashed/steady_state/parameter_test.cpp
 )
 
 

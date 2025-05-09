@@ -21,24 +21,19 @@ int include_test_lagrange(DATA* data, modelica_real** res, short * index_DresB, 
   return 0;
   return -1;
 }
-
 // set int* list of indices: we dont need more "include_test_pickUpBoundsForInputsInOptimization" is useless!
 void include_test_getInputVarIndices(DATA* data, int* input_var_indices) {
-  input_var_indices[0] = 13;
+  input_var_indices[0] = 9;
 }
-
 /* opt vars  */
 int include_test_pickUpBoundsForInputsInOptimization(DATA* data, modelica_real* min, modelica_real* max, modelica_real*nominal, modelica_boolean *useNominal, char ** name, modelica_real * start, modelica_real* startTimeOpt)
 {
-  // Just remember the indices 13, ..., which are optimizable controls, the rest will be done in the RT
-  // I assume that not all inputs are optimizable, thus we need this list, but its fine
-
-  min[0] = data->modelData->realVarsData[13].attribute /* u */.min;
-  max[0] = data->modelData->realVarsData[13].attribute /* u */.max;
-  nominal[0] = data->modelData->realVarsData[13].attribute /* u */.nominal;
-  useNominal[0] = data->modelData->realVarsData[13].attribute /* u */.useNominal;
-  name[0] =(char *) data->modelData->realVarsData[13].info /* u */.name;
-  start[0] = data->modelData->realVarsData[13].attribute /* u */.start;
+  min[0] = data->modelData->realVarsData[9].attribute /* u */.min;
+  max[0] = data->modelData->realVarsData[9].attribute /* u */.max;
+  nominal[0] = data->modelData->realVarsData[9].attribute /* u */.nominal;
+  useNominal[0] = data->modelData->realVarsData[9].attribute /* u */.useNominal;
+  name[0] =(char *) data->modelData->realVarsData[9].info /* u */.name;
+  start[0] = data->modelData->realVarsData[9].attribute /* u */.start;
   *startTimeOpt = data->simulationInfo->startTime - 1.0;
   return 0;
 }
@@ -48,7 +43,7 @@ int include_test_setInputData(DATA *data, const modelica_boolean file)
  TRACE_PUSH
    if(file){
    }
-   data->simulationInfo->inputVars[0] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[13]] /* u variable */);
+   data->simulationInfo->inputVars[0] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[9]] /* u variable */);
  TRACE_POP
  return 0;
 }

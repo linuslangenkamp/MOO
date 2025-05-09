@@ -25,15 +25,15 @@ void GDOP::init_sizes_offsets() {
 }
 
 void GDOP::init_buffers() {
-    curr_x      = FixedVector<f64>(number_vars);
-    init_x      = FixedVector<f64>(number_vars);
-    curr_grad   = FixedVector<f64>(number_vars);
-    x_lb        = FixedVector<f64>(number_vars);
-    x_ub        = FixedVector<f64>(number_vars);
-    curr_lambda = FixedVector<f64>(number_constraints);
-    curr_g      = FixedVector<f64>(number_constraints);
-    g_lb        = FixedVector<f64>(number_constraints);
-    g_ub        = FixedVector<f64>(number_constraints);
+    curr_x      = FixedVector<F64>(number_vars);
+    init_x      = FixedVector<F64>(number_vars);
+    curr_grad   = FixedVector<F64>(number_vars);
+    x_lb        = FixedVector<F64>(number_vars);
+    x_ub        = FixedVector<F64>(number_vars);
+    curr_lambda = FixedVector<F64>(number_constraints);
+    curr_g      = FixedVector<F64>(number_constraints);
+    g_lb        = FixedVector<F64>(number_constraints);
+    g_ub        = FixedVector<F64>(number_constraints);
 }
 
 void GDOP::init_bounds() {
@@ -153,8 +153,8 @@ void GDOP::init_jacobian_nonzeros() {
     nnz_jac = off_acc_jac_fg.back() + nnz_r;
 
     // allocate memory
-    curr_jac  = FixedVector<f64>(nnz_jac);
-    const_der_jac   = FixedVector<f64>(nnz_jac);
+    curr_jac  = FixedVector<F64>(nnz_jac);
+    const_der_jac   = FixedVector<F64>(nnz_jac);
     i_row_jac = FixedVector<int>(nnz_jac);
     j_col_jac = FixedVector<int>(nnz_jac);
 }
@@ -322,7 +322,7 @@ void GDOP::init_hessian() {
 
     i_row_hes = FixedVector<int>(nnz_hes);
     j_col_hes = FixedVector<int>(nnz_hes);
-    curr_hes  = FixedVector<f64>(nnz_hes);
+    curr_hes  = FixedVector<F64>(nnz_hes);
 
     // stage 2: build int** (row, col) -> int index for all block structures
     // can be exact (no offset needed) or non exact (offset for full block or even rowwise needed)
@@ -448,7 +448,7 @@ void GDOP::init_hessian() {
  * because of this structure, before every nlp evaluation check_new_x has to be performed and step 1 has to be executed in case
  */
 
-void GDOP::check_new_x(const f64* nlp_solver_x, bool new_x) {
+void GDOP::check_new_x(const F64* nlp_solver_x, bool new_x) {
     evaluation_state.check_reset_x(new_x);
     if (!evaluation_state.x_set_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
@@ -458,7 +458,7 @@ void GDOP::check_new_x(const f64* nlp_solver_x, bool new_x) {
     }
 }
 
-void GDOP::check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda) {
+void GDOP::check_new_lambda(const F64* nlp_solver_lambda, const bool new_lambda) {
     evaluation_state.check_reset_lambda(new_lambda);
     if (!evaluation_state.lambda_set) {
         curr_lambda.assign(nlp_solver_lambda, number_constraints);
@@ -466,14 +466,14 @@ void GDOP::check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda)
     }
 }
 
-void GDOP::check_new_sigma(const f64 sigma_f) {
+void GDOP::check_new_sigma(const F64 sigma_f) {
     if (sigma_f != curr_sigma_f) {
         curr_sigma_f = sigma_f;
         evaluation_state.hes_lag = false;
     }
 }
 
-void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
+void GDOP::eval_f(const F64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_f) {
         callback_evaluation();
@@ -481,7 +481,7 @@ void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
     eval_f_internal();
 }
 
-void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
+void GDOP::eval_g(const F64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_g) {
         callback_evaluation();
@@ -489,7 +489,7 @@ void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
     eval_g_internal();
 }
 
-void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
+void GDOP::eval_grad_f(const F64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.grad_f) {
         callback_jacobian();
@@ -497,7 +497,7 @@ void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
     eval_grad_f_internal();
 };
 
- void GDOP::eval_jac_g(const f64* nlp_solver_x, bool new_x) {
+ void GDOP::eval_jac_g(const F64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.jac_g) {
         callback_jacobian();
@@ -505,7 +505,7 @@ void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
     eval_jac_g_internal();
  }
 
- void GDOP::eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma_f, bool new_x, bool new_lambda) {
+ void GDOP::eval_hes(const F64* nlp_solver_x, const F64* nlp_solver_lambda, F64 sigma_f, bool new_x, bool new_lambda) {
     check_new_x(nlp_solver_x, new_x);
     check_new_lambda(nlp_solver_lambda, new_lambda);
     check_new_sigma(sigma_f);
@@ -524,12 +524,12 @@ inline int GDOP::hes_offset(int i, int j) {
 }
 
 void GDOP::eval_f_internal() {
-    f64 mayer = 0;
+    F64 mayer = 0;
     if (problem.boundary.has_mayer) {
         mayer = problem.boundary.get_eval_m();
     };
 
-    f64 lagrange = 0;
+    F64 lagrange = 0;
     if (problem.full.has_lagrange) {
         for (int i = 0; i < mesh.intervals; i++) {
             for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -725,8 +725,8 @@ void GDOP::eval_hes_internal() {
     }
 }
 
-void GDOP::update_hessian_lfg(FixedVector<f64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
-                           const BlockSparsity* ptr_map_p_xu, const f64 factor) {
+void GDOP::update_hessian_lfg(FixedVector<F64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+                           const BlockSparsity* ptr_map_p_xu, const F64 factor) {
     const int block_count = mesh.acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
         values[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += factor * (*(dx_dx.value + hes_offset(i, j)));
@@ -748,7 +748,7 @@ void GDOP::update_hessian_lfg(FixedVector<f64>& values, const HessianLFG& hes, c
     } 
 }
 
-void GDOP::update_hessian_mr(FixedVector<f64>& values, const HessianMR& hes, const f64 factor) {
+void GDOP::update_hessian_mr(FixedVector<F64>& values, const HessianMR& hes, const F64 factor) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
         values[hes_a.access(dx0_dx0.row, dx0_dx0.col)] += factor * (*(dx0_dx0.value));
     }

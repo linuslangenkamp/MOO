@@ -24,9 +24,9 @@ public:
             jac_size += func.jac.nnz();
             hes_size += func.hes.nnz();
         }
-        eval_buffer = FixedVector<f64>(mesh.node_count * eval_size);
-        jac_buffer = FixedVector<f64>(mesh.node_count * jac_size);
-        hes_buffer = FixedVector<f64>(mesh.node_count * hes_size);
+        eval_buffer = FixedVector<F64>(mesh.node_count * eval_size);
+        jac_buffer = FixedVector<F64>(mesh.node_count * jac_size);
+        hes_buffer = FixedVector<F64>(mesh.node_count * hes_size);
     };
 
     FixedVector<FunctionLFG> lfg;
@@ -52,26 +52,26 @@ public:
     int jac_size = 0;
     int hes_size = 0;
 
-    FixedVector<f64> eval_buffer;
-    FixedVector<f64> jac_buffer;
-    FixedVector<f64> hes_buffer; // can lead to severe memory consumption / order of a few GB, so maybe rethink this for large scale problems
+    FixedVector<F64> eval_buffer;
+    FixedVector<F64> jac_buffer;
+    FixedVector<F64> hes_buffer; // can lead to severe memory consumption / order of a few GB, so maybe rethink this for large scale problems
 
     // fill eval_buffer, jac_buffer, hes_buffer
-    virtual void callback_eval(const f64* xu_nlp, const f64* p) = 0;
+    virtual void callback_eval(const F64* xu_nlp, const F64* p) = 0;
 
-    virtual void callback_jac(const f64* xu_nlp, const f64* p) = 0;
+    virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
-    virtual void callback_hes(const f64* xu_nlp, const f64* p) = 0;
+    virtual void callback_hes(const F64* xu_nlp, const F64* p) = 0;
     
-    inline f64 get_eval_l(const int offset) {
+    inline F64 get_eval_l(const int offset) {
         return *(lfg[0].eval + offset * eval_size);
     }
 
-    inline f64 get_eval_f(const int f_index, const int offset) {
+    inline F64 get_eval_f(const int f_index, const int offset) {
         return *(lfg[f_index_start + f_index].eval + offset * eval_size);
     }
 
-    inline f64 get_eval_g(const int g_index, const int offset) {
+    inline F64 get_eval_g(const int g_index, const int offset) {
         return *(lfg[g_index_start + g_index].eval + offset * eval_size);
     }
 };
@@ -89,9 +89,9 @@ public:
             jac_buffer_size += func.jac.nnz();
             hes_buffer_size += func.hes.nnz();
         }
-        eval_buffer = FixedVector<f64>(r_index_end);
-        jac_buffer = FixedVector<f64>(jac_buffer_size);
-        hes_buffer = FixedVector<f64>(hes_buffer_size);
+        eval_buffer = FixedVector<F64>(r_index_end);
+        jac_buffer = FixedVector<F64>(jac_buffer_size);
+        hes_buffer = FixedVector<F64>(hes_buffer_size);
     };
 
     // M, R :: assert x0 Size == xf Size
@@ -108,21 +108,21 @@ public:
     int x_size;
     int p_size;
 
-    FixedVector<f64> eval_buffer;
-    FixedVector<f64> jac_buffer;
-    FixedVector<f64> hes_buffer;
+    FixedVector<F64> eval_buffer;
+    FixedVector<F64> jac_buffer;
+    FixedVector<F64> hes_buffer;
 
-    virtual void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
+    virtual void callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
-    virtual void callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
+    virtual void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
-    virtual void callback_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
+    virtual void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
-    inline f64 get_eval_m() {
+    inline F64 get_eval_m() {
         return *(mr[0].eval);
     }
 
-    inline f64 get_eval_r(const int r_index) {
+    inline F64 get_eval_r(const int r_index) {
         return *(mr[r_index_start + r_index].eval);
     }
 };
@@ -130,8 +130,8 @@ public:
 class Problem {
 public:
     Problem(FullSweep& full, BoundarySweep& boundary, FixedVector<Bounds>&& x_bounds,
-               FixedVector<Bounds>&& u_bounds, FixedVector<Bounds>&& p_bounds, FixedVector<std::optional<f64>>&& x0_fixed,
-               FixedVector<std::optional<f64>>&& xf_fixed)
+               FixedVector<Bounds>&& u_bounds, FixedVector<Bounds>&& p_bounds, FixedVector<std::optional<F64>>&& x0_fixed,
+               FixedVector<std::optional<F64>>&& xf_fixed)
     : full(full), boundary(boundary), x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)),
       p_bounds(std::move(p_bounds)), x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)),
       x_size(this->full.x_size), u_size(this->full.u_size), p_size(this->full.p_size) {
@@ -144,8 +144,8 @@ public:
     FixedVector<Bounds> u_bounds;
     FixedVector<Bounds> p_bounds;
 
-    FixedVector<std::optional<f64>> x0_fixed; // set value if a state has a fixed initial value, remove the constraint from r()!
-    FixedVector<std::optional<f64>> xf_fixed; // set value if a state has a fixed final value, remove the constraint from r()!
+    FixedVector<std::optional<F64>> x0_fixed; // set value if a state has a fixed initial value, remove the constraint from r()!
+    FixedVector<std::optional<F64>> xf_fixed; // set value if a state has a fixed final value, remove the constraint from r()!
 
     int x_size;
     int u_size;

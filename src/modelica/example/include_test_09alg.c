@@ -6,24 +6,36 @@ extern "C" {
 #endif
 
 /* forwarded equations */
-extern void include_test_eqFunction_21(DATA* data, threadData_t *threadData);
-extern void include_test_eqFunction_22(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_12(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_13(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_16(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_17(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_19(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_20(DATA* data, threadData_t *threadData);
 
 static void functionAlg_system0(DATA *data, threadData_t *threadData)
 {
   int id;
 
-  static void (*const eqFunctions[2])(DATA*, threadData_t*) = {
-    include_test_eqFunction_21,
-    include_test_eqFunction_22
+  static void (*const eqFunctions[6])(DATA*, threadData_t*) = {
+    include_test_eqFunction_12,
+    include_test_eqFunction_13,
+    include_test_eqFunction_16,
+    include_test_eqFunction_17,
+    include_test_eqFunction_19,
+    include_test_eqFunction_20
   };
   
-  static const int eqIndices[2] = {
-    21,
-    22
+  static const int eqIndices[6] = {
+    12,
+    13,
+    16,
+    17,
+    19,
+    20
   };
   
-  for (id = 0; id < 2; id++) {
+  for (id = 0; id < 6; id++) {
     eqFunctions[id](data, threadData);
     threadData->lastEquationSolved = eqIndices[id];
   }

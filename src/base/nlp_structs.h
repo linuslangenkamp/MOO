@@ -2,24 +2,25 @@
 #define OPT_NLP_STRUCTS_H
 
 #include <vector>
+#include <algorithm>
 
+#include "fixed_vector.h"
 #include "util.h"
 
-
 struct Bounds {
-    f64 lb = MINUS_INFINITY;
-    f64 ub = PLUS_INFINITY;
+    F64 lb = MINUS_INFINITY;
+    F64 ub = PLUS_INFINITY;
 };
 
 struct JacobianSparsity {
     int col;
-    f64* value;
+    F64* value;
 };
 
 struct HessianSparsity {
     int row;
     int col;
-    f64* value;
+    F64* value;
 };
 
 // LFG - generic global function f(x, u, p, t)
@@ -51,7 +52,7 @@ struct HessianLFG {
 };
 
 struct FunctionLFG {
-    f64* eval;
+    F64* eval;
     JacobianLFG jac;
     HessianLFG hes;
 };
@@ -85,9 +86,111 @@ struct HessianMR {
 };
 
 struct FunctionMR {
-    f64* eval;
+    F64* eval;
     JacobianMR jac;
     HessianMR hes;
+};
+
+/* exchange form from CSC -> COO and back */
+struct Exchange_COO_CSC {
+    FixedVector<int> row;
+    FixedVector<int> col;
+
+    // exchange mappings
+    FixedVector<int> csc_to_coo;
+    FixedVector<int> coo_to_csc;
+
+    int nnz;
+
+    Exchange_COO_CSC(int nnz) 
+        : row(FixedVector<int>(nnz)),
+          col(FixedVector<int>(nnz)),
+          csc_to_coo(FixedVector<int>(nnz)),
+          coo_to_csc(FixedVector<int>(nnz)),
+          nnz(nnz)
+    {}
+
+    // static method for better readibility
+    static Exchange_COO_CSC from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz) {
+        return Exchange_COO_CSC(lead_col, row_csc, number_cols, nnz);
+    }
+
+private:
+    /* simple sorting based CSC -> COO constructor with csc_to_coo and coo_to_csc */
+    Exchange_COO_CSC(const int* lead_col, const int* row_csc, int number_cols, int nnz) :
+                     row(nnz), col(nnz), csc_to_coo(nnz), coo_to_csc(nnz), nnz(nnz) {
+        int nz = 0;
+        for (int j = 0; j < number_cols; j++) {
+            for (int i = lead_col[j]; i < lead_col[j + 1]; i++) {
+                row[nz] = row_csc[i];
+                col[nz] = j;
+                csc_to_coo[nz] = nz;
+                nz++;
+            }
+        }
+
+        std::sort(csc_to_coo.begin(), csc_to_coo.end(), [&](int a, int b) {
+            if (row[a] != row[b]) return row[a] < row[b];
+            return col[a] < col[b];
+        });
+
+        FixedVector<int> sorted_row(nnz);
+        FixedVector<int> sorted_col(nnz);
+        for (int i = 0; i < nnz; i++) {
+            sorted_row[i] = row[csc_to_coo[i]];
+            sorted_col[i] = col[csc_to_coo[i]];
+        }
+
+        row = std::move(sorted_row);
+        col = std::move(sorted_col);
+        
+        // permutation inverse
+        for (int i = 0; i < nnz; ++i) {
+            coo_to_csc[csc_to_coo[i]] = i;
+        }
+    }
+};
+
+/* one row of COO_CSC */
+struct RowExchange_COO_CSC {
+    FixedVector<int> col;
+
+    // exchange mappings
+    FixedVector<int> csc_to_coo;
+    FixedVector<int> coo_to_csc;
+
+    int nnz;
+
+    // static method for better readibility
+    static RowExchange_COO_CSC extract_row(Exchange_COO_CSC& exchange, int row_index) {
+        return RowExchange_COO_CSC(exchange, row_index);
+    }
+
+private:
+    RowExchange_COO_CSC(Exchange_COO_CSC& exchange, int row_index) {
+        printf("int: %d", row_index);
+        nnz = 0;
+        int nz = 0;
+        for (; nz < exchange.row.int_size(); nz++) {
+            if (exchange.row[nz] == row_index) {
+                nnz++;
+            } 
+            else if (exchange.row[nz] > row_index) {
+                break;
+            }
+        }
+        int start = nz - nnz;
+
+        col        = (FixedVector<int>(nnz));
+        csc_to_coo = (FixedVector<int>(nnz));
+        coo_to_csc = (FixedVector<int>(nnz));
+
+        for (int i = 0; i < nnz; i++) {
+            col[i]        = exchange.col[start + i];
+            csc_to_coo[i] = exchange.csc_to_coo[start + i];
+            coo_to_csc[i] = exchange.coo_to_csc[start + i];
+        }
+    }
 };
 
 #endif // OPT_NLP_STRUCTS_H

@@ -37,7 +37,7 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetNumericValue("acceptable_tol", 1e-9);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
-    app->Options()->SetNumericValue("alpha_red_factor", 0.6);
+    app->Options()->SetNumericValue("alpha_red_factor", 0.5);
     
     // strategies
     app->Options()->SetStringValue("mu_strategy", "adaptive");

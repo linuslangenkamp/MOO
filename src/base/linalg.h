@@ -7,9 +7,9 @@
 // for now its sufficient to memorize where these subroutines are used
 
 namespace Linalg {
-    f64 dot(const int size, const f64* x, const f64* y);
-    void dsaxpy(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
-    void dgmv(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
+    F64 dot(const int size, const F64* x, const F64* y);
+    void dsaxpy(const int size, const F64* x, const F64* y, const F64* D, F64 beta, bool invD, F64* out);
+    void dgmv(const int size, const F64* x, const F64* y, const F64* D, F64 beta, bool invD, F64* out);
 }
 
 #endif  // OPT_LINALG_H

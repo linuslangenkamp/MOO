@@ -35,7 +35,7 @@ public:
     NLP_State evaluation_state;  // simple state to check which actions are / have to be performed for an iteration
 
     // constant NLP derivative matrix part of the jacobian
-    FixedVector<f64> const_der_jac;
+    FixedVector<F64> const_der_jac;
 
     // offsets
     int off_x;         // offset #xVars
@@ -74,9 +74,9 @@ public:
     void init_hessian();
 
     // hessian updates
-    void update_hessian_lfg(FixedVector<f64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
-                          const BlockSparsity* ptr_map_p_xu, const f64 factor);
-    void update_hessian_mr(FixedVector<f64>& values, const HessianMR& hes, const f64 factor);
+    void update_hessian_lfg(FixedVector<F64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
+                          const BlockSparsity* ptr_map_p_xu, const F64 factor);
+    void update_hessian_mr(FixedVector<F64>& values, const HessianMR& hes, const F64 factor);
 
     // inline methods to jump (i, j) callback buffer blocks
     int jac_offset(int i, int j);
@@ -88,9 +88,9 @@ public:
     void callback_hessian();
 
     // nlp solver calls
-    void check_new_x(const f64* nlp_solver_x, bool new_x);
-    void check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda);
-    void check_new_sigma(const f64 obj_factor);
+    void check_new_x(const F64* nlp_solver_x, bool new_x);
+    void check_new_lambda(const F64* nlp_solver_lambda, const bool new_lambda);
+    void check_new_sigma(const F64 obj_factor);
     void eval_f_internal();
     void eval_g_internal();
     void eval_grad_f_internal();
@@ -98,11 +98,11 @@ public:
     void eval_hes_internal();
 
     // virtuals in NLP
-    void eval_f(const f64* nlp_solver_x, bool new_x);
-    void eval_g(const f64* nlp_solver_x, bool new_x);
-    void eval_grad_f(const f64* nlp_solver_x, bool new_x);
-    void eval_jac_g(const f64* nlp_solver_x, bool new_x);
-    void eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma, bool new_x, bool new_lambda);
+    void eval_f(const F64* nlp_solver_x, bool new_x);
+    void eval_g(const F64* nlp_solver_x, bool new_x);
+    void eval_grad_f(const F64* nlp_solver_x, bool new_x);
+    void eval_jac_g(const F64* nlp_solver_x, bool new_x);
+    void eval_hes(const F64* nlp_solver_x, const F64* nlp_solver_lambda, F64 sigma, bool new_x, bool new_lambda);
 };
 
 #endif  // OPT_GDOP_H
