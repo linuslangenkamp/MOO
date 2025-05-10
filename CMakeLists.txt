@@ -48,8 +48,9 @@ set(SOURCES
     src/nlp/solvers/ipopt/ipopt_solver.cpp
 
     src/interfaces/openmodelica/main_opt.cpp
-    src/interfaces/openmodelica/gdop_problem_impl.cpp
-    src/interfaces/openmodelica/print_data_structures_om.cpp
+    src/interfaces/openmodelica/gdop_problem.cpp
+    src/interfaces/openmodelica/evaluations.cpp
+    src/interfaces/openmodelica/debug_om.cpp
 
     stashed/steady_state/parameter_test.cpp
 )

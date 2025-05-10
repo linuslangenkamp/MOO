@@ -1,11 +1,12 @@
-#ifndef OPT_OM_GDOP_PROBLEM_IMPL
-#define OPT_OM_GDOP_PROBLEM_IMPL
+#ifndef OPT_OM_GDOP_PROBLEM
+#define OPT_OM_GDOP_PROBLEM
 
 #include "simulation_data.h"
 
 #include <nlp/instances/gdop/problem.h>
 
-#include "print_data_structures_om.h"
+#include "evaluations.h"
+#include "debug_om.h"
 
 class FullSweep_OM : public FullSweep {
 public:
@@ -25,27 +26,6 @@ public:
     void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
 };
 
-struct Jacobians_OM {
-    JACOBIAN* A;
-    JACOBIAN* B;
-    JACOBIAN* C;
-    JACOBIAN* D;
+Problem* create_gdop(DATA* data, threadData_t* threadData, Mesh& mesh);
 
-    bool A_exists;
-    bool B_exists;
-    bool C_exists;
-    bool D_exists;
-
-    Exchange_COO_CSC A_coo;
-    Exchange_COO_CSC B_coo;
-    Exchange_COO_CSC C_coo;
-    std::unique_ptr<RowExchange_COO_CSC> C_mayer_coo;
-
-    Exchange_COO_CSC D_coo;
-
-    Jacobians_OM(DATA* data, threadData_t* threadData, bool mayer_exists, bool lagrange_exists, int x_size);
-};
-
-Problem* create_gdop_om(DATA* data, threadData_t* threadData, Mesh& mesh);
-
-#endif // OPT_OM_GDOP_PROBLEM_IMPL
+#endif // OPT_OM_GDOP_PROBLEM

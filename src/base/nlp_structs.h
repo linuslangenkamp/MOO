@@ -92,7 +92,6 @@ struct FunctionMR {
 };
 
 /* exchange form from CSC -> COO and back */
-/* exchange form from CSC -> COO and back */
 struct Exchange_COO_CSC {
 public:
     FixedVector<int> row;
@@ -114,21 +113,34 @@ public:
     {}
 
     /* local access (for standard CSC blocks) */
-    inline int csc_to_coo(int index) const {
+    inline int csc_to_coo(int index) {
         return __csc_to_coo[index];
     }
 
-    inline int coo_to_csc(int local_index) const {
+    inline int coo_to_csc(int local_index) {
         return __coo_to_csc[local_index];
     }
 
     /* embedded/global access (for offset blocks, e.g., [*, B](COO)) */
-    inline int csc_to_coo_get_global(int index) const {
+    inline int csc_to_coo_get_global(int index) {
         return __csc_to_coo[index] + nnz_offset;
     }
 
-    inline int coo_to_csc_from_global(int global_index) const {
+    inline int coo_to_csc_from_global(int global_index) {
         return __coo_to_csc[global_index - nnz_offset];
+    }
+
+    int row_nnz(int row_index) {
+        int count = 0;
+        for (int nz = 0; nz < row.int_size(); nz++) {
+            if (row[nz] == row_index) {
+                count++;
+            }
+            else if (row[nz] > row_index) {
+                return count;
+            }
+        }
+        return count;
     }
 
     /**
@@ -192,58 +204,6 @@ private:
 
         row = std::move(sorted_row);
         col = std::move(sorted_col);
-    }
-};
-
-/* one row of COO_CSC */
-struct RowExchange_COO_CSC {
-    FixedVector<int> col;
-
-    // exchange mappings
-    FixedVector<int> __csc_to_coo;
-    FixedVector<int> __coo_to_csc;
-
-    int nnz;
-
-    /* local access (for standard CSC blocks) */
-    inline int coo_to_csc(int index) const {
-        return __coo_to_csc[index];
-    }
-
-    inline int csc_to_coo(int index) const {
-        return __csc_to_coo[index];
-    }
-
-    // static method for better readibility
-    static RowExchange_COO_CSC extract_row(Exchange_COO_CSC& exchange, int row_index) {
-        return RowExchange_COO_CSC(exchange, row_index);
-    }
-
-private:
-    RowExchange_COO_CSC(Exchange_COO_CSC& exchange, int row_index) {
-        printf("int: %d", row_index);
-        nnz = 0;
-        int nz = 0;
-        int start = 0;
-        for (; nz < exchange.row.int_size(); nz++) {
-            if (exchange.row[nz] == row_index) {
-                nnz++;
-            } 
-            else if (exchange.row[nz] > row_index) {
-                start = nz - nnz;
-                break;
-            }
-        }
-
-        col        = (FixedVector<int>(nnz));
-        __csc_to_coo = (FixedVector<int>(nnz));
-        __coo_to_csc = (FixedVector<int>(nnz));
-
-        for (int i = 0; i < nnz; i++) {
-            col[i]        = exchange.col[start + i];
-            __csc_to_coo[i] = exchange.coo_to_csc(start + i);
-            __coo_to_csc[i] = exchange.csc_to_coo(start + i);
-        }
     }
 };
 

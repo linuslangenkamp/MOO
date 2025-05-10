@@ -1,0 +1,27 @@
+#ifndef OPT_OM_EVALUATIONS
+#define OPT_OM_EVALUATIONS
+
+#include "simulation_data.h"
+
+#include <nlp/instances/gdop/problem.h>
+
+struct ExchangeJacobians {
+    JACOBIAN* A;
+    JACOBIAN* B;
+    JACOBIAN* C;
+    JACOBIAN* D;
+
+    bool A_exists;
+    bool B_exists;
+    bool C_exists;
+    bool D_exists;
+
+    Exchange_COO_CSC A_coo;
+    Exchange_COO_CSC B_coo;
+    Exchange_COO_CSC C_coo;
+    Exchange_COO_CSC D_coo;
+
+    ExchangeJacobians(DATA* data, threadData_t* threadData, bool mayer_exists, bool lagrange_exists, int x_size);
+};
+
+#endif // OPT_OM_EVALUATIONS

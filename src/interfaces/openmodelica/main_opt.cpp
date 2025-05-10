@@ -8,7 +8,9 @@
 #include <base/collocation.h>
 #include <base/mesh.h>
 
-#include "gdop_problem_impl.h"
+#include "gdop_problem.h"
+
+// TODO: warp all this into a namespace OpenModelica or so
 
 /* entry point to the optimization runtime from OpenModelica generated code
  * this dir, i.e. interfaces/openmodelica, defines the glue code (Mesh, Problem, Flags, CallSimulation) between the runtime and the simulation code */
@@ -24,7 +26,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     int intervals = (int)(round(tf/data->simulationInfo->stepSize));
     auto fLGR = std::make_unique<Collocation>();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(tf, intervals, stages, *fLGR));
-    auto problem = create_gdop_om(data, threadData, *mesh);
+    auto problem = create_gdop(data, threadData, *mesh);
 
     // problem
     // fs, bs, set sparsity pattern and data

@@ -1,4 +1,4 @@
-#include "print_data_structures_om.h"
+#include "debug_om.h"
 
 void print_real_var_names(DATA* data, size_t var_count) {
     for (size_t idx = 0; idx < var_count; idx++)
