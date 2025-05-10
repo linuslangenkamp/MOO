@@ -36,9 +36,9 @@
  * The permutation arrays `csc_to_coo` and `coo_to_csc` constructed during each step allow consistent
  * mapping of values between the original CSC (OpenModelica) and the reordered COO (optimizer) forms.
  * 
- * Hopefully, we soon get block D = (r_{xu}, M_{xu})^T or (M_{xu}, r_{xu})^T, making it easier!
+ * Hopefully, we soon get block D = (r_{xu}, M_{xu})^T or (M_{xu}, r_{xu})^T, making less involved!
  */
-ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, bool mayer_exists, bool lagrange_exists, int x_size) :
+ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info) :
     /* set OpenModelica Jacobian ptrs, allocate memory, initilization of A, B, C, D */
     A(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_A])),
     B(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_B])),
@@ -54,14 +54,40 @@ ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, bool 
                                      (int)A->sizeCols, (int)A->sparsePattern->numberOfNonZeros)),
     B_coo(Exchange_COO_CSC::from_csc((int*)B->sparsePattern->leadindex, (int*)B->sparsePattern->index,
                                      (int)B->sizeCols, (int)B->sparsePattern->numberOfNonZeros,
-                                     lagrange_exists ? x_size : -1)),
+                                     info.lagrange_exists ? info.x_size : -1)),
     C_coo(Exchange_COO_CSC::from_csc((int*)C->sparsePattern->leadindex, (int*)C->sparsePattern->index,
                                      (int)C->sizeCols, (int)C->sparsePattern->numberOfNonZeros,
-                                     mayer_exists ? x_size + (int)(lagrange_exists) : -1)),
+                                     info.mayer_exists ? info.x_size + (int)(info.lagrange_exists) : -1)),
     D_coo(Exchange_COO_CSC::from_csc((int*)D->sparsePattern->leadindex, (int*)D->sparsePattern->index,
                                      (int)D->sizeCols, (int)D->sparsePattern->numberOfNonZeros,
-                                     -1, mayer_exists ? C_coo.row_nnz(0) : 0)) {
+                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0)) {
 
     // TODO: Think about this, just dont really use two buffers, more like the double* in each Jac / Eval points to the correct position
     // in CSC, it doesnt matter! jacbuffer* = [CSC, CSC, CSC, ...] and F64* point to specific correct entries, only sparsity / init must be appropriately
+}
+
+void ExchangeJacobians::init_jac(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
+    init_jac_lfg(data, threadData, info, lfg);
+    init_jac_mr(data, threadData, info, mr);
+}
+
+void ExchangeJacobians::init_jac_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
+    /* this could be really clean, but we cant set the F64* to the CSC entry yet because the buffer is not yet allocated */
+    for (int nz = 0; nz < B_coo.nnz; nz++) {
+        int row = B_coo.row[nz];
+        int col = B_coo.col[nz];
+        if (col < info.x_size) {
+            lfg[row].jac.dx.push_back(JacobianSparsity{col, NULL});
+        }
+        else if (col < info.xu_size) {
+            lfg[row].jac.du.push_back(JacobianSparsity{col - info.x_size, NULL});
+        }
+        else {
+            lfg[row].jac.dp.push_back(JacobianSparsity{col - info.xu_size, NULL});
+        }
+    }
+}
+
+void ExchangeJacobians::init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionMR>& mr) {
+
 }

@@ -12,6 +12,11 @@ struct Bounds {
     F64 ub = PLUS_INFINITY;
 };
 
+/* TODO[CRITICAL]: Must use Sparsity{int, size_t} and size_t is the base index
+ *     + we can do reallocs w/o resetting the ptrs
+ *     + pro: the sparsity locations can be set accordingly w/o allocating memory already
+ *     - minimal overhead 
+ */
 struct JacobianSparsity {
     int col;
     F64* value;
