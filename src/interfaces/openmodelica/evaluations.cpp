@@ -61,9 +61,6 @@ ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoG
     D_coo(Exchange_COO_CSC::from_csc((int*)D->sparsePattern->leadindex, (int*)D->sparsePattern->index,
                                      (int)D->sizeCols, (int)D->sparsePattern->numberOfNonZeros,
                                      -1, info.mayer_exists ? C_coo.row_nnz(0) : 0)) {
-
-    // TODO: Think about this, just dont really use two buffers, more like the double* in each Jac / Eval points to the correct position
-    // in CSC, it doesnt matter! jacbuffer* = [CSC, CSC, CSC, ...] and F64* point to specific correct entries, only sparsity / init must be appropriately
 }
 
 void ExchangeJacobians::init_jac(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
@@ -72,18 +69,18 @@ void ExchangeJacobians::init_jac(DATA* data, threadData_t* threadData, InfoGDOP&
 }
 
 void ExchangeJacobians::init_jac_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
-    /* this could be really clean, but we cant set the F64* to the CSC entry yet because the buffer is not yet allocated */
     for (int nz = 0; nz < B_coo.nnz; nz++) {
         int row = B_coo.row[nz];
         int col = B_coo.col[nz];
+        int csc_buffer_entry = B_coo.coo_to_csc(nz); // jac_buffer == OpenModelica CSC buffer!
         if (col < info.x_size) {
-            lfg[row].jac.dx.push_back(JacobianSparsity{col, NULL});
+            lfg[row].jac.dx.push_back(JacobianSparsity{col, csc_buffer_entry});
         }
         else if (col < info.xu_size) {
-            lfg[row].jac.du.push_back(JacobianSparsity{col - info.x_size, NULL});
+            lfg[row].jac.du.push_back(JacobianSparsity{col - info.x_size, csc_buffer_entry});
         }
         else {
-            lfg[row].jac.dp.push_back(JacobianSparsity{col - info.xu_size, NULL});
+            lfg[row].jac.dp.push_back(JacobianSparsity{col - info.xu_size, csc_buffer_entry});
         }
     }
 }

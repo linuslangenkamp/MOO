@@ -62,18 +62,6 @@ public:
     virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
     virtual void callback_hes(const F64* xu_nlp, const F64* p) = 0;
-    
-    inline F64 get_eval_l(const int offset) {
-        return *(lfg[0].eval + offset * eval_size);
-    }
-
-    inline F64 get_eval_f(const int f_index, const int offset) {
-        return *(lfg[f_index_start + f_index].eval + offset * eval_size);
-    }
-
-    inline F64 get_eval_g(const int g_index, const int offset) {
-        return *(lfg[g_index_start + g_index].eval + offset * eval_size);
-    }
 };
 
 class BoundarySweep {
@@ -117,28 +105,22 @@ public:
     virtual void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
     virtual void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
-
-    inline F64 get_eval_m() {
-        return *(mr[0].eval);
-    }
-
-    inline F64 get_eval_r(const int r_index) {
-        return *(mr[r_index_start + r_index].eval);
-    }
 };
 
 class Problem {
 public:
-    Problem(FullSweep& full, BoundarySweep& boundary, FixedVector<Bounds>&& x_bounds,
+    Problem(FullSweep& full, BoundarySweep& boundary, Mesh& mesh, FixedVector<Bounds>&& x_bounds,
                FixedVector<Bounds>&& u_bounds, FixedVector<Bounds>&& p_bounds, FixedVector<std::optional<F64>>&& x0_fixed,
                FixedVector<std::optional<F64>>&& xf_fixed)
-    : full(full), boundary(boundary), x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)),
+    : full(full), boundary(boundary), mesh(mesh), x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)),
       p_bounds(std::move(p_bounds)), x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)),
       x_size(this->full.x_size), u_size(this->full.u_size), p_size(this->full.p_size) {
     };
     
     FullSweep& full;
     BoundarySweep& boundary;
+
+    Mesh& mesh;
 
     FixedVector<Bounds> x_bounds;
     FixedVector<Bounds> u_bounds;
@@ -150,6 +132,56 @@ public:
     int x_size;
     int u_size;
     int p_size;
+
+   // TODO: get rid of int where possible: below could actually overflow with decent hardware!
+
+    /* note entry != index in lfg, but rather full.lfg[*].buf_index */
+    inline F64 lfg_eval(int entry, int interval_i, int node_j) {
+        return full.eval_buffer[entry + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+
+    inline F64 lfg_eval_L(int interval_i, int node_j) {
+        assert(full.has_lagrange);
+        return full.eval_buffer[full.lfg[0].buf_index + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+
+    inline F64 lfg_eval_f(int f_index, int interval_i, int node_j) {
+        return full.eval_buffer[full.lfg[full.f_index_start + f_index].buf_index + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+
+    inline F64 lfg_eval_g(int g_index, int interval_i, int node_j) {
+        return full.eval_buffer[full.lfg[full.g_index_start + g_index].buf_index + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+
+    inline F64 lfg_jac(int entry, int interval_i, int node_j) {
+        return full.jac_buffer[entry + full.jac_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+
+    inline F64 lfg_hes(int entry, int interval_i, int node_j) {
+        return full.hes_buffer[entry + full.hes_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+
+    /* note entry != index in mr, but rather boundary.mr[*].buf_index */
+    inline F64 mr_eval(int entry) {
+        return full.eval_buffer[entry];
+    }
+
+    inline F64 mr_eval_M() {
+        assert(boundary.has_mayer);
+        return boundary.eval_buffer[boundary.mr[0].buf_index];
+    }
+
+    inline F64 mr_eval_r(int r_index) {
+        return boundary.eval_buffer[boundary.mr[boundary.r_index_start + r_index].buf_index];
+    }
+
+    inline F64 mr_jac(int entry) {
+        return boundary.jac_buffer[entry];
+    }
+    
+    inline F64 mr_hes(int entry) {
+        return boundary.hes_buffer[entry];
+    }
 };
 
 #endif // OPT_GDOP_PROBLEM_H

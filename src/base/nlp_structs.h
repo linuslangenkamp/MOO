@@ -12,23 +12,18 @@ struct Bounds {
     F64 ub = PLUS_INFINITY;
 };
 
-/* TODO[CRITICAL]: Must use Sparsity{int, size_t} and size_t is the base index
- *     + we can do reallocs w/o resetting the ptrs
- *     + pro: the sparsity locations can be set accordingly w/o allocating memory already
- *     - minimal overhead 
- */
 struct JacobianSparsity {
     int col;
-    F64* value;
+    int buf_index;
 };
 
 struct HessianSparsity {
     int row;
     int col;
-    F64* value;
+    int buf_index;
 };
 
-// LFGgeneric global function f(x, u, p, t)
+// LFG generic global function f(x, u, p, t)
 // used for Lagrange term (L), dynamic (F), path (G) in GDOP
 
 struct JacobianLFG {
@@ -57,7 +52,7 @@ struct HessianLFG {
 };
 
 struct FunctionLFG {
-    F64* eval;
+    int buf_index;
     JacobianLFG jac;
     HessianLFG hes;
 };
@@ -91,7 +86,7 @@ struct HessianMR {
 };
 
 struct FunctionMR {
-    F64* eval;
+    int buf_index;
     JacobianMR jac;
     HessianMR hes;
 };

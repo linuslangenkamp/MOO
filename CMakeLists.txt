@@ -42,7 +42,6 @@ set(SOURCES
     src/base/linalg.cpp
 
     src/nlp/instances/gdop/gdop.cpp
-    src/nlp/instances/gdop/test_problem_impl.cpp
 
     src/nlp/solvers/ipopt/ipopt_adapter.cpp
     src/nlp/solvers/ipopt/ipopt_solver.cpp
@@ -52,7 +51,8 @@ set(SOURCES
     src/interfaces/openmodelica/evaluations.cpp
     src/interfaces/openmodelica/debug_om.cpp
 
-    stashed/steady_state/parameter_test.cpp
+    # src/nlp/instances/gdop/test_problem_impl.cpp
+    # stashed/steady_state/parameter_test.cpp
 )
 
 
