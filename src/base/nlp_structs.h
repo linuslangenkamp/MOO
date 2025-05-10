@@ -23,7 +23,7 @@ struct HessianSparsity {
     F64* value;
 };
 
-// LFG - generic global function f(x, u, p, t)
+// LFGgeneric global function f(x, u, p, t)
 // used for Lagrange term (L), dynamic (F), path (G) in GDOP
 
 struct JacobianLFG {
@@ -57,7 +57,7 @@ struct FunctionLFG {
     HessianLFG hes;
 };
 
-// MR - semi-generic boundary function r(x(t0), x(tf), p)
+// MRsemi-generic boundary function r(x(t0), x(tf), p)
 // used for Mayer term (M), boundary constraints (R) in GDOP
 
 struct JacobianMR {
@@ -92,62 +92,106 @@ struct FunctionMR {
 };
 
 /* exchange form from CSC -> COO and back */
+/* exchange form from CSC -> COO and back */
 struct Exchange_COO_CSC {
+public:
     FixedVector<int> row;
     FixedVector<int> col;
 
-    // exchange mappings
-    FixedVector<int> csc_to_coo;
-    FixedVector<int> coo_to_csc;
+    FixedVector<int> __coo_to_csc;
+    FixedVector<int> __csc_to_coo;
 
     int nnz;
+    int nnz_offset;
 
     Exchange_COO_CSC(int nnz) 
         : row(FixedVector<int>(nnz)),
           col(FixedVector<int>(nnz)),
-          csc_to_coo(FixedVector<int>(nnz)),
-          coo_to_csc(FixedVector<int>(nnz)),
-          nnz(nnz)
+          __coo_to_csc(FixedVector<int>(nnz)),
+          __csc_to_coo(FixedVector<int>(nnz)),
+          nnz(nnz),
+          nnz_offset(0)
     {}
 
-    // static method for better readibility
-    static Exchange_COO_CSC from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz) {
-        return Exchange_COO_CSC(lead_col, row_csc, number_cols, nnz);
+    /* local access (for standard CSC blocks) */
+    inline int csc_to_coo(int index) const {
+        return __csc_to_coo[index];
+    }
+
+    inline int coo_to_csc(int local_index) const {
+        return __coo_to_csc[local_index];
+    }
+
+    /* embedded/global access (for offset blocks, e.g., [*, B](COO)) */
+    inline int csc_to_coo_get_global(int index) const {
+        return __csc_to_coo[index] + nnz_offset;
+    }
+
+    inline int coo_to_csc_from_global(int global_index) const {
+        return __coo_to_csc[global_index - nnz_offset];
+    }
+
+    /**
+     * @brief Converts a matrix from CSC format to COO format with optional row reordering and global offset mapping.
+     *
+     * This struct performs a transformation from the CSC (Compressed Sparse Column) format
+     * to the COO (Coordinate) format and stores permutation mappings between the two.
+     *
+     * Optionally, a specific row in the CSC format can be moved to index 0 before conversion.
+     * This is useful for reordering matrices when a particular row must appear first in the
+     * COO representation (e.g. Lagrange term in Lfg(COO) / fLg(CSC) sortings).
+     *
+     * @param lead_col Index of the first non-zero of each column (size = number_cols + 1).
+     * @param row_csc  Row indices for non-zero elements in CSC format (size = nnz).
+     * @param number_cols Number of columns in the matrix.
+     * @param nnz Total number of non-zero elements in this CSC block.
+     * @param move_to_first_row
+     *       `-1` → No permutation, standard behavior (preserve row order).
+     *       `r`  → Treat original row `r` as new row 0. All rows `< r` are shifted up by +1.
+     * @param nnz_offset Offset of this CSC block in a global COO matrix.
+     *        If a global COO is composed as [*, B], where this block is B, then nnz_offset = nnz(*)
+     *        allows correct indexing through `*_embedded()` methods.
+     *
+     * @note The resulting COO matrix is sorted by row, then by column.
+     *       The mappings `coo_to_csc` and `csc_to_coo` store **local (block-wise)** indices.
+     *       Use the `*_embedded()` methods to map to/from global COO indices when embedded in a larger sparsity structure.
+     */
+    static Exchange_COO_CSC from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0) {
+        return Exchange_COO_CSC(lead_col, row_csc, number_cols, nnz, move_to_first_row, nnz_offset);
     }
 
 private:
-    /* simple sorting based CSC -> COO constructor with csc_to_coo and coo_to_csc */
-    Exchange_COO_CSC(const int* lead_col, const int* row_csc, int number_cols, int nnz) :
-                     row(nnz), col(nnz), csc_to_coo(nnz), coo_to_csc(nnz), nnz(nnz) {
+    Exchange_COO_CSC(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0)
+        : row(nnz), col(nnz), __coo_to_csc(nnz), __csc_to_coo(nnz), nnz(nnz), nnz_offset(nnz_offset) {
         int nz = 0;
-        for (int j = 0; j < number_cols; j++) {
-            for (int i = lead_col[j]; i < lead_col[j + 1]; i++) {
-                row[nz] = row_csc[i];
-                col[nz] = j;
-                csc_to_coo[nz] = nz;
+        for (int curr_col = 0; curr_col < number_cols; ++curr_col) {
+            for (int i = lead_col[curr_col]; i < lead_col[curr_col + 1]; i++) {
+                int curr_row = row_csc[i];
+                if (move_to_first_row >= 0) {
+                    if      (curr_row == move_to_first_row) curr_row = 0;
+                    else if (curr_row <  move_to_first_row) curr_row++;
+                }
+                row[nz]        = curr_row;
+                col[nz]        = curr_col;
+                __coo_to_csc[nz] = nz;
                 nz++;
             }
         }
 
-        std::sort(csc_to_coo.begin(), csc_to_coo.end(), [&](int a, int b) {
-            if (row[a] != row[b]) return row[a] < row[b];
-            return col[a] < col[b];
-        });
+        std::sort(__coo_to_csc.begin(), __coo_to_csc.end(), [&](int a, int b) {
+            return (row[a] != row[b]) ? (row[a] < row[b]) : (col[a] < col[b]);}
+        );
 
         FixedVector<int> sorted_row(nnz);
         FixedVector<int> sorted_col(nnz);
         for (int i = 0; i < nnz; i++) {
-            sorted_row[i] = row[csc_to_coo[i]];
-            sorted_col[i] = col[csc_to_coo[i]];
+            sorted_row[i] = row[__coo_to_csc[i]];
+            sorted_col[i] = col[__coo_to_csc[i]];
+            __csc_to_coo[__coo_to_csc[i]] = i;
         }
 
         row = std::move(sorted_row);
         col = std::move(sorted_col);
-        
-        // permutation inverse
-        for (int i = 0; i < nnz; ++i) {
-            coo_to_csc[csc_to_coo[i]] = i;
-        }
     }
 };
 
@@ -156,10 +200,19 @@ struct RowExchange_COO_CSC {
     FixedVector<int> col;
 
     // exchange mappings
-    FixedVector<int> csc_to_coo;
-    FixedVector<int> coo_to_csc;
+    FixedVector<int> __csc_to_coo;
+    FixedVector<int> __coo_to_csc;
 
     int nnz;
+
+    /* local access (for standard CSC blocks) */
+    inline int coo_to_csc(int index) const {
+        return __coo_to_csc[index];
+    }
+
+    inline int csc_to_coo(int index) const {
+        return __csc_to_coo[index];
+    }
 
     // static method for better readibility
     static RowExchange_COO_CSC extract_row(Exchange_COO_CSC& exchange, int row_index) {
@@ -171,24 +224,25 @@ private:
         printf("int: %d", row_index);
         nnz = 0;
         int nz = 0;
+        int start = 0;
         for (; nz < exchange.row.int_size(); nz++) {
             if (exchange.row[nz] == row_index) {
                 nnz++;
             } 
             else if (exchange.row[nz] > row_index) {
+                start = nz - nnz;
                 break;
             }
         }
-        int start = nz - nnz;
 
         col        = (FixedVector<int>(nnz));
-        csc_to_coo = (FixedVector<int>(nnz));
-        coo_to_csc = (FixedVector<int>(nnz));
+        __csc_to_coo = (FixedVector<int>(nnz));
+        __coo_to_csc = (FixedVector<int>(nnz));
 
         for (int i = 0; i < nnz; i++) {
             col[i]        = exchange.col[start + i];
-            csc_to_coo[i] = exchange.csc_to_coo[start + i];
-            coo_to_csc[i] = exchange.coo_to_csc[start + i];
+            __csc_to_coo[i] = exchange.coo_to_csc(start + i);
+            __coo_to_csc[i] = exchange.csc_to_coo(start + i);
         }
     }
 };

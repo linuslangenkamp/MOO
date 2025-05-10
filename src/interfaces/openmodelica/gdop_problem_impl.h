@@ -36,20 +36,14 @@ struct Jacobians_OM {
     bool C_exists;
     bool D_exists;
 
+    Exchange_COO_CSC A_coo;
     Exchange_COO_CSC B_coo;
     Exchange_COO_CSC C_coo;
-    Exchange_COO_CSC D_coo;
-
     std::unique_ptr<RowExchange_COO_CSC> C_mayer_coo;
 
-    Jacobians_OM(DATA* data, threadData_t* threadData, bool mayer_exists, bool lagrange_exists, int x_size);
+    Exchange_COO_CSC D_coo;
 
-    /* for the GDOP, we get the following Jacobian structure (Note ^T means its a column, so xu = (x, u) columns and the functions are rows)
-     * A = (f_xu)^T
-     * B = (f_xu, L_xu, g_xu)^T
-     * C = (f_xu, L_xu, M_xu, g_xu)^T
-     * D = (r_xu)^T, but why not (M_xu, r_xu)?? so much easier!
-    */
+    Jacobians_OM(DATA* data, threadData_t* threadData, bool mayer_exists, bool lagrange_exists, int x_size);
 };
 
 Problem* create_gdop_om(DATA* data, threadData_t* threadData, Mesh& mesh);

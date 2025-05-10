@@ -15,11 +15,10 @@
 int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
     printf("Entry point - _main_OptimitationRuntime\n\n");
 
-    // TODO: remove shared_ptr / unique_ptr for NLP + Mesh + Collocation? Do we really need them?
-
     // TODO: add flag to set this degree
-    // TODO: fix potential start / stop time offset, e.g. startTime = 1 => in callback make offset +=1 for t
     // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
+
+    // TODO: fix potential start / stop time offset, e.g. startTime = 1 => in callback make offset +=1 for t
     int stages = 3;
     F64 tf = data->simulationInfo->stopTime - data->simulationInfo->startTime;
     int intervals = (int)(round(tf/data->simulationInfo->stepSize));
