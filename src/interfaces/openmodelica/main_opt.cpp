@@ -30,18 +30,8 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto fLGR = std::make_unique<Collocation>();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(tf, intervals, stages, *fLGR));
     auto problem = create_gdop(data, threadData, info, *mesh);
-    printf("%d\n", problem.full.f_index_start);
 
-    /*
-    auto xuij = FixedVector<F64>(info.xu_size);
-    xuij[0] = 1;
-    xuij[1] = 0;
-    xuij[2] = 700;
-    set_states_inputs(data, threadData, info, xuij.raw());
-    problem.full.callback_eval(xuij.raw(), NULL);
-    */
     // create solver => run()
-
 
     return 0;
 }

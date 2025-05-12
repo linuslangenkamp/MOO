@@ -29,6 +29,8 @@ public:
         hes_buffer = FixedVector<F64>(mesh.node_count * hes_size);
     };
 
+    virtual ~FullSweep() = default;
+
     FixedVector<FunctionLFG> lfg;
     Mesh& mesh;
 
@@ -81,6 +83,7 @@ public:
         jac_buffer = FixedVector<F64>(jac_buffer_size);
         hes_buffer = FixedVector<F64>(hes_buffer_size);
     };
+    virtual ~BoundarySweep() = default;
 
     // M, R :: assert x0 Size == xf Size
     FixedVector<FunctionMR> mr;

@@ -49,6 +49,7 @@ void BoundarySweep_OM::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const
     set_time(data, threadData, info, mesh.tf);
     eval_current_point(data, threadData, info);
     eval_mr_write_to_buffer(data, threadData, info, eval_buffer);
+    print_real_var_names_values(data);
 }
 
 void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
@@ -93,7 +94,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     short der_index_mayer_realVars = -1;
     short der_indices_lagrange_realVars[2] = {-1, -1};
 
-    // this is really ugly IMO, fix this when ready for master!
+    /* FIXME: this is really ugly IMO, fix this when ready for master! */
     info.mayer_exists = (data->callback->mayer(data, &info.__address_mayer_real_vars, &der_index_mayer_realVars) >= 0);
     if (info.mayer_exists) {
         info.index_mayer_real_vars = (int)(info.__address_mayer_real_vars - data->localData[0]->realVars);
@@ -144,12 +145,13 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     init_eval(data, threadData, info, lfg, mr);
     init_jac(data, threadData, info, exc_jac, lfg, mr);
 
-    FullSweep_OM full(std::move(lfg), mesh, std::move(g_bounds), data, threadData, info);
-    BoundarySweep_OM boundary(std::move(mr), mesh, std::move(r_bounds), data, threadData, info);
+    /* FIXME: this is really ugly IMO, fix this when ready for master! */
+    auto full = new FullSweep_OM(std::move(lfg), mesh, std::move(g_bounds), data, threadData, info);
+    auto boundary = new BoundarySweep_OM(std::move(mr), mesh, std::move(r_bounds), data, threadData, info);
     
     Problem problem = Problem{
-        full,
-        boundary,
+        *full,
+        *boundary,
         mesh,
         std::move(x_bounds),
         std::move(u_bounds),

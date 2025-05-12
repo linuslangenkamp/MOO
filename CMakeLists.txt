@@ -71,8 +71,12 @@ target_include_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/in
 target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
 #add_dependencies(optimization ipopt-ext mumps-ext)
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -fopenmp)
+else()
+  target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Ofast -fopenmp)
+endif()
 
-target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Ofast -fopenmp)
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
 target_link_libraries(optimization PRIVATE lapack blas dl gfortran gomp)
 if (COINHSL_FOUND)
