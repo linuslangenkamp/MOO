@@ -6,15 +6,15 @@ extern "C" {
 
 
 /*
-equation index: 21
+equation index: 31
 type: ALGORITHM
 
   assert($finalCon$FINALCONSTR >= -1.25 and $finalCon$FINALCONSTR <= 1.25, "Variable violating min/max constraint: -1.25 <= $finalCon$FINALCONSTR <= 1.25, has value: " + String($finalCon$FINALCONSTR, "g"));
 */
-void include_test_eqFunction_21(DATA *data, threadData_t *threadData)
+void include_test_eqFunction_31(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
-  const int equationIndexes[2] = {1,21};
+  const int equationIndexes[2] = {1,31};
   modelica_boolean tmp0;
   modelica_boolean tmp1;
   static const MMC_DEFSTRINGLIT(tmp2,90,"Variable violating min/max constraint: -1.25 <= $finalCon$FINALCONSTR <= 1.25, has value: ");
@@ -23,11 +23,11 @@ void include_test_eqFunction_21(DATA *data, threadData_t *threadData)
   static int tmp5 = 0;
   if(!tmp5)
   {
-    tmp0 = GreaterEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[11]] /* $finalCon$FINALCONSTR OPT_FCONSTR */),-1.25);
-    tmp1 = LessEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[11]] /* $finalCon$FINALCONSTR OPT_FCONSTR */),1.25);
+    tmp0 = GreaterEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[16]] /* $finalCon$FINALCONSTR OPT_FCONSTR */),-1.25);
+    tmp1 = LessEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[16]] /* $finalCon$FINALCONSTR OPT_FCONSTR */),1.25);
     if(!(tmp0 && tmp1))
     {
-      tmp3 = modelica_real_to_modelica_string_format((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[11]] /* $finalCon$FINALCONSTR OPT_FCONSTR */), (modelica_string) mmc_strings_len1[103]);
+      tmp3 = modelica_real_to_modelica_string_format((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[16]] /* $finalCon$FINALCONSTR OPT_FCONSTR */), (modelica_string) mmc_strings_len1[103]);
       tmpMeta4 = stringAppend(MMC_REFSTRINGLIT(tmp2),tmp3);
       {
         const char* assert_cond = "($finalCon$FINALCONSTR >= -1.25 and $finalCon$FINALCONSTR <= 1.25)";
@@ -46,15 +46,15 @@ void include_test_eqFunction_21(DATA *data, threadData_t *threadData)
 }
 
 /*
-equation index: 22
+equation index: 32
 type: ALGORITHM
 
   assert($con$CONSTR >= -1.25 and $con$CONSTR <= 1000.0, "Variable violating min/max constraint: -1.25 <= $con$CONSTR <= 1000.0, has value: " + String($con$CONSTR, "g"));
 */
-void include_test_eqFunction_22(DATA *data, threadData_t *threadData)
+void include_test_eqFunction_32(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
-  const int equationIndexes[2] = {1,22};
+  const int equationIndexes[2] = {1,32};
   modelica_boolean tmp6;
   modelica_boolean tmp7;
   static const MMC_DEFSTRINGLIT(tmp8,82,"Variable violating min/max constraint: -1.25 <= $con$CONSTR <= 1000.0, has value: ");
@@ -63,11 +63,11 @@ void include_test_eqFunction_22(DATA *data, threadData_t *threadData)
   static int tmp11 = 0;
   if(!tmp11)
   {
-    tmp6 = GreaterEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[10]] /* $con$CONSTR OPT_CONSTR */),-1.25);
-    tmp7 = LessEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[10]] /* $con$CONSTR OPT_CONSTR */),1000.0);
+    tmp6 = GreaterEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[15]] /* $con$CONSTR OPT_CONSTR */),-1.25);
+    tmp7 = LessEq((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[15]] /* $con$CONSTR OPT_CONSTR */),1000.0);
     if(!(tmp6 && tmp7))
     {
-      tmp9 = modelica_real_to_modelica_string_format((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[10]] /* $con$CONSTR OPT_CONSTR */), (modelica_string) mmc_strings_len1[103]);
+      tmp9 = modelica_real_to_modelica_string_format((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[15]] /* $con$CONSTR OPT_CONSTR */), (modelica_string) mmc_strings_len1[103]);
       tmpMeta10 = stringAppend(MMC_REFSTRINGLIT(tmp8),tmp9);
       {
         const char* assert_cond = "($con$CONSTR >= -1.25 and $con$CONSTR <= 1000.0)";
@@ -86,15 +86,15 @@ void include_test_eqFunction_22(DATA *data, threadData_t *threadData)
 }
 
 /*
-equation index: 23
+equation index: 33
 type: ALGORITHM
 
   assert(FINALCONSTR >= -1.25 and FINALCONSTR <= 1.25, "Variable violating min/max constraint: -1.25 <= FINALCONSTR <= 1.25, has value: " + String(FINALCONSTR, "g"));
 */
-void include_test_eqFunction_23(DATA *data, threadData_t *threadData)
+void include_test_eqFunction_33(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
-  const int equationIndexes[2] = {1,23};
+  const int equationIndexes[2] = {1,33};
   modelica_boolean tmp12;
   modelica_boolean tmp13;
   static const MMC_DEFSTRINGLIT(tmp14,80,"Variable violating min/max constraint: -1.25 <= FINALCONSTR <= 1.25, has value: ");
@@ -112,10 +112,10 @@ void include_test_eqFunction_23(DATA *data, threadData_t *threadData)
       {
         const char* assert_cond = "(FINALCONSTR >= -1.25 and FINALCONSTR <= 1.25)";
         if (data->simulationInfo->noThrowAsserts) {
-          FILE_INFO info = {"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo",10,3,10,92,0};
+          FILE_INFO info = {"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo",11,3,11,92,0};
           infoStreamPrintWithEquationIndexes(OMC_LOG_ASSERT, info, 0, equationIndexes, "The following assertion has been violated %sat time %f\n(%s) --> \"%s\"", initial() ? "during initialization " : "", data->localData[0]->timeValue, assert_cond, MMC_STRINGDATA(tmpMeta16));
         } else {
-          FILE_INFO info = {"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo",10,3,10,92,0};
+          FILE_INFO info = {"/home/linus/Projects/Optimization/src/modelica/example/include_test.mo",11,3,11,92,0};
           omc_assert_warning_withEquationIndexes(info, equationIndexes, "The following assertion has been violated %sat time %f\n(%s) --> \"%s\"", initial() ? "during initialization " : "", data->localData[0]->timeValue, assert_cond, MMC_STRINGDATA(tmpMeta16));
         }
       }
@@ -130,11 +130,11 @@ int include_test_checkForAsserts(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
-  include_test_eqFunction_21(data, threadData);
+  include_test_eqFunction_31(data, threadData);
 
-  include_test_eqFunction_22(data, threadData);
+  include_test_eqFunction_32(data, threadData);
 
-  include_test_eqFunction_23(data, threadData);
+  include_test_eqFunction_33(data, threadData);
   
   TRACE_POP
   return 0;

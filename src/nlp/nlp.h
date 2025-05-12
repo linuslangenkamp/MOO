@@ -19,7 +19,7 @@
  *    eval_grad_f() => df/dx
  *    eval_jac_g()  => dg/dx
  *    eval_hes()    => sigma_f * d²f/dx² + sum_{i=1}^{m} lambda_i * d²(g_i)/dx²
-*/
+ */
 
 class NLP {
 public:
@@ -42,11 +42,11 @@ public:
     FixedVector<F64> x_ub; // upper bounds on NLP variables
 
     // nlp function data
-    F64 curr_obj;                   // current NLP objective value
-    FixedVector<F64> curr_grad;     // current NLP gradient of the objective function
-    FixedVector<F64> curr_g;        // current NLP constraint function evaluation
-    FixedVector<F64> curr_jac;      // current NLP jacobian of the constraints
-    FixedVector<F64> curr_hes;      // current NLP hessian of the lagrangian
+    F64 curr_obj;               // current NLP objective value
+    FixedVector<F64> curr_grad; // current NLP gradient of the objective function
+    FixedVector<F64> curr_g;    // current NLP constraint function evaluation
+    FixedVector<F64> curr_jac;  // current NLP jacobian of the constraints
+    FixedVector<F64> curr_hes;  // current NLP hessian of the lagrangian
 
     // scaled constraint bounds
     FixedVector<F64> g_lb; // lower bounds on NLP constraints
@@ -57,9 +57,9 @@ public:
     FixedVector<int> j_col_jac; // column COO of the Jacobian
     FixedVector<int> i_row_hes; // row COO of the Hessian
     FixedVector<int> j_col_hes; // column COO of the Hessian
-    
+
     // TODO: add a generic block BFGS routine, which can calculate blocks of the Lagrangian Hessian $\nabla_{xx} \mathcal{L}_{AA -> BB}$
-    
+
     virtual void eval_f(const F64* nlp_solver_x, bool new_x) = 0;      // fill curr_obj
     virtual void eval_g(const F64* nlp_solver_x, bool new_x) = 0;      // fill curr_g
     virtual void eval_grad_f(const F64* nlp_solver_x, bool new_x) = 0; // fill curr_grad

@@ -1,8 +1,14 @@
 #include "debug_om.h"
 
-void print_real_var_names(DATA* data, size_t var_count) {
-    for (size_t idx = 0; idx < var_count; idx++)
-        printf("%s\n", (data->modelData->realVarsData[idx].info.name));
+void print_real_var_names(DATA* data) {
+    for (long idx = 0; idx < data->modelData->nVariablesReal; idx++)
+        printf("%s\n", data->modelData->realVarsData[idx].info.name);
+}
+
+void print_real_var_names_values(DATA* data) {
+    printf("Time: %f\n", data->localData[0]->timeValue);
+    for (long idx = 0; idx < data->modelData->nVariablesReal; idx++)
+        printf("%s: %f\n", data->modelData->realVarsData[idx].info.name, data->localData[0]->realVars[idx]);
 }
 
 void print_jacobian_sparsity(const JACOBIAN* jac, bool print_pattern, const char* name = nullptr) {

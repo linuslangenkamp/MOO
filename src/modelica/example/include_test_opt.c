@@ -1,9 +1,10 @@
 //////////////////////////////////////////////////
 /* new stuff below */
 
-// OptimizationRuntime entry points
+// OptimizationRuntime entry point
 extern int _main_OptimitationRuntime();
 #define CALL_OPT_RUNTIME TRUE
+#define CALL_SIM_RUNTIME FALSE
 
 
 //////////////////////////////////////////////////
@@ -60,7 +61,7 @@ int OMC_MAIN(int argc, OMC_CHAR** argv)
     include_test_setupDataStruc(&data, threadData);
     res = _main_initRuntimeAndSimulation(argc, newargv, &data, threadData);
 
-    if(res == 0 && !CALL_OPT_RUNTIME) {
+    if(res == 0 && CALL_SIM_RUNTIME) {
       res = _main_SimulationRuntime(argc, newargv, &data, threadData);
     } else if (res == 0 && CALL_OPT_RUNTIME) {
       res = _main_OptimitationRuntime(argc, newargv, &data, threadData);

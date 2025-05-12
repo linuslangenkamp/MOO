@@ -166,7 +166,7 @@ public:
      *
      * @note The resulting COO matrix is sorted by row, then by column.
      *       The mappings `coo_to_csc` and `csc_to_coo` store **local (block-wise)** indices.
-     *       Use the `*_embedded()` methods to map to/from global COO indices when embedded in a larger sparsity structure.
+     *       Use the `*_global()` methods to map to/from global COO indices when embedded in a larger sparsity structure.
      */
     static Exchange_COO_CSC from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0) {
         return Exchange_COO_CSC(lead_col, row_csc, number_cols, nnz, move_to_first_row, nnz_offset);
@@ -183,8 +183,8 @@ private:
                     if      (curr_row == move_to_first_row) curr_row = 0;
                     else if (curr_row <  move_to_first_row) curr_row++;
                 }
-                row[nz]        = curr_row;
-                col[nz]        = curr_col;
+                row[nz]          = curr_row;
+                col[nz]          = curr_col;
                 __coo_to_csc[nz] = nz;
                 nz++;
             }

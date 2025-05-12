@@ -9,11 +9,11 @@
 
   OPENMODELICAHOME                    = "/home/linus/Projects/OpenModelica/build_cmake/install_cmake/bin/.."
 
-  guid                                = "{8319b9c2-5f78-470e-8936-694f295f0764}"
+  guid                                = "{dfd06e5b-41a4-493e-9423-9e51909e32a5}"
 
   description                         = ""
   generationTool                      = "OpenModelica Compiler v1.26.0-dev-108-gda288b257f-cmake"
-  generationDateAndTime               = "2025-05-09T16:40:03Z"
+  generationDateAndTime               = "2025-05-12T15:15:56Z"
 
   variableNamingConvention            = "structured"
 
@@ -27,8 +27,8 @@
   numberOfFunctions                   = "0"  cmt_numberOfFunctions                   = "NFUNC:    number of functions used by the simulation,         OMC"
 
   numberOfContinuousStates            = "2"  cmt_numberOfContinuousStates            = "NX:       number of states,                                   FMI"
-  numberOfRealAlgebraicVariables      = "8"  cmt_numberOfRealAlgebraicVariables      = "NY:       number of real variables,                           OMC"
-  numberOfRealAlgebraicAliasVariables = "6"  cmt_numberOfRealAlgebraicAliasVariables = "NA:       number of alias variables,                          OMC"
+  numberOfRealAlgebraicVariables      = "13"  cmt_numberOfRealAlgebraicVariables      = "NY:       number of real variables,                           OMC"
+  numberOfRealAlgebraicAliasVariables = "1"  cmt_numberOfRealAlgebraicAliasVariables = "NA:       number of alias variables,                          OMC"
   numberOfRealParameters              = "0"  cmt_numberOfRealParameters              = "NP:       number of parameters,                               OMC"
 
   numberOfIntegerAlgebraicVariables   = "0"  cmt_numberOfIntegerAlgebraicVariables   = "NYINT:    number of alg. int variables,                       OMC"
@@ -135,7 +135,7 @@
     alias = "noAlias"
     classIndex = "2" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "10" startColumn = "3" endLine = "10" endColumn = "92" fileWritable = "true">
+    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "11" startColumn = "3" endLine = "11" endColumn = "92" fileWritable = "true">
     <Real start="0.0" fixed="false" useNominal="false" min="-1.25" max="1.25" />
   </ScalarVariable>
   <ScalarVariable
@@ -146,7 +146,7 @@
     alias = "noAlias"
     classIndex = "3" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "13" startColumn = "3" endLine = "13" endColumn = "59" fileWritable = "true">
+    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "14" startColumn = "3" endLine = "14" endColumn = "59" fileWritable = "true">
     <Real start="700.0" fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
@@ -157,108 +157,108 @@
     alias = "noAlias"
     classIndex = "4" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "12" startColumn = "3" endLine = "12" endColumn = "52" fileWritable = "true">
+    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "13" startColumn = "3" endLine = "13" endColumn = "52" fileWritable = "true">
     <Real fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
-    name = "u"
+    name = "k1"
     valueReference = "1009"
     variability = "continuous" isDiscrete = "false"
-    causality = "input" isValueChangeable = "true"
-    inputIndex = "0"
+    causality = "local" isValueChangeable = "false"
     alias = "noAlias"
     classIndex = "5" classType = "rAlg"
-    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "11" startColumn = "3" endLine = "11" endColumn = "49" fileWritable = "true">
-    <Real start="700.0" fixed="true" useNominal="false" min="650.0" max="748.15" />
-  </ScalarVariable>
-  <ScalarVariable
-    name = "$con$CONSTR"
-    valueReference = "1010"
-    variability = "continuous" isDiscrete = "false"
-    causality = "output" isValueChangeable = "false"
-    alias = "noAlias"
-    classIndex = "6" classType = "rAlg"
-    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "" startLine = "0" startColumn = "0" endLine = "0" endColumn = "0" fileWritable = "true">
-    <Real fixed="false" useNominal="false" min="-1.25" max="1000.0" />
-  </ScalarVariable>
-  <ScalarVariable
-    name = "$finalCon$FINALCONSTR"
-    valueReference = "1011"
-    variability = "continuous" isDiscrete = "false"
-    causality = "output" isValueChangeable = "false"
-    alias = "noAlias"
-    classIndex = "7" classType = "rAlg"
-    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "" startLine = "0" startColumn = "0" endLine = "0" endColumn = "0" fileWritable = "true">
-    <Real fixed="false" useNominal="false" min="-1.25" max="1.25" />
-  </ScalarVariable>
-  <ScalarVariable
-    name = "CONSTR"
-    valueReference = "1012"
-    variability = "continuous" isDiscrete = "false"
-    causality = "local" isValueChangeable = "false"
-    alias = "alias" aliasVariable="$con$CONSTR" aliasVariableId="10"
-    classIndex = "0" classType = "rAli"
-    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
-    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "9" startColumn = "3" endLine = "9" endColumn = "74" fileWritable = "true">
-    <Real fixed="false" useNominal="false" min="-1.25" max="1000.0" />
-  </ScalarVariable>
-  <ScalarVariable
-    name = "k1"
-    valueReference = "1013"
-    variability = "continuous" isDiscrete = "false"
-    causality = "local" isValueChangeable = "false"
-    alias = "alias" aliasVariable="u" aliasVariableId="9"
-    classIndex = "1" classType = "rAli"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
     fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "4" startColumn = "3" endLine = "4" endColumn = "10" fileWritable = "true">
     <Real fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
     name = "k2"
-    valueReference = "1014"
+    valueReference = "1010"
     variability = "continuous" isDiscrete = "false"
     causality = "local" isValueChangeable = "false"
-    alias = "alias" aliasVariable="u" aliasVariableId="9"
-    classIndex = "2" classType = "rAli"
+    alias = "noAlias"
+    classIndex = "6" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
     fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "5" startColumn = "3" endLine = "5" endColumn = "10" fileWritable = "true">
     <Real fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
     name = "k3"
-    valueReference = "1015"
+    valueReference = "1011"
     variability = "continuous" isDiscrete = "false"
     causality = "local" isValueChangeable = "false"
-    alias = "alias" aliasVariable="u" aliasVariableId="9"
-    classIndex = "3" classType = "rAli"
+    alias = "noAlias"
+    classIndex = "7" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
     fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "6" startColumn = "3" endLine = "6" endColumn = "10" fileWritable = "true">
     <Real fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
     name = "k4"
-    valueReference = "1016"
+    valueReference = "1012"
     variability = "continuous" isDiscrete = "false"
     causality = "local" isValueChangeable = "false"
-    alias = "alias" aliasVariable="u" aliasVariableId="9"
-    classIndex = "4" classType = "rAli"
+    alias = "noAlias"
+    classIndex = "8" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
     fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "7" startColumn = "3" endLine = "7" endColumn = "10" fileWritable = "true">
     <Real fixed="false" useNominal="false" />
   </ScalarVariable>
   <ScalarVariable
     name = "k5"
-    valueReference = "1017"
+    valueReference = "1013"
     variability = "continuous" isDiscrete = "false"
     causality = "local" isValueChangeable = "false"
-    alias = "alias" aliasVariable="u" aliasVariableId="9"
-    classIndex = "5" classType = "rAli"
+    alias = "noAlias"
+    classIndex = "9" classType = "rAlg"
     isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
     fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "8" startColumn = "3" endLine = "8" endColumn = "10" fileWritable = "true">
     <Real fixed="false" useNominal="false" />
+  </ScalarVariable>
+  <ScalarVariable
+    name = "u"
+    valueReference = "1014"
+    variability = "continuous" isDiscrete = "false"
+    causality = "input" isValueChangeable = "true"
+    inputIndex = "0"
+    alias = "noAlias"
+    classIndex = "10" classType = "rAlg"
+    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
+    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "12" startColumn = "3" endLine = "12" endColumn = "49" fileWritable = "true">
+    <Real start="700.0" fixed="true" useNominal="false" min="650.0" max="748.15" />
+  </ScalarVariable>
+  <ScalarVariable
+    name = "$con$CONSTR"
+    valueReference = "1015"
+    variability = "continuous" isDiscrete = "false"
+    causality = "output" isValueChangeable = "false"
+    alias = "noAlias"
+    classIndex = "11" classType = "rAlg"
+    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
+    fileName = "" startLine = "0" startColumn = "0" endLine = "0" endColumn = "0" fileWritable = "true">
+    <Real fixed="false" useNominal="false" min="-1.25" max="1000.0" />
+  </ScalarVariable>
+  <ScalarVariable
+    name = "$finalCon$FINALCONSTR"
+    valueReference = "1016"
+    variability = "continuous" isDiscrete = "false"
+    causality = "output" isValueChangeable = "false"
+    alias = "noAlias"
+    classIndex = "12" classType = "rAlg"
+    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
+    fileName = "" startLine = "0" startColumn = "0" endLine = "0" endColumn = "0" fileWritable = "true">
+    <Real fixed="false" useNominal="false" min="-1.25" max="1.25" />
+  </ScalarVariable>
+  <ScalarVariable
+    name = "CONSTR"
+    valueReference = "1017"
+    variability = "continuous" isDiscrete = "false"
+    causality = "local" isValueChangeable = "false"
+    alias = "alias" aliasVariable="$con$CONSTR" aliasVariableId="15"
+    classIndex = "0" classType = "rAli"
+    isProtected = "false" hideResult = "" isEncrypted = "false" initNonlinear = "false"
+    fileName = "/home/linus/Projects/Optimization/src/modelica/example/include_test.mo" startLine = "10" startColumn = "3" endLine = "10" endColumn = "74" fileWritable = "true">
+    <Real fixed="false" useNominal="false" min="-1.25" max="1000.0" />
   </ScalarVariable>
 
 

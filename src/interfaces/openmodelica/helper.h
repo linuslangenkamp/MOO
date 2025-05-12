@@ -16,15 +16,20 @@ struct InfoGDOP {
     int g_size;
     int r_size;
 
-    int real_vars_g_start_index;
-    int real_vars_r_start_index;
-
     bool mayer_exists;
     bool lagrange_exists;
 
     /* TODO: better save the index in real_vars => parallel computations */
-    F64* address_mayer_real_vars;
-    F64* address_lagrange_real_vars;
+    modelica_real* __address_mayer_real_vars;
+    modelica_real* __address_lagrange_real_vars;
+
+    const int index_x_real_vars = 0;
+    int index_der_x_real_vars;
+    int index_mayer_real_vars = -1;
+    int index_lagrange_real_vars = -1;
+    FixedVector<int> u_indices_real_vars;
+    int index_g_real_vars;
+    int index_r_real_vars;
 };
 
 #endif // OPT_OM_HELPER

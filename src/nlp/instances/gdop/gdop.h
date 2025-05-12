@@ -28,28 +28,28 @@ public:
     }
 
     // structures
-    Mesh& mesh;                  // grid / mesh
-    Problem& problem;            // continuous GDOP
-    Collocation& collocation;    // collocation data
-    Trajectory& guess;           // initial guess / trajectory, will be interpolated accordingly
-    NLP_State evaluation_state;  // simple state to check which actions are / have to be performed for an iteration
+    Mesh& mesh;                 // grid / mesh
+    Problem& problem;           // continuous GDOP
+    Collocation& collocation;   // collocation data
+    Trajectory& guess;          // initial guess / trajectory, will be interpolated accordingly
+    NLP_State evaluation_state; // simple state to check which actions are / have to be performed for an iteration
 
     // constant NLP derivative matrix part of the jacobian
     FixedVector<F64> const_der_jac;
 
     // offsets
-    int off_x;         // offset #xVars
-    int off_u;         // offset #uVars
-    int off_p;         // offset #pVars
-    int off_xu;        // number of vars for one collocation grid point
-    int off_last_xu;   // last collocation grid point *x_nm, u_nm
-    int off_xu_total;  // first parameter variable index
-    int off_fg_total;  // first boundary constraint index
+    int off_x;        // offset #xVars
+    int off_u;        // offset #uVars
+    int off_p;        // offset #pVars
+    int off_xu;       // number of vars for one collocation grid point
+    int off_last_xu;  // last collocation grid point *x_nm, u_nm
+    int off_xu_total; // first parameter variable index
+    int off_fg_total; // first boundary constraint index
 
     // note off_acc_xu[0][0] = off_x for time t = first collocation node, since there are no controls at time t=0
-    FixedField<int, 2>   off_acc_xu;  // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
-    FixedField<int, 2>   off_acc_fg;  // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
-    FixedVector<int> off_acc_jac_fg;  // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
+    FixedField<int, 2>   off_acc_xu; // offset to NLP_X first index of (x, u)(t_ij), i.e. NLP_X[off_acc_xu[i][j]] = x[i][j], u[i][j]
+    FixedField<int, 2>   off_acc_fg; // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
+    FixedVector<int> off_acc_jac_fg; // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
     // for further info see hessian layout at the bottom

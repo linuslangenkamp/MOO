@@ -769,9 +769,6 @@ void GDOP::callback_evaluation() {
 }
 
 void GDOP::callback_jacobian() {
-    if (!(evaluation_state.eval_f && evaluation_state.eval_g)) {
-        callback_evaluation();
-    }
     problem.full.callback_jac(curr_x.raw() + off_x, curr_x.raw() + off_xu_total);
     problem.boundary.callback_jac(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total);
     evaluation_state.grad_f = true;
@@ -779,12 +776,6 @@ void GDOP::callback_jacobian() {
 }
 
 void GDOP::callback_hessian() {
-    if (!(evaluation_state.eval_f && evaluation_state.eval_g)) {
-        callback_evaluation();
-    }
-    if (!(evaluation_state.grad_f && evaluation_state.jac_g)) {
-        callback_jacobian();
-    }
     problem.full.callback_hes(curr_x.raw() + off_x, curr_x.raw() + off_xu_total);
     problem.boundary.callback_hes(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total);
     evaluation_state.hes_lag = true;

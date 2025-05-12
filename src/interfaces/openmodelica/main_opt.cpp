@@ -17,6 +17,9 @@
 int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
     printf("Entry point - _main_OptimitationRuntime\n\n");
 
+    /* create info struct <-> same purpose as DATA* in OpenModeica */
+    InfoGDOP info;
+
     // TODO: add flag to set this degree
     // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
 
@@ -26,12 +29,19 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     int intervals = (int)(round(tf/data->simulationInfo->stepSize));
     auto fLGR = std::make_unique<Collocation>();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(tf, intervals, stages, *fLGR));
-    auto problem = create_gdop(data, threadData, *mesh);
+    auto problem = create_gdop(data, threadData, info, *mesh);
+    printf("%d\n", problem.full.f_index_start);
 
-    // problem
-    // fs, bs, set sparsity pattern and data
+    /*
+    auto xuij = FixedVector<F64>(info.xu_size);
+    xuij[0] = 1;
+    xuij[1] = 0;
+    xuij[2] = 700;
+    set_states_inputs(data, threadData, info, xuij.raw());
+    problem.full.callback_eval(xuij.raw(), NULL);
+    */
     // create solver => run()
-    
+
 
     return 0;
 }
