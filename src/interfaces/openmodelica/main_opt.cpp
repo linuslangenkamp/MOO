@@ -8,6 +8,9 @@
 #include <base/collocation.h>
 #include <base/mesh.h>
 
+#include <nlp/solvers/ipopt/ipopt_solver.h>
+#include <nlp/instances/gdop/gdop.h>
+
 #include "gdop_problem.h"
 
 // TODO: warp all this into a namespace OpenModelica or so
@@ -31,7 +34,14 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(tf, intervals, stages, *fLGR));
     auto problem = create_gdop(data, threadData, info, *mesh);
 
-    // create solver => run()
+    Trajectory initial_guess({0, tf}, {{1, 0}}, {{0, 0}}, {}, InterpolationMethod::LINEAR);
+    GDOP gdop(problem, *fLGR, *mesh, initial_guess);
+    
+    std::unordered_map<std::string, std::string> nlp_solver_flags;
+    nlp_solver_flags["Hessian"] = "LBFGS";
+
+    IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
+    ipopt_solver.optimize();
 
     return 0;
 }

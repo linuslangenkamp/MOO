@@ -100,8 +100,10 @@ public:
     FixedVector<int> __coo_to_csc;
     FixedVector<int> __csc_to_coo;
 
-    int nnz;
-    int nnz_offset;
+    int nnz = 0;
+    int nnz_offset = 0;
+
+    Exchange_COO_CSC() = default;
 
     Exchange_COO_CSC(int nnz) 
         : row(FixedVector<int>(nnz)),

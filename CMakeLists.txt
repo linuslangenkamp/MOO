@@ -25,7 +25,7 @@ ExternalProject_Add(mumps-ext
     BUILD_IN_SOURCE true
 )
 
-#--enable-debug 
+
 ExternalProject_Add(ipopt-ext
     GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
     GIT_TAG releases/3.14.16
@@ -34,6 +34,9 @@ ExternalProject_Add(ipopt-ext
     BUILD_IN_SOURCE true
     DEPENDS mumps-ext
 )
+
+add_dependencies(optimization ipopt-ext mumps-ext)
+
 #]]
 
 set(SOURCES
@@ -50,6 +53,7 @@ set(SOURCES
     src/interfaces/openmodelica/gdop_problem.cpp
     src/interfaces/openmodelica/evaluations.cpp
     src/interfaces/openmodelica/debug_om.cpp
+    src/interfaces/openmodelica/sim_runtime_ext.cpp
 
     # src/nlp/instances/gdop/test_problem_impl.cpp
     # stashed/steady_state/parameter_test.cpp
@@ -70,12 +74,11 @@ target_include_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/in
 
 target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
-#add_dependencies(optimization ipopt-ext mumps-ext)
-if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-  target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -fopenmp)
-else()
-  target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Ofast -fopenmp)
-endif()
+#if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+ # target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -fopenmp)
+#else()
+  target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g -fopenmp)
+#  endif()
 
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
 target_link_libraries(optimization PRIVATE lapack blas dl gfortran gomp)

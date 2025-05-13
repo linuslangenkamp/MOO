@@ -18,6 +18,12 @@ public:
     std::unordered_map<std::string, std::string>& solver_settings;
 
     virtual void optimize() = 0;
+
+    /* Check if solver_settings contains a specific key-value pair */
+    bool check_flag(const std::string& key, const std::string& value) const {
+        auto it = solver_settings.find(key);
+        return it != solver_settings.end() && it->second == value;
+    }
 };
 
 #endif // OPT_NLP_SOLVER_H

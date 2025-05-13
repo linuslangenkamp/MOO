@@ -60,5 +60,7 @@ void IpoptSolver::init_IpoptApplication() {
 
     // testings
     // app->Options()->SetStringValue("derivative_test", "second-order");
-    // app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+    if (check_flag("Hessian", "LBFGS")) {
+        app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+    }
 }

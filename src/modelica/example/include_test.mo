@@ -1,4 +1,4 @@
-model include_test
+/*model A
   Real x1(start = 1, fixed=true) "kerogen";
   Real x2(start = 0, fixed=true) "pyrolytic bitumen";
   Real k1;
@@ -23,6 +23,18 @@ equation
   der(x2) = k1 * x1 - k2 * x2 + k3 * x1 * x2 ;
   annotation(
     experiment(StartTime = 0, StopTime = 16, Tolerance = 1e-12, Interval = 0.5),
+    __OpenModelica_simulationFlags(solver = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
+    __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
+end A;*/
+
+model include_test
+  Real x(start = 1.5, fixed=true);
+  input Real u;
+  output Real cost_l = x^2 + u^2 annotation(isLagrange=true);
+equation
+  der(x) = x + u;
+  annotation(
+    experiment(StartTime = 0, StopTime = 1, Tolerance = 1e-12, Interval = 0.5),
     __OpenModelica_simulationFlags(solver = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;

@@ -38,7 +38,14 @@ struct Trajectory {
     std::vector<std::vector<F64>> x;
     std::vector<std::vector<F64>> u;
     std::vector<F64> p;
-    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
+    InterpolationMethod interpolation ;
+
+    Trajectory() = default;
+
+    Trajectory(std::vector<F64> t, std::vector<std::vector<F64>> x, std::vector<std::vector<F64>> u,
+               std::vector<F64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
+        : t(t), x(x), u(u), p(p), interpolation(interpolation) {
+    }
 
     Trajectory interpolate(Mesh& mesh, Collocation& collocation);
     Trajectory linear_interpolation(Mesh& mesh, Collocation& collocation);

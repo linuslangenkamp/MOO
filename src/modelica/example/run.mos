@@ -1,6 +1,6 @@
 loadFile("include_test.mo"); getErrorString();
 //buildModel(include_test); getErrorString();
-optimize(include_test, numberOfIntervals=320, stopTime=16, tolerance=1e-12); getErrorString();
+optimize(include_test, numberOfIntervals=20, stopTime=1, tolerance=1e-12); getErrorString();
 
 
 /*

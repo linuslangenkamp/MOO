@@ -2,10 +2,10 @@
 
 // Dummy implementation of FullSweep_OM
 FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, Mesh& mesh, FixedVector<Bounds>&& g_bounds, 
-                           DATA* data, threadData_t* threadData, InfoGDOP& info)
+                           DATA* data, threadData_t* threadData, ExchangeJacobians& exc_jac, InfoGDOP& info)
     : FullSweep(std::move(lfg), mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
                 info.g_size, info.x_size, info.u_size, info.p_size),
-      data(data), threadData(threadData), info(info) {
+      data(data), threadData(threadData), exc_jac(exc_jac), info(info) {
 }
 void FullSweep_OM::callback_eval(const F64* xu_nlp, const F64* p) {
     set_parameters(data, threadData, info, p);
@@ -14,7 +14,7 @@ void FullSweep_OM::callback_eval(const F64* xu_nlp, const F64* p) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
             eval_current_point(data, threadData, info);
-            eval_lfg_write_to_buffer(data, threadData, info, eval_buffer);
+            eval_lfg_write_to_buffer(data, threadData, info, &eval_buffer[eval_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -25,9 +25,8 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
-            // eval
-            // jacobian
-            // write jacobian
+            eval_current_point(data, threadData, info);
+            jac_eval_write_csc_to_buffer(data, threadData, info, exc_jac.B, &jac_buffer[jac_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -35,12 +34,11 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
 void FullSweep_OM::callback_hes(const F64* xu_nlp, const F64* p) {
 }
 
-// Dummy implementation of BoundarySweep_OM
 BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, Mesh& mesh, FixedVector<Bounds>&& r_bounds,
-                                   DATA* data, threadData_t* threadData, InfoGDOP& info)
+                                   DATA* data, threadData_t* threadData, ExchangeJacobians& exc_jac, InfoGDOP& info)
     : BoundarySweep(std::move(mr), mesh, std::move(r_bounds), info.mayer_exists,
                     info.r_size, info.x_size, info.p_size),
-      data(data), threadData(threadData), info(info) {
+      data(data), threadData(threadData), exc_jac(exc_jac), info(info) {
 }
 
 void BoundarySweep_OM::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
@@ -48,11 +46,19 @@ void BoundarySweep_OM::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const
     set_states(data, threadData, info, xf_nlp);
     set_time(data, threadData, info, mesh.tf);
     eval_current_point(data, threadData, info);
-    eval_mr_write_to_buffer(data, threadData, info, eval_buffer);
+    eval_mr_write_to_buffer(data, threadData, info, eval_buffer.raw());
     print_real_var_names_values(data);
 }
 
 void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+    set_parameters(data, threadData, info, p);
+    set_states(data, threadData, info, xf_nlp);
+    set_time(data, threadData, info, mesh.tf);
+    eval_current_point(data, threadData, info);
+    // derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1]
+    if (exc_jac.D != NULL) {
+        jac_eval_write_csc_to_buffer(data, threadData, info, exc_jac.D, &jac_buffer[exc_jac.D_coo.nnz_offset]);
+    }
 }
 
 void BoundarySweep_OM::callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
@@ -77,7 +83,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
 
     /* new generated function getInputVarIndices, just fills the index list of all optimizable inputs */
     info.u_indices_real_vars = FixedVector<int>(info.u_size);
-    data->callback->getInputVarIndices(data, info.u_indices_real_vars.raw());
+    data->callback->getInputVarIndicesInOptimization(data, info.u_indices_real_vars.raw());
     for (int u = 0; u < info.u_size; u++) {
         int u_index = info.u_indices_real_vars[u];
         u_bounds[u].lb = data->modelData->realVarsData[u_index].attribute.min;
@@ -139,15 +145,15 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     FixedVector<FunctionLFG> lfg((int)info.lagrange_exists + info.f_size + info.g_size);
 
     /* create CSC <-> COO exchange, init jacobians */
-    ExchangeJacobians exc_jac(data, threadData, info);
-    
+    auto exc_jac = std::make_unique<ExchangeJacobians>(data, threadData, info);
+
     /* init (OPT) */
     init_eval(data, threadData, info, lfg, mr);
-    init_jac(data, threadData, info, exc_jac, lfg, mr);
+    init_jac(data, threadData, info, *exc_jac, lfg, mr);
 
     /* FIXME: this is really ugly IMO, fix this when ready for master! */
-    auto full = new FullSweep_OM(std::move(lfg), mesh, std::move(g_bounds), data, threadData, info);
-    auto boundary = new BoundarySweep_OM(std::move(mr), mesh, std::move(r_bounds), data, threadData, info);
+    auto full = new FullSweep_OM(std::move(lfg), mesh, std::move(g_bounds), data, threadData, *exc_jac, info);
+    auto boundary = new BoundarySweep_OM(std::move(mr), mesh, std::move(r_bounds), data, threadData, *exc_jac, info);
     
     Problem problem = Problem{
         *full,
@@ -159,6 +165,8 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
         std::move(x0_fixed),
         std::move(xf_fixed)
     };
+
+    print_real_var_names_values(data);
 
     return problem; 
 }

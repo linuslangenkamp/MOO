@@ -7,6 +7,7 @@
 
 #include "debug_om.h"
 #include "helper.h"
+#include "sim_runtime_ext.h"
 
 struct ExchangeJacobians {
     JACOBIAN* A;
@@ -42,12 +43,22 @@ void set_states_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, con
 void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64 t_ij);
 
 /* TODO: is there a better combination e.g. functionODE + someother? */
-inline void eval_current_point(DATA* data, threadData_t* threadData, InfoGDOP& info) { data->callback->functionDAE(data, threadData); }
-void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_lfg_buffer);
-void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_mr_buffer);
 
+/* evaluation at current point */
+inline void eval_current_point(DATA* data, threadData_t* threadData, InfoGDOP& info) {
+    data->callback->functionDAE(data, threadData);
+}
 
-void jac_current_point(DATA* data, threadData_t* threadData, InfoGDOP& info);
-void jac_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_jac_lfg_buffer);
+/* write previous evaluation to buffer */
+void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer);
+void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer);
+
+/* eval jacobian and write to buffer in *CSC* form; just passes the current buffer with offset to OM Jacobian */
+inline void jac_eval_write_csc_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* eval_jac_buffer) {
+    assert(jacobian != NULL);
+    new_evalJacobian(data, threadData, jacobian, NULL, eval_jac_buffer, new_JACOBIAN_OUTPUT_FORMAT::new_JAC_OUTPUT_CSC);
+}
+
+void jac_CD_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_jac_mr_buffer);
 
 #endif // OPT_OM_EVALUATIONS

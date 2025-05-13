@@ -58,9 +58,9 @@ ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoG
     C_coo(Exchange_COO_CSC::from_csc((int*)C->sparsePattern->leadindex, (int*)C->sparsePattern->index,
                                      (int)C->sizeCols, (int)C->sparsePattern->numberOfNonZeros,
                                      info.mayer_exists ? info.x_size + (int)(info.lagrange_exists) : -1)),
-    D_coo(Exchange_COO_CSC::from_csc((int*)D->sparsePattern->leadindex, (int*)D->sparsePattern->index,
+    D_coo(info.r_size != 0 ? Exchange_COO_CSC::from_csc((int*)D->sparsePattern->leadindex, (int*)D->sparsePattern->index,
                                      (int)D->sizeCols, (int)D->sparsePattern->numberOfNonZeros,
-                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0)) {
+                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0) : Exchange_COO_CSC()) {
 }
 
 /* just enumerate them from 0 ... #lfg - 1 abd 0 ... #mr - 1, the correct placement will be handled in eval */
@@ -167,7 +167,7 @@ void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64 t_
     data->localData[0]->timeValue = (modelica_real) t_ij;
 }
 
-void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_lfg_buffer) {
+void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer) {
     int nz = 0;
     /* L */
     if (info.lagrange_exists) {
@@ -183,7 +183,7 @@ void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& in
     }
 }
 
-void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_mr_buffer) {
+void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer) {
     int nz = 0;
     /* M */
     if (info.mayer_exists) {
@@ -193,4 +193,8 @@ void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& inf
     for (int r = 0; r < info.r_size; r++) {
         eval_mr_buffer[nz++] = data->localData[0]->realVars[info.index_r_real_vars + r];
     }
+}
+
+void jac_CD_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_jac_mr_buffer) {
+
 }

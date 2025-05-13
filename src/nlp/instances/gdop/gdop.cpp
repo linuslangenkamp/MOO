@@ -15,12 +15,12 @@ void GDOP::init_sizes_offsets() {
     off_u = problem.u_size;
     off_p = problem.p_size;
     off_xu = off_x + off_u;
-    off_acc_xu = mesh.create_acc_offset_xu(off_x, off_xu);          // variables  x_ij offset
+    off_acc_xu = mesh.create_acc_offset_xu(off_x, off_xu);        // variables  x_ij offset
     off_last_xu = off_acc_xu.back().back();                       // variables final grid point x_ij
     off_xu_total = off_last_xu + off_xu;                          // first parameter
     number_vars = off_xu_total + problem.p_size;
-    off_acc_fg = mesh.create_acc_offset_fg(problem.full.fg_size);  // constraint f_ij offset
-    off_fg_total = mesh.node_count * problem.full.fg_size;      // constraint r_0 offset
+    off_acc_fg = mesh.create_acc_offset_fg(problem.full.fg_size); // constraint f_ij offset
+    off_fg_total = mesh.node_count * problem.full.fg_size;        // constraint r_0 offset
     number_constraints = problem.boundary.r_size + off_fg_total;
 }
 
