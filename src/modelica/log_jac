@@ -1,4 +1,0 @@
-Entry point - _main_OptimitationRuntime
-
-1
-LOG_ASSERT        | debug   | division leads to inf or nan at time 0.05, (a=10215.4) / (b=6.36599e-314), where divisor b is: u
