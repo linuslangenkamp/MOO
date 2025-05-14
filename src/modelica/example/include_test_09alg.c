@@ -6,21 +6,21 @@ extern "C" {
 #endif
 
 /* forwarded equations */
-extern void include_test_eqFunction_5(DATA* data, threadData_t *threadData);
-extern void include_test_eqFunction_6(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_9(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_12(DATA* data, threadData_t *threadData);
 
 static void functionAlg_system0(DATA *data, threadData_t *threadData)
 {
   int id;
 
   static void (*const eqFunctions[2])(DATA*, threadData_t*) = {
-    include_test_eqFunction_5,
-    include_test_eqFunction_6
+    include_test_eqFunction_9,
+    include_test_eqFunction_12
   };
   
   static const int eqIndices[2] = {
-    5,
-    6
+    9,
+    12
   };
   
   for (id = 0; id < 2; id++) {

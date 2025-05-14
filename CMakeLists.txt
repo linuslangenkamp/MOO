@@ -46,10 +46,13 @@ set(SOURCES
 
     src/nlp/instances/gdop/gdop.cpp
 
+    src/nlp/solvers/nlp_solver_flags.cpp
+
     src/nlp/solvers/ipopt/ipopt_adapter.cpp
     src/nlp/solvers/ipopt/ipopt_solver.cpp
 
     src/interfaces/openmodelica/main_opt.cpp
+    src/interfaces/openmodelica/info_gdop.cpp
     src/interfaces/openmodelica/gdop_problem.cpp
     src/interfaces/openmodelica/evaluations.cpp
     src/interfaces/openmodelica/debug_om.cpp
@@ -74,15 +77,21 @@ target_include_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/in
 
 target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
-#if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
- # target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -fopenmp)
-#else()
-  target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g -fopenmp)
-#  endif()
+#add_compile_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
+#add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
+
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+    message(STATUS "Configuration: Debug")
+    target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
+else()
+    message(STATUS "Configuration: Release")
+    target_compile_options(optimization PRIVATE -Wall -fno-var-tracking-assignments -O2 -g -fno-rtti )
+endif()
 
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)
 target_link_libraries(optimization PRIVATE lapack blas dl gfortran gomp)
 if (COINHSL_FOUND)
+    message(STATUS "Coin-HSL found")
     target_link_libraries(optimization PRIVATE coinhsl)
 endif ()
 

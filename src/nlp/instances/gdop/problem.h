@@ -64,6 +64,38 @@ public:
     virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
     virtual void callback_hes(const F64* xu_nlp, const F64* p) = 0;
+
+    void print_jacobian_sparsity_pattern() {
+        std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
+        for (size_t i = 0; i < lfg.size(); ++i) {
+            std::cout << "FunctionLFG[" << i << "] - ";
+            if (has_lagrange && i == 0) {
+                std::cout << "L - Lagrange term:\n";
+            } else if (i >= static_cast<size_t>(f_index_start) && i < static_cast<size_t>(f_index_end)) {
+                std::cout << "f[" << (i - f_index_start) << "] - Dynamic Equation:\n";
+            } else if (i >= static_cast<size_t>(g_index_start) && i < static_cast<size_t>(g_index_end)) {
+                std::cout << "g[" << (i - g_index_start) << "] - Path Constraint:\n";
+            } 
+
+            std::cout << "  dx sparsity pattern:\n";
+            for (const auto& entry : lfg[i].jac.dx) {
+                std::cout << "    x_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+            }
+
+            std::cout << "  du sparsity pattern:\n";
+            for (const auto& entry : lfg[i].jac.du) {
+                std::cout << "    u_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+            }
+
+            std::cout << "  dp sparsity pattern:\n";
+            for (const auto& entry : lfg[i].jac.dp) {
+                std::cout << "    p_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+            }
+
+            std::cout << "-----------------------------\n";
+        }
+        std::cout << "================================\n";
+    }
 };
 
 class BoundarySweep {
@@ -108,20 +140,51 @@ public:
     virtual void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
     virtual void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
+
+    void print_jacobian_sparsity_pattern() {
+        std::cout << "\n=== MR Jacobian Sparsity ===\n================================\n";
+        for (size_t i = 0; i < mr.size(); ++i) {
+            std::cout << "FunctionMR[" << i << "] - ";
+            if (has_mayer && i == 0) {
+                std::cout << "M - Mayer term:\n";
+            } else if (i >= static_cast<size_t>(r_index_start) && i < static_cast<size_t>(r_index_end)) {
+                std::cout << "r[" << (i - r_index_start) << "] - Boundary Constraint:\n";
+            } else {
+                std::cout << "(unknown):\n";
+            }
+
+            std::cout << "  dx0 sparsity pattern:\n";
+            for (const auto& entry : mr[i].jac.dx0) {
+                std::cout << "    x0_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+            }
+
+            std::cout << "  dxf sparsity pattern:\n";
+            for (const auto& entry : mr[i].jac.dxf) {
+                std::cout << "    xf_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+            }
+
+            std::cout << "  dp sparsity pattern:\n";
+            for (const auto& entry : mr[i].jac.dp) {
+                std::cout << "    p_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+            }
+            std::cout << "-----------------------------\n";
+        }
+        std::cout << "================================\n";
+    }
 };
 
 class Problem {
 public:
-    Problem(FullSweep& full, BoundarySweep& boundary, Mesh& mesh, FixedVector<Bounds>&& x_bounds,
+    Problem(std::unique_ptr<FullSweep>&& full, std::unique_ptr<BoundarySweep>&& boundary, Mesh& mesh, FixedVector<Bounds>&& x_bounds,
                FixedVector<Bounds>&& u_bounds, FixedVector<Bounds>&& p_bounds, FixedVector<std::optional<F64>>&& x0_fixed,
                FixedVector<std::optional<F64>>&& xf_fixed)
-    : full(full), boundary(boundary), mesh(mesh), x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)),
+    : full(std::move(full)), boundary(std::move(boundary)), mesh(mesh), x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)),
       p_bounds(std::move(p_bounds)), x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)),
-      x_size(this->full.x_size), u_size(this->full.u_size), p_size(this->full.p_size) {
+      x_size(this->full->x_size), u_size(this->full->u_size), p_size(this->full->p_size) {
     };
     
-    FullSweep& full;
-    BoundarySweep& boundary;
+    std::unique_ptr<FullSweep> full;
+    std::unique_ptr<BoundarySweep>  boundary;
 
     Mesh& mesh;
 
@@ -138,52 +201,52 @@ public:
 
    // TODO: get rid of int where possible: below could actually overflow with decent hardware!
 
-    /* note entry != index in lfg, but rather full.lfg[*].buf_index */
+    /* note entry != index in lfg, but rather full->lfg[*].buf_index */
     inline F64 lfg_eval(int entry, int interval_i, int node_j) {
-        return full.eval_buffer[entry + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+        return full->eval_buffer[entry + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline F64 lfg_eval_L(int interval_i, int node_j) {
-        assert(full.has_lagrange);
-        return full.eval_buffer[full.lfg[0].buf_index + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+        assert(full->has_lagrange);
+        return full->eval_buffer[full->lfg[0].buf_index + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline F64 lfg_eval_f(int f_index, int interval_i, int node_j) {
-        return full.eval_buffer[full.lfg[full.f_index_start + f_index].buf_index + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+        return full->eval_buffer[full->lfg[full->f_index_start + f_index].buf_index + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline F64 lfg_eval_g(int g_index, int interval_i, int node_j) {
-        return full.eval_buffer[full.lfg[full.g_index_start + g_index].buf_index + full.eval_size * mesh.acc_nodes[interval_i][node_j]];
+        return full->eval_buffer[full->lfg[full->g_index_start + g_index].buf_index + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline F64 lfg_jac(int entry, int interval_i, int node_j) {
-        return full.jac_buffer[entry + full.jac_size * mesh.acc_nodes[interval_i][node_j]];
+        return full->jac_buffer[entry + full->jac_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline F64 lfg_hes(int entry, int interval_i, int node_j) {
-        return full.hes_buffer[entry + full.hes_size * mesh.acc_nodes[interval_i][node_j]];
+        return full->hes_buffer[entry + full->hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    /* note entry != index in mr, but rather boundary.mr[*].buf_index */
+    /* note entry != index in mr, but rather boundary->mr[*].buf_index */
     inline F64 mr_eval(int entry) {
-        return full.eval_buffer[entry];
+        return full->eval_buffer[entry];
     }
 
     inline F64 mr_eval_M() {
-        assert(boundary.has_mayer);
-        return boundary.eval_buffer[boundary.mr[0].buf_index];
+        assert(boundary->has_mayer);
+        return boundary->eval_buffer[boundary->mr[0].buf_index];
     }
 
     inline F64 mr_eval_r(int r_index) {
-        return boundary.eval_buffer[boundary.mr[boundary.r_index_start + r_index].buf_index];
+        return boundary->eval_buffer[boundary->mr[boundary->r_index_start + r_index].buf_index];
     }
 
     inline F64 mr_jac(int entry) {
-        return boundary.jac_buffer[entry];
+        return boundary->jac_buffer[entry];
     }
     
     inline F64 mr_hes(int entry) {
-        return boundary.hes_buffer[entry];
+        return boundary->hes_buffer[entry];
     }
 };
 

@@ -1,5 +1,5 @@
-#ifndef OPT_OM_EXTENSIONS
-#define OPT_OM_EXTENSIONS
+#ifndef OPT_OM_EXTENSIONS_H
+#define OPT_OM_EXTENSIONS_H
 
 /* has all the missing structures and functions that should be implemented in OpenModelica SimulationRuntime
  * we collect them for now
@@ -9,7 +9,6 @@
 #include <nlp/instances/gdop/problem.h>
 
 #include "debug_om.h"
-#include "helper.h"
 
 /* buffer fromat of evalJacobian */
 enum class new_JACOBIAN_OUTPUT_FORMAT
@@ -21,4 +20,4 @@ enum class new_JACOBIAN_OUTPUT_FORMAT
 /* simple extension to evalJacobian of simrt */
 void new_evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac, new_JACOBIAN_OUTPUT_FORMAT bufferFormat);
 
-#endif // OPT_OM_EXTENSIONS
+#endif // OPT_OM_EXTENSIONS_H

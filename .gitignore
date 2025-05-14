@@ -25,3 +25,9 @@ Makefile
 *.out
 *.a
 *.lib
+
+# ignore garbage
+
+src/modelica/example/include_test_0*.*
+src/modelica/example/include_test_1*.*
+src/modelica/example/include_test_*.bin

@@ -29,14 +29,16 @@ void new_evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, 
     for (j = 0; j < jacobian->sizeCols; j++) { 
       if (sp->colorCols[j]-1 == i) { /* TODO: maybe refactor colors as int** of dim (#colors, #size_color_j) of col indices? => just loop here over col indices */
         for (ii = sp->leadindex[j]; ii < sp->leadindex[j+1]; ii++) {
+          l = sp->index[ii];
           if (bufferFormat == new_JACOBIAN_OUTPUT_FORMAT::new_JAC_OUTPUT_DENSE) {
             /* dense output buffer */
-            l = sp->index[ii];
+            
             k = j*jacobian->sizeRows + l;
             jac[k] = jacobian->resultVars[l];  /* solverData->xScaling[j]; */
           }
           else if (bufferFormat == new_JACOBIAN_OUTPUT_FORMAT::new_JAC_OUTPUT_CSC) {
             /* CSC sparse output buffer */
+            //printf("CSC: %d, %d = %f\n", j, l, jacobian->resultVars[l]);
             jac[ii] = jacobian->resultVars[l]; /* solverData->xScaling[j]; */
           }
         }

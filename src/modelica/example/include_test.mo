@@ -28,11 +28,14 @@ equation
 end A;*/
 
 model include_test
-  Real x(start = 1.5, fixed=true);
-  input Real u;
-  output Real cost_l = x^2 + u^2 annotation(isLagrange=true);
+  Real x1(start = 1, fixed=true);
+  Real x2(start = 0, fixed=true);
+  Real g(min=0, max=1.5) = x1 + u annotation(isConstraint=true);
+  input Real u(min=0, max=5);
+  output Real cost_l = -u * x1 annotation(isLagrange=true);
 equation
-  der(x) = x + u;
+  der(x1) = -(u + u^2 / 2) * x1;
+  der(x2) = u * x1;
   annotation(
     experiment(StartTime = 0, StopTime = 1, Tolerance = 1e-12, Interval = 0.5),
     __OpenModelica_simulationFlags(solver = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),

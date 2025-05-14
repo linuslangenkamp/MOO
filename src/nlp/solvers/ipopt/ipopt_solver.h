@@ -4,12 +4,12 @@
 #include <memory>
 
 #include <nlp/nlp_solver.h>
+#include "base/nlp_structs.h"
 #include "ipopt_adapter.h"
-
 
 class IpoptSolver : NLPSolver {
 public:
-    IpoptSolver(NLP& nlp, std::unordered_map<std::string, std::string>& solver_settings);
+    IpoptSolver(NLP& nlp, NLPSolverFlags& solver_flags);
 
     virtual ~IpoptSolver() = default;
 

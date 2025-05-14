@@ -23,7 +23,7 @@ int include_test_input_function(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* u variable */) = data->simulationInfo->inputVars[0];
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* u variable */) = data->simulationInfo->inputVars[0];
   
   TRACE_POP
   return 0;
@@ -33,7 +33,7 @@ int include_test_input_function_init(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
-  data->simulationInfo->inputVars[0] = data->modelData->realVarsData[4].attribute.start;
+  data->simulationInfo->inputVars[0] = data->modelData->realVarsData[6].attribute.start;
   
   TRACE_POP
   return 0;
@@ -43,7 +43,7 @@ int include_test_input_function_updateStartValues(DATA *data, threadData_t *thre
 {
   TRACE_PUSH
 
-  data->modelData->realVarsData[4].attribute.start = data->simulationInfo->inputVars[0];
+  data->modelData->realVarsData[6].attribute.start = data->simulationInfo->inputVars[0];
   
   TRACE_POP
   return 0;
@@ -52,7 +52,7 @@ int include_test_input_function_updateStartValues(DATA *data, threadData_t *thre
 int include_test_inputNames(DATA *data, char ** names){
   TRACE_PUSH
 
-  names[0] = (char *) data->modelData->realVarsData[4].info.name;
+  names[0] = (char *) data->modelData->realVarsData[6].info.name;
   
   TRACE_POP
   return 0;
@@ -87,8 +87,9 @@ int include_test_output_function(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
 
-  data->simulationInfo->outputVars[0] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[2]] /* $OMC$objectLagrangeTerm variable */);
-  data->simulationInfo->outputVars[1] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[3]] /* cost_l variable */);
+  data->simulationInfo->outputVars[0] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */);
+  data->simulationInfo->outputVars[1] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* $con$g OPT_CONSTR */);
+  data->simulationInfo->outputVars[2] = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* cost_l variable */);
   
   TRACE_POP
   return 0;
@@ -114,43 +115,65 @@ int include_test_setb_function(DATA *data, threadData_t *threadData)
 
 
 /*
-equation index: 5
+equation index: 8
 type: SIMPLE_ASSIGN
-cost_l = x ^ 2.0 + u ^ 2.0
+$DER.x1 = ((-0.5) * u ^ 2.0 - u) * x1
 */
-void include_test_eqFunction_5(DATA *data, threadData_t *threadData)
+void include_test_eqFunction_8(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
-  const int equationIndexes[2] = {1,5};
+  const int equationIndexes[2] = {1,8};
   modelica_real tmp0;
-  modelica_real tmp1;
-  tmp0 = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x STATE(1) */);
-  tmp1 = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* u variable */);
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[3]] /* cost_l variable */) = (tmp0 * tmp0) + (tmp1 * tmp1);
+  tmp0 = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* u variable */);
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[2]] /* der(x1) STATE_DER */) = ((-0.5) * ((tmp0 * tmp0)) - (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* u variable */)) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */));
   TRACE_POP
 }
 /*
-equation index: 6
+equation index: 9
+type: SIMPLE_ASSIGN
+$con$g = x1 + u
+*/
+void include_test_eqFunction_9(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,9};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[7]] /* $con$g OPT_CONSTR */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */) + (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* u variable */);
+  TRACE_POP
+}
+/*
+equation index: 10
+type: SIMPLE_ASSIGN
+cost_l = (-u) * x1
+*/
+void include_test_eqFunction_10(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,10};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* cost_l variable */) = ((-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[6]] /* u variable */))) * ((data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x1 STATE(1) */));
+  TRACE_POP
+}
+/*
+equation index: 11
+type: SIMPLE_ASSIGN
+$DER.x2 = -cost_l
+*/
+void include_test_eqFunction_11(DATA *data, threadData_t *threadData)
+{
+  TRACE_PUSH
+  const int equationIndexes[2] = {1,11};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[3]] /* der(x2) STATE_DER */) = (-(data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* cost_l variable */));
+  TRACE_POP
+}
+/*
+equation index: 12
 type: SIMPLE_ASSIGN
 $OMC$objectLagrangeTerm = cost_l
 */
-void include_test_eqFunction_6(DATA *data, threadData_t *threadData)
+void include_test_eqFunction_12(DATA *data, threadData_t *threadData)
 {
   TRACE_PUSH
-  const int equationIndexes[2] = {1,6};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[2]] /* $OMC$objectLagrangeTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[3]] /* cost_l variable */);
-  TRACE_POP
-}
-/*
-equation index: 7
-type: SIMPLE_ASSIGN
-$DER.x = x + u
-*/
-void include_test_eqFunction_7(DATA *data, threadData_t *threadData)
-{
-  TRACE_PUSH
-  const int equationIndexes[2] = {1,7};
-  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[1]] /* der(x) STATE_DER */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[0]] /* x STATE(1) */) + (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* u variable */);
+  const int equationIndexes[2] = {1,12};
+  (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[4]] /* $OMC$objectLagrangeTerm variable */) = (data->localData[0]->realVars[data->simulationInfo->realVarsIndex[5]] /* cost_l variable */);
   TRACE_POP
 }
 
@@ -166,11 +189,15 @@ int include_test_functionDAE(DATA *data, threadData_t *threadData)
   data->simulationInfo->needToIterate = 0;
   data->simulationInfo->discreteCall = 1;
   include_test_functionLocalKnownVars(data, threadData);
-  include_test_eqFunction_5(data, threadData);
+  include_test_eqFunction_8(data, threadData);
 
-  include_test_eqFunction_6(data, threadData);
+  include_test_eqFunction_9(data, threadData);
 
-  include_test_eqFunction_7(data, threadData);
+  include_test_eqFunction_10(data, threadData);
+
+  include_test_eqFunction_11(data, threadData);
+
+  include_test_eqFunction_12(data, threadData);
   data->simulationInfo->discreteCall = 0;
   
 #if !defined(OMC_MINIMAL_RUNTIME)
@@ -191,21 +218,27 @@ int include_test_functionLocalKnownVars(DATA *data, threadData_t *threadData)
 }
 
 /* forwarded equations */
-extern void include_test_eqFunction_7(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_8(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_10(DATA* data, threadData_t *threadData);
+extern void include_test_eqFunction_11(DATA* data, threadData_t *threadData);
 
 static void functionODE_system0(DATA *data, threadData_t *threadData)
 {
   int id;
 
-  static void (*const eqFunctions[1])(DATA*, threadData_t*) = {
-    include_test_eqFunction_7
+  static void (*const eqFunctions[3])(DATA*, threadData_t*) = {
+    include_test_eqFunction_8,
+    include_test_eqFunction_10,
+    include_test_eqFunction_11
   };
   
-  static const int eqIndices[1] = {
-    7
+  static const int eqIndices[3] = {
+    8,
+    10,
+    11
   };
   
-  for (id = 0; id < 1; id++) {
+  for (id = 0; id < 3; id++) {
     eqFunctions[id](data, threadData);
     threadData->lastEquationSolved = eqIndices[id];
   }
@@ -247,10 +280,12 @@ void include_test_computeVarIndices(size_t* realIndex, size_t* integerIndex, siz
   stringIndex[0] = 0;
 
   /* stateVars */
-  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* x STATE(1) */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* x1 STATE(1) */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* x2 STATE(1) */
   
   /* derivativeVars */
-  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* der(x) STATE_DER */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* der(x1) STATE_DER */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* der(x2) STATE_DER */
   
   /* algVars */
   realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* $OMC$objectLagrangeTerm variable */
@@ -260,6 +295,7 @@ void include_test_computeVarIndices(size_t* realIndex, size_t* integerIndex, siz
   /* discreteAlgVars */
   
   /* realOptimizeConstraintsVars */
+  realIndex[i_real+1] = realIndex[i_real] + ((modelica_integer) 1); i_real++; /* $con$g OPT_CONSTR */
   
   /* realOptimizeFinalConstraintsVars */
   
@@ -381,7 +417,7 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelFilePrefix = "include_test";
   data->modelData->resultFileName = NULL;
   data->modelData->modelDir = "/home/linus/Projects/Optimization/src/modelica/example";
-  data->modelData->modelGUID = "{e07be651-ef47-4c90-b6c2-3eef4f5b4122}";
+  data->modelData->modelGUID = "{1dcc975d-b1cf-41a4-abc5-d2766a3931d3}";
   #if defined(OPENMODELICA_XML_FROM_FILE_AT_RUNTIME)
   data->modelData->initXMLData = NULL;
   data->modelData->modelDataXml.infoXMLData = NULL;
@@ -411,8 +447,8 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelDataXml.fileName = "include_test_info.json";
   data->modelData->resourcesDir = NULL;
   data->modelData->runTestsuite = 0;
-  data->modelData->nStates = 1;
-  data->modelData->nVariablesRealArray = 5;
+  data->modelData->nStates = 2;
+  data->modelData->nVariablesRealArray = 8;
   data->modelData->nDiscreteReal = 0;
   data->modelData->nVariablesIntegerArray = 0;
   data->modelData->nVariablesBooleanArray = 0;
@@ -422,8 +458,8 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->nParametersBoolean = 0;
   data->modelData->nParametersString = 0;
   data->modelData->nInputVars = 1;
-  data->modelData->nOutputVars = 2;
-  data->modelData->nAliasReal = 0;
+  data->modelData->nOutputVars = 3;
+  data->modelData->nAliasReal = 1;
   data->modelData->nAliasInteger = 0;
   data->modelData->nAliasBoolean = 0;
   data->modelData->nAliasString = 0;
@@ -435,13 +471,13 @@ void include_test_setupDataStruc(DATA *data, threadData_t *threadData)
   data->modelData->modelDataXml.modelInfoXmlLength = 0;
   data->modelData->modelDataXml.nFunctions = 0;
   data->modelData->modelDataXml.nProfileBlocks = 0;
-  data->modelData->modelDataXml.nEquations = 15;
+  data->modelData->modelDataXml.nEquations = 27;
   data->modelData->nMixedSystems = 0;
   data->modelData->nLinearSystems = 0;
   data->modelData->nNonLinearSystems = 0;
   data->modelData->nStateSets = 0;
   data->modelData->nJacobians = 6;
-  data->modelData->nOptimizeConstraints = 0;
+  data->modelData->nOptimizeConstraints = 1;
   data->modelData->nOptimizeFinalConstraints = 0;
   data->modelData->nDelayExpressions = 0;
   data->modelData->nBaseClocks = 0;

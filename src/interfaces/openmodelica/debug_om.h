@@ -1,10 +1,13 @@
-#ifndef OPT_OM_PRINTS
-#define OPT_OM_PRINTS
+#ifndef OPT_OM_PRINTS_H
+#define OPT_OM_PRINTS_H
 
 #include "simulation_data.h"
+#include "base/util.h"
+#include "base/nlp_structs.h"
 
 void print_real_var_names(DATA* data);
 void print_real_var_names_values(DATA* data);
 void print_jacobian_sparsity(const JACOBIAN* jac, bool print_pattern, const char* name);
+void print_bounds_fixed_vector(FixedVector<Bounds>& vec);
 
-#endif // OPT_OM_PRINTS
+#endif // OPT_OM_PRINTS_H

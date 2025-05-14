@@ -1,8 +1,8 @@
 #include "ipopt_solver.h"
 
 
-IpoptSolver::IpoptSolver(NLP& nlp, std::unordered_map<std::string, std::string>& solver_settings)
-    : NLPSolver(nlp, solver_settings),
+IpoptSolver::IpoptSolver(NLP& nlp, NLPSolverFlags& solver_flags)
+    : NLPSolver(nlp, solver_flags),
       adapter(new IpoptAdapter(nlp)),
       app(IpoptApplicationFactory()) {
     init_IpoptApplication();
@@ -30,10 +30,10 @@ void IpoptSolver::init_IpoptApplication() {
 
     // termination fallback
     app->Options()->SetIntegerValue("max_iter", 250);
-    app->Options()->SetNumericValue("max_cpu_time", 3600);
+    app->Options()->SetNumericValue("max_cpu_time", solver_flags.get_flag_f64_fallback("CPUTime", 3600));
 
     // numeric values
-    app->Options()->SetNumericValue("tol", 1e-10);
+    app->Options()->SetNumericValue("tol", solver_flags.get_flag_f64_fallback("Tolerance", 1e-10));
     app->Options()->SetNumericValue("acceptable_tol", 1e-9);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
@@ -46,7 +46,7 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
     
     // subproblem
-    app->Options()->SetStringValue("linear_solver", "MUMPS");
+    app->Options()->SetStringValue("linear_solver", solver_flags.get_flag_string_fallback("LinearSolver", "MUMPS"));
 
     // constant derivatives
     app->Options()->SetStringValue("grad_f_constant", "no");
@@ -60,7 +60,7 @@ void IpoptSolver::init_IpoptApplication() {
 
     // testings
     // app->Options()->SetStringValue("derivative_test", "second-order");
-    if (check_flag("Hessian", "LBFGS")) {
+    if (solver_flags.check_flag("Hessian", "LBFGS")) {
         app->Options()->SetStringValue("hessian_approximation", "limited-memory");
     }
 }

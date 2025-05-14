@@ -1,5 +1,5 @@
-#ifndef OPT_OM_GDOP_PROBLEM
-#define OPT_OM_GDOP_PROBLEM
+#ifndef OPT_OM_GDOP_PROBLEM_H
+#define OPT_OM_GDOP_PROBLEM_H
 
 #include "simulation_data.h"
 
@@ -12,11 +12,10 @@ class FullSweep_OM : public FullSweep {
 public:
     DATA* data;
     threadData_t* threadData;
-    ExchangeJacobians& exc_jac;
     InfoGDOP& info;
 
     FullSweep_OM(FixedVector<FunctionLFG>&& lfg, Mesh& mesh, FixedVector<Bounds>&& g_bounds,
-                 DATA* data, threadData_t* threadData, ExchangeJacobians& exc, InfoGDOP& info);
+                 DATA* data, threadData_t* threadData, InfoGDOP& info);
                            
     void callback_eval(const F64* xu_nlp, const F64* p) override;
     void callback_jac(const F64* xu_nlp, const F64* p) override;
@@ -27,11 +26,10 @@ class BoundarySweep_OM : public BoundarySweep {
 public:
     DATA* data;
     threadData_t* threadData;
-    ExchangeJacobians& exc_jac;
     InfoGDOP& info;
 
     BoundarySweep_OM(FixedVector<FunctionMR>&& mr, Mesh& mesh, FixedVector<Bounds>&& r_bounds,
-                     DATA* data, threadData_t* threadData, ExchangeJacobians& exc, InfoGDOP& info);
+                     DATA* data, threadData_t* threadData, InfoGDOP& info);
     void callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
     void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
     void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
@@ -39,4 +37,4 @@ public:
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh);
 
-#endif // OPT_OM_GDOP_PROBLEM
+#endif // OPT_OM_GDOP_PROBLEM_H

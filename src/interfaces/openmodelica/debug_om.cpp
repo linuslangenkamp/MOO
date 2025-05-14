@@ -74,3 +74,9 @@ printf("      "); for (unsigned int col = 0; col < nCols; ++col) printf("%u", co
 
     printf("================================\n");
 }
+
+void print_bounds_fixed_vector(FixedVector<Bounds>& vec) {
+    for (const auto& b : vec) {
+        std::cout << "lb: " << b.lb << ", ub: " << b.ub << "\n";
+    }
+}
