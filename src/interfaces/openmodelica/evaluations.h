@@ -39,7 +39,7 @@ void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& inf
 /* eval jacobian and write to buffer in *CSC* form; just passes the current buffer with offset to OM Jacobian */
 inline void jac_eval_write_csc_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* eval_jac_buffer) {
     assert(jacobian != NULL && jacobian->sparsePattern != NULL);
-    new_evalJacobian(data, threadData, jacobian, NULL, eval_jac_buffer, new_JACOBIAN_OUTPUT_FORMAT::new_JAC_OUTPUT_CSC);
+    __evalJacobian(data, threadData, jacobian, NULL, eval_jac_buffer);
 }
 
 void jac_CD_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_jac_mr_buffer);

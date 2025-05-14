@@ -48,14 +48,3 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     return 0;
 }
-
-
-/*
-print_jacobian_sparsity(om_ptr->info.exc_jac->A, true, "A");
-print_jacobian_sparsity(om_ptr->info.exc_jac->B, true, "B");
-print_jacobian_sparsity(om_ptr->info.exc_jac->C, true, "C");
-print_jacobian_sparsity(om_ptr->info.exc_jac->D, true, "D");
-
-problem->full->print_jacobian_sparsity_pattern();
-problem->boundary->print_jacobian_sparsity_pattern();
-print_bounds_fixed_vector(problem->u_bounds);*/
