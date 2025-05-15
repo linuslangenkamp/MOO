@@ -26,7 +26,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     nlp_solver_flags->set("Hessian", "LBFGS");
     nlp_solver_flags->set("Tolerance", "1e-10");
     nlp_solver_flags->set("CPUTime", "3600");
-    nlp_solver_flags->set("LinearSolver", "MA57");
+    nlp_solver_flags->set("LinearSolver", "MUMPS");
     nlp_solver_flags->print();
     // TODO: add flag to set this 1, degree
     // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
@@ -39,12 +39,17 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(tf, intervals, stages, *fLGR));
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh));
 
-    Trajectory initial_guess({0, tf}, {{1, 1}, {0, 0}}, {{2.5, 2.5}}, {}, InterpolationMethod::LINEAR);
-    GDOP gdop(*problem, *fLGR, *mesh, initial_guess);
+    printf("tf = %f,  intervals = %d,  stages = %d\n", tf, intervals, stages);
 
+    Trajectory initial_guess({0, tf}, {{1, 1}, {0, 0}, {0, 0}, {0, 0}}, {{700, 700}}, {}, InterpolationMethod::LINEAR);
+    GDOP gdop(*problem, *fLGR, *mesh, initial_guess);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
-
+    /*
+    print_jacobian_sparsity(info->exc_jac->B, true, "B");
+    print_jacobian_sparsity(info->exc_jac->C, true, "C");
+    print_jacobian_sparsity(info->exc_jac->D, true, "D");
+*/
     return 0;
 }

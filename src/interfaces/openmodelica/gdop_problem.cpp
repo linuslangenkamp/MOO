@@ -112,7 +112,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     if (info.mayer_exists) {
         info.index_mayer_real_vars = (int)(info.__address_mayer_real_vars - data->localData[0]->realVars);
     }
-    printf("MAYEREXISTS: %d\n", info.mayer_exists);
+
     info.lagrange_exists = (data->callback->lagrange(data, &info.__address_lagrange_real_vars, &der_indices_lagrange_realVars[0], &der_indices_lagrange_realVars[1]) >= 0);
     if (info.lagrange_exists) {
         info.index_lagrange_real_vars = (int)(info.__address_lagrange_real_vars - data->localData[0]->realVars);

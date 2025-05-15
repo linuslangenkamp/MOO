@@ -49,12 +49,11 @@ void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVect
     if (info.mayer_exists) {
         while (info.exc_jac->C_coo.row[nz_C] == 0) {
             int col = info.exc_jac->C_coo.col[nz_C];
-            /* values point to CSC buffer in (OM) C matrix buffer*/
-            int csc_buffer_entry_C = info.exc_jac->C_coo.coo_to_csc(nz_C); // jac_buffer == OpenModelica C(row=0) CSC buffer!
 
             /* for now only final states: xf! no parameters, no dx0, esp. no du! */
             if (col < info.x_size) {
-                mr[0].jac.dxf.push_back(JacobianSparsity{col, csc_buffer_entry_C});
+                /* just point to nz_C, since for 1 row, CSC == COO */
+                mr[0].jac.dxf.push_back(JacobianSparsity{col, nz_C});
             }
 
             nz_C++;
@@ -69,7 +68,8 @@ void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVect
         int csc_buffer_entry_D = info.exc_jac->D_coo.coo_to_csc(nz_D); // jac_buffer == OpenModelica D CSC buffer!
         if (col < info.x_size) {
             /* add the Mayer offset, since the values F64* is [M, r] */
-            mr[r_start + row].jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
+            // Attention: this offset only works if D contains just r!!
+            mr[r_start + row].jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D}); 
         }
     }
 }
