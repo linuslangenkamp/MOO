@@ -33,15 +33,20 @@ inline void eval_current_point(DATA* data, threadData_t* threadData, InfoGDOP& i
 }
 
 /* write previous evaluation to buffer */
-void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer);
-void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer);
+void eval_lfg_write(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer);
+void eval_mr_write(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer);
 
-/* eval jacobian and write to buffer in *CSC* form; just passes the current buffer with offset to OM Jacobian */
-inline void jac_eval_write_csc_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* eval_jac_buffer) {
+/* call evalJacobian and write to buffer in *CSC* form; just passes the current buffer with offset to OM Jacobian */
+inline void jac_eval_write_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* eval_jac_buffer) {
     assert(jacobian != NULL && jacobian->sparsePattern != NULL);
     __evalJacobian(data, threadData, jacobian, NULL, eval_jac_buffer);
 }
 
-void jac_CD_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_jac_mr_buffer);
+/* eval full jacobian (full_buffer) but only fill eval_jac_buffer with elements of first, *moved* row in Exchange's COO structure
+ * (see construction of Exchange_COO_CSC structures for further info)
+ * clearly order doesnt matter for one row; CSC == COO order for this row, but the entries in original CSC are
+ * stored in Exchange_COO_CSC.coo_to_csc(nz). */
+void jac_eval_write_first_row_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* full_buffer,
+                                     F64* eval_jac_buffer, Exchange_COO_CSC& exc);
 
 #endif // OPT_OM_EVALUATIONS_H

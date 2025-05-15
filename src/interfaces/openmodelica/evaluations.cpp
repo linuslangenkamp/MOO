@@ -19,7 +19,7 @@ void init_eval_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVec
 }
 
 /* since its no problem and conversion from COO <-> CSC has been carried out, we just use the CSC ordering in the Jacobians
- * thus hopefully only using a memcpy to the OPT buffer for Lfg and 2 memcpy's for C(Mayer CSC) and D(r CSC) */
+ * thus no use of memcpy at all, since we can pass out buffer! */
 void init_jac(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
     init_jac_lfg(data, threadData, info, lfg);
     init_jac_mr(data, threadData, info, mr);
@@ -49,9 +49,10 @@ void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVect
     if (info.mayer_exists) {
         while (info.exc_jac->C_coo.row[nz_C] == 0) {
             int col = info.exc_jac->C_coo.col[nz_C];
+            /* values point to CSC buffer in (OM) C matrix buffer*/
             int csc_buffer_entry_C = info.exc_jac->C_coo.coo_to_csc(nz_C); // jac_buffer == OpenModelica C(row=0) CSC buffer!
 
-            /* for now only final constraints! no parameters, no dx0, esp. no du! */
+            /* for now only final states: xf! no parameters, no dx0, esp. no du! */
             if (col < info.x_size) {
                 mr[0].jac.dxf.push_back(JacobianSparsity{col, csc_buffer_entry_C});
             }
@@ -104,7 +105,7 @@ void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64 t_
     data->localData[0]->timeValue = (modelica_real) t_ij;
 }
 
-void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer) {
+void eval_lfg_write(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer) {
     int nz = 0;
     /* L */
     if (info.lagrange_exists) {
@@ -120,7 +121,7 @@ void eval_lfg_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& in
     }
 }
 
-void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer) {
+void eval_mr_write(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer) {
     int nz = 0;
     /* M */
     if (info.mayer_exists) {
@@ -132,6 +133,12 @@ void eval_mr_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& inf
     }
 }
 
-void jac_CD_write_to_buffer(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<F64>& eval_jac_mr_buffer) {
+void jac_eval_write_first_row_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* full_buffer,
+                                     F64* eval_jac_buffer, Exchange_COO_CSC& exc) {
+    assert(jacobian != NULL && jacobian->sparsePattern != NULL);
+    __evalJacobian(data, threadData, jacobian, NULL, full_buffer);
 
+    for (int nz = 0; nz < exc.nnz_moved_row; nz++) {
+        eval_jac_buffer[nz] = full_buffer[exc.coo_to_csc(nz)];
+    }
 }

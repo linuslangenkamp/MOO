@@ -98,4 +98,4 @@ src/modelica/example/include_test_literals.h
 src/modelica/example/include_test_model.h
 src/modelica/example/include_test_records.c
 src/modelica/example/include_test_records.o
-
+src/modelica/example/optimizeInput.csv

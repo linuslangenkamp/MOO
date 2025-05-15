@@ -22,5 +22,11 @@ ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoG
                                      info.mayer_exists ? info.x_size + (int)(info.lagrange_exists) : -1)),
     D_coo(info.r_size != 0 ? Exchange_COO_CSC::from_csc((int*)D->sparsePattern->leadindex, (int*)D->sparsePattern->index,
                                      (int)D->sizeCols, (int)D->sparsePattern->numberOfNonZeros,
-                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0) : Exchange_COO_CSC()) {
+                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0) : Exchange_COO_CSC()),
+    
+    /* create optional buffers, use when in-place buffers are no option */
+    A_buffer(FixedVector<modelica_real>(A_coo.nnz)),
+    B_buffer(FixedVector<modelica_real>(B_coo.nnz)),
+    C_buffer(FixedVector<modelica_real>(C_coo.nnz)),
+    D_buffer(FixedVector<modelica_real>(D_coo.nnz)) {
 }

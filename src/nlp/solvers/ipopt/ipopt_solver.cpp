@@ -34,7 +34,7 @@ void IpoptSolver::init_IpoptApplication() {
 
     // numeric values
     app->Options()->SetNumericValue("tol", solver_flags.get_flag_f64_fallback("Tolerance", 1e-10));
-    app->Options()->SetNumericValue("acceptable_tol", 1e-9);
+    app->Options()->SetNumericValue("acceptable_tol", solver_flags.get_flag_f64_fallback("Tolerance", 1e-10) * 1e3);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetNumericValue("alpha_red_factor", 0.5);

@@ -14,7 +14,7 @@ void FullSweep_OM::callback_eval(const F64* xu_nlp, const F64* p) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
             eval_current_point(data, threadData, info);
-            eval_lfg_write_to_buffer(data, threadData, info, &eval_buffer[eval_size * mesh.acc_nodes[i][j]]);
+            eval_lfg_write(data, threadData, info, &eval_buffer[eval_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -26,7 +26,8 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
             eval_current_point(data, threadData, info);
-            jac_eval_write_csc_to_buffer(data, threadData, info, info.exc_jac->B, &jac_buffer[jac_size * mesh.acc_nodes[i][j]]);
+            /* TODO: check if B matrix does hold additional ders */
+            jac_eval_write_as_csc(data, threadData, info, info.exc_jac->B, &jac_buffer[jac_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -46,7 +47,7 @@ void BoundarySweep_OM::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const
     set_states(data, threadData, info, xf_nlp);
     set_time(data, threadData, info, mesh.tf);
     eval_current_point(data, threadData, info);
-    eval_mr_write_to_buffer(data, threadData, info, eval_buffer.raw());
+    eval_mr_write(data, threadData, info, eval_buffer.raw());
 }
 
 void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
@@ -54,9 +55,16 @@ void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const 
     set_states(data, threadData, info, xf_nlp);
     set_time(data, threadData, info, mesh.tf);
     eval_current_point(data, threadData, info);
-    // derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1]
+    /* TODO: check if C matrix does hold additional ders */
+    /* derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1] */
+    if (has_mayer) {
+        jac_eval_write_first_row_as_csc(data, threadData, info, info.exc_jac->C, info.exc_jac->C_buffer.raw(),
+                                        jac_buffer.raw(), info.exc_jac->C_coo);
+    }
+
     if (info.exc_jac->D_exists) {
-        jac_eval_write_csc_to_buffer(data, threadData, info, info.exc_jac->D, &jac_buffer[info.exc_jac->D_coo.nnz_offset]);
+        /* TODO: check if D matrix does hold additional ders */
+        jac_eval_write_as_csc(data, threadData, info, info.exc_jac->D, &jac_buffer[info.exc_jac->D_coo.nnz_offset]);
     }
 }
 
@@ -104,7 +112,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     if (info.mayer_exists) {
         info.index_mayer_real_vars = (int)(info.__address_mayer_real_vars - data->localData[0]->realVars);
     }
-
+    printf("MAYEREXISTS: %d\n", info.mayer_exists);
     info.lagrange_exists = (data->callback->lagrange(data, &info.__address_lagrange_real_vars, &der_indices_lagrange_realVars[0], &der_indices_lagrange_realVars[1]) >= 0);
     if (info.lagrange_exists) {
         info.index_lagrange_real_vars = (int)(info.__address_lagrange_real_vars - data->localData[0]->realVars);

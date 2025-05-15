@@ -30,14 +30,13 @@ end A;*/
 model include_test
   Real x1(start = 1, fixed=true);
   Real x2(start = 0, fixed=true);
-  Real g(min=0, max=1.5) = x1 + u annotation(isConstraint=true);
   input Real u(min=0, max=5);
-  output Real cost_l = -u * x1 annotation(isLagrange=true);
+  output Real cost_m = -x2 annotation(isMayer=true);
 equation
   der(x1) = -(u + u^2 / 2) * x1;
   der(x2) = u * x1;
   annotation(
-    experiment(StartTime = 0, StopTime = 1, Tolerance = 1e-12, Interval = 0.5),
-    __OpenModelica_simulationFlags(solver = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
+    experiment(StartTime = 0, StopTime = 1, Tolerance = 1e-12, Interval = 0.05),
+    __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;

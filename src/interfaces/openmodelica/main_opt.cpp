@@ -18,17 +18,17 @@
 /* entry point to the optimization runtime from OpenModelica generated code
  * this dir, i.e. interfaces/openmodelica, defines the glue code (Mesh, Problem, Flags, CallSimulation) between the runtime and the simulation code */
 int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
-    printf("Entry point - _main_OptimitationRuntime\n\n");
+    printf("Entry point [OPT] - _main_OptimitationRuntime\n\n");
 
     /* create info struct <-> same purpose as DATA* in OpenModeica */
     auto info = std::make_unique<InfoGDOP>();
     auto nlp_solver_flags = std::make_unique<NLPSolverFlags>(argc, argv);
     nlp_solver_flags->set("Hessian", "LBFGS");
-    nlp_solver_flags->set("Tolerance", "1e-8");
+    nlp_solver_flags->set("Tolerance", "1e-10");
     nlp_solver_flags->set("CPUTime", "3600");
     nlp_solver_flags->set("LinearSolver", "MA57");
     nlp_solver_flags->print();
-    // TODO: add flag to set this degree
+    // TODO: add flag to set this 1, degree
     // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
 
     // TODO: fix potential start / stop time offset, e.g. startTime = 1 => in callback make offset +=1 for t
@@ -39,7 +39,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(tf, intervals, stages, *fLGR));
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh));
 
-    Trajectory initial_guess({0, tf}, {{1, 0}, {0, 1}}, {{0, 5}}, {}, InterpolationMethod::LINEAR);
+    Trajectory initial_guess({0, tf}, {{1, 1}, {0, 0}}, {{2.5, 2.5}}, {}, InterpolationMethod::LINEAR);
     GDOP gdop(*problem, *fLGR, *mesh, initial_guess);
 
 

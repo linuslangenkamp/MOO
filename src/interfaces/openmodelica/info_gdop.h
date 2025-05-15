@@ -69,12 +69,14 @@ struct InfoGDOP {
  *    If `mayer_exists`, we set nnz_offset of D_coo to `C_coo.row_nnz(0)` to ensure `[M, r]` order.
  *    See `nnz_offset` in `Exchange_COO_CSC` for further info.
  *
+ * 4. Optional Jacobian buffer with size nnz(Matrix) are also included and can be used if no in-place
+ *    buffer is applicable
+ * 
  * The permutation arrays `csc_to_coo` and `coo_to_csc` constructed during each step allow consistent
  * mapping of values between the original CSC (OpenModelica) and the reordered COO (optimizer) forms.
  * 
  * Hopefully, we soon get block D = (r_{xu}, M_{xu})^T or (M_{xu}, r_{xu})^T, making less involved!
  */
-
 struct ExchangeJacobians {
     JACOBIAN* A;
     JACOBIAN* B;
@@ -90,6 +92,11 @@ struct ExchangeJacobians {
     Exchange_COO_CSC B_coo;
     Exchange_COO_CSC C_coo;
     Exchange_COO_CSC D_coo;
+
+    FixedVector<modelica_real> A_buffer;
+    FixedVector<modelica_real> B_buffer;
+    FixedVector<modelica_real> C_buffer;
+    FixedVector<modelica_real> D_buffer;
 
     ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info);
 };

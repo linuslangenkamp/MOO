@@ -103,6 +103,9 @@ public:
     int nnz = 0;
     int nnz_offset = 0;
 
+    /* size of the row, that was possibly moved to front */
+    int nnz_moved_row = 0;
+
     Exchange_COO_CSC() = default;
 
     Exchange_COO_CSC(int nnz) 
@@ -145,6 +148,24 @@ public:
         return count;
     }
 
+    void print() {
+        std::cout << "Exchange_COO_CSC:" << std::endl;
+        std::cout << "  nnz         = " << nnz << std::endl;
+        std::cout << "  nnz_offset  = " << nnz_offset << std::endl;
+
+        std::cout << "  row indices (COO):" << std::endl;
+        row.print();
+
+        std::cout << "  col indices (COO):" << std::endl;
+        col.print();
+
+        std::cout << "  coo_to_csc mapping:" << std::endl;
+        __coo_to_csc.print();
+
+        std::cout << "  csc_to_coo mapping:" << std::endl;
+        __csc_to_coo.print();
+    }
+
     /**
      * @brief Converts a matrix from CSC format to COO format with optional row reordering and global offset mapping.
      *
@@ -182,8 +203,13 @@ private:
             for (int i = lead_col[curr_col]; i < lead_col[curr_col + 1]; i++) {
                 int curr_row = row_csc[i];
                 if (move_to_first_row >= 0) {
-                    if      (curr_row == move_to_first_row) curr_row = 0;
-                    else if (curr_row <  move_to_first_row) curr_row++;
+                    if (curr_row == move_to_first_row) {
+                        curr_row = 0;
+                        nnz_moved_row++;
+                    }
+                    else if (curr_row <  move_to_first_row) {
+                         curr_row++;
+                    }
                 }
                 row[nz]          = curr_row;
                 col[nz]          = curr_col;
