@@ -37,7 +37,7 @@ struct JacobianLFG {
     }
 };
 
-struct HessianLFG {
+struct AugmentedHessianLFG {
     // coordinate format hessian for LFG functions
     std::vector<HessianSparsity> dx_dx;
     std::vector<HessianSparsity> du_dx;
@@ -54,7 +54,6 @@ struct HessianLFG {
 struct FunctionLFG {
     int buf_index;
     JacobianLFG jac;
-    HessianLFG hes;
 };
 
 // MRsemi-generic boundary function r(x(t0), x(tf), p)
@@ -71,7 +70,7 @@ struct JacobianMR {
     }
 };
 
-struct HessianMR {
+struct AugmentedHessianMR {
     // coordinate format hessian for MR functions
     std::vector<HessianSparsity> dx0_dx0;
     std::vector<HessianSparsity> dxf_dx0;
@@ -88,7 +87,6 @@ struct HessianMR {
 struct FunctionMR {
     int buf_index;
     JacobianMR jac;
-    HessianMR hes;
 };
 
 /* exchange form from CSC -> COO and back */

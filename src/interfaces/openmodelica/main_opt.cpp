@@ -33,14 +33,14 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     // TODO: fix potential start / stop time offset, e.g. startTime = 1 => in callback make offset +=1 for t
     info->set_time_horizon(data, 3);
-    auto fLGR = std::make_unique<Collocation>();
-    auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(info->tf, info->intervals, info->stages, *fLGR));
-    auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh));
+    auto collocation = std::make_unique<Collocation>();
+    auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(info->tf, info->intervals, info->stages, *collocation));
+    auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh, *collocation));
 
     printf("tf = %f, intervals = %d, stages = %d\n", info->tf, info->intervals, info->stages);
 
     Trajectory initial_guess({0, info->tf}, {{1, 1}, {0, 0}, {0, 0}, {0, 0}}, {{700, 700}}, {}, InterpolationMethod::LINEAR);
-    GDOP gdop(*problem, *fLGR, *mesh, initial_guess);
+    GDOP gdop(*problem, *collocation, *mesh, initial_guess);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();

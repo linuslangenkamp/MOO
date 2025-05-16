@@ -15,23 +15,25 @@ public:
     // Idea: Call Fullsweep.setValues(), Fullsweep.callback_eval(), callback_jac(), callHess() -> Just iterate over COO
     // function evals / diffs are on callback interfaced side
 
-    FullSweep(FixedVector<FunctionLFG>&& lfg_in, Mesh& mesh, FixedVector<Bounds>&& g_bounds, bool has_lagrange,
-              int f_size, int g_size, int x_size, int u_size, int p_size)
-    : lfg(std::move(lfg_in)), mesh(mesh), g_bounds(std::move(g_bounds)), has_lagrange(has_lagrange), f_index_start((int) has_lagrange),
-      f_index_end(f_index_start + f_size), g_index_start(f_index_end), g_index_end(g_index_start + g_size), f_size(f_size),
-      g_size(g_size), fg_size(f_size + g_size), x_size(x_size), u_size(u_size), p_size(p_size), eval_size(lfg.size()) {
+    FullSweep(FixedVector<FunctionLFG>&& lfg_in, std::unique_ptr<AugmentedHessianLFG> aug_hes, Collocation& collocation,
+              Mesh& mesh, FixedVector<Bounds>&& g_bounds, bool has_lagrange, int f_size, int g_size, int x_size, int u_size, int p_size)
+    : lfg(std::move(lfg_in)), aug_hes(std::move(aug_hes)), collocation(collocation), mesh(mesh), g_bounds(std::move(g_bounds)),
+      has_lagrange(has_lagrange), f_index_start((int) has_lagrange), f_index_end(f_index_start + f_size), g_index_start(f_index_end),
+      g_index_end(g_index_start + g_size), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), x_size(x_size), u_size(u_size),
+      p_size(p_size), eval_size(lfg.size()), hes_size(this->aug_hes->nnz()) {
         for (const auto& func : lfg) {
             jac_size += func.jac.nnz();
-            hes_size += func.hes.nnz();
         }
         eval_buffer = FixedVector<F64>(mesh.node_count * eval_size);
         jac_buffer = FixedVector<F64>(mesh.node_count * jac_size);
-        hes_buffer = FixedVector<F64>(mesh.node_count * hes_size);
+        aug_hes_buffer = FixedVector<F64>(mesh.node_count * hes_size);
     };
 
     virtual ~FullSweep() = default;
 
     FixedVector<FunctionLFG> lfg;
+    std::unique_ptr<AugmentedHessianLFG> aug_hes;
+    Collocation& collocation;
     Mesh& mesh;
 
     FixedVector<Bounds> g_bounds;
@@ -56,14 +58,16 @@ public:
 
     FixedVector<F64> eval_buffer;
     FixedVector<F64> jac_buffer;
-    FixedVector<F64> hes_buffer; // can lead to severe memory consumption / order of a few GB, so maybe rethink this for large scale problems
+    FixedVector<F64> aug_hes_buffer;
+    /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end
+    FixedVector<FixedVector<F64>> aug_hes_buffer_pp; */
 
-    // fill eval_buffer, jac_buffer, hes_buffer
+    // fill eval_buffer, jac_buffer, aug_hes_buffer
     virtual void callback_eval(const F64* xu_nlp, const F64* p) = 0;
 
     virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
-    virtual void callback_hes(const F64* xu_nlp, const F64* p) = 0;
+    virtual void callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 lagrange_factor, const F64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
@@ -100,25 +104,25 @@ public:
 
 class BoundarySweep {
 public:
-
-    BoundarySweep(FixedVector<FunctionMR>&& mr_in, Mesh& mesh, FixedVector<Bounds>&& r_bounds, bool has_mayer,
-                  int r_size, int x_size, int p_size)
-    : mr(std::move(mr_in)), mesh(mesh), r_bounds(std::move(r_bounds)), has_mayer(has_mayer), r_index_start((int) has_mayer),
-      r_index_end(r_index_start + r_size), r_size(r_size), x_size(x_size), p_size(p_size) {
+    BoundarySweep(FixedVector<FunctionMR>&& mr_in, std::unique_ptr<AugmentedHessianMR> aug_hes, Mesh& mesh,
+                  FixedVector<Bounds>&& r_bounds, bool has_mayer, int r_size, int x_size, int p_size)
+    : mr(std::move(mr_in)), aug_hes(std::move(aug_hes)), mesh(mesh), r_bounds(std::move(r_bounds)), has_mayer(has_mayer),
+      r_index_start((int) has_mayer), r_index_end(r_index_start + r_size), r_size(r_size), x_size(x_size), p_size(p_size) {
         int jac_buffer_size = 0;
         int hes_buffer_size = 0;
         for (const auto& func : mr) {
             jac_buffer_size += func.jac.nnz();
-            hes_buffer_size += func.hes.nnz();
         }
         eval_buffer = FixedVector<F64>(r_index_end);
         jac_buffer = FixedVector<F64>(jac_buffer_size);
-        hes_buffer = FixedVector<F64>(hes_buffer_size);
+        aug_hes_buffer = FixedVector<F64>(this->aug_hes->nnz());
     };
+
     virtual ~BoundarySweep() = default;
 
     // M, R :: assert x0 Size == xf Size
     FixedVector<FunctionMR> mr;
+    std::unique_ptr<AugmentedHessianMR> aug_hes;
     Mesh& mesh;
 
     FixedVector<Bounds> r_bounds;
@@ -133,13 +137,13 @@ public:
 
     FixedVector<F64> eval_buffer;
     FixedVector<F64> jac_buffer;
-    FixedVector<F64> hes_buffer;
+    FixedVector<F64> aug_hes_buffer;
 
     virtual void callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
     virtual void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
-    virtual void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
+    virtual void callback_aug_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p, const F64 mayer_factor, const F64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== MR Jacobian Sparsity ===\n================================\n";
@@ -223,8 +227,8 @@ public:
         return full->jac_buffer[entry + full->jac_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline F64 lfg_hes(int entry, int interval_i, int node_j) {
-        return full->hes_buffer[entry + full->hes_size * mesh.acc_nodes[interval_i][node_j]];
+    inline F64 lfg_aug_hes(int entry, int interval_i, int node_j) {
+        return full->aug_hes_buffer[entry + full->hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     /* note entry != index in mr, but rather boundary->mr[*].buf_index */
@@ -245,8 +249,8 @@ public:
         return boundary->jac_buffer[entry];
     }
     
-    inline F64 mr_hes(int entry) {
-        return boundary->hes_buffer[entry];
+    inline F64 mr_aug_hes(int entry) {
+        return boundary->aug_hes_buffer[entry];
     }
 };
 

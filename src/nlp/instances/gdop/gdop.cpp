@@ -296,27 +296,25 @@ void GDOP::init_hessian() {
 
     // stage 1: calculate IndexSet and nnz
     OrderedIndexSet A, B, C, D, E, F, G, H;
-    for (auto& mr : problem.boundary->mr) {
-        A.insert_sparsity(mr.hes.dx0_dx0, 0, 0);
-        C.insert_sparsity(mr.hes.dxf_dx0, 0, 0);
-        D.insert_sparsity(mr.hes.dxf_dxf, 0, 0);
-        E.insert_sparsity(mr.hes.dp_dx0,  0, 0);
-        G.insert_sparsity(mr.hes.dp_dxf,  0, 0);
-        H.insert_sparsity(mr.hes.dp_dp,   0, 0);
-    }
-    for (auto& lfg : problem.full->lfg) {
-        B.insert_sparsity(lfg.hes.dx_dx, 0, 0);
-        B.insert_sparsity(lfg.hes.du_dx, off_x, 0);
-        B.insert_sparsity(lfg.hes.du_du, off_x, off_x);
-        D.insert_sparsity(lfg.hes.dx_dx, 0, 0);
-        D.insert_sparsity(lfg.hes.du_dx, off_x, 0);
-        D.insert_sparsity(lfg.hes.du_du, off_x, off_x);
-        F.insert_sparsity(lfg.hes.dp_dx, 0, 0);
-        F.insert_sparsity(lfg.hes.dp_du, 0, off_x);
-        G.insert_sparsity(lfg.hes.dp_dx, 0, 0);
-        G.insert_sparsity(lfg.hes.dp_du, 0, off_x);
-        H.insert_sparsity(lfg.hes.dp_dp, 0, 0);
-    }
+    A.insert_sparsity(problem.boundary->aug_hes->dx0_dx0, 0, 0);
+    C.insert_sparsity(problem.boundary->aug_hes->dxf_dx0, 0, 0);
+    D.insert_sparsity(problem.boundary->aug_hes->dxf_dxf, 0, 0);
+    E.insert_sparsity(problem.boundary->aug_hes->dp_dx0,  0, 0);
+    G.insert_sparsity(problem.boundary->aug_hes->dp_dxf,  0, 0);
+    H.insert_sparsity(problem.boundary->aug_hes->dp_dp,   0, 0);
+
+    B.insert_sparsity(problem.full->aug_hes->dx_dx, 0, 0);
+    B.insert_sparsity(problem.full->aug_hes->du_dx, off_x, 0);
+    B.insert_sparsity(problem.full->aug_hes->du_du, off_x, off_x);
+    D.insert_sparsity(problem.full->aug_hes->dx_dx, 0, 0);
+    D.insert_sparsity(problem.full->aug_hes->du_dx, off_x, 0);
+    D.insert_sparsity(problem.full->aug_hes->du_du, off_x, off_x);
+    F.insert_sparsity(problem.full->aug_hes->dp_dx, 0, 0);
+    F.insert_sparsity(problem.full->aug_hes->dp_du, 0, off_x);
+    G.insert_sparsity(problem.full->aug_hes->dp_dx, 0, 0);
+    G.insert_sparsity(problem.full->aug_hes->dp_du, 0, off_x);
+    H.insert_sparsity(problem.full->aug_hes->dp_dp, 0, 0);
+    
 
     nnz_hes = (B.size() + F.size()) * (mesh.node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
 
@@ -694,70 +692,53 @@ void GDOP::eval_hes_internal() {
                 ptr_map_xu_xu = &hes_d;
                 ptr_map_p_xu  = &hes_g;
             }
-            if (problem.full->has_lagrange) {
-                update_hessian_lfg(curr_hes, problem.full->lfg[0].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
-                                 curr_sigma_f * mesh.delta_t[i] * collocation.b[mesh.nodes[i]][j]);
-            }
-            for (int f_index = problem.full->f_index_start; f_index < problem.full->f_index_end; f_index++) {
-                update_hessian_lfg(curr_hes, problem.full->lfg[f_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
-                                 -curr_lambda[off_acc_fg[i][j] + f_index - lagrange_offset] * mesh.delta_t[i]);
-            }
-            for (int g_index = problem.full->g_index_start; g_index < problem.full->g_index_end; g_index++) {
-                update_hessian_lfg(curr_hes, problem.full->lfg[g_index].hes, i, j, ptr_map_xu_xu, ptr_map_p_xu,
-                                 curr_lambda[off_acc_fg[i][j] + g_index - lagrange_offset]);
-            }
+            update_augmented_hessian_lfg(curr_hes, *problem.full->aug_hes, i, j, ptr_map_xu_xu, ptr_map_p_xu);
         }
     }
-    if (problem.boundary->has_mayer) {
-        update_hessian_mr(curr_hes, problem.boundary->mr[0].hes, curr_sigma_f);
-    }
-
-    for (int r_index = problem.boundary->r_index_start; r_index < problem.boundary->r_index_end; r_index++) {
-        update_hessian_mr(curr_hes, problem.boundary->mr[r_index].hes, curr_lambda[off_fg_total + r_index - mayer_offset]);
-    }
+    update_augmented_hessian_mr(curr_hes, *problem.boundary->aug_hes);
 }
 
-void GDOP::update_hessian_lfg(FixedVector<F64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
-                           const BlockSparsity* ptr_map_p_xu, const F64 factor) {
+void GDOP::update_augmented_hessian_lfg(FixedVector<F64>& values, const AugmentedHessianLFG& hes, const int i, const int j, 
+                              const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu) {
     const int block_count = mesh.acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
-        values[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += factor * problem.lfg_hes(dx_dx.buf_index, i, j);
+        values[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += problem.lfg_aug_hes(dx_dx.buf_index, i, j);
     }
     for (const auto& du_dx : hes.du_dx) {
-        values[ptr_map_xu_xu->access(off_x + du_dx.row, du_dx.col, block_count)] += factor * problem.lfg_hes(du_dx.buf_index, i, j);
+        values[ptr_map_xu_xu->access(off_x + du_dx.row, du_dx.col, block_count)] += problem.lfg_aug_hes(du_dx.buf_index, i, j);
     }
     for (const auto& du_du : hes.du_du) {
-        values[ptr_map_xu_xu->access(off_x + du_du.row, off_x + du_du.col, block_count)] += factor * problem.lfg_hes(du_du.buf_index, i, j);
+        values[ptr_map_xu_xu->access(off_x + du_du.row, off_x + du_du.col, block_count)] += problem.lfg_aug_hes(du_du.buf_index, i, j);
     }
     for (const auto& dp_dx : hes.dp_dx) {
-        values[ptr_map_p_xu->access(dp_dx.row, dp_dx.col, block_count)] += factor * problem.lfg_hes(dp_dx.buf_index, i, j);
+        values[ptr_map_p_xu->access(dp_dx.row, dp_dx.col, block_count)] += problem.lfg_aug_hes(dp_dx.buf_index, i, j);
     }
     for (const auto& dp_du : hes.dp_du) {
-        values[ptr_map_p_xu->access(dp_du.row, off_x + dp_du.col, block_count)] += factor * problem.lfg_hes(dp_du.buf_index, i, j);
+        values[ptr_map_p_xu->access(dp_du.row, off_x + dp_du.col, block_count)] += problem.lfg_aug_hes(dp_du.buf_index, i, j);
     }
     for (const auto& dp_dp : hes.dp_dp) {
-        values[hes_h.access(dp_dp.row, dp_dp.col)] += factor * problem.lfg_hes(dp_dp.buf_index, i, j);
-    } 
+        values[hes_h.access(dp_dp.row, dp_dp.col)] += problem.lfg_aug_hes(dp_dp.buf_index, i, j);
+    }
 }
 
-void GDOP::update_hessian_mr(FixedVector<F64>& values, const HessianMR& hes, const F64 factor) {
+void GDOP::update_augmented_hessian_mr(FixedVector<F64>& values, const AugmentedHessianMR& hes) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
-        values[hes_a.access(dx0_dx0.row, dx0_dx0.col)] += factor * problem.mr_hes(dx0_dx0.buf_index);
+        values[hes_a.access(dx0_dx0.row, dx0_dx0.col)] += problem.mr_aug_hes(dx0_dx0.buf_index);
     }
     for (const auto& dxf_dx0 : hes.dxf_dx0) {
-        values[hes_c.access(dxf_dx0.row, dxf_dx0.col)] += factor * problem.mr_hes(dxf_dx0.buf_index);
+        values[hes_c.access(dxf_dx0.row, dxf_dx0.col)] += problem.mr_aug_hes(dxf_dx0.buf_index);
     }
     for (const auto& dxf_dxf : hes.dxf_dxf) {
-        values[hes_d.access(dxf_dxf.row, dxf_dxf.col)] += factor * problem.mr_hes(dxf_dxf.buf_index);
+        values[hes_d.access(dxf_dxf.row, dxf_dxf.col)] += problem.mr_aug_hes(dxf_dxf.buf_index);
     }
     for (const auto& dp_dx0 : hes.dp_dx0) {
-        values[hes_e.access(dp_dx0.row,  dp_dx0.col)]  += factor * problem.mr_hes(dp_dx0.buf_index);
+        values[hes_e.access(dp_dx0.row,  dp_dx0.col)]  += problem.mr_aug_hes(dp_dx0.buf_index);
     }
     for (const auto& dp_dxf : hes.dp_dxf) {
-        values[hes_g.access(dp_dxf.row,  dp_dxf.col)]  += factor * problem.mr_hes(dp_dxf.buf_index);
+        values[hes_g.access(dp_dxf.row,  dp_dxf.col)]  += problem.mr_aug_hes(dp_dxf.buf_index);
     }
     for (const auto& dp_dp : hes.dp_dp) {
-        values[hes_h.access(dp_dp.row,   dp_dp.col)]   += factor * problem.mr_hes(dp_dp.buf_index);
+        values[hes_h.access(dp_dp.row,   dp_dp.col)]   += problem.mr_aug_hes(dp_dp.buf_index);
     }
 }
 
@@ -776,7 +757,7 @@ void GDOP::callback_jacobian() {
 }
 
 void GDOP::callback_hessian() {
-    problem.full->callback_hes(curr_x.raw() + off_x, curr_x.raw() + off_xu_total);
-    problem.boundary->callback_hes(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total);
+    problem.full->callback_aug_hes(curr_x.raw() + off_x, curr_x.raw() + off_xu_total, curr_sigma_f, curr_lambda.raw());
+    problem.boundary->callback_aug_hes(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total, curr_sigma_f, &curr_lambda[off_fg_total]);
     evaluation_state.hes_lag = true;
 }

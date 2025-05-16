@@ -1,9 +1,9 @@
 #include "gdop_problem.h"
 
 // Dummy implementation of FullSweep_OM
-FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, Mesh& mesh, FixedVector<Bounds>&& g_bounds, 
-                           DATA* data, threadData_t* threadData, InfoGDOP& info)
-    : FullSweep(std::move(lfg), mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
+FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, Collocation& collocation, 
+                           Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info)
+    : FullSweep(std::move(lfg), std::move(aug_hes), collocation, mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
                 info.g_size, info.x_size, info.u_size, info.p_size),
       data(data), threadData(threadData), info(info) {
 }
@@ -32,12 +32,12 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
     }
 }
 
-void FullSweep_OM::callback_hes(const F64* xu_nlp, const F64* p) {
+void FullSweep_OM::callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 lagrange_factor, const F64* lambda) {
 }
 
-BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, Mesh& mesh, FixedVector<Bounds>&& r_bounds,
-                                   DATA* data, threadData_t* threadData, InfoGDOP& info)
-    : BoundarySweep(std::move(mr), mesh, std::move(r_bounds), info.mayer_exists,
+BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::unique_ptr<AugmentedHessianMR> aug_hes, Mesh& mesh,
+                                   FixedVector<Bounds>&& r_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info)
+    : BoundarySweep(std::move(mr), std::move(aug_hes), mesh, std::move(r_bounds), info.mayer_exists,
                     info.r_size, info.x_size, info.p_size),
       data(data), threadData(threadData), info(info) {
 }
@@ -68,10 +68,10 @@ void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const 
     }
 }
 
-void BoundarySweep_OM::callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+void BoundarySweep_OM::callback_aug_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p, const F64 mayer_factor, const F64* lambda) {
 }
 
-Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh) {
+Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
     /* variable sizes */
     info.x_size = data->modelData->nStates;
     info.u_size = data->modelData->nInputVars;
@@ -137,8 +137,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     /* for now we ignore xf fixed (need some steps in Backend to detect)
      * and also ignore x0 non fixed, since too complicated
      * => assume x(t_0) = x0 fixed, x(t_f) free to r constraint / maybe the old BE can do that already?!
-     * option: generate fixed final states individually
-     */
+     * option: generate fixed final states individually */
     FixedVector<std::optional<F64>> x0_fixed(info.x_size);
     FixedVector<std::optional<F64>> xf_fixed(info.x_size);
 
@@ -159,8 +158,8 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     init_jac(data, threadData, info, lfg, mr);
 
     return Problem(
-        std::make_unique<FullSweep_OM>(std::move(lfg), mesh, std::move(g_bounds), data, threadData, info),
-        std::make_unique<BoundarySweep_OM>(std::move(mr), mesh, std::move(r_bounds), data, threadData, info),
+        std::make_unique<FullSweep_OM>(std::move(lfg), std::make_unique<AugmentedHessianLFG>(), collocation, mesh, std::move(g_bounds), data, threadData, info),
+        std::make_unique<BoundarySweep_OM>(std::move(mr), std::make_unique<AugmentedHessianMR>(), mesh, std::move(r_bounds), data, threadData, info),
         mesh,
         std::move(x_bounds),
         std::move(u_bounds),

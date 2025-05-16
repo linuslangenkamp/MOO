@@ -72,11 +72,11 @@ public:
     void init_jacobian_nonzeros();
     void init_jacobian_sparsity_pattern();
     void init_hessian();
-
-    // hessian updates
-    void update_hessian_lfg(FixedVector<F64>& values, const HessianLFG& hes, const int i, const int j, const BlockSparsity* ptr_map_xu_xu,
-                          const BlockSparsity* ptr_map_p_xu, const F64 factor);
-    void update_hessian_mr(FixedVector<F64>& values, const HessianMR& hes, const F64 factor);
+    
+    // augmented hessian updates
+    void update_augmented_hessian_lfg(FixedVector<F64>& values, const AugmentedHessianLFG& hes, const int i, const int j,
+                                      const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu);
+    void update_augmented_hessian_mr(FixedVector<F64>& values, const AugmentedHessianMR& hes);
 
     // get callback data
     void callback_evaluation();
