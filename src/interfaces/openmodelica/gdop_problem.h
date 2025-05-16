@@ -14,12 +14,12 @@ public:
     threadData_t* threadData;
     InfoGDOP& info;
 
-    FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, Collocation& collocation, 
-                 Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info);
+    FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
+     Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info);
                            
     void callback_eval(const F64* xu_nlp, const F64* p) override;
     void callback_jac(const F64* xu_nlp, const F64* p) override;
-    void callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 lagrange_factor, const F64* lambda) override;
+    void callback_aug_hes(const F64* xu_nlp, const F64* p, const FixedField<F64, 2>& lagrange_factors, const F64* lambda) override;
 };
 
 class BoundarySweep_OM : public BoundarySweep {

@@ -51,6 +51,9 @@ public:
     FixedField<int, 2>   off_acc_fg; // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
     FixedVector<int> off_acc_jac_fg; // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
+    /* scaling factors for lagrange terms in augmented Hessian callback */
+    FixedField<F64, 2> lagrange_obj_factors; // = sigma_f * collocation.b[mesh.intervals[i]][mesh.nodes[j]] mesh.delta_t[i]
+
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
     // for further info see hessian layout at the bottom
     BlockSparsity hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
@@ -74,12 +77,13 @@ public:
     void init_hessian();
     
     /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
-    void update_curr_lambda();
+    void update_curr_lambda_obj_factors();
 
     /* augmented hessian updates */
-    void update_augmented_hessian_lfg(FixedVector<F64>& values, const AugmentedHessianLFG& hes, const int i, const int j,
+    void update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
                                       const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu);
-    void update_augmented_hessian_mr(FixedVector<F64>& values, const AugmentedHessianMR& hes);
+    void update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_hes); // sum_i sum_j \lambda_ij Hessian(Lfg)_pp
+    void update_augmented_hessian_mr(const AugmentedHessianMR& hes);
 
     // get callback data
     void callback_evaluation();

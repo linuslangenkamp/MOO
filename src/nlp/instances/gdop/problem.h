@@ -15,9 +15,9 @@ public:
     // Idea: Call Fullsweep.setValues(), Fullsweep.callback_eval(), callback_jac(), callHess() -> Just iterate over COO
     // function evals / diffs are on callback interfaced side
 
-    FullSweep(FixedVector<FunctionLFG>&& lfg_in, std::unique_ptr<AugmentedHessianLFG> aug_hes, Collocation& collocation,
-              Mesh& mesh, FixedVector<Bounds>&& g_bounds, bool has_lagrange, int f_size, int g_size, int x_size, int u_size, int p_size)
-    : lfg(std::move(lfg_in)), aug_hes(std::move(aug_hes)), collocation(collocation), mesh(mesh), g_bounds(std::move(g_bounds)),
+    FullSweep(FixedVector<FunctionLFG>&& lfg_in, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
+     Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, bool has_lagrange, int f_size, int g_size, int x_size, int u_size, int p_size)
+    : lfg(std::move(lfg_in)), aug_hes(std::move(aug_hes)), aug_pp_hes(std::move(aug_pp_hes)), collocation(collocation), mesh(mesh), g_bounds(std::move(g_bounds)),
       has_lagrange(has_lagrange), f_index_start((int) has_lagrange), f_index_end(f_index_start + f_size), g_index_start(f_index_end),
       g_index_end(g_index_start + g_size), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), x_size(x_size), u_size(u_size),
       p_size(p_size), eval_size(lfg.size()), aug_hes_size(this->aug_hes->nnz()) {
@@ -33,6 +33,7 @@ public:
 
     FixedVector<FunctionLFG> lfg;
     std::unique_ptr<AugmentedHessianLFG> aug_hes;
+    std::unique_ptr<AugmentedParameterHessian> aug_pp_hes;
     Collocation& collocation;
     Mesh& mesh;
 
@@ -59,8 +60,9 @@ public:
     FixedVector<F64> eval_buffer;
     FixedVector<F64> jac_buffer;
     FixedVector<F64> aug_hes_buffer;
-    /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end
-    FixedVector<FixedVector<F64>> aug_hes_buffer_pp; */
+
+    /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
+    FixedVector<F64> aug_pp_hes_buffer; // make it like list<FixedVector<F64>>, each thread sum to own buffer (just size p * p each)
 
     // fill eval_buffer, jac_buffer, aug_hes_buffer
     virtual void callback_eval(const F64* xu_nlp, const F64* p) = 0;
@@ -68,9 +70,8 @@ public:
     virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
    /* lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
-    * langrange_factor must be scaled by collocation.b[mesh.nodes[i]][j] * mesh.delta_t[i] by hand,
-    * since we dont want to allocate this unecessary memory! */ 
-    virtual void callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 lagrange_factor, const F64* lambda) = 0;
+    * lagrange_factors are exact factor for lagrange terms in interval i, nodes j */ 
+    virtual void callback_aug_hes(const F64* xu_nlp, const F64* p, const FixedField<F64, 2>& lagrange_factors, const F64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
@@ -112,7 +113,6 @@ public:
     : mr(std::move(mr_in)), aug_hes(std::move(aug_hes)), mesh(mesh), r_bounds(std::move(r_bounds)), has_mayer(has_mayer),
       r_index_start((int) has_mayer), r_index_end(r_index_start + r_size), r_size(r_size), x_size(x_size), p_size(p_size) {
         int jac_buffer_size = 0;
-        int hes_buffer_size = 0;
         for (const auto& func : mr) {
             jac_buffer_size += func.jac.nnz();
         }
@@ -234,6 +234,10 @@ public:
 
     inline F64 lfg_aug_hes(int entry, int interval_i, int node_j) {
         return full->aug_hes_buffer[entry + full->aug_hes_size * mesh.acc_nodes[interval_i][node_j]];
+    }
+    /* TODO: make me threaded */
+    inline F64 lfg_aug_pp_hes(int entry) {
+        return full->aug_pp_hes_buffer[entry];
     }
 
     /* note entry != index in mr, but rather boundary->mr[*].buf_index */

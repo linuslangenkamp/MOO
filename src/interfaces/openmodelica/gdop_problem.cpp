@@ -1,9 +1,9 @@
 #include "gdop_problem.h"
 
 // Dummy implementation of FullSweep_OM
-FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, Collocation& collocation, 
-                           Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info)
-    : FullSweep(std::move(lfg), std::move(aug_hes), collocation, mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
+FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
+        Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info)
+    : FullSweep(std::move(lfg), std::move(aug_hes), std::move(aug_pp_hes), collocation, mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
                 info.g_size, info.x_size, info.u_size, info.p_size),
       data(data), threadData(threadData), info(info) {
 }
@@ -32,13 +32,12 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
     }
 }
 
-void FullSweep_OM::callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 obj_factor, const F64* lambda) {
+void FullSweep_OM::callback_aug_hes(const F64* xu_nlp, const F64* p, const FixedField<F64, 2>& lagrange_factors, const F64* lambda) {
     set_parameters(data, threadData, info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
-            F64 lagrange_factor = collocation.b[mesh.nodes[i]][j] * mesh.delta_t[i] * obj_factor;
         }
     }
 }
@@ -166,7 +165,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     init_jac(data, threadData, info, lfg, mr);
 
     return Problem(
-        std::make_unique<FullSweep_OM>(std::move(lfg), std::make_unique<AugmentedHessianLFG>(), collocation, mesh, std::move(g_bounds), data, threadData, info),
+        std::make_unique<FullSweep_OM>(std::move(lfg), std::make_unique<AugmentedHessianLFG>(), std::make_unique<AugmentedParameterHessian>(), collocation, mesh, std::move(g_bounds), data, threadData, info),
         std::make_unique<BoundarySweep_OM>(std::move(mr), std::make_unique<AugmentedHessianMR>(), mesh, std::move(r_bounds), data, threadData, info),
         mesh,
         std::move(x_bounds),

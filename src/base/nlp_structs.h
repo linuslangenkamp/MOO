@@ -44,10 +44,17 @@ struct AugmentedHessianLFG {
     std::vector<HessianSparsity> du_du;
     std::vector<HessianSparsity> dp_dx;
     std::vector<HessianSparsity> dp_du;
+
+    inline int nnz() const {
+        return dx_dx.size() + du_dx.size() + du_du.size() + dp_dx.size() + dp_du.size();
+    }
+};
+
+struct AugmentedParameterHessian {
     std::vector<HessianSparsity> dp_dp;
 
     inline int nnz() const {
-        return dx_dx.size() + du_dx.size() + du_du.size() + dp_dx.size() + dp_du.size() + dp_dp.size();
+        return dp_dp.size();
     }
 };
 
