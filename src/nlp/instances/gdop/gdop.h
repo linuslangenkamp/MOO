@@ -73,7 +73,10 @@ public:
     void init_jacobian_sparsity_pattern();
     void init_hessian();
     
-    // augmented hessian updates
+    /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
+    void update_curr_lambda();
+
+    /* augmented hessian updates */
     void update_augmented_hessian_lfg(FixedVector<F64>& values, const AugmentedHessianLFG& hes, const int i, const int j,
                                       const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu);
     void update_augmented_hessian_mr(FixedVector<F64>& values, const AugmentedHessianMR& hes);

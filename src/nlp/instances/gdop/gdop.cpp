@@ -756,8 +756,22 @@ void GDOP::callback_jacobian() {
     evaluation_state.jac_g = true;
 }
 
+/* perform update of dual variables, such that callback can use the exact multiplier */
+void GDOP::update_curr_lambda() {
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            for (int f = 0; f < problem.full->f_size; f++) {
+                curr_lambda[off_acc_fg[i][j] + f] *= -mesh.delta_t[i];
+            }
+        }
+    }        
+}
+
 void GDOP::callback_hessian() {
-    problem.full->callback_aug_hes(curr_x.raw() + off_x, curr_x.raw() + off_xu_total, curr_sigma_f, curr_lambda.raw());
-    problem.boundary->callback_aug_hes(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total, curr_sigma_f, &curr_lambda[off_fg_total]);
+    update_curr_lambda();
+    problem.full->callback_aug_hes(curr_x.raw() + off_x, curr_x.raw() + off_xu_total,
+                                   curr_sigma_f /* INEXACT mutlipliers */, curr_lambda.raw() /* exact mutlipliers */);
+    problem.boundary->callback_aug_hes(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total,
+                                       curr_sigma_f /* exact mutliplier */, &curr_lambda[off_fg_total] /* exact mutlipliers */);
     evaluation_state.hes_lag = true;
 }

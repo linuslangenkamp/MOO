@@ -20,13 +20,13 @@ public:
     : lfg(std::move(lfg_in)), aug_hes(std::move(aug_hes)), collocation(collocation), mesh(mesh), g_bounds(std::move(g_bounds)),
       has_lagrange(has_lagrange), f_index_start((int) has_lagrange), f_index_end(f_index_start + f_size), g_index_start(f_index_end),
       g_index_end(g_index_start + g_size), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), x_size(x_size), u_size(u_size),
-      p_size(p_size), eval_size(lfg.size()), hes_size(this->aug_hes->nnz()) {
+      p_size(p_size), eval_size(lfg.size()), aug_hes_size(this->aug_hes->nnz()) {
         for (const auto& func : lfg) {
             jac_size += func.jac.nnz();
         }
         eval_buffer = FixedVector<F64>(mesh.node_count * eval_size);
         jac_buffer = FixedVector<F64>(mesh.node_count * jac_size);
-        aug_hes_buffer = FixedVector<F64>(mesh.node_count * hes_size);
+        aug_hes_buffer = FixedVector<F64>(mesh.node_count * aug_hes_size);
     };
 
     virtual ~FullSweep() = default;
@@ -54,7 +54,7 @@ public:
     // sizes of 1 buffer chuck
     int eval_size = 0;
     int jac_size = 0;
-    int hes_size = 0;
+    int aug_hes_size = 0;
 
     FixedVector<F64> eval_buffer;
     FixedVector<F64> jac_buffer;
@@ -67,6 +67,9 @@ public:
 
     virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
+   /* lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
+    * langrange_factor must be scaled by collocation.b[mesh.nodes[i]][j] * mesh.delta_t[i] by hand,
+    * since we dont want to allocate this unecessary memory! */ 
     virtual void callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 lagrange_factor, const F64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
@@ -143,6 +146,8 @@ public:
 
     virtual void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
 
+   /* lambdas are exact multipliers (no transform needed) to [r]
+    * mayer_factor is eact multiplier (no transform needed) of M */
     virtual void callback_aug_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p, const F64 mayer_factor, const F64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
@@ -228,7 +233,7 @@ public:
     }
 
     inline F64 lfg_aug_hes(int entry, int interval_i, int node_j) {
-        return full->aug_hes_buffer[entry + full->hes_size * mesh.acc_nodes[interval_i][node_j]];
+        return full->aug_hes_buffer[entry + full->aug_hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
     /* note entry != index in mr, but rather boundary->mr[*].buf_index */

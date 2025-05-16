@@ -32,7 +32,15 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
     }
 }
 
-void FullSweep_OM::callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 lagrange_factor, const F64* lambda) {
+void FullSweep_OM::callback_aug_hes(const F64* xu_nlp, const F64* p, const F64 obj_factor, const F64* lambda) {
+    set_parameters(data, threadData, info, p);
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
+            set_time(data, threadData, info, mesh.t[i][j]);
+            F64 lagrange_factor = collocation.b[mesh.nodes[i]][j] * mesh.delta_t[i] * obj_factor;
+        }
+    }
 }
 
 BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::unique_ptr<AugmentedHessianMR> aug_hes, Mesh& mesh,
