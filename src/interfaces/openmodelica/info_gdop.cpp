@@ -1,5 +1,13 @@
 #include "info_gdop.h"
 
+void InfoGDOP::set_time_horizon(DATA* data, int collocation) {
+    start_time = data->simulationInfo->startTime;
+    stop_time = data->simulationInfo->stopTime;
+    tf = stop_time - start_time;
+    intervals = (int)(round(tf/data->simulationInfo->stepSize));
+    stages = collocation;
+}
+
 ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info) :
     /* set OpenModelica Jacobian ptrs, allocate memory, initilization of A, B, C, D */
     A(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_A])),

@@ -11,6 +11,7 @@
 struct ExchangeJacobians;
 
 struct InfoGDOP {
+    /* problem sizes */
     int x_size;
     int u_size;
     int p_size;
@@ -19,12 +20,15 @@ struct InfoGDOP {
     int g_size;
     int r_size;
 
+    /* objective structure */
     bool mayer_exists;
     bool lagrange_exists;
 
+    /* addresses in realVars */
     modelica_real* __address_mayer_real_vars;
     modelica_real* __address_lagrange_real_vars;
 
+    /* realVars variables indices */
     const int index_x_real_vars = 0;
     int index_der_x_real_vars;
     int index_mayer_real_vars = -1;
@@ -33,7 +37,17 @@ struct InfoGDOP {
     int index_g_real_vars;
     int index_r_real_vars;
 
+    /* exchange format for Jacobians OM <-> OPT */
     std::unique_ptr<ExchangeJacobians> exc_jac;
+
+    /* time horizon */
+    F64 start_time; // model start_time
+    F64 stop_time;  // model stop_time
+    F64 tf;         // tf = start - stop, since t0 = 0 for OPT
+    int intervals;  // model interval count
+    int stages;     // stage count, TODO: set it with flags
+
+    void set_time_horizon(DATA* data, int collocation);
 };
 
 /**
