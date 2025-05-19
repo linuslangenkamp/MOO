@@ -39,8 +39,8 @@ int main() {
     FixedVector<Bounds> x_bounds(2);
     FixedVector<Bounds> u_bounds(1);
     FixedVector<Bounds> p_bounds(0);
-    FixedVector<std::optional<F64>> x0_fixed(2);
-    FixedVector<std::optional<F64>> xf_fixed(2);
+    FixedVector<std::optional<f64>> x0_fixed(2);
+    FixedVector<std::optional<f64>> xf_fixed(2);
     x0_fixed[0] = 1;
     x0_fixed[1] = 0;
 

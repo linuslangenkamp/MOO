@@ -9,22 +9,22 @@ class FullSweepTestImpl : public FullSweep {
 public:
     FullSweepTestImpl(FixedVector<FunctionLFG>&& lfg, Mesh& mesh, FixedVector<Bounds>&& g_bounds);
 
-    void callback_eval(const F64* xu_nlp, const F64* p) override;
+    void callback_eval(const f64* xu_nlp, const f64* p) override;
 
-    void callback_jac(const F64* xu_nlp, const F64* p) override;
+    void callback_jac(const f64* xu_nlp, const f64* p) override;
 
-    void callback_hes(const F64* xu_nlp, const F64* p) override;
+    void callback_hes(const f64* xu_nlp, const f64* p) override;
 };
 
 class BoundarySweepTestImpl : public BoundarySweep {
 public:
     BoundarySweepTestImpl(FixedVector<FunctionMR>&& mr, Mesh& mesh, FixedVector<Bounds>&& r_bounds);
 
-    void callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
+    void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
 
-    void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
+    void callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
 
-    void callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) override;
+    void callback_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
 };
 
 #endif // OPT_TEST_H

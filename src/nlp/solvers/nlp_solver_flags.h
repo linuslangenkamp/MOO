@@ -28,7 +28,7 @@ public:
     bool check_flag(const std::string& flag, const std::string& value) const;
 
     // Get flag as T, or fallback if not found or invalid
-    F64 get_flag_f64_fallback(const std::string& flag, const F64 fallback) const;
+    f64 get_flag_f64_fallback(const std::string& flag, const f64 fallback) const;
     std::string get_flag_string_fallback(const std::string& flag, const std::string& fallback) const;
 
 private:

@@ -25,15 +25,15 @@ void GDOP::init_sizes_offsets() {
 }
 
 void GDOP::init_buffers() {
-    curr_x      = FixedVector<F64>(number_vars);
-    init_x      = FixedVector<F64>(number_vars);
-    curr_grad   = FixedVector<F64>(number_vars);
-    x_lb        = FixedVector<F64>(number_vars);
-    x_ub        = FixedVector<F64>(number_vars);
-    curr_lambda = FixedVector<F64>(number_constraints);
-    curr_g      = FixedVector<F64>(number_constraints);
-    g_lb        = FixedVector<F64>(number_constraints);
-    g_ub        = FixedVector<F64>(number_constraints);
+    curr_x      = FixedVector<f64>(number_vars);
+    init_x      = FixedVector<f64>(number_vars);
+    curr_grad   = FixedVector<f64>(number_vars);
+    x_lb        = FixedVector<f64>(number_vars);
+    x_ub        = FixedVector<f64>(number_vars);
+    curr_lambda = FixedVector<f64>(number_constraints);
+    curr_g      = FixedVector<f64>(number_constraints);
+    g_lb        = FixedVector<f64>(number_constraints);
+    g_ub        = FixedVector<f64>(number_constraints);
 }
 
 void GDOP::init_bounds() {
@@ -145,14 +145,14 @@ void GDOP::init_jacobian_nonzeros() {
     }
 
     for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
-            nnz_r += problem.boundary->mr[problem.boundary->r_index_start + r_index].jac.nnz();
+        nnz_r += problem.boundary->mr[problem.boundary->r_index_start + r_index].jac.nnz();
     }
 
     nnz_jac = off_acc_jac_fg.back() + nnz_r;
 
     // allocate memory
-    curr_jac  = FixedVector<F64>(nnz_jac);
-    const_der_jac = FixedVector<F64>(nnz_jac);
+    curr_jac  = FixedVector<f64>(nnz_jac);
+    const_der_jac = FixedVector<f64>(nnz_jac);
     i_row_jac = FixedVector<int>(nnz_jac);
     j_col_jac = FixedVector<int>(nnz_jac);
 }
@@ -330,13 +330,13 @@ void GDOP::init_hessian() {
     // get memory for hessian structures
     i_row_hes = FixedVector<int>(nnz_hes);
     j_col_hes = FixedVector<int>(nnz_hes);
-    curr_hes  = FixedVector<F64>(nnz_hes);
+    curr_hes  = FixedVector<f64>(nnz_hes);
 
     // get memory for Lagrange object factors
     if (problem.full->has_lagrange) {
-        lagrange_obj_factors = FixedField<F64, 2>(mesh.intervals);
+        lagrange_obj_factors = FixedField<f64, 2>(mesh.intervals);
         for (int i = 0; i < mesh.intervals; i++) {
-            lagrange_obj_factors[i] = FixedVector<F64>(mesh.nodes[i]);
+            lagrange_obj_factors[i] = FixedVector<f64>(mesh.nodes[i]);
         }
     }
 
@@ -459,7 +459,7 @@ void GDOP::init_hessian() {
  * because of this structure, before every nlp evaluation check_new_x has to be performed and step 1 has to be executed in case
  */
 
-void GDOP::check_new_x(const F64* nlp_solver_x, bool new_x) {
+void GDOP::check_new_x(const f64* nlp_solver_x, bool new_x) {
     evaluation_state.check_reset_x(new_x);
     if (!evaluation_state.x_set_unscaled) {
         // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
@@ -469,7 +469,7 @@ void GDOP::check_new_x(const F64* nlp_solver_x, bool new_x) {
     }
 }
 
-void GDOP::check_new_lambda(const F64* nlp_solver_lambda, const bool new_lambda) {
+void GDOP::check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda) {
     evaluation_state.check_reset_lambda(new_lambda);
     if (!evaluation_state.lambda_set) {
         curr_lambda.assign(nlp_solver_lambda, number_constraints);
@@ -477,14 +477,14 @@ void GDOP::check_new_lambda(const F64* nlp_solver_lambda, const bool new_lambda)
     }
 }
 
-void GDOP::check_new_sigma(const F64 sigma_f) {
+void GDOP::check_new_sigma(const f64 sigma_f) {
     if (sigma_f != curr_sigma_f) {
         curr_sigma_f = sigma_f;
         evaluation_state.hes_lag = false;
     }
 }
 
-void GDOP::eval_f(const F64* nlp_solver_x, bool new_x) {
+void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_f) {
         callback_evaluation();
@@ -492,7 +492,7 @@ void GDOP::eval_f(const F64* nlp_solver_x, bool new_x) {
     eval_f_internal();
 }
 
-void GDOP::eval_g(const F64* nlp_solver_x, bool new_x) {
+void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_g) {
         callback_evaluation();
@@ -500,7 +500,7 @@ void GDOP::eval_g(const F64* nlp_solver_x, bool new_x) {
     eval_g_internal();
 }
 
-void GDOP::eval_grad_f(const F64* nlp_solver_x, bool new_x) {
+void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.grad_f) {
         callback_jacobian();
@@ -508,7 +508,7 @@ void GDOP::eval_grad_f(const F64* nlp_solver_x, bool new_x) {
     eval_grad_f_internal();
 };
 
- void GDOP::eval_jac_g(const F64* nlp_solver_x, bool new_x) {
+ void GDOP::eval_jac_g(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.jac_g) {
         callback_jacobian();
@@ -516,7 +516,7 @@ void GDOP::eval_grad_f(const F64* nlp_solver_x, bool new_x) {
     eval_jac_g_internal();
  }
 
- void GDOP::eval_hes(const F64* nlp_solver_x, const F64* nlp_solver_lambda, F64 sigma_f, bool new_x, bool new_lambda) {
+ void GDOP::eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma_f, bool new_x, bool new_lambda) {
     check_new_x(nlp_solver_x, new_x);
     check_new_lambda(nlp_solver_lambda, new_lambda);
     check_new_sigma(sigma_f);
@@ -527,12 +527,12 @@ void GDOP::eval_grad_f(const F64* nlp_solver_x, bool new_x) {
  }
 
 void GDOP::eval_f_internal() {
-    F64 mayer = 0;
+    f64 mayer = 0;
     if (problem.boundary->has_mayer) {
         mayer = problem.mr_eval_M();
     };
 
-    F64 lagrange = 0;
+    f64 lagrange = 0;
     if (problem.full->has_lagrange) {
         for (int i = 0; i < mesh.intervals; i++) {
             for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -793,7 +793,7 @@ void GDOP::callback_jacobian() {
 /* perform update of dual variables, such that callback can use the exact multiplier */
 void GDOP::update_curr_lambda_obj_factors() {
     for (int i = 0; i < mesh.intervals; i++) {
-        F64 delta_t = mesh.delta_t[i];
+        f64 delta_t = mesh.delta_t[i];
         for (int j = 0; j < mesh.nodes[i]; j++) {
             if (problem.full->has_lagrange) {
                 lagrange_obj_factors[i][j] = curr_sigma_f * collocation.b[mesh.nodes[i]][j] * delta_t;

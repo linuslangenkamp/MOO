@@ -20,11 +20,11 @@ void init_jac_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVec
 void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionMR>& mr);
 
 /* set values in OM realVars array / time value */
-void set_parameters(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64* p);
-void set_states(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64* x_ij);
-void set_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64* u_ij);
-void set_states_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64* xu_ij);
-void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const F64 t_ij);
+void set_parameters(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* p);
+void set_states(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* x_ij);
+void set_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* u_ij);
+void set_states_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* xu_ij);
+void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64 t_ij);
 
 /* TODO: is there a better combination e.g. functionODE + someother? */
 /* evaluation at current point */
@@ -33,11 +33,11 @@ inline void eval_current_point(DATA* data, threadData_t* threadData, InfoGDOP& i
 }
 
 /* write previous evaluation to buffer */
-void eval_lfg_write(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_lfg_buffer);
-void eval_mr_write(DATA* data, threadData_t* threadData, InfoGDOP& info, F64* eval_mr_buffer);
+void eval_lfg_write(DATA* data, threadData_t* threadData, InfoGDOP& info, f64* eval_lfg_buffer);
+void eval_mr_write(DATA* data, threadData_t* threadData, InfoGDOP& info, f64* eval_mr_buffer);
 
 /* call evalJacobian and write to buffer in *CSC* form; just passes the current buffer with offset to OM Jacobian */
-inline void jac_eval_write_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* eval_jac_buffer) {
+inline void jac_eval_write_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, f64* eval_jac_buffer) {
     assert(jacobian != NULL && jacobian->sparsePattern != NULL);
     __evalJacobian(data, threadData, jacobian, NULL, eval_jac_buffer);
 }
@@ -46,7 +46,7 @@ inline void jac_eval_write_as_csc(DATA* data, threadData_t* threadData, InfoGDOP
  * (see construction of Exchange_COO_CSC structures for further info)
  * clearly order doesnt matter for one row; CSC == COO order for this row, but the entries in original CSC are
  * stored in Exchange_COO_CSC.coo_to_csc(nz). */
-void jac_eval_write_first_row_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, F64* full_buffer,
-                                     F64* eval_jac_buffer, Exchange_COO_CSC& exc);
+void jac_eval_write_first_row_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, f64* full_buffer,
+                                     f64* eval_jac_buffer, Exchange_COO_CSC& exc);
 
 #endif // OPT_OM_EVALUATIONS_H

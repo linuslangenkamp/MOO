@@ -39,7 +39,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     printf("tf = %f, intervals = %d, stages = %d\n", info->tf, info->intervals, info->stages);
 
-    Trajectory initial_guess({0, info->tf}, {{1, 1}, {0, 0}, {0, 0}, {0, 0}}, {{700, 700}}, {}, InterpolationMethod::LINEAR);
+    Trajectory initial_guess({0, info->tf}, {{1, 1}, {0, 0}, {0, 0}, {0, 0}}, {{1.3, 1.3}}, {}, InterpolationMethod::LINEAR);
     GDOP gdop(*problem, *collocation, *mesh, initial_guess);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);

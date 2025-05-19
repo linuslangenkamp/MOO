@@ -18,12 +18,12 @@ FullSweepTestImpl::FullSweepTestImpl(FixedVector<FunctionLFG>&& lfg_in, Mesh& me
         lfg[1].jac.dx[0].value = &jac_buffer[2];
     }
 
-void FullSweepTestImpl::callback_eval(const F64* xu_nlp, const F64* p) {
+void FullSweepTestImpl::callback_eval(const f64* xu_nlp, const f64* p) {
     int sum_ij = 0;
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            const F64* xu_ij = xu_nlp + (x_size + u_size) * sum_ij;
-            F64 T = xu_ij[0];
+            const f64* xu_ij = xu_nlp + (x_size + u_size) * sum_ij;
+            f64 T = xu_ij[0];
             eval_buffer[2 * sum_ij] = (T - p[0] - 0.015) * (T - p[0] - 0.015);
             eval_buffer[2 * sum_ij + 1] = -0.4 * T + 120.2 + 0.2 * sin(4*M_PI*mesh.t[i][j]);
             sum_ij++;
@@ -31,17 +31,17 @@ void FullSweepTestImpl::callback_eval(const F64* xu_nlp, const F64* p) {
     }
 }
 
-void FullSweepTestImpl::callback_jac(const F64* xu_nlp, const F64* p) {
+void FullSweepTestImpl::callback_jac(const f64* xu_nlp, const f64* p) {
     for (int i = 0; i < mesh.node_count; i++) {
-        const F64* xu_ij = xu_nlp + (x_size + u_size) * i;
-        F64 T = xu_ij[0];
+        const f64* xu_ij = xu_nlp + (x_size + u_size) * i;
+        f64 T = xu_ij[0];
         jac_buffer[3 * i] = 2 * (T - p[0] - 0.015);
         jac_buffer[3 * i + 1] = -2 * (T - p[0] - 0.015);
         jac_buffer[3 * i + 2] = -0.4;
     }
 }
 
-void FullSweepTestImpl::callback_hes(const F64* xu_nlp, const F64* p) {
+void FullSweepTestImpl::callback_hes(const f64* xu_nlp, const f64* p) {
     for (int i = 0; i < mesh.node_count; i++) {
         hes_buffer[3 * i] = 2;
         hes_buffer[3 * i + 1] = -2;
@@ -56,15 +56,15 @@ BoundarySweepTestImpl::BoundarySweepTestImpl(FixedVector<FunctionMR>&& mr_in, Me
         mr[0].jac.dp[0].value = &jac_buffer[1];
     }
 
-void BoundarySweepTestImpl::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+void BoundarySweepTestImpl::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     eval_buffer[0] = x0_nlp[0] - p[0];
 }
 
-void BoundarySweepTestImpl::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+void BoundarySweepTestImpl::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     jac_buffer[0] = 1;
     jac_buffer[1] = -1;
 }
 
-void BoundarySweepTestImpl::callback_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+void BoundarySweepTestImpl::callback_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
 
 };

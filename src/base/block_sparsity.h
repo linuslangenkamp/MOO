@@ -148,7 +148,7 @@ struct OrderedIndexSet {
         }
     }
 
-    inline std::size_t size() const {
+    inline int size() const {
         return set.size();
     }
 };

@@ -7,7 +7,7 @@ FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<Augme
                 info.g_size, info.x_size, info.u_size, info.p_size),
       data(data), threadData(threadData), info(info) {
 }
-void FullSweep_OM::callback_eval(const F64* xu_nlp, const F64* p) {
+void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     set_parameters(data, threadData, info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -19,7 +19,7 @@ void FullSweep_OM::callback_eval(const F64* xu_nlp, const F64* p) {
     }
 }
 
-void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
+void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
     set_parameters(data, threadData, info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -32,7 +32,7 @@ void FullSweep_OM::callback_jac(const F64* xu_nlp, const F64* p) {
     }
 }
 
-void FullSweep_OM::callback_aug_hes(const F64* xu_nlp, const F64* p, const FixedField<F64, 2>& lagrange_factors, const F64* lambda) {
+void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
     set_parameters(data, threadData, info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -49,7 +49,7 @@ BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::unique_ptr
       data(data), threadData(threadData), info(info) {
 }
 
-void BoundarySweep_OM::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     set_parameters(data, threadData, info, p);
     set_states(data, threadData, info, xf_nlp);
     set_time(data, threadData, info, mesh.tf);
@@ -57,7 +57,7 @@ void BoundarySweep_OM::callback_eval(const F64* x0_nlp, const F64* xf_nlp, const
     eval_mr_write(data, threadData, info, eval_buffer.raw());
 }
 
-void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) {
+void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     set_parameters(data, threadData, info, p);
     set_states(data, threadData, info, xf_nlp);
     set_time(data, threadData, info, mesh.tf);
@@ -75,7 +75,7 @@ void BoundarySweep_OM::callback_jac(const F64* x0_nlp, const F64* xf_nlp, const 
     }
 }
 
-void BoundarySweep_OM::callback_aug_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p, const F64 mayer_factor, const F64* lambda) {
+void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {
 }
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
@@ -145,8 +145,8 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
      * and also ignore x0 non fixed, since too complicated
      * => assume x(t_0) = x0 fixed, x(t_f) free to r constraint / maybe the old BE can do that already?!
      * option: generate fixed final states individually */
-    FixedVector<std::optional<F64>> x0_fixed(info.x_size);
-    FixedVector<std::optional<F64>> xf_fixed(info.x_size);
+    FixedVector<std::optional<f64>> x0_fixed(info.x_size);
+    FixedVector<std::optional<f64>> xf_fixed(info.x_size);
 
     /* set *fixed* initial, final states */
     for (int x = 0; x < info.x_size; x++) {

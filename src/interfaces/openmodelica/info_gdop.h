@@ -41,9 +41,9 @@ struct InfoGDOP {
     std::unique_ptr<ExchangeJacobians> exc_jac;
 
     /* time horizon */
-    F64 start_time; // model start_time
-    F64 stop_time;  // model stop_time
-    F64 tf;         // tf = start - stop, since t0 = 0 for OPT
+    f64 start_time; // model start_time
+    f64 stop_time;  // model stop_time
+    f64 tf;         // tf = start - stop, since t0 = 0 for OPT
     int intervals;  // model interval count
     int stages;     // stage count, TODO: set it with flags
 

@@ -24,9 +24,9 @@ public:
         for (const auto& func : lfg) {
             jac_size += func.jac.nnz();
         }
-        eval_buffer = FixedVector<F64>(mesh.node_count * eval_size);
-        jac_buffer = FixedVector<F64>(mesh.node_count * jac_size);
-        aug_hes_buffer = FixedVector<F64>(mesh.node_count * aug_hes_size);
+        eval_buffer = FixedVector<f64>(mesh.node_count * eval_size);
+        jac_buffer = FixedVector<f64>(mesh.node_count * jac_size);
+        aug_hes_buffer = FixedVector<f64>(mesh.node_count * aug_hes_size);
     };
 
     virtual ~FullSweep() = default;
@@ -57,27 +57,27 @@ public:
     int jac_size = 0;
     int aug_hes_size = 0;
 
-    FixedVector<F64> eval_buffer;
-    FixedVector<F64> jac_buffer;
-    FixedVector<F64> aug_hes_buffer;
+    FixedVector<f64> eval_buffer;
+    FixedVector<f64> jac_buffer;
+    FixedVector<f64> aug_hes_buffer;
 
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
-    FixedVector<F64> aug_pp_hes_buffer; // make it like list<FixedVector<F64>>, each thread sum to own buffer (just size p * p each)
+    FixedVector<f64> aug_pp_hes_buffer; // make it like list<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
     // TODO: add good explanation of the interface
 
     // fill eval_buffer accoring to sparsity structure
-    virtual void callback_eval(const F64* xu_nlp, const F64* p) = 0;
+    virtual void callback_eval(const f64* xu_nlp, const f64* p) = 0;
 
     // fill jac_buffer accoring to sparsity structure
-    virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
+    virtual void callback_jac(const f64* xu_nlp, const f64* p) = 0;
 
     /* fill aug_hes_buffer and aug_pp_hes_buffer accoring to sparsity structure
      * aug_hes_buffer is $\lambda^T * \nabla² (f, g) + lfactor * \nabla² L$ all except w.r.t. pp
      * aug_pp_hes_buffer is $\lambda^T * \nabla²_{pp} (f, g) + lfactor * \nabla²_{pp} L$
      * lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
      * lagrange_factors are exact factor for lagrange terms in interval i, nodes j */
-    virtual void callback_aug_hes(const F64* xu_nlp, const F64* p, const FixedField<F64, 2>& lagrange_factors, const F64* lambda) = 0;
+    virtual void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
@@ -122,9 +122,9 @@ public:
         for (const auto& func : mr) {
             jac_buffer_size += func.jac.nnz();
         }
-        eval_buffer = FixedVector<F64>(r_index_end);
-        jac_buffer = FixedVector<F64>(jac_buffer_size);
-        aug_hes_buffer = FixedVector<F64>(this->aug_hes->nnz());
+        eval_buffer = FixedVector<f64>(r_index_end);
+        jac_buffer = FixedVector<f64>(jac_buffer_size);
+        aug_hes_buffer = FixedVector<f64>(this->aug_hes->nnz());
     };
 
     virtual ~BoundarySweep() = default;
@@ -144,17 +144,17 @@ public:
     int x_size;
     int p_size;
 
-    FixedVector<F64> eval_buffer;
-    FixedVector<F64> jac_buffer;
-    FixedVector<F64> aug_hes_buffer;
+    FixedVector<f64> eval_buffer;
+    FixedVector<f64> jac_buffer;
+    FixedVector<f64> aug_hes_buffer;
 
-    virtual void callback_eval(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
+    virtual void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
 
-    virtual void callback_jac(const F64* x0_nlp, const F64* xf_nlp, const F64* p) = 0;
+    virtual void callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
 
    /* lambdas are exact multipliers (no transform needed) to [r]
     * mayer_factor is eact multiplier (no transform needed) of M */
-    virtual void callback_aug_hes(const F64* x0_nlp, const F64* xf_nlp, const F64* p, const F64 mayer_factor, const F64* lambda) = 0;
+    virtual void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== MR Jacobian Sparsity ===\n================================\n";
@@ -191,8 +191,8 @@ public:
 class Problem {
 public:
     Problem(std::unique_ptr<FullSweep>&& full, std::unique_ptr<BoundarySweep>&& boundary, Mesh& mesh, FixedVector<Bounds>&& x_bounds,
-               FixedVector<Bounds>&& u_bounds, FixedVector<Bounds>&& p_bounds, FixedVector<std::optional<F64>>&& x0_fixed,
-               FixedVector<std::optional<F64>>&& xf_fixed)
+               FixedVector<Bounds>&& u_bounds, FixedVector<Bounds>&& p_bounds, FixedVector<std::optional<f64>>&& x0_fixed,
+               FixedVector<std::optional<f64>>&& xf_fixed)
     : full(std::move(full)), boundary(std::move(boundary)), mesh(mesh), x_bounds(std::move(x_bounds)), u_bounds(std::move(u_bounds)),
       p_bounds(std::move(p_bounds)), x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)),
       x_size(this->full->x_size), u_size(this->full->u_size), p_size(this->full->p_size) {
@@ -207,64 +207,66 @@ public:
     FixedVector<Bounds> u_bounds;
     FixedVector<Bounds> p_bounds;
 
-    FixedVector<std::optional<F64>> x0_fixed; // set value if a state has a fixed initial value, remove the constraint from r()!
-    FixedVector<std::optional<F64>> xf_fixed; // set value if a state has a fixed final value, remove the constraint from r()!
+    FixedVector<std::optional<f64>> x0_fixed; // set value if a state has a fixed initial value, remove the constraint from r()!
+    FixedVector<std::optional<f64>> xf_fixed; // set value if a state has a fixed final value, remove the constraint from r()!
 
     int x_size;
     int u_size;
     int p_size;
 
-   // TODO: get rid of int where possible: below could actually overflow with decent hardware!
+    // FIXME: TODO: get rid of int where possible: below could actually overflow with decent hardware!
+    //              for now it might be sufficient to just static cast to size_t for the calculations, since
+    //              in nearly all other calculations with indices these are not that large
 
     /* note entry != index in lfg, but rather full->lfg[*].buf_index */
-    inline F64 lfg_eval(int entry, int interval_i, int node_j) {
+    inline f64 lfg_eval(int entry, int interval_i, int node_j) {
         return full->eval_buffer[entry + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline F64 lfg_eval_L(int interval_i, int node_j) {
+    inline f64 lfg_eval_L(int interval_i, int node_j) {
         assert(full->has_lagrange);
         return full->eval_buffer[full->lfg[0].buf_index + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline F64 lfg_eval_f(int f_index, int interval_i, int node_j) {
+    inline f64 lfg_eval_f(int f_index, int interval_i, int node_j) {
         return full->eval_buffer[full->lfg[full->f_index_start + f_index].buf_index + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline F64 lfg_eval_g(int g_index, int interval_i, int node_j) {
+    inline f64 lfg_eval_g(int g_index, int interval_i, int node_j) {
         return full->eval_buffer[full->lfg[full->g_index_start + g_index].buf_index + full->eval_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline F64 lfg_jac(int entry, int interval_i, int node_j) {
+    inline f64 lfg_jac(int entry, int interval_i, int node_j) {
         return full->jac_buffer[entry + full->jac_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline F64 lfg_aug_hes(int entry, int interval_i, int node_j) {
+    inline f64 lfg_aug_hes(int entry, int interval_i, int node_j) {
         return full->aug_hes_buffer[entry + full->aug_hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
     /* TODO: make me threaded */
-    inline F64 lfg_aug_pp_hes(int entry) {
+    inline f64 lfg_aug_pp_hes(int entry) {
         return full->aug_pp_hes_buffer[entry];
     }
 
     /* note entry != index in mr, but rather boundary->mr[*].buf_index */
-    inline F64 mr_eval(int entry) {
+    inline f64 mr_eval(int entry) {
         return full->eval_buffer[entry];
     }
 
-    inline F64 mr_eval_M() {
+    inline f64 mr_eval_M() {
         assert(boundary->has_mayer);
         return boundary->eval_buffer[boundary->mr[0].buf_index];
     }
 
-    inline F64 mr_eval_r(int r_index) {
+    inline f64 mr_eval_r(int r_index) {
         return boundary->eval_buffer[boundary->mr[boundary->r_index_start + r_index].buf_index];
     }
 
-    inline F64 mr_jac(int entry) {
+    inline f64 mr_jac(int entry) {
         return boundary->jac_buffer[entry];
     }
     
-    inline F64 mr_aug_hes(int entry) {
+    inline f64 mr_aug_hes(int entry) {
         return boundary->aug_hes_buffer[entry];
     }
 };

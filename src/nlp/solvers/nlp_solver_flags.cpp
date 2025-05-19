@@ -52,7 +52,7 @@ bool NLPSolverFlags::check_flag(const std::string& flag, const std::string& valu
     return it != solver_settings.end() && it->second == value;
 }
 
-F64 NLPSolverFlags::get_flag_f64_fallback(const std::string& flag, const F64 fallback) const {
+f64 NLPSolverFlags::get_flag_f64_fallback(const std::string& flag, const f64 fallback) const {
     auto it = solver_settings.find(flag);
     if (it != solver_settings.end()) {
         try {

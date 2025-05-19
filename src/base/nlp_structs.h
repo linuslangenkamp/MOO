@@ -8,8 +8,8 @@
 #include "util.h"
 
 struct Bounds {
-    F64 lb = MINUS_INFINITY;
-    F64 ub = PLUS_INFINITY;
+    f64 lb = MINUS_INFINITY;
+    f64 ub = PLUS_INFINITY;
 };
 
 struct JacobianSparsity {

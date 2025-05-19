@@ -41,8 +41,8 @@ int example() {
     FixedVector<Bounds> x_bounds(1);
     FixedVector<Bounds> u_bounds(0);
     FixedVector<Bounds> p_bounds(1);
-    FixedVector<std::optional<F64>> x0_fixed(1);
-    FixedVector<std::optional<F64>> xf_fixed(1);
+    FixedVector<std::optional<f64>> x0_fixed(1);
+    FixedVector<std::optional<f64>> xf_fixed(1);
 
     auto problem = std::make_unique<Problem>(*fs, *bs, std::move(x_bounds), std::move(u_bounds), std::move(p_bounds), std::move(x0_fixed), std::move(xf_fixed));
 
