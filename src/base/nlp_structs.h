@@ -63,9 +63,10 @@ struct FunctionLFG {
     JacobianLFG jac;
 };
 
-// MRsemi-generic boundary function r(x(t0), x(tf), p)
+// MR semi-generic boundary function r(x(t0), x(tf), p)
 // used for Mayer term (M), boundary constraints (R) in GDOP
 
+// TODO: add at least duf (still quite useless, but somewhat)
 struct JacobianMR {
     // coordinate format jacobian for MR functions
     std::vector<JacobianSparsity> dx0;

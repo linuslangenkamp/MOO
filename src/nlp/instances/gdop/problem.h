@@ -64,13 +64,19 @@ public:
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
     FixedVector<F64> aug_pp_hes_buffer; // make it like list<FixedVector<F64>>, each thread sum to own buffer (just size p * p each)
 
-    // fill eval_buffer, jac_buffer, aug_hes_buffer
+    // TODO: add good explanation of the interface
+
+    // fill eval_buffer accoring to sparsity structure
     virtual void callback_eval(const F64* xu_nlp, const F64* p) = 0;
 
+    // fill jac_buffer accoring to sparsity structure
     virtual void callback_jac(const F64* xu_nlp, const F64* p) = 0;
 
-   /* lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
-    * lagrange_factors are exact factor for lagrange terms in interval i, nodes j */ 
+    /* fill aug_hes_buffer and aug_pp_hes_buffer accoring to sparsity structure
+     * aug_hes_buffer is $\lambda^T * \nabla² (f, g) + lfactor * \nabla² L$ all except w.r.t. pp
+     * aug_pp_hes_buffer is $\lambda^T * \nabla²_{pp} (f, g) + lfactor * \nabla²_{pp} L$
+     * lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
+     * lagrange_factors are exact factor for lagrange terms in interval i, nodes j */
     virtual void callback_aug_hes(const F64* xu_nlp, const F64* p, const FixedField<F64, 2>& lagrange_factors, const F64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {

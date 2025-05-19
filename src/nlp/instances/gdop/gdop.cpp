@@ -274,14 +274,14 @@ void GDOP::init_jacobian_sparsity_pattern() {
             nnz_index++;
         }
 
-        // dg / dxf
+        // dr / dxf
         for (auto& dr_dxf : problem.boundary->mr[problem.boundary->r_index_start + r_index].jac.dxf) {
             i_row_jac[nnz_index] = eqn_index;
             j_col_jac[nnz_index] = off_last_xu + dr_dxf.col;
             nnz_index++;
         }
 
-        // dg / dp
+        // dr / dp
         for (auto& dr_dp: problem.boundary->mr[problem.boundary->r_index_start + r_index].jac.dp) {
             i_row_jac[nnz_index] = eqn_index;
             j_col_jac[nnz_index] = off_xu_total + dr_dp.col;

@@ -82,7 +82,7 @@ public:
     /* augmented hessian updates */
     void update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
                                       const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu);
-    void update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_hes); // sum_i sum_j \lambda_ij Hessian(Lfg)_pp
+    void update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_hes); // sum of all weighted Hessian(Lfg)_pp
     void update_augmented_hessian_mr(const AugmentedHessianMR& hes);
 
     // get callback data
@@ -116,6 +116,7 @@ Hessian Sparsity Layout (lower triangle):
     X: square / rectangular matrix
     Note that blocks [[L, 0], [X, L]] are also triangular
 
+                                            {n,m-1}
      | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm | p |
 -------------------------------------------------------------------|
  x00 |  L  |         |         |         |           |         |   |
@@ -141,7 +142,7 @@ Hessian Sparsity Layout (lower triangle):
 Block Sparsity Patterns: A - H
 where A=triang(x) B=triang(x + u), C=sq(x), D=triang(x + u), E=rect(p, x),
       F=rect(p, x + u), G=rect(p, x + u), H=triang(p, p)
-
+                                            {n,m-1}
      | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm | p |
 -------------------------------------------------------------------|
  x00 |  A  |         |         |         |           |         |   |
