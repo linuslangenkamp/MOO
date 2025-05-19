@@ -109,7 +109,8 @@ void set_states_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, con
 }
 
 void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64 t_ij) {
-    data->localData[0]->timeValue = (modelica_real) t_ij;
+    /* move time horizon to Modelica model time */
+    data->localData[0]->timeValue = (modelica_real) t_ij + info.start_time;
 }
 
 void eval_lfg_write(DATA* data, threadData_t* threadData, InfoGDOP& info, f64* eval_lfg_buffer) {

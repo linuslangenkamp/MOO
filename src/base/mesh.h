@@ -38,10 +38,11 @@ struct Trajectory {
     std::vector<std::vector<f64>> x;
     std::vector<std::vector<f64>> u;
     std::vector<f64> p;
-    InterpolationMethod interpolation ;
+    InterpolationMethod interpolation;
 
     Trajectory() = default;
 
+    // TODO: is this a move?
     Trajectory(std::vector<f64> t, std::vector<std::vector<f64>> x, std::vector<std::vector<f64>> u,
                std::vector<f64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
         : t(t), x(x), u(u), p(p), interpolation(interpolation) {

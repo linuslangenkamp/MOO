@@ -21,7 +21,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     printf("Entry point [OPT] - _main_OptimitationRuntime\n\n");
 
     /* create info struct <-> same purpose as DATA* in OpenModeica */
-    auto info = std::make_unique<InfoGDOP>();
+    auto info = std::make_unique<InfoGDOP>(); // TODO: maybe refactor: s.t. info also holds DATA, threadData_t, and flags
     auto nlp_solver_flags = std::make_unique<NLPSolverFlags>(argc, argv);
     nlp_solver_flags->set("Hessian", "LBFGS");
     nlp_solver_flags->set("Tolerance", "1e-10");
@@ -31,23 +31,24 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     // TODO: add flag to set this 1, degree
     // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
 
-    // TODO: fix potential start / stop time offset, e.g. startTime = 1 => in callback make offset +=1 for t
     info->set_time_horizon(data, 3);
     auto collocation = std::make_unique<Collocation>();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(info->tf, info->intervals, info->stages, *collocation));
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh, *collocation));
+    auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info)); // TODO: add proper strategies here
 
     printf("tf = %f, intervals = %d, stages = %d\n", info->tf, info->intervals, info->stages);
 
-    Trajectory initial_guess({0, info->tf}, {{1, 1}, {0, 0}, {0, 0}, {0, 0}}, {{1.3, 1.3}}, {}, InterpolationMethod::LINEAR);
-    GDOP gdop(*problem, *collocation, *mesh, initial_guess);
+
+    GDOP gdop(*problem, *collocation, *mesh, *initial_guess);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
-    /*
-    print_jacobian_sparsity(info->exc_jac->B, true, "B");
-    print_jacobian_sparsity(info->exc_jac->C, true, "C");
-    print_jacobian_sparsity(info->exc_jac->D, true, "D");
-*/
+
+    auto jac = info->exc_jac->C;
+    print_jacobian_sparsity(jac, true, "C");
+    HESSIAN_PATTERN* pattern = generateHessianPattern(jac);
+    printHessianPattern(pattern);
+
     return 0;
 }

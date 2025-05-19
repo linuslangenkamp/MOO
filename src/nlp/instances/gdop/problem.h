@@ -199,7 +199,7 @@ public:
     };
     
     std::unique_ptr<FullSweep> full;
-    std::unique_ptr<BoundarySweep>  boundary;
+    std::unique_ptr<BoundarySweep> boundary;
 
     Mesh& mesh;
 

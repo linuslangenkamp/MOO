@@ -36,5 +36,6 @@ public:
 };
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
+Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info);
 
 #endif // OPT_OM_GDOP_PROBLEM_H

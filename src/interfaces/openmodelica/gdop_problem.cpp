@@ -175,3 +175,24 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
         std::move(xf_fixed)
     );
 }
+
+// TODO: make a NLP initializer class with different init methods: simulation, bionic, constant, ...
+Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info) {
+    std::vector<f64> t = {0, info.tf};
+    std::vector<std::vector<f64>> x_guess;
+    std::vector<std::vector<f64>> u_guess;
+    std::vector<f64> p;
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;{};
+
+    for (int x = 0; x < info.x_size; x++) {
+        x_guess.push_back({data->modelData->realVarsData[x].attribute.start, data->modelData->realVarsData[x].attribute.start});
+    }
+
+    for (int u : info.u_indices_real_vars) {
+        u_guess.push_back({data->modelData->realVarsData[u].attribute.start, data->modelData->realVarsData[u].attribute.start});
+    }
+
+    // TODO: add p
+
+    return Trajectory{t, x_guess, u_guess, p, interpolation};
+}
