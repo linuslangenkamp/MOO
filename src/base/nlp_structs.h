@@ -63,18 +63,18 @@ struct FunctionLFG {
     JacobianLFG jac;
 };
 
-// MR semi-generic boundary function r(x(t0), x(tf), p)
+// MR semi-generic boundary function r(x(t0), x(tf), u(tf), p)
 // used for Mayer term (M), boundary constraints (R) in GDOP
 
-// TODO: add at least duf (still quite useless, but somewhat)
 struct JacobianMR {
     // coordinate format jacobian for MR functions
     std::vector<JacobianSparsity> dx0;
     std::vector<JacobianSparsity> dxf;
+    std::vector<JacobianSparsity> duf;
     std::vector<JacobianSparsity> dp;
 
     inline int nnz() const {
-        return dx0.size() + dxf.size() + dp.size();
+        return dx0.size() + dxf.size() + duf.size() + dp.size();
     }
 };
 
@@ -83,12 +83,17 @@ struct AugmentedHessianMR {
     std::vector<HessianSparsity> dx0_dx0;
     std::vector<HessianSparsity> dxf_dx0;
     std::vector<HessianSparsity> dxf_dxf;
+    std::vector<HessianSparsity> duf_dx0;
+    std::vector<HessianSparsity> duf_dxf;
+    std::vector<HessianSparsity> duf_duf;
     std::vector<HessianSparsity> dp_dx0;
     std::vector<HessianSparsity> dp_dxf;
+    std::vector<HessianSparsity> dp_duf;
     std::vector<HessianSparsity> dp_dp;
 
     inline int nnz() const {
-        return dx0_dx0.size() + dxf_dx0.size() + dxf_dxf.size() + dp_dx0.size() + dp_dxf.size() + dp_dp.size();
+        return dx0_dx0.size() + dxf_dx0.size() + dxf_dxf.size() +  duf_dx0.size() + duf_dxf.size() + duf_duf.size()
+                              + dp_dx0.size() + dp_dxf.size() + dp_duf.size() + dp_dp.size();
     }
 };
 

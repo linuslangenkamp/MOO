@@ -58,7 +58,7 @@ public:
     // for further info see hessian layout at the bottom
     BlockSparsity hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
     BlockSparsity hes_b = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Offset);
-    BlockSparsity hes_c = BlockSparsity::create_square(problem.x_size, BlockType::Exact);
+    BlockSparsity hes_c = BlockSparsity::create_rectangular(problem.x_size + problem.u_size, problem.x_size, BlockType::Exact);
     BlockSparsity hes_d = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Exact);
     BlockSparsity hes_e = BlockSparsity::create_rectangular(problem.p_size, problem.x_size, BlockType::Exact);
     BlockSparsity hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
@@ -108,7 +108,7 @@ public:
     void eval_hes(const F64* nlp_solver_x, const F64* nlp_solver_lambda, F64 sigma, bool new_x, bool new_lambda);
 };
 
-#endif  // OPT_GDOP_H
+#endif // OPT_GDOP_H
 
 /*
 Hessian Sparsity Layout (lower triangle):
@@ -134,7 +134,7 @@ Hessian Sparsity Layout (lower triangle):
  unm1|     |         |         |         |   X   L   |         |   |
 -------------------------------------------------------------------|
  xnm |  X  |         |         |         |           |  L   0  |   |
- unm |     |         |         |         |           |  X   L  |   |
+ unm |  X  |         |         |         |           |  X   L  |   |
 -------------------------------------------------------------------|
   p  |  X  |  X   X  |  X   X  |  X   X  |   X   X   |  X   X  | L |
 -------------------------------------------------------------------*
