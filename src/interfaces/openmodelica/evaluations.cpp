@@ -94,7 +94,7 @@ void set_states(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64*
 
 void set_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* u_ij) {
     for (int u = 0; u < info.u_size; u++) {
-        data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) u_ij[info.x_size + u];
+        data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) u_ij[u];
     }
 }
 

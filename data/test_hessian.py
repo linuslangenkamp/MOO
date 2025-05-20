@@ -136,7 +136,7 @@ def compute_hessian_entries(x, lambd, h=1e-4):
     return Hflat
 
 
-def richardson_extrapolation(f, x, lambd, h, n=2, order=1):
+def richardson_extrapolation(f, x, lambd, h, n=2, order=1, base=10):
     """
     Perform Richardson extrapolation for a function that returns arrays.
     
@@ -159,11 +159,11 @@ def richardson_extrapolation(f, x, lambd, h, n=2, order=1):
     
     # Fill first column with function evaluations at different h values
     for i in range(n):
-        table[i, 0] = f(x, lambd, h / (2**i))
+        table[i, 0] = f(x, lambd, h / (base**i))
     
     # Perform Richardson extrapolation (array operations)
     for j in range(1, n):
-        factor = 2**(order * j)
+        factor = base**(order * j)
         for i in range(j, n):
             table[i, j] = (factor * table[i, j-1] - table[i-1, j-1]) / (factor - 1)
     
@@ -173,116 +173,49 @@ def richardson_extrapolation(f, x, lambd, h, n=2, order=1):
 x = np.array([1, 2, 4, 5])
 lambd = np.array([1, 2, 5, 1, -5])
 
-H = compute_hessian_entries(x, lambd, 1e-8)
+"""
+A, B = richardson_extrapolation(compute_hessian_entries, x, lambd, 1e-5, n=2, base=2)
+print(A)
+
+A, B = richardson_extrapolation(compute_hessian_entries, x, lambd, 1e-3, n=3, base=2)
+print(A)
+"""
+H = compute_hessian_entries(x, lambd, 1e-5)
 print(dense_hessian_f_weighted(x, lambd))
 print(H)
 
-A, B = richardson_extrapolation(compute_hessian_entries, x, lambd, 1e-4, n=2)
+# grid serach
+import numpy as np
 
-print(A)
+h_values = [1, 0.5, 1e-1, 5e-2, 1e-2, 5e-3, 1e-3, 5e-4, 1e-4, 5e-5, 1e-5, 5e-6, 1e-6, 5e-7, 1e-7, 5e-8, 1e-8, 5e-9, 1e-9]
+n_values = [1, 2]
+base_values = [1.25, 1.5, 1.75, 2, 3, 5, 10, 20, 50, 100]
+exact = np.array([10, 580, 0, 1024, 782, -150])
+results = []
+for h in h_values:
+    for n in n_values:
+        for base in base_values:
+            A, _ = richardson_extrapolation(compute_hessian_entries, x, lambd, h, n=n, order=1, base=base)
+            error = np.linalg.norm(A - exact, np.inf)
+            results.append({
+                'h': h,
+                'n': n,
+                'base': base,
+                'error': error,
+                'result': A
+            })
 
 
+results.sort(key=lambda x: x['error'])
 
-\section{Numerical Hessian with Jacobian Column-Coloring and Partial Lambda Adjoint Product}
-\begin{algorithm}[H]
-	\caption{Numerical Hessian with Jacobian Column-Coloring, JVP, and Partial Lambda Product}
-	\begin{algorithmic}[1]
-		\REQUIRE 
-		Vector-valued function $\v{f} : \mathbb{R}^n \to \mathbb{R}^m$, \\
-		Adjoint vector $\v{\lambda} \in \mathbb{R}^m$, \\
-		Jacobian-vector product operator $\mathrm{JVP}(\cdot)$, \\
-		Column coloring $\mathcal{C} = \{c_1, \dots, c_k\}$, \\
-		Step size $h$, \\
-		Mapping $Q: \mathcal{C} \times \mathcal{C} \to (\mathcal{I}, \mathcal{N})$, where \(\mathcal{I}\) are indices for finite differences and \(\mathcal{N}\) are indices in flat Hessian, \\
-		Flat Hessian buffer $H^{\mathrm{flat}} \in \mathbb{R}^{\mathrm{nnz}}$, initialized to zero
-		\vspace{0.5em}
-		
-		\STATE Evaluate base JVPs: for all colors $c$, compute 
-		\[
-		J_{c} := \nabla \v{f}(\v{x}) \cdot \v{s}_c
-		\]
-		\STATE Precompute weighted base JVPs for each color:
-		\[
-		\hat{J}_c := \v{\lambda}^\top J_c = \sum_{r=1}^m \lambda_r J_c[r]
-		\]
-		
-		\FOR{each color $c_1 \in \mathcal{C}$}
-		\STATE Define seed vector $\v{s}_{c_1}$ with Algorithm 2
-		\STATE Perturb point: 
-		\[
-		\v{x}_{c_1} = \v{x} + h \cdot \v{s}_{c_1}
-		\]
-		
-		\FOR{each color $c_2 \in \mathcal{C}$ with $c_2 \leq c_1$} 
-		\STATE Define seed vector $\v{s}_{c_2}$ with Algorithm 2
-		\STATE Evaluate perturbed JVP: 
-		\[
-		J_{c_1, c_2} := \nabla \v{f}(\v{x}_{c_1}) \cdot \v{s}_{c_2}
-		\]
-		
-		\FOR{all associated $(\mathrm{rows}, \mathrm{nz}) \in Q(c_1, c_2)$}
-		\STATE Compute finite difference weighted by $\v{\lambda}$:
-		\[
-		H^{\mathrm{flat}}_{\mathrm{nz}} = \sum_{r \in \mathrm{rows}} \frac{\lambda_r \cdot J_{c_1,c_2}[r] - \hat{J}_{c_2}[r]}{h}
-		\]
-		
-		\ENDFOR
-		\ENDFOR
-		\ENDFOR
-		
-		\RETURN $H^{\mathrm{flat}}$
-	\end{algorithmic}
-\end{algorithm}
+print("Top configurations by error:")
+for i, res in enumerate(results):
+    print(f"{i+1}. h={res['h']:.0e}, n={res['n']}, base={res['base']}, error={res['error']:.10f}")
+    print("   Result: [" + ", ".join(f"{x:.10f}" for x in res['result']) + "]")
+    print()
 
-\textbf{Explanation:}
-
-This algorithm approximates the action of the adjoint-weighted Hessian $\v{\lambda}^\top \nabla^2 \v{f}(\v{x})$ using finite differences of Jacobian-vector products (JVPs), while exploiting sparsity through Jacobian column coloring. The method computes only the required components of the Hessian, avoiding its full construction.
-
-\begin{itemize}
-	\item Let $\v{f} : \mathbb{R}^n \to \mathbb{R}^m$ be a vector-valued function, and $\v{\lambda} \in \mathbb{R}^m$ the adjoint vector defining the scalar-valued function $\v{g}(\v{x}) := \v{\lambda}^\top \v{f}(\v{x})$.
-	
-	\item The gradient of $g$ is given by:
-	\[
-	\nabla \v{g}(\v{x}) = \nabla \v{f}(\v{x})^\top \v{\lambda} = J(\v{x})^\top \v{\lambda}
-	\]
-	and the Hessian is:
-	\[
-	\nabla^2 \v{g}(\v{x}) = \sum_{r=1}^m \lambda_r \cdot \nabla^2 f_r(\v{x})
-	\]
-	
-	\item The column coloring partitions variables into independent groups $\mathcal{C} = \{c_1, \dots, c_k\}$ such that no two variables in the same color affect the same row of the Jacobian. This allows perturbing all variables in a color group $c$ simultaneously using a seed vector $\v{s}_c$.
-	
-	\item For each color pair $(c_1, c_2)$, the algorithm computes a finite-difference approximation to second-order directional derivatives in directions $\v{s}_{c_1}$ and $\v{s}_{c_2}$:
-	\[
-	\frac{1}{h} \left( \nabla \v{f}(\v{x} + h \v{s}_{c_1}) \cdot \v{s}_{c_2} - \nabla \v{f}(\v{x}) \cdot \v{s}_{c_2} \right)
-	= \frac{J_{c_1,c_2} - J_{c_2}}{h}
-	\]
-	
-	\item These directional derivatives are contracted with $\v{\lambda}$:
-	\[
-	\v{\lambda}^\top \left( \frac{J_{c_1,c_2} - J_{c_2}}{h} \right)
-	= \sum_{r=1}^m \lambda_r \cdot \frac{J_{c_1,c_2}[r] - J_{c_2}[r]}{h}
-	\]
-	
-	\item For each color pair $(c_1, c_2)$, the sparse structure mapping $Q(c_1, c_2)$ provides a list of entries to be updated: each element $(\mathrm{rows}, \mathrm{nz})$ indicates that the flat Hessian index $\mathrm{nz}$ corresponds to a variable pair $(i,j)$, and that this entry is influenced by function components indexed by $r \in \mathrm{rows}$.
-	
-	\item To reduce redundant multiplications, we precompute:
-	\[
-	\hat{J}_{c_2}[r] := \lambda_r \cdot J_{c_2}[r]
-	\]
-	
-	\item The final Hessian entry is then assembled as:
-	\[
-	H^{\mathrm{flat}}_{\mathrm{nz}} \approx \sum_{r \in \mathrm{rows}} \lambda_r \cdot \frac{J_{c_1,c_2}[r] - J_{c_2}[r]}{h}
-	= \sum_{r \in \mathrm{rows}} \frac{\lambda_r \cdot J_{c_1,c_2}[r] - \hat{J}_{c_2}[r]}{h}
-	\]
-	
-	\item This approach evaluates all variable combinations defined by $(c_1, c_2)$ simultaneously, leveraging the independence structure imposed by the coloring. Since the variables in the same color do not interfere in any row of $\v{f}$, we can perturb them all at once, which drastically reduces the number of required JVP evaluations.
-	
-\end{itemize}
-
-This method efficiently recovers the sparse structure and values of the adjoint-weighted Hessian by batching second derivative computations and exploiting sparsity at both the Jacobian and Hessian levels.
-
-	
-
-\end{document}
+## 1-norm                                      | 2-norm                                      | oo-norm
+#  n=4: h=1e+00, base=2,    error=0.0000000000 | n=4: h=1e+00, base=2,    error=0.0000000000 | n=4: h=1e+00, base=2,  error=0.0000000000
+#  n=3: h=1e-03, base=1.75, error=0.0000000028 | n=3: h=1e-03, base=1.75, error=0.0000000018 | n=3: h=1e-02, base=10, error=0.0000000012
+#  n=2: h=5e-05, base=1.75, error=0.0000000998 | n=2: h=5e-05, base=1.75, error=0.0000000775 | n=2: h=5e-05, base=10, error=0.0000000731
+#  n=1: h=5e-08, base=x,    error=0.0000198226 | n=1: h=5e-08, base=x,    error=0.0000131057 | n=1: h=1e-08, base=x,  error=0.0000106304

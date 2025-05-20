@@ -30,31 +30,41 @@ typedef struct {
  * COO format row/col lists lower-triangular nonzeros (∂²G/∂xi∂xj).
  * Variable pairs are grouped by (color1, color2) into HessianEntry blocks. */
 typedef struct {
-  HessianEntry** entries;  // [c1][c2] -> variable pairs for color pair
+  /* this is an array of ptrs to HessianEntry, is NULL if (c1, c2) is not contained */
+  HessianEntry** entries;  // __entryIndexFromColors(c1, c2, numColors) with c1 >= c2 -> variable pairs for color pair
   int* col;                // COO column indices (j)
   int* row;                // COO row indices (i)
   int size;                // number of variables (Hessian is size × size)
+  int numFuncs;            // number of functions in the augmented Hessian
   int lnnz;                // number of lower triangular nonzeros
+  int** colsForColor;      // colsForColor[c] is an array of column indices in color c
+  int* colorSizes;         // colorSizes[c] is the number of columns in colorCols[c]
   int numColors;           // number of seed vector colors
   JACOBIAN* jac;           // input Jacobian with sparsity + coloring
 } HESSIAN_PATTERN;
 
-static inline int entryIndexFromColors(int c1, int c2, int numColors) { return c1 * numColors + c2; }
+/* always use this if accessing HESSIAN_PATTERN.entries[c1, c2] with c1 >= c2 */
+static inline int __entryIndexFromColors(int c1, int c2) { return c1 * (c1 + 1) / 2 + c2; }
 
-HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac);
-void printHessianPattern(const HESSIAN_PATTERN* hes_pattern);
-void freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
+static inline void __setSeedVector(int size, const int* cols, modelica_real value, modelica_real* seeds) {
+  for (int i = 0; i < size; i++) { seeds[cols[i]] = value; }
+}
+
+HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac);
+
+void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern);
+
+void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
 
 /* simple extension to evalJacobian of SimulationRuntime */
 void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
 
 /* numerical Hessian using foward differences on OpenModelica Jacobian */
-void __evalForwardDifferencesHessian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian,
-                                     modelica_real h, modelica_real* jac, modelica_real* hes);
+void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
+                                     modelica_real* lambda, modelica_real* hes);
 
 /* numerical Hessian using extrapolation on foward differences and OpenModelica Jacobian */
-void __evalNumericalHessianExtrapolation(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian,
-                                         modelica_real h0, int steps, modelica_real* jac, modelica_real** hes);
+void __evalNumericalHessianExtrapolation(DATA* data, threadData_t* threadData, modelica_real h0, int steps);
 
 
 #endif // OPT_OM_EXTENSIONS_H

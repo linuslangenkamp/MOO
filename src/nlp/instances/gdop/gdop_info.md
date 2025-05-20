@@ -12,7 +12,7 @@ $$
 \begin{aligned}
     \frac{dx}{dt} &= f(x, u, p, t),  & \forall t &\in [t_0, t_f] \\
     g^{LB} &\leq g(x, u, p, t) \leq g^{UB},  & \forall t &\in [t_0, t_f] \\
-    r^{LB} &\leq r(x_0, x_f, p) \leq r^{UB}
+    r^{LB} &\leq r(x_0, x_f, u_f, p) \leq r^{UB}
 \end{aligned}
 $$
 

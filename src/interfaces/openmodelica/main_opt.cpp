@@ -39,16 +39,27 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     printf("tf = %f, intervals = %d, stages = %d\n", info->tf, info->intervals, info->stages);
 
-
     GDOP gdop(*problem, *collocation, *mesh, *initial_guess);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
 
-    auto jac = info->exc_jac->C;
-    print_jacobian_sparsity(jac, true, "C");
-    HESSIAN_PATTERN* pattern = generateHessianPattern(jac);
-    printHessianPattern(pattern);
+    auto jacobian = info->exc_jac->B;
+    print_jacobian_sparsity(jacobian, true, "B");
+    HESSIAN_PATTERN* pattern = __generateHessianPattern(jacobian);
+    __printHessianPattern(pattern);
+    
+    modelica_real* lambda = (modelica_real*)calloc(5, sizeof(modelica_real));
+    lambda[0] = 1;
+    modelica_real* hes = (modelica_real*)calloc(6, sizeof(modelica_real));
+    __evalHessianForwardDifferences(data, threadData, pattern, 1e-6, lambda, hes);
 
+    print_real_var_names_values(data);
+    printf("Hessian entries (COO format):\n");
+    for (int i = 0; i < 6; i++) {
+        printf("hes[%d] = %.15g\n", i, hes[i]);
+    }
+
+   __freeHessianPattern(pattern);
     return 0;
 }
