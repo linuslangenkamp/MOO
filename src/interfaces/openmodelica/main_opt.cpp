@@ -44,8 +44,8 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
 
-    auto jacobian = info->exc_jac->B;
-    print_jacobian_sparsity(jacobian, true, "B");
+    auto jacobian = info->exc_jac->C;
+    print_jacobian_sparsity(jacobian, true, "C");
     HESSIAN_PATTERN* pattern = __generateHessianPattern(jacobian);
     __printHessianPattern(pattern);
     
@@ -55,7 +55,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     __evalHessianForwardDifferences(data, threadData, pattern, 1e-8, lambda, hes);
 
     print_real_var_names_values(data);
-    printf("Hessian entries (COO format):\n");
+    printf("Hessian colorPairs (COO format):\n");
     for (int i = 0; i < 6; i++) {
         printf("hes[%d] = %.15g\n", i, hes[i]);
     }
@@ -66,13 +66,12 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
         .hes_pattern = pattern,
         .lambda = lambda
     };
+    printf("hes[%d] = %.15g\n", 5, (hes[5] - -42.96926657589535) / -42.96926657589535);
+    
+    ExtrapolationData* extrData = __initExtrapolationData(pattern->lnnz, 10);
+    __richardsonExtrapolation(extrData, __forwardDiffHessianWrapper, &args, 1e-6, 3, 2, 1, hes);
 
-    __richardsonExtrapolation(__forwardDiffHessianWrapper, &args, 1, 4, 2, 1, pattern->lnnz, hes);
-
-    printf("Hessian entries (COO format):\n");
-    for (int i = 0; i < 6; i++) {
-        printf("hes[%d] = %.15g\n", i, hes[i]);
-    }
+    printf("hes[%d] = %.15g\n", 5, (hes[5] - -42.96926657589535) / -42.96926657589535);
 
    __freeHessianPattern(pattern);
     return 0;

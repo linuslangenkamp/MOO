@@ -76,7 +76,7 @@ void __resetJacobianCSCColumnDense(int col, JACOBIAN* jacobian, modelica_real* d
  
  * The result is a `HESSIAN_PATTERN` pure C struct that includes:
  * - COO row/col index arrays for Hessian nonzeros (lower triangle).
- * - A lookup from (color₁, color₂) to `HessianEntry`, listing variable pairs and contributing rows.
+ * - A lookup from (color₁, color₂) to `ColorPair`, listing variable pairs and contributing rows.
  *
  * @param jac [in]  Pointer to a `JACOBIAN` struct (sparsity pattern and coloring).
  * @return    [out] Pointer to newly allocated `HESSIAN_PATTERN` struct, or NULL on error.
@@ -131,7 +131,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   // 5. allocate pattern
   HESSIAN_PATTERN* hes_pattern = (HESSIAN_PATTERN*)malloc(sizeof(HESSIAN_PATTERN));
-  hes_pattern->entries = (HessianEntry**)calloc(numColors * (numColors + 1) / 2, sizeof(HessianEntry*));
+  hes_pattern->colorPairs = (ColorPair**)calloc(numColors * (numColors + 1) / 2, sizeof(ColorPair*));
   hes_pattern->row = (int*)malloc(lnnz * sizeof(int));
   hes_pattern->col = (int*)malloc(lnnz * sizeof(int));
   hes_pattern->colsForColor = (int**)malloc(numColors * sizeof(int*));
@@ -160,13 +160,14 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
     hes_pattern->col[nz] = var_col;
   }
 
-  HessianEntry* entry;
+  ColorPair* colorPair;
 
-  // 8. fill HESSIAN_PATTERN.entries[c1][c2] -> HessianEntry
+  // 8. fill HESSIAN_PATTERN.colorPairs[c1][c2] -> ColorPair
   for (int c1 = 0; c1 < numColors; c1++) {
     for (int c2 = 0; c2 <= c1; c2++) {
       std::vector<std::vector<int>> rowsVec;
       std::vector<int> nnzIndicesVec;
+      std::vector<VarPair> pairVec;
 
       for (int i1 : colorCols[c1]) {
         for (int i2 : colorCols[c2]) {
@@ -186,31 +187,34 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
           rowsVec.push_back(it->second);          // function rows
           nnzIndicesVec.push_back(cooIt->second); // flat Hessian index, nz index
+          pairVec.push_back({v1, v2});            // variable pair
         }
       }
 
-      // create and allocate HessianEntry
-      int entryCount = rowsVec.size();
-      if (entryCount == 0) {
-        entry = nullptr;
+      // create and allocate ColorPair
+      int variablePairCount = rowsVec.size();
+      if (variablePairCount == 0) {
+        colorPair = nullptr;
       }
       else {
-        entry = (HessianEntry*)malloc(sizeof(HessianEntry));
-        entry->size = entryCount;
-        entry->rowIndices = (int**)malloc(entryCount * sizeof(int*));
-        entry->rowSizes = (int*)malloc(entryCount * sizeof(int));
-        entry->lnnzIndices = (int*)malloc(entryCount * sizeof(int));
+        colorPair = (ColorPair*)malloc(sizeof(ColorPair));
+        colorPair->size = variablePairCount;
+        colorPair->contributingRows = (int**)malloc(variablePairCount * sizeof(int*));
+        colorPair->numContributingRows = (int*)malloc(variablePairCount * sizeof(int));
+        colorPair->lnnzIndices = (int*)malloc(variablePairCount * sizeof(int));
+        colorPair->varPairs = (VarPair*)malloc(variablePairCount * sizeof(VarPair));
 
-        for (int i = 0; i < entryCount; i++) {
+        for (int i = 0; i < variablePairCount; i++) {
           int sz = rowsVec[i].size();
-          entry->rowIndices[i] = (int*)malloc(sz * sizeof(int));
-          memcpy(entry->rowIndices[i], rowsVec[i].data(), sz * sizeof(int));
-          entry->rowSizes[i] = sz;
-          entry->lnnzIndices[i] = nnzIndicesVec[i];
+          colorPair->contributingRows[i] = (int*)malloc(sz * sizeof(int));
+          memcpy(colorPair->contributingRows[i], rowsVec[i].data(), sz * sizeof(int));
+          colorPair->numContributingRows[i] = sz;
+          colorPair->lnnzIndices[i] = nnzIndicesVec[i];
+          colorPair->varPairs[i] = pairVec[i];
         }
       }
 
-      hes_pattern->entries[__entryIndexFromColors(c1, c2)] = entry;
+      hes_pattern->colorPairs[__getColorPairIndex(c1, c2)] = colorPair;
     }
   }
 
@@ -262,7 +266,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
   }
 
   /* allocate temp array to remember old x values and seed vector for JVPs */
-  modelica_real* ws_old_x = (modelica_real*)malloc(data->modelData->nVariablesReal * sizeof(modelica_real));
+  modelica_real* ws_old_x = (modelica_real*)malloc(hes_pattern->numFuncs * sizeof(modelica_real));
 
   /* 2. loop over all colors c1 */
   for (int c1 = 0; c1 < hes_pattern->numColors; c1++) {
@@ -286,15 +290,15 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
       jacobian->evalColumn(data, threadData, jacobian, NULL);
 
       /* 8. retrieve augmented Hessian approximation */
-      HessianEntry* colorPair = hes_pattern->entries[__entryIndexFromColors(c1, c2)];
+      ColorPair* colorPair = hes_pattern->colorPairs[__getColorPairIndex(c1, c2)];
       if (colorPair != nullptr) {
-        for (int varPair = 0; varPair < colorPair->size; varPair++) {
+        for (int varPairIdx = 0; varPairIdx < colorPair->size; varPairIdx++) {
           /* nz index in flattened Hessian array (COO format) */
-          int nz = colorPair->lnnzIndices[varPair];
+          int nz = colorPair->lnnzIndices[varPairIdx];
 
           /* rows (functions) where both ∂f/∂xi and ∂f/∂xj are nonzero */
-          int* contributingRows = colorPair->rowIndices[varPair];
-          int numberContributingRows = colorPair->rowSizes[varPair];
+          int* contributingRows = colorPair->contributingRows[varPairIdx];
+          int numContributingRows = colorPair->numContributingRows[varPairIdx];
 
           /* second derivative eval at nz index */
           modelica_real der = 0;
@@ -303,7 +307,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
            *     (1/h) ∑_{f ∈ rows} λ[f] · (J(x + h·s_{c₁})[s_{c₂}][f] - J(x)[s_{c₂}][f])
            *     where:
            *       - f / fnRow indexes function rows where both ∂f/∂xᵢ and ∂f/∂xⱼ are nonzero */
-          for (int fIdx = 0; fIdx < numberContributingRows; fIdx++) {
+          for (int fIdx = 0; fIdx < numContributingRows; fIdx++) {
             int fnRow = contributingRows[fIdx];
             der += lambda[fnRow] * (jvp[fnRow] - baseJacCols[c2][fnRow]);
           }
@@ -362,18 +366,18 @@ void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
   printf("\nColor Pair Entries:\n");
   for (int c1 = 0; c1 < hes_pattern->numColors; c1++) {
     for (int c2 = 0; c2 <= c1; c2++) {  // symmetric lower triangle
-      int idx = __entryIndexFromColors(c1, c2);
-      HessianEntry* entry = hes_pattern->entries[idx];
-      if (!entry) continue;
+      int idx = __getColorPairIndex(c1, c2);
+      ColorPair* colorPair = hes_pattern->colorPairs[idx];
+      if (!colorPair) continue;
 
-      printf("  Color pair (%d, %d): %d variable pairs\n", c1, c2, entry->size);
-      for (int i = 0; i < entry->size; i++) {
-        int nnzIdx = entry->lnnzIndices[i];
+      printf("  Color pair (%d, %d): %d variable pairs\n", c1, c2, colorPair->size);
+      for (int i = 0; i < colorPair->size; i++) {
+        int nnzIdx = colorPair->lnnzIndices[i];
         printf("    VarPair: (%d, %d), nnz_index = %d, Functions = [",
                hes_pattern->row[nnzIdx], hes_pattern->col[nnzIdx], nnzIdx);
 
-        for (int j = 0; j < entry->rowSizes[i]; j++) {
-          printf("%d%s", entry->rowIndices[i][j], (j + 1 < entry->rowSizes[i]) ? ", " : "");
+        for (int j = 0; j < colorPair->numContributingRows[i]; j++) {
+          printf("%d%s", colorPair->contributingRows[i][j], (j + 1 < colorPair->numContributingRows[i]) ? ", " : "");
         }
 
         printf("]\n");
@@ -417,20 +421,21 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
 
   int numColorPairs = hes_pattern->numColors * (hes_pattern->numColors + 1) / 2;
   for (int i = 0; i < numColorPairs; i++) {
-    HessianEntry* entry = hes_pattern->entries[i];
-    if (!entry) continue;
+    ColorPair* colorPair = hes_pattern->colorPairs[i];
+    if (!colorPair) continue;
 
-    for (int j = 0; j < entry->size; j++) {
-      free(entry->rowIndices[j]);
+    for (int j = 0; j < colorPair->size; j++) {
+      free(colorPair->contributingRows[j]);
     }
 
-    free(entry->rowIndices);
-    free(entry->rowSizes);
-    free(entry->lnnzIndices);
-    free(entry);
+    free(colorPair->contributingRows);
+    free(colorPair->numContributingRows);
+    free(colorPair->lnnzIndices);
+    free(colorPair->varPairs);
+    free(colorPair);
   }
 
-  free(hes_pattern->entries);
+  free(hes_pattern->colorPairs);
   free(hes_pattern->row);
   free(hes_pattern->col);
 
@@ -448,39 +453,54 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
 
 // ====== EXTRAPOLATION ======
 
-int __richardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h0,
-                              int steps, modelica_real stepDivisor, int methodOrder,
-                              int resultSize, modelica_real* result) {
-  /* simple wrapper fallback */
+ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps) {
+  ExtrapolationData* extrData = (ExtrapolationData*)malloc(sizeof(ExtrapolationData));
+  extrData->resultSize = resultSize;
+  extrData->maxSteps = maxSteps;
+  extrData->ws_results = (modelica_real**)malloc(maxSteps * sizeof(modelica_real*));
+  for (int i = 0; i < maxSteps; i++) {
+    extrData->ws_results[i] = (modelica_real*)malloc(resultSize * sizeof(modelica_real));
+  }
+  return extrData;
+}
+
+void __freeExtrapolationData(ExtrapolationData* extrData) {
+  for (int i = 0; i < extrData->maxSteps; i++) {
+    free(extrData->ws_results[i]);
+  }
+  free(extrData->ws_results);
+  free(extrData);
+}
+
+void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
+                              int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result) {
+  /* call fn_ptr if no extrapolation is executed */
   if (steps <= 1) {
     fn(args, h0, result);
-    return 0;
+    return;
+  }
+  else if (steps > extrData->maxSteps) {
+    fprintf(stderr, "Warning: Requested extrapolation steps '%d' exceed maximum '%d', set in __initExtrapolationData. Using '%d' instead.\n",
+            steps, extrData->maxSteps, extrData->maxSteps);
+    steps = extrData->maxSteps;
   }
 
   /* compute all stages for extrapolation */
-  modelica_real** stageResults = (modelica_real**)malloc(steps * sizeof(modelica_real*));
   for (int i = 0; i < steps; i++) {
-    stageResults[i] = (modelica_real*)malloc(resultSize * sizeof(modelica_real));
     modelica_real h = h0 / pow(stepDivisor, i);
-    fn(args, h, stageResults[i]);
+    fn(args, h, extrData->ws_results[i]);
   }
 
   /* perform extrapolation: cancel taylor terms */
-  for (int j = 0; j < resultSize; j++) {
-    for (int i = 1; i < steps; i++) {
-      modelica_real factor = pow(stepDivisor, methodOrder * i);
-      stageResults[i][j] = (factor * stageResults[i][j] - stageResults[i - 1][j]) / (factor - 1);
+  for (int j = 0; j < extrData->resultSize; j++) {
+    for (int k = 1; k < steps; k++) {
+      for (int i = steps - 1; i >= k; i--) {
+        modelica_real factor = pow(stepDivisor, methodOrder * k);
+        extrData->ws_results[i][j] = (factor * extrData->ws_results[i][j] - extrData->ws_results[i - 1][j]) / (factor - 1);
+      }
     }
-    result[j] = stageResults[steps - 1][j];
+    result[j] = extrData->ws_results[steps - 1][j];
   }
-
-  /* free stages */
-  for (int i = 0; i < steps; i++) {
-    free(stageResults[i]);
-  }
-  free(stageResults);
-
-  return 0;
 }
 
 /* wrapper for __evalHessianForwardDifferences */

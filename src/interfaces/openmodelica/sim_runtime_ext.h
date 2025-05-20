@@ -16,24 +16,31 @@
 
 #include "debug_om.h"
 
-/* Maps a (color1, color2) pair to all (i,j) variable pairs sharing these colors.
- * For each (i,j), stores the list of function rows f where both ∂f/∂xi and ∂f/∂xj are nonzero (overestimate).
- * Also stores the flat COO index for (i,j). */
 typedef struct {
-  int** rowIndices;  // rowIndices[k][]: function rows for k-th variable pair
-  int* rowSizes;     // number of rows for each pair
-  int* lnnzIndices;  // mapping from variable pair to Hessian COO index
-  int size;          // number of variable pairs in this color group
-} HessianEntry;
+  int i;  // first variable index
+  int j;  // second variable index
+} VarPair;
+
+/* Maps a (color1, color2) pair to all (i, j) variable pairs sharing these colors.
+ * For each (i, j), stores the list of function rows f where both ∂f/∂xi and ∂f/∂xj are nonzero (overestimate).
+ * Also stores the flat COO nz index for (i, j). */
+typedef struct {
+  // actual variable pairs, i.e. varPair[k] == (v1, v2); can also be accessed via HESSIAN->(row, col)[lnnzIndices[k]]
+  VarPair* varPairs;         // is the variable pair contributing to the functions contributingRows[k]
+  int** contributingRows;    // contributingRows[k] = functions affecting the varPair[k]
+  int* numContributingRows;  // number of rows for each pair
+  int* lnnzIndices;          // mapping from variable pair to Hessian COO index
+  int size;                  // number of variable pairs in this color group
+} ColorPair;
 
 /* Holds the compressed Hessian structure derived from a Jacobian.
  * COO format row/col lists lower-triangular nonzeros (∂²G/∂xi∂xj).
- * Variable pairs are grouped by (color1, color2) into HessianEntry blocks. */
+ * Variable pairs are grouped by (color1, color2) inside ColorPair blocks. */
 typedef struct {
-  /* this is an array of ptrs to HessianEntry, is NULL if (c1, c2) is not contained */
-  HessianEntry** entries;  // __entryIndexFromColors(c1, c2, numColors) with c1 >= c2 -> variable pairs for color pair
-  int* col;                // COO column indices (j)
-  int* row;                // COO row indices (i)
+  /* this is an array of ptrs to ColorPair, is NULL if (c1, c2) is not contained */
+  ColorPair** colorPairs;  // __getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
+  int* row;                // flat COO row indices (i)
+  int* col;                // flat COO column indices (j)
   int size;                // number of variables (Hessian is size × size)
   int numFuncs;            // number of functions in the augmented Hessian
   int lnnz;                // number of lower triangular nonzeros
@@ -43,8 +50,12 @@ typedef struct {
   JACOBIAN* jac;           // input Jacobian with sparsity + coloring
 } HESSIAN_PATTERN;
 
-/* always use this if accessing HESSIAN_PATTERN.entries[c1, c2] with c1 >= c2 */
-static inline int __entryIndexFromColors(int c1, int c2) { return c1 * (c1 + 1) / 2 + c2; }
+/* always use this if accessing HESSIAN_PATTERN.colorPairs
+ * returns the index of a colorPair (c1, c2) in the HESSIAN_PATTERN.colorPairs */
+static inline int __getColorPairIndex(int c1, int c2) {
+  if (c1 >= c2) return c1 * (c1 + 1) / 2 + c2;
+  else return c2 * (c2 + 1) / 2 + c1;
+}
 
 static inline void __setSeedVector(int size, const int* cols, modelica_real value, modelica_real* seeds) {
   for (int i = 0; i < size; i++) { seeds[cols[i]] = value; }
@@ -68,8 +79,15 @@ void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* res
 
 // ===== EXTRAPOLATION =====
 
+
 /* generic computation function of the form "result := f(args, h0)" */
 typedef void (*Computation_fn_ptr)(void* args, modelica_real h0, modelica_real* result);
+
+typedef struct {
+  modelica_real** ws_results;
+  int resultSize;
+  int maxSteps;
+} ExtrapolationData;
 
 /* augmented Hessian structure for richardson extrapolation scheme */
 typedef struct {
@@ -79,8 +97,11 @@ typedef struct {
   modelica_real* lambda;
 } HessianFiniteDiffArgs;
 
-int __richardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h0,
-                              int steps, modelica_real stepDivisor, int methodOrder,
-                              int resultSize, modelica_real* result);
+ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps);
+void __freeExtrapolationData(ExtrapolationData* extrData);
+
+/* generic extrapolation routine */
+void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
+                              int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result);
 
 #endif // OPT_OM_EXTENSIONS_H
