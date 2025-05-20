@@ -219,3 +219,44 @@ for i, res in enumerate(results):
 #  n=3: h=1e-03, base=1.75, error=0.0000000028 | n=3: h=1e-03, base=1.75, error=0.0000000018 | n=3: h=1e-02, base=10, error=0.0000000012
 #  n=2: h=5e-05, base=1.75, error=0.0000000998 | n=2: h=5e-05, base=1.75, error=0.0000000775 | n=2: h=5e-05, base=10, error=0.0000000731
 #  n=1: h=5e-08, base=x,    error=0.0000198226 | n=1: h=5e-08, base=x,    error=0.0000131057 | n=1: h=1e-08, base=x,  error=0.0000106304
+
+# Re-execute due to state reset
+
+import numpy as np
+from sympy import symbols, exp, diff, lambdify, Matrix
+
+# Define symbols
+x1, x2, u = symbols('x1 x2 u')
+
+# Constants
+R = 1.9872
+T = 700 * u
+
+# Reaction rate expressions
+k1 = exp(8.86 - 20300 / R / T)
+k2 = exp(24.25 - 37400 / R / T)
+k3 = exp(23.67 - 33800 / R / T)
+k4 = exp(18.75 - 28200 / R / T)
+k5 = exp(20.70 - 31000 / R / T)
+
+# Define the function
+f = (-k1 * x1) - (k3 + k4 + k5) * x1 * x2
+
+# Variables vector
+vars_vec = Matrix([x1, x2, u])
+
+# Compute Hessian
+hessian = f.diff(vars_vec).jacobian(vars_vec)
+
+# Lambdify Hessian for numerical evaluation
+hessian_func = lambdify((x1, x2, u), hessian, 'numpy')
+
+# Evaluate at given point
+x1_val = 0.9528284865048966
+x2_val = 0.02791790905016496
+u_val = 1.068785721450124
+np.set_printoptions(precision=16)
+
+hessian_numeric = np.array(hessian_func(x1_val, x2_val, u_val), dtype=np.float64)
+
+print(hessian_numeric)

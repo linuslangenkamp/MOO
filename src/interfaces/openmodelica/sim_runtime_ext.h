@@ -63,8 +63,24 @@ void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JA
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
                                      modelica_real* lambda, modelica_real* hes);
 
-/* numerical Hessian using extrapolation on foward differences and OpenModelica Jacobian */
-void __evalNumericalHessianExtrapolation(DATA* data, threadData_t* threadData, modelica_real h0, int steps);
+/* wrapper of __evalHessianForwardDifferences for __richardsonExtrapolation */
+void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
+// ===== EXTRAPOLATION =====
+
+/* generic computation function of the form "result := f(args, h0)" */
+typedef void (*Computation_fn_ptr)(void* args, modelica_real h0, modelica_real* result);
+
+/* augmented Hessian structure for richardson extrapolation scheme */
+typedef struct {
+  DATA* data;
+  threadData_t* threadData;
+  HESSIAN_PATTERN* hes_pattern;
+  modelica_real* lambda;
+} HessianFiniteDiffArgs;
+
+int __richardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h0,
+                              int steps, modelica_real stepDivisor, int methodOrder,
+                              int resultSize, modelica_real* result);
 
 #endif // OPT_OM_EXTENSIONS_H

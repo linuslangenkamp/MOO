@@ -52,9 +52,23 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     modelica_real* lambda = (modelica_real*)calloc(5, sizeof(modelica_real));
     lambda[0] = 1;
     modelica_real* hes = (modelica_real*)calloc(6, sizeof(modelica_real));
-    __evalHessianForwardDifferences(data, threadData, pattern, 1e-6, lambda, hes);
+    __evalHessianForwardDifferences(data, threadData, pattern, 1e-8, lambda, hes);
 
     print_real_var_names_values(data);
+    printf("Hessian entries (COO format):\n");
+    for (int i = 0; i < 6; i++) {
+        printf("hes[%d] = %.15g\n", i, hes[i]);
+    }
+    
+    HessianFiniteDiffArgs args = {
+        .data = data,
+        .threadData = threadData,
+        .hes_pattern = pattern,
+        .lambda = lambda
+    };
+
+    __richardsonExtrapolation(__forwardDiffHessianWrapper, &args, 1, 4, 2, 1, pattern->lnnz, hes);
+
     printf("Hessian entries (COO format):\n");
     for (int i = 0; i < 6; i++) {
         printf("hes[%d] = %.15g\n", i, hes[i]);
@@ -63,3 +77,4 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
    __freeHessianPattern(pattern);
     return 0;
 }
+

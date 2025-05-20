@@ -448,13 +448,11 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
 
 // ====== EXTRAPOLATION ======
 
-typedef void (*Computation_fn_ptr)(void* args, modelica_real h, modelica_real* result);
-
-int __RichardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h0,
-                              int steps, int resultSize, modelica_real* result,
-                              modelica_real baseStepDivisor, int baseOrder) {
-  /* simple fallback */
-  if (steps == 0 || baseStepDivisor <= 1.0 || baseOrder <= 0) {
+int __richardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h0,
+                              int steps, modelica_real stepDivisor, int methodOrder,
+                              int resultSize, modelica_real* result) {
+  /* simple wrapper fallback */
+  if (steps <= 1) {
     fn(args, h0, result);
     return 0;
   }
@@ -463,14 +461,14 @@ int __RichardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h
   modelica_real** stageResults = (modelica_real**)malloc(steps * sizeof(modelica_real*));
   for (int i = 0; i < steps; i++) {
     stageResults[i] = (modelica_real*)malloc(resultSize * sizeof(modelica_real));
-    modelica_real h = h0 / pow(baseStepDivisor, i);
+    modelica_real h = h0 / pow(stepDivisor, i);
     fn(args, h, stageResults[i]);
   }
 
-  /* cancel taylor terms */
+  /* perform extrapolation: cancel taylor terms */
   for (int j = 0; j < resultSize; j++) {
     for (int i = 1; i < steps; i++) {
-      modelica_real factor = pow(baseStepDivisor, baseOrder * i);
+      modelica_real factor = pow(stepDivisor, methodOrder * i);
       stageResults[i][j] = (factor * stageResults[i][j] - stageResults[i - 1][j]) / (factor - 1);
     }
     result[j] = stageResults[steps - 1][j];
@@ -483,4 +481,10 @@ int __RichardsonExtrapolation(Computation_fn_ptr fn, void* args, modelica_real h
   free(stageResults);
 
   return 0;
+}
+
+/* wrapper for __evalHessianForwardDifferences */
+void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result) {
+  HessianFiniteDiffArgs* hessianArgs = (HessianFiniteDiffArgs*)args;
+  __evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h, hessianArgs->lambda, result);
 }
