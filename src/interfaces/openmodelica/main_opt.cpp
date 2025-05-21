@@ -47,15 +47,21 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto jacobian = info->exc_jac->C;
     print_jacobian_sparsity(jacobian, true, "C");
     HESSIAN_PATTERN* pattern = __generateHessianPattern(jacobian);
+    info->auto_free.attach(pattern, __freeHessianPattern);
+
     __printHessianPattern(pattern);
     
-    modelica_real* lambda = (modelica_real*)calloc(5, sizeof(modelica_real));
+    modelica_real* lambda = (modelica_real*)malloc(5 * sizeof(modelica_real));
     lambda[0] = 1;
+    lambda[1] = 1;
+    lambda[2] = 1;
+    lambda[3] = 1;
+    lambda[4] = 1;
     modelica_real* hes = (modelica_real*)calloc(6, sizeof(modelica_real));
     __evalHessianForwardDifferences(data, threadData, pattern, 1e-8, lambda, hes);
 
     print_real_var_names_values(data);
-    printf("Hessian colorPairs (COO format):\n");
+    printf("\n[Std Finite Differences]\n");
     for (int i = 0; i < 6; i++) {
         printf("hes[%d] = %.15g\n", i, hes[i]);
     }
@@ -66,14 +72,16 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
         .hes_pattern = pattern,
         .lambda = lambda
     };
-    printf("hes[%d] = %.15g\n", 5, (hes[5] - -42.96926657589535) / -42.96926657589535);
     
     ExtrapolationData* extrData = __initExtrapolationData(pattern->lnnz, 10);
-    __richardsonExtrapolation(extrData, __forwardDiffHessianWrapper, &args, 1e-6, 3, 2, 1, hes);
+    info->auto_free.attach(extrData, __freeExtrapolationData);
+    //  1e-3, 3, 2!
+    __richardsonExtrapolation(extrData, __forwardDiffHessianWrapper, &args, 1e-3, 3, 2, 1, hes);
+    printf("\n[Extrapolation]\n");
+    for (int i = 0; i < 6; i++) { printf("hes[%d] = %.15g\n", i, hes[i]); }
 
-    printf("hes[%d] = %.15g\n", 5, (hes[5] - -42.96926657589535) / -42.96926657589535);
-
-   __freeHessianPattern(pattern);
+    free(lambda);
+    free(hes);
     return 0;
 }
 

@@ -226,7 +226,7 @@ import numpy as np
 from sympy import symbols, exp, diff, lambdify, Matrix
 
 # Define symbols
-x1, x2, u = symbols('x1 x2 u')
+x1, x2, x3, x4, u = symbols('x1 x2 x3 x4 u')
 
 # Constants
 R = 1.9872
@@ -240,23 +240,31 @@ k4 = exp(18.75 - 28200 / R / T)
 k5 = exp(20.70 - 31000 / R / T)
 
 # Define the function
-f = (-k1 * x1) - (k3 + k4 + k5) * x1 * x2
+F = []
+F.append((-k1 * x1) - (k3 + k4 + k5) * x1 * x2)
+F.append(k1 * x1 - k2 * x2 + k3 * x1 * x2)
+F.append(k2 * x2 + k4 * x1 * x2)
+F.append(k5 * x1 * x2)
 
+lambd = [1, 1, 1, 1]
+
+f = sum(lambd[i] * F[i] for i in range(4))
+print(f)
 # Variables vector
-vars_vec = Matrix([x1, x2, u])
+vars_vec = Matrix([x1, x2, x3, x4, u])
 
 # Compute Hessian
 hessian = f.diff(vars_vec).jacobian(vars_vec)
 
 # Lambdify Hessian for numerical evaluation
-hessian_func = lambdify((x1, x2, u), hessian, 'numpy')
+hessian_func = lambdify((x1, x2, x3, x4, u), hessian, 'numpy')
 
 # Evaluate at given point
 x1_val = 0.9528284865048966
 x2_val = 0.02791790905016496
 u_val = 1.068785721450124
-np.set_printoptions(precision=16)
+np.set_printoptions(precision=7)
 
-hessian_numeric = np.array(hessian_func(x1_val, x2_val, u_val), dtype=np.float64)
-
+hessian_numeric = np.array(hessian_func(x1_val, x2_val, 0, 0, u_val), dtype=np.float128)
+print()
 print(hessian_numeric)

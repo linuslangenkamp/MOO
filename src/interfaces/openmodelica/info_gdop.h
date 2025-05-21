@@ -11,6 +11,9 @@
 struct ExchangeJacobians;
 
 struct InfoGDOP {
+    /* custom attaching and auto freeing of C-style mallocs / callocs */
+    AutoFree auto_free;
+
     /* problem sizes */
     int x_size;
     int u_size;

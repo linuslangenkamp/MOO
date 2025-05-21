@@ -26,11 +26,11 @@ typedef struct {
  * Also stores the flat COO nz index for (i, j). */
 typedef struct {
   // actual variable pairs, i.e. varPair[k] == (v1, v2); can also be accessed via HESSIAN->(row, col)[lnnzIndices[k]]
-  VarPair* varPairs;         // is the variable pair contributing to the functions contributingRows[k]
-  int** contributingRows;    // contributingRows[k] = functions affecting the varPair[k]
-  int* numContributingRows;  // number of rows for each pair
-  int* lnnzIndices;          // mapping from variable pair to Hessian COO index
-  int size;                  // number of variable pairs in this color group
+  VarPair* varPairs;        // is the variable pair contributing to the functions contributingRows[k]
+  int** contributingRows;   // contributingRows[k] = functions affecting the varPair[k]
+  int* numContributingRows; // number of rows for each pair
+  int* lnnzIndices;         // mapping from variable pair to Hessian COO index
+  int size;                 // number of variable pairs in this color group
 } ColorPair;
 
 /* Holds the compressed Hessian structure derived from a Jacobian.
@@ -38,16 +38,18 @@ typedef struct {
  * Variable pairs are grouped by (color1, color2) inside ColorPair blocks. */
 typedef struct {
   /* this is an array of ptrs to ColorPair, is NULL if (c1, c2) is not contained */
-  ColorPair** colorPairs;  // __getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
-  int* row;                // flat COO row indices (i)
-  int* col;                // flat COO column indices (j)
-  int size;                // number of variables (Hessian is size × size)
-  int numFuncs;            // number of functions in the augmented Hessian
-  int lnnz;                // number of lower triangular nonzeros
-  int** colsForColor;      // colsForColor[c] is an array of column indices in color c
-  int* colorSizes;         // colorSizes[c] is the number of columns in colorCols[c]
-  int numColors;           // number of seed vector colors
-  JACOBIAN* jac;           // input Jacobian with sparsity + coloring
+  ColorPair** colorPairs;     // __getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
+  int* row;                   // flat COO row indices (i)
+  int* col;                   // flat COO column indices (j)
+  int size;                   // number of variables (Hessian is size × size)
+  int numFuncs;               // number of functions in the augmented Hessian
+  int lnnz;                   // number of lower triangular nonzeros
+  int** colsForColor;         // colsForColor[c] is an array of column indices in color c
+  int* colorSizes;            // colorSizes[c] is the number of columns in colorCols[c]
+  int numColors;              // number of seed vector colors
+  JACOBIAN* jac;              // input Jacobian with sparsity + coloring
+  modelica_real* ws_oldX;     // workspace array to remember old x values and seed vector for JVPs
+  modelica_real** ws_baseJac; // workspace stores all rows x colors of the base Jacobian J(x)
 } HESSIAN_PATTERN;
 
 /* always use this if accessing HESSIAN_PATTERN.colorPairs
@@ -78,7 +80,6 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
 void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
 // ===== EXTRAPOLATION =====
-
 
 /* generic computation function of the form "result := f(args, h0)" */
 typedef void (*Computation_fn_ptr)(void* args, modelica_real h0, modelica_real* result);

@@ -85,14 +85,14 @@ void __resetJacobianCSCColumnDense(int col, JACOBIAN* jacobian, modelica_real* d
 HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
   if (jac == nullptr or jac->sparsePattern == nullptr) { return nullptr; }
 
-  int n_vars = jac->sizeCols;
-  int n_funcs = jac->sizeRows;
+  int numVars = jac->sizeCols;
+  int numFuncs = jac->sizeRows;
   SPARSE_PATTERN* sp = jac->sparsePattern;
   int numColors = sp->maxColors;
 
   // 1. build adjacency list: which variables affect which functions
-  std::vector<std::vector<int>> adj(n_funcs);
-  for (int col = 0; col < n_vars; col++) {
+  std::vector<std::vector<int>> adj(numFuncs);
+  for (int col = 0; col < numVars; col++) {
     for (int nz = (int)sp->leadindex[col]; nz < (int)sp->leadindex[col + 1]; nz++) {
       int row = sp->index[nz];
       adj[row].push_back(col);
@@ -101,7 +101,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   // 2. build M[v1, v2] = list of function rows where both variables appear
   std::map<std::pair<int, int>, std::vector<int>> M;
-  for (int f = 0; f < n_funcs; f++) {
+  for (int f = 0; f < numFuncs; f++) {
     const auto& vars = adj[f];
     for (size_t i = 0; i < vars.size(); i++) {
       for (size_t j = 0; j <= i; j++) {
@@ -122,7 +122,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   // 4. build color groups :: TODO: implement this in OpenModelica for the JACOBIAN
   std::vector<std::vector<int>> colorCols(numColors);
-  for (int col = 0; col < n_vars; ++col) {
+  for (int col = 0; col < numVars; ++col) {
     int c = sp->colorCols[col];
     if (c > 0) {
       colorCols[c - 1].push_back(col);
@@ -137,10 +137,17 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
   hes_pattern->colsForColor = (int**)malloc(numColors * sizeof(int*));
   hes_pattern->colorSizes = (int*)malloc(numColors * sizeof(int));
   hes_pattern->numColors = numColors;
-  hes_pattern->numFuncs = n_funcs;
-  hes_pattern->size = n_vars;
+  hes_pattern->numFuncs = numFuncs;
+  hes_pattern->size = numVars;
   hes_pattern->lnnz = lnnz;
   hes_pattern->jac = jac;
+
+  /* workspace memory */
+  hes_pattern->ws_oldX = (modelica_real*)malloc(numFuncs * sizeof(modelica_real));
+  hes_pattern->ws_baseJac = (modelica_real**)malloc(numColors * sizeof(modelica_real*));
+  for (int c = 0; c < hes_pattern->numColors; c++) {
+    hes_pattern->ws_baseJac[c] = (modelica_real*)calloc(numFuncs, sizeof(modelica_real));
+  }
 
   // 6. remember columns in each color
   for (int i = 0; i < numColors; ++i) {
@@ -229,44 +236,42 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * Assumes the current point x has all controls and states set in `data->localData[0]->realVars`.
  *
  * @param[in]  data         Runtime simulation data structure.
- * @param[in]  threadData   Thread-local data (unused internally).
+ * @param[in]  threadData   Thread-local data.
  * @param[in]  hes_pattern  Precomputed sparsity and coloring pattern for Hessian and Jacobian.
- * @param[in]  h            Perturbation step size (for now without nominal incorporation).
+ * @param[in]  h            Perturbation step size (for now without nominals).
  * @param[in]  lambda       Adjoint vector (size = number of functions).
  * @param[out] hes          Output sparse Hessian values (COO format of hes_pattern, length = hes_pattern->nnz).
  */
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
                                      modelica_real* lambda, modelica_real* hes) {
-  /* 0. retrieve data */
-  JACOBIAN* jacobian = hes_pattern->jac;
-  modelica_real* seeds = jacobian->seedVars;
-  modelica_real* jvp = jacobian->resultVars;
+  /* 0. retrieve pointers */
+  JACOBIAN*       jacobian     = hes_pattern->jac;
+  modelica_real** ws_baseJac   = hes_pattern->ws_baseJac;
+  modelica_real*  ws_oldX      = hes_pattern->ws_oldX;
+  modelica_real*  seeds        = jacobian->seedVars;
+  modelica_real*  jvp          = jacobian->resultVars;
+  unsigned int*   jacLeadIndex = jacobian->sparsePattern->leadindex;
+  unsigned int*   jacIndex     = jacobian->sparsePattern->index;
 
   /* TODO: Attention: for now we assume all inputs are control variables (to optimize); update this when needed! => iterate over all controls */
   int nStates = data->modelData->nStates;
   int uOffset = data->modelData->nVariablesReal - data->modelData->nInputVars - data->modelData->nStates;
 
   /* 1. evaluate all JVPs J(x) * s_{c} of the current point x */
-  modelica_real** baseJacCols = (modelica_real**)malloc(hes_pattern->numColors * sizeof(modelica_real*));
-
   for (int c = 0; c < hes_pattern->numColors; c++) {
-    baseJacCols[c] = (modelica_real*)calloc(hes_pattern->numFuncs, sizeof(modelica_real));
     __setSeedVector(hes_pattern->colorSizes[c], hes_pattern->colsForColor[c], 1, seeds);
     jacobian->evalColumn(data, threadData, jacobian, NULL);
 
     for (int colIndex = 0; colIndex < hes_pattern->colorSizes[c]; colIndex++) {
       int col = hes_pattern->colsForColor[c][colIndex];
-      for (unsigned int nz = jacobian->sparsePattern->leadindex[col]; nz < jacobian->sparsePattern->leadindex[col + 1]; nz++) {
-        int row = jacobian->sparsePattern->index[nz];
-        baseJacCols[c][row] = jacobian->resultVars[row];
+      for (unsigned int nz = jacLeadIndex[col]; nz < jacLeadIndex[col + 1]; nz++) {
+        int row = jacIndex[nz];
+        ws_baseJac[c][row] = jvp[row];
       }
     }
 
     __setSeedVector(hes_pattern->colorSizes[c], hes_pattern->colsForColor[c], 0, seeds);
   }
-
-  /* allocate temp array to remember old x values and seed vector for JVPs */
-  modelica_real* ws_old_x = (modelica_real*)malloc(hes_pattern->numFuncs * sizeof(modelica_real));
 
   /* 2. loop over all colors c1 */
   for (int c1 = 0; c1 < hes_pattern->numColors; c1++) {
@@ -277,7 +282,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
       int realVarsIndex = (col < nStates ? col : uOffset + col);
 
       /* remember the current realVars (to be perturbated) and perturbate */
-      ws_old_x[columnIndex] = data->localData[0]->realVars[realVarsIndex];
+      ws_oldX[columnIndex] = data->localData[0]->realVars[realVarsIndex];
       data->localData[0]->realVars[realVarsIndex] += h; /* TODO: incorporate nominals here for perturbation * nom */
     }
 
@@ -309,7 +314,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
            *       - f / fnRow indexes function rows where both ∂f/∂xᵢ and ∂f/∂xⱼ are nonzero */
           for (int fIdx = 0; fIdx < numContributingRows; fIdx++) {
             int fnRow = contributingRows[fIdx];
-            der += lambda[fnRow] * (jvp[fnRow] - baseJacCols[c2][fnRow]);
+            der += lambda[fnRow] * (jvp[fnRow] - ws_baseJac[c2][fnRow]);
           }
 
           /* store and divide by step size, TODO: make h depend on variable nominal
@@ -326,16 +331,9 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
     for (int columnIndex = 0; columnIndex < hes_pattern->colorSizes[c1]; columnIndex++) {
       int col = hes_pattern->colsForColor[c1][columnIndex];
       int realVarsIndex = (col < nStates ? col : uOffset + col);
-      data->localData[0]->realVars[realVarsIndex] = ws_old_x[columnIndex];
+      data->localData[0]->realVars[realVarsIndex] = ws_oldX[columnIndex];
     }
   }
-
-  for (int c = 0; c < hes_pattern->numColors; c++) {
-    free(baseJacCols[c]);
-  }
-  free(baseJacCols);
-
-  free(ws_old_x);
 }
 
 void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
@@ -419,6 +417,7 @@ void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
 void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
   if (!hes_pattern) return;
 
+  /* free colorPairs */
   int numColorPairs = hes_pattern->numColors * (hes_pattern->numColors + 1) / 2;
   for (int i = 0; i < numColorPairs; i++) {
     ColorPair* colorPair = hes_pattern->colorPairs[i];
@@ -447,9 +446,15 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
   }
   free(hes_pattern->colorSizes);
 
+  /* workspace free */
+  for (int c = 0; c < hes_pattern->numColors; c++) {
+    free(hes_pattern->ws_baseJac[c]);
+  }
+  free(hes_pattern->ws_baseJac);
+  free(hes_pattern->ws_oldX);
+
   free(hes_pattern);
 }
-
 
 // ====== EXTRAPOLATION ======
 
