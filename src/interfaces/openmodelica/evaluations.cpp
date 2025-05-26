@@ -54,7 +54,7 @@ void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVect
             if (col < info.x_size) {
                 /* just point to nz_C, since for 1 row, CSC == COO */
                 mr[0].jac.dxf.push_back(JacobianSparsity{col, nz_C});
-            }            
+            }
             else if (col < info.xu_size) {
                 /* just point to nz_C, since for 1 row, CSC == COO */
                 mr[0].jac.duf.push_back(JacobianSparsity{col - info.x_size, nz_C});
@@ -77,6 +77,123 @@ void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVect
         }
         else if (col < info.xu_size) {
             mr[r_start + row].jac.duf.push_back(JacobianSparsity{col - info.x_size, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
+        }
+    }
+}
+
+void init_hes(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
+              AugmentedParameterHessian& aug_hes_lfg_pp, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
+    init_hes_lfg(data, threadData, info, aug_hes_lfg, aug_hes_lfg_pp);
+    init_hes_mr(data, threadData, info, aug_hes_mr, mr);
+}
+
+void init_hes_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
+                  AugmentedParameterHessian& aug_hes_lfg_pp) {
+    /* TODO: include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
+
+    HESSIAN_PATTERN* hes_b = info.exc_hes->B;
+
+    for (int lnz = 0; lnz < hes_b->lnnz; lnz++) {
+        int row = hes_b->row[lnz];
+        int col = hes_b->col[lnz];
+
+        if (row < info.x_size && col < info.x_size) {
+            aug_hes_lfg.dx_dx.push_back({row, col, lnz});
+        }
+        else if (row >= info.x_size && col < info.x_size) {
+            aug_hes_lfg.du_dx.push_back({row - info.x_size, col, lnz});
+        }
+        else {
+            aug_hes_lfg.du_du.push_back({row - info.x_size, col - info.x_size, lnz});
+        }
+    }
+}
+
+void init_hes_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
+    HESSIAN_PATTERN* hes_c = info.exc_hes->C;
+    HESSIAN_PATTERN* hes_d = info.exc_hes->D;
+
+    OrderedIndexSet hessian_mr;
+    std::vector<HessianSparsity> M_sparsities;
+    std::vector<int> M_cols;
+    if (info.mayer_exists) {
+        // ignore x0 and p for now
+        for (auto& M_dxf : mr[0].jac.dxf) M_cols.push_back(M_dxf.col);
+        for (auto& M_duf : mr[0].jac.duf) M_cols.push_back(info.x_size + M_duf.col);
+
+        // estimate lower triangle sparsity pattern
+        for (size_t i = 0; i < M_cols.size(); i++) {
+            for (size_t j = 0; j <= i; j++) {
+                M_sparsities.push_back({M_cols[i], M_cols[j], 0});
+            }
+        }
+        hessian_mr.insert_sparsity(M_sparsities, 0, 0);
+
+    }
+
+    if (hes_d != nullptr) {
+        for (int nz = 0; nz < hes_d->lnnz; nz++) {
+            hessian_mr.set.insert({hes_d->row[nz], hes_d->col[nz]});
+        }
+    }
+
+
+    // create augmented sparsity pattern struct(H(M) + H(r))
+    int lnz = 0;
+    std::map<std::pair<int, int>, int> sparsity_to_lnz;
+    for (auto pair : hessian_mr.set) {
+        auto [row, col] = pair;
+        sparsity_to_lnz[pair] = lnz;
+
+        if (row < info.x_size && col < info.x_size) {
+            aug_hes_mr.dxf_dxf.push_back({row, col, lnz});
+        }
+        else if (row >= info.x_size && col < info.x_size) {
+            aug_hes_mr.duf_dxf.push_back({row - info.x_size, col, lnz});
+        }
+        else {
+            aug_hes_mr.duf_duf.push_back({row - info.x_size, col - info.x_size, lnz});
+        }
+        lnz++;
+    }
+
+    int c_index = 0;
+    info.exc_hes->C_to_Mr_buffer = FixedVector<std::pair<int, int>>(info.mayer_exists ? M_sparsities.size() : 0);
+
+    if (hes_c != nullptr) {
+        int hes_c_index = 0;
+        for (const auto& mayer_hess : M_sparsities) {
+            while (hes_c_index < hes_c->lnnz && 
+                (hes_c->row[hes_c_index] < mayer_hess.row || 
+                (hes_c->row[hes_c_index] == mayer_hess.row && hes_c->col[hes_c_index] < mayer_hess.col))) {
+                hes_c_index++;
+            }
+            auto it = sparsity_to_lnz.find({mayer_hess.row, mayer_hess.col});
+            if (it != sparsity_to_lnz.end()) {
+                info.exc_hes->C_to_Mr_buffer[c_index++] = {hes_c_index, it->second};
+                hes_c_index++;
+            }
+            else {
+                std::cout << "Error: Hessian entry (row=" << mayer_hess.row << ", col=" << mayer_hess.col
+                        << ") from hes_d not found in augmented pattern!" << std::endl;
+                std::abort();
+            }
+        }
+    }
+
+    info.exc_hes->D_to_Mr_buffer = FixedVector<std::pair<int, int>>(hes_d ? hes_d->lnnz : 0);
+    if (hes_d != nullptr) {
+        for (int i = 0; i < hes_d->lnnz; i++) {
+            int row = hes_d->row[i];
+            int col = hes_d->col[i];
+            auto it = sparsity_to_lnz.find({row, col});
+            if (it != sparsity_to_lnz.end()) {
+                info.exc_hes->D_to_Mr_buffer[i] = {i, it->second};
+            } else {
+                std::cout << "Error: Hessian entry (row=" << row << ", col=" << col
+                        << ") from hes_d not found in augmented pattern!" << std::endl;
+                std::abort();
+            }
         }
     }
 }

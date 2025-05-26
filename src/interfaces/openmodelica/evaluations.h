@@ -4,6 +4,7 @@
 #include "simulation_data.h"
 
 #include <nlp/instances/gdop/problem.h>
+#include <base/block_sparsity.h>
 
 #include "debug_om.h"
 #include "info_gdop.h"
@@ -18,6 +19,13 @@ void init_eval_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVec
 void init_jac(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr);
 void init_jac_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg);
 void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionMR>& mr);
+
+/* init Hessians */
+void init_hes(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
+              AugmentedParameterHessian& aug_hes_lfg_pp, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr);
+void init_hes_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
+                  AugmentedParameterHessian& aug_hes_lfg_pp);
+void init_hes_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr);
 
 /* set values in OM realVars array / time value */
 void set_parameters(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* p);

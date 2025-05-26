@@ -38,13 +38,16 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetNumericValue("alpha_red_factor", 0.5);
-    
+
     // strategies
     app->Options()->SetStringValue("mu_strategy", "adaptive");
     app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
     app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
-    
+    app->Options()->SetStringValue("bound_mult_init_method","constant");
+    app->Options()->SetStringValue("dependency_detection_with_rhs", "yes");
+    app->Options()->SetNumericValue("nu_init", 1e-9);
+    app->Options()->SetNumericValue("eta_phi", 1e-10);
     // subproblem
     app->Options()->SetStringValue("linear_solver", solver_flags.get_flag_string_fallback("LinearSolver", "MUMPS"));
 

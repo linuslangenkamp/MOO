@@ -38,3 +38,38 @@ ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoG
     C_buffer(FixedVector<modelica_real>(C_coo.nnz)),
     D_buffer(FixedVector<modelica_real>(D_coo.nnz)) {
 }
+
+ExchangeHessians::ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDOP& info) :
+    A(__generateHessianPattern(info.exc_jac->A)),
+    B(__generateHessianPattern(info.exc_jac->B)),
+    C(__generateHessianPattern(info.exc_jac->C)),
+    D(__generateHessianPattern(info.exc_jac->D)),
+
+    A_exists(info.exc_jac->A_exists),
+    B_exists(info.exc_jac->B_exists),
+    C_exists(info.exc_jac->C_exists),
+    D_exists(info.exc_jac->D_exists),
+
+    A_extr(!A_exists ? nullptr : __initExtrapolationData(A->lnnz, 5)),
+    B_extr(!B_exists ? nullptr : __initExtrapolationData(B->lnnz, 5)),
+    C_extr(!C_exists ? nullptr : __initExtrapolationData(C->lnnz, 5)),
+    D_extr(!D_exists ? nullptr : __initExtrapolationData(D->lnnz, 5)),
+
+    A_buffer(FixedVector<modelica_real>(!A_exists ? 0 : A->lnnz)),
+    B_buffer(FixedVector<modelica_real>(!B_exists ? 0 : B->lnnz)),
+    C_buffer(FixedVector<modelica_real>(!C_exists ? 0 : C->lnnz)),
+    D_buffer(FixedVector<modelica_real>(!D_exists ? 0 : D->lnnz)),
+
+    A_lambda(FixedVector<modelica_real>(!A_exists ? 0 : A->numFuncs)),
+    B_lambda(FixedVector<modelica_real>(!B_exists ? 0 : B->numFuncs)),
+    C_lambda(FixedVector<modelica_real>(!C_exists ? 0 : C->numFuncs)),
+    D_lambda(FixedVector<modelica_real>(!D_exists ? 0 : D->numFuncs)),
+
+    A_args{data, threadData, A, A_lambda.raw()},
+    B_args{data, threadData, B, B_lambda.raw()},
+    C_args{data, threadData, C, C_lambda.raw()},
+    D_args{data, threadData, D, D_lambda.raw()} {
+    /* attach global, heap allocated C structs to auto free */
+    info.auto_free.attach({A, B, C, D}, __freeHessianPattern);
+    info.auto_free.attach({A_extr, B_extr, C_extr, D_extr}, __freeExtrapolationData);
+}

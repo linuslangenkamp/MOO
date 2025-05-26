@@ -12,8 +12,6 @@
 
 #include "simulation_data.h"
 
-#include <nlp/instances/gdop/problem.h>
-
 #include "debug_om.h"
 
 typedef struct {
@@ -72,11 +70,9 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
 /* simple extension to evalJacobian of SimulationRuntime */
 void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
 
-/* numerical Hessian using foward differences on OpenModelica Jacobian */
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
                                      modelica_real* lambda, modelica_real* hes);
 
-/* wrapper of __evalHessianForwardDifferences for __richardsonExtrapolation */
 void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
 // ===== EXTRAPOLATION =====
@@ -84,6 +80,10 @@ void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* res
 /* generic computation function of the form "result := f(args, h0)" */
 typedef void (*Computation_fn_ptr)(void* args, modelica_real h0, modelica_real* result);
 
+/**
+ * @brief Workspace for Richardson extrapolation.
+ * Stores intermediate results and metadata for extrapolation steps.
+ */
 typedef struct {
   modelica_real** ws_results;
   int resultSize;
@@ -99,9 +99,9 @@ typedef struct {
 } HessianFiniteDiffArgs;
 
 ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps);
+
 void __freeExtrapolationData(ExtrapolationData* extrData);
 
-/* generic extrapolation routine */
 void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
                               int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result);
 

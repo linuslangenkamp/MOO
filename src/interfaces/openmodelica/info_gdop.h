@@ -3,12 +3,15 @@
 
 #include "simulation_data.h"
 
+#include "sim_runtime_ext.h"
+
 #include <base/nlp_structs.h>
 #include <base/fixed_vector.h>
 #include <memory>
 
 /* foward decl */
 struct ExchangeJacobians;
+struct ExchangeHessians;
 
 struct InfoGDOP {
     /* custom attaching and auto freeing of C-style mallocs / callocs */
@@ -42,6 +45,9 @@ struct InfoGDOP {
 
     /* exchange format for Jacobians OM <-> OPT */
     std::unique_ptr<ExchangeJacobians> exc_jac;
+
+    /* numerical augmented Hessians */
+    std::unique_ptr<ExchangeHessians> exc_hes;
 
     /* time horizon */
     f64 start_time; // model start_time
@@ -117,5 +123,48 @@ struct ExchangeJacobians {
 
     ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info);
 };
+
+struct ExchangeHessians {
+    HESSIAN_PATTERN* A;
+    HESSIAN_PATTERN* B;
+    HESSIAN_PATTERN* C;
+    HESSIAN_PATTERN* D;
+
+    bool A_exists;
+    bool B_exists;
+    bool C_exists;
+    bool D_exists;
+
+    ExtrapolationData* A_extr;
+    ExtrapolationData* B_extr;
+    ExtrapolationData* C_extr;
+    ExtrapolationData* D_extr;
+
+    /* some workspace memory for output of Hessian, use if needed */
+    FixedVector<modelica_real> A_buffer;
+    FixedVector<modelica_real> B_buffer;
+    FixedVector<modelica_real> C_buffer;
+    FixedVector<modelica_real> D_buffer;
+
+    /* some workspace memory for dual multiplicators, use if needed */
+    FixedVector<modelica_real> A_lambda;
+    FixedVector<modelica_real> B_lambda;
+    FixedVector<modelica_real> C_lambda;
+    FixedVector<modelica_real> D_lambda;
+
+    /* wrapper args for Richardson extrapolation */
+    HessianFiniteDiffArgs A_args;
+    HessianFiniteDiffArgs B_args;
+    HessianFiniteDiffArgs C_args;
+    HessianFiniteDiffArgs D_args;
+
+    /* mapping of OM C and D HESSIAN_PATTERN indices -> Mr buffer indices, will be set in 'init_hes_mr()' */
+    FixedVector<std::pair<int, int>> C_to_Mr_buffer;
+    FixedVector<std::pair<int, int>> D_to_Mr_buffer;
+
+    ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDOP& info);
+};
+
+
 
 #endif // OPT_OM_INFO_GDOP_H

@@ -28,7 +28,7 @@ void NLPSolverFlags::print() const {
     int col1_width = static_cast<int>(max_len) + 2;
     std::string header = 
         std::string("Flag") + std::string(col1_width - 4, ' ') + "| Value";
-    
+
     std::cout << header << std::endl;
     std::cout << std::string(header.length(), '-') << std::endl;
 

@@ -15,7 +15,7 @@ void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JA
   /* evaluate Jacobian */
   for (color = 0; color < sparse->maxColors; color++) {
     /* activate seed variable for the corresponding color */
-    for (column = 0; column < jacobian->sizeCols; column++) /* TODO: maybe refactor colors as int** of dim (#colors, #size_color_j) of col indices? */
+    for (column = 0; column < jacobian->sizeCols; column++) /* TODO: maybe refactor (in SimRuntime) colors as int** of dim (#colors, #size_color_j) of col indices? */
       if (sparse->colorCols[column] - 1 == color)
         jacobian->seedVars[column] = 1.0;
 
@@ -23,7 +23,7 @@ void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JA
     jacobian->evalColumn(data, threadData, jacobian, parentJacobian);
 
     for (column = 0; column < jacobian->sizeCols; column++) { 
-      if (sparse->colorCols[column] - 1 == color) { /* TODO: maybe refactor colors as int** of dim (#colors, #size_color_j) of col indices? => just loop here over col indices */
+      if (sparse->colorCols[column] - 1 == color) {
         for (nz_csc = sparse->leadindex[column]; nz_csc < sparse->leadindex[column+1]; nz_csc++) {
           /* CSC sparse output buffer */
           jac[nz_csc] = jacobian->resultVars[sparse->index[nz_csc]]; /* solverData->xScaling[column]; */
@@ -35,24 +35,8 @@ void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JA
   }
 }
 
-void __extractJacobianCSCColumnDense(int col, JACOBIAN* jacobian, modelica_real* jac, modelica_real* denseCol) {
-  SPARSE_PATTERN* sp = jacobian->sparsePattern;
-  for (unsigned int idx = sp->leadindex[col]; idx < sp->leadindex[col + 1]; ++idx) {
-    unsigned int row = sp->index[idx];
-    denseCol[row] = jac[idx];
-  }
-}
-
-void __resetJacobianCSCColumnDense(int col, JACOBIAN* jacobian, modelica_real* denseCol) {
-  SPARSE_PATTERN* sp = jacobian->sparsePattern;
-  for (unsigned int idx = sp->leadindex[col]; idx < sp->leadindex[col + 1]; ++idx) {
-    unsigned int row = sp->index[idx];
-    denseCol[row] = 0;
-  }
-}
-
 /**
- * @brief Constructs a compressed Hessian sparsity pattern using Jacobian coloring.
+ * @brief Constructs a compressed Hessian sparsity pattern C struct using Jacobian coloring.
  *
  * Given a sparse Jacobian J(x) of F: R^n → R^m, this builds the structure of the Hessian
  * of a scalar adjoint G(x) = Σ λ[i]·F[i](x), based on co-occurrence of variables in J(x).
@@ -72,15 +56,12 @@ void __resetJacobianCSCColumnDense(int col, JACOBIAN* jacobian, modelica_real* d
  *
  * where λ ∈ ℝᵐ is the adjoint vector. This corresponds to evaluating the contraction λᵗ · ∇²F(x) · v without forming the full Hessian.
  *
- * The structure enables efficient scheduling of these evaluations via pre-colored seed vectors, reducing the number of required sweeps.
- 
- * The result is a `HESSIAN_PATTERN` pure C struct that includes:
+ * The function makes heavy use of the C++ STL, but the result is a `HESSIAN_PATTERN` pure C struct that includes:
  * - COO row/col index arrays for Hessian nonzeros (lower triangle).
  * - A lookup from (color₁, color₂) to `ColorPair`, listing variable pairs and contributing rows.
  *
  * @param jac [in]  Pointer to a `JACOBIAN` struct (sparsity pattern and coloring).
- * @return    [out] Pointer to newly allocated `HESSIAN_PATTERN` struct, or NULL on error.
- *
+ * @return    [out] Pointer to newly allocated `HESSIAN_PATTERN` struct.
  */
 HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
   if (jac == nullptr or jac->sparsePattern == nullptr) { return nullptr; }
@@ -143,7 +124,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
   hes_pattern->jac = jac;
 
   /* workspace memory */
-  hes_pattern->ws_oldX = (modelica_real*)malloc(numFuncs * sizeof(modelica_real));
+  hes_pattern->ws_oldX = (modelica_real*)malloc(numVars * sizeof(modelica_real));
   hes_pattern->ws_baseJac = (modelica_real**)malloc(numColors * sizeof(modelica_real*));
   for (int c = 0; c < hes_pattern->numColors; c++) {
     hes_pattern->ws_baseJac[c] = (modelica_real*)calloc(numFuncs, sizeof(modelica_real));
@@ -232,9 +213,18 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * @brief Compute Hessian-vector product λᵗH(x) using forward finite differences of the Jacobian.
  *
  * Approximates the entries of the Hessian matrix H(x) using first-order directional derivatives.
- * The method uses seed vector coloring for efficient evaluation and supports sparse Hessian structure.
+ * The method uses seed vector coloring for efficient evaluation and exploits sparse Hessian structure.
  * Assumes the current point x has all controls and states set in `data->localData[0]->realVars`.
- *
+ * For a more detailed explanation of the algorithm (see __generateHessianPattern).
+ * 
+ * Runtime: O(#colors * (#colors + 1) / 2 * T_{JVP} + #colors * T_{JVP} + #funcs_{avg} * nnz(augmented Hessian)),
+ *          where T_{JVP} is the time of one Jacobian column evaluation and funcs_{avg} is the average
+ *          number of functions for each variable pair
+ * 
+ * Driving term: O(#colors * (#colors + 1) / 2 * T_{JVP}, since #colors * T_{JVP} will be precomputed
+ *               for the Jacobian anyway and #funcs_{avg} <= #funcs, thus comparably insignificant
+ *               => just (#colors + 1) / 2 times the time for the Jacobian evaluation
+ * 
  * @param[in]  data         Runtime simulation data structure.
  * @param[in]  threadData   Thread-local data.
  * @param[in]  hes_pattern  Precomputed sparsity and coloring pattern for Hessian and Jacobian.
@@ -243,7 +233,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * @param[out] hes          Output sparse Hessian values (COO format of hes_pattern, length = hes_pattern->nnz).
  */
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     modelica_real* lambda, modelica_real* hes) {
+                                     modelica_real* lambda, modelica_real* hes) { // FIXME: TODO: add option to supply Jacobian!!
   /* 0. retrieve pointers */
   JACOBIAN*       jacobian     = hes_pattern->jac;
   modelica_real** ws_baseJac   = hes_pattern->ws_baseJac;
@@ -255,7 +245,8 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
 
   /* TODO: Attention: for now we assume all inputs are control variables (to optimize); update this when needed! => iterate over all controls */
   int nStates = data->modelData->nStates;
-  int uOffset = data->modelData->nVariablesReal - data->modelData->nInputVars - data->modelData->nStates;
+  int uOffset = data->modelData->nVariablesReal - data->modelData->nStates - data->modelData->nInputVars
+                - data->modelData->nOptimizeConstraints - data->modelData->nOptimizeFinalConstraints;
 
   /* 1. evaluate all JVPs J(x) * s_{c} of the current point x */
   for (int c = 0; c < hes_pattern->numColors; c++) {
@@ -384,14 +375,12 @@ void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
     }
   }
 
-  // sparsity
   int n = hes_pattern->size;
   printf("\n=== HESSIAN SPARSITY PLOT (λᵗ·∇²F) ===\n    ");
   for (int j = 0; j < n; ++j)
     printf("%d", j);
   printf("\n");
 
-  // allocate and build symmetric sparsity map
   char** sparsity = (char**)calloc(n, sizeof(char*));
   for (int i = 0; i < n; ++i)
     sparsity[i] = (char*)calloc(n, sizeof(char));
@@ -417,7 +406,6 @@ void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
 void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
   if (!hes_pattern) return;
 
-  /* free colorPairs */
   int numColorPairs = hes_pattern->numColors * (hes_pattern->numColors + 1) / 2;
   for (int i = 0; i < numColorPairs; i++) {
     ColorPair* colorPair = hes_pattern->colorPairs[i];
@@ -446,7 +434,6 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
   }
   free(hes_pattern->colorSizes);
 
-  /* workspace free */
   for (int c = 0; c < hes_pattern->numColors; c++) {
     free(hes_pattern->ws_baseJac[c]);
   }
@@ -458,6 +445,13 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
 
 // ====== EXTRAPOLATION ======
 
+/**
+ * @brief Allocate and initialize internal workspace for Richardson extrapolation.
+ *
+ * @param[in] resultSize  Number of result values computed by `fn` (length of result array).
+ * @param[in] maxSteps    Maximum number of extrapolation steps that may be used.
+ * @return Pointer to an initialized ExtrapolationData struct.
+ */
 ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps) {
   ExtrapolationData* extrData = (ExtrapolationData*)malloc(sizeof(ExtrapolationData));
   extrData->resultSize = resultSize;
@@ -477,6 +471,21 @@ void __freeExtrapolationData(ExtrapolationData* extrData) {
   free(extrData);
 }
 
+/**
+ * @brief Apply in-place Richardson extrapolation using a generic computation function.
+ *
+ * Accepts a function of the form `f(args, h, result)`, evaluated at decreasing step sizes.
+ * Performs in-place extrapolation to increase accuracy. `steps <= 5` recommended to limit roundoff error.
+ *
+ * @param[in]  extrData     Workspace from __initExtrapolationData.
+ * @param[in]  fn           Function pointer: computes result := f(args, h).
+ * @param[in]  args         User data passed to fn.
+ * @param[in]  h0           Initial step size.
+ * @param[in]  steps        Number of extrapolation steps (1 means no extrapolation!).
+ * @param[in]  stepDivisor  Step reduction factor (e.g. 2, then h_{i+1} = h_i / 2).
+ * @param[in]  methodOrder  Order of the underlying method (e.g. 1 for Forward Differences).
+ * @param[out] result       Final extrapolated result.
+ */
 void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
                               int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result) {
   /* call fn_ptr if no extrapolation is executed */
@@ -496,7 +505,7 @@ void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr f
     fn(args, h, extrData->ws_results[i]);
   }
 
-  /* perform extrapolation: cancel taylor terms */
+  /* perform extrapolation: cancel taylor terms, in-place */
   for (int j = 0; j < extrData->resultSize; j++) {
     for (int k = 1; k < steps; k++) {
       for (int i = steps - 1; i >= k; i--) {

@@ -32,12 +32,35 @@ void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
     }
 }
 
-void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
+void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) {
     set_parameters(data, threadData, info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
+            eval_current_point(data, threadData, info);
+            /* TODO: check if B matrix does hold additional ders */
+            if (has_lagrange) {
+                /* OpenModelica sorts the Functions as fLg, we have to swap the order for lambda
+                 * thus, use the workspace buffer from info.exc_hes */
+                info.exc_hes->B_lambda[x_size] = lagrange_factors[i][j];
+                for (int f = 0; f < f_size; f++) {
+                    info.exc_hes->B_lambda[f] = lambda[fg_size * mesh.acc_nodes[i][j] + f];
+                }
+                for (int g = 0; g < g_size; g++) {
+                    /* Lagrange offset */
+                    info.exc_hes->B_lambda[f_size + 1 + g] = lambda[fg_size * mesh.acc_nodes[i][j] + f_size + g];
+                }
+                /* set wrapper lambda */
+                info.exc_hes->B_args.lambda = info.exc_hes->B_lambda.raw();
+            }
+            else {
+                /* set wrapper lambda */
+                info.exc_hes->B_args.lambda = &lambda[fg_size * mesh.acc_nodes[i][j]];
+            }
+            // FIXME: TODO: Make this use the previous Jacobian
+            __richardsonExtrapolation(info.exc_hes->B_extr, __forwardDiffHessianWrapper, &info.exc_hes->B_args,
+                                      1e-8, 1, 2, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -75,7 +98,31 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const 
     }
 }
 
-void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {
+void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) {
+    set_parameters(data, threadData, info, p);
+    set_states(data, threadData, info, xf_nlp);
+    set_time(data, threadData, info, mesh.tf);
+    eval_current_point(data, threadData, info);
+    aug_hes_buffer.fill_zero();
+
+    if (has_mayer) {
+        int index_mayer = info.x_size + (int)(info.lagrange_exists);
+        info.exc_hes->C_lambda[index_mayer] = mayer_factor;
+        __richardsonExtrapolation(info.exc_hes->C_extr, __forwardDiffHessianWrapper, &info.exc_hes->C_args,
+                                  1e-8, 1, 2, 1, info.exc_hes->C_buffer.raw());
+        for (auto& [index_C, index_buffer] : info.exc_hes->C_to_Mr_buffer) {
+            aug_hes_buffer[index_buffer] += info.exc_hes->C_buffer[index_C];
+        }
+    }
+
+    if (r_size != 0) {
+        info.exc_hes->D_args.lambda = lambda;
+        __richardsonExtrapolation(info.exc_hes->D_extr, __forwardDiffHessianWrapper, &info.exc_hes->D_args,
+                                  1e-8, 1, 2, 1, info.exc_hes->D_buffer.raw());
+        for (auto& [index_D, index_buffer] : info.exc_hes->D_to_Mr_buffer) {
+            aug_hes_buffer[index_buffer] += info.exc_hes->D_buffer[index_D];
+        }
+    }
 }
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
@@ -97,7 +144,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
 
     /* new generated function getInputVarIndices, just fills the index list of all optimizable inputs */
     info.u_indices_real_vars = FixedVector<int>(info.u_size);
-    data->callback->getInputVarIndicesInOptimization(data, info.u_indices_real_vars.raw());
+    data->callback->getInputVarIndicesInOptimization(data, info.u_indices_real_vars.raw()); // TODO: use these everywhere, maybe we need to add a buffer in OM C-SimRuntime for it
     for (int u = 0; u < info.u_size; u++) {
         int u_index = info.u_indices_real_vars[u];
         u_bounds[u].lb = data->modelData->realVarsData[u_index].attribute.min;
@@ -114,7 +161,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     short der_index_mayer_realVars = -1;
     short der_indices_lagrange_realVars[2] = {-1, -1};
 
-    /* FIXME: this is really ugly IMO, fix this when ready for master! */
+    /* this is really ugly IMO, fix this when ready for master! */
     info.mayer_exists = (data->callback->mayer(data, &info.__address_mayer_real_vars, &der_index_mayer_realVars) >= 0);
     if (info.mayer_exists) {
         info.index_mayer_real_vars = (int)(info.__address_mayer_real_vars - data->localData[0]->realVars);
@@ -160,13 +207,20 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     /* create CSC <-> COO exchange, init jacobians */
     info.exc_jac = std::make_unique<ExchangeJacobians>(data, threadData, info);
 
+    /* create HESSIAN_PATTERNs and allocate buffers for extrapolation / evaluation */
+    info.exc_hes = std::make_unique<ExchangeHessians>(data, threadData, info);
+    auto aug_hes_lfg = std::make_unique<AugmentedHessianLFG>();
+    auto aug_hes_lfg_pp = std::make_unique<AugmentedParameterHessian>();
+    auto aug_hes_mr = std::make_unique<AugmentedHessianMR>();
+
     /* init (OPT) */
     init_eval(data, threadData, info, lfg, mr);
     init_jac(data, threadData, info, lfg, mr);
-
+    init_hes(data, threadData, info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
+    
     return Problem(
-        std::make_unique<FullSweep_OM>(std::move(lfg), std::make_unique<AugmentedHessianLFG>(), std::make_unique<AugmentedParameterHessian>(), collocation, mesh, std::move(g_bounds), data, threadData, info),
-        std::make_unique<BoundarySweep_OM>(std::move(mr), std::make_unique<AugmentedHessianMR>(), mesh, std::move(r_bounds), data, threadData, info),
+        std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), collocation, mesh, std::move(g_bounds), data, threadData, info),
+        std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), mesh, std::move(r_bounds), data, threadData, info),
         mesh,
         std::move(x_bounds),
         std::move(u_bounds),
@@ -191,7 +245,6 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
     for (int u : info.u_indices_real_vars) {
         u_guess.push_back({data->modelData->realVarsData[u].attribute.start, data->modelData->realVarsData[u].attribute.start});
     }
-
     // TODO: add p
 
     return Trajectory{t, x_guess, u_guess, p, interpolation};

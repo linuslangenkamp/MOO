@@ -223,7 +223,7 @@ for i, res in enumerate(results):
 # Re-execute due to state reset
 
 import numpy as np
-from sympy import symbols, exp, diff, lambdify, Matrix
+from sympy import symbols, exp, diff, lambdify, Matrix, sin, cos
 
 # Define symbols
 x1, x2, x3, x4, u = symbols('x1 x2 x3 x4 u')
@@ -241,17 +241,37 @@ k5 = exp(20.70 - 31000 / R / T)
 
 # Define the function
 F = []
-F.append((-k1 * x1) - (k3 + k4 + k5) * x1 * x2)
-F.append(k1 * x1 - k2 * x2 + k3 * x1 * x2)
-F.append(k2 * x2 + k4 * x1 * x2)
-F.append(k5 * x1 * x2)
+dec = 0
+if dec == 0:
+    F.append((-k1 * x1) - (k3 + k4 + k5) * x1 * x2)
+    F.append(k1 * x1 - k2 * x2 + k3 * x1 * x2)
+    F.append(k2 * x2 + k4 * x1 * x2)
+    F.append(k5 * x1 * x2)
+    F.append((-k1 * x1) - (k3 + k4 + k5) * x1 * x2)
+    V = [x1, x2, x3, x4, u]
+    x1_val = 1.35266244529518659e-01
+    x2_val = 3.55066498452544121e-01
+    x3_val = 3.34360423673394747e-01
+    x4_val = 1.75306833344556989e-01
+    u_val = 9.70337348817454814e-01
+elif dec == 1:
+    F.append(sin(x1 + x2 - 1))
+    F.append(cos(x2 + x3 - 2))
+    F.append((x3 + u) / (x3**2 + u**2))
+    F.append(-1 + x3*x3)
+    V = [x1, x2, x3, u]
+    x1_val = 1.478975818445809
+    x2_val = 1.470723942456369
+    x3_val = 1.11596063078672
+    u_val = 4.999999970445199
 
-lambd = [1, 1, 1, 1]
+lambd = [0, 0, 0, 0, 1]
 
-f = sum(lambd[i] * F[i] for i in range(4))
+#f = sum(lambd[i] * F[i] for i in range(4))
+f = F[4]
 print(f)
 # Variables vector
-vars_vec = Matrix([x1, x2, x3, x4, u])
+vars_vec = Matrix(V)
 
 # Compute Hessian
 hessian = f.diff(vars_vec).jacobian(vars_vec)
@@ -260,11 +280,11 @@ hessian = f.diff(vars_vec).jacobian(vars_vec)
 hessian_func = lambdify((x1, x2, x3, x4, u), hessian, 'numpy')
 
 # Evaluate at given point
-x1_val = 0.9528284865048966
-x2_val = 0.02791790905016496
-u_val = 1.068785721450124
-np.set_printoptions(precision=7)
 
-hessian_numeric = np.array(hessian_func(x1_val, x2_val, 0, 0, u_val), dtype=np.float128)
+
+
+np.set_printoptions(precision=5)
+
+hessian_numeric = np.array(hessian_func(x1_val, x2_val, x3_val, x4_val, u_val), dtype=np.float128)
 print()
 print(hessian_numeric)

@@ -180,8 +180,7 @@ void GDOP::init_jacobian_sparsity_pattern() {
                     nnz_index++;
                 }
 
-                // TODO: this should work, but make it O(jac.dx) not O(x)
-                // df / dx auto& df_dx
+                // df / dx
                 int df_dx_counter = 0;
                 std::vector<JacobianSparsity>* df_dx = &problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
 
@@ -717,7 +716,7 @@ void GDOP::eval_hes_internal() {
     update_augmented_hessian_mr(*problem.boundary->aug_hes);
 }
 
-void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j, 
+void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
                                         const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu) {
     const int block_count = mesh.acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
@@ -777,15 +776,15 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
 }
 
 void GDOP::callback_evaluation() {
-    problem.full->callback_eval(curr_x.raw() + off_x, curr_x.raw() + off_xu_total);
-    problem.boundary->callback_eval(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total);
+    problem.full->callback_eval(get_curr_x_xu(), get_curr_x_p());
+    problem.boundary->callback_eval(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
     evaluation_state.eval_f = true;
     evaluation_state.eval_g = true;
 }
 
 void GDOP::callback_jacobian() {
-    problem.full->callback_jac(curr_x.raw() + off_x, curr_x.raw() + off_xu_total);
-    problem.boundary->callback_jac(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total);
+    problem.full->callback_jac(get_curr_x_xu(), get_curr_x_p());
+    problem.boundary->callback_jac(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
     evaluation_state.grad_f = true;
     evaluation_state.jac_g = true;
 }
@@ -807,9 +806,8 @@ void GDOP::update_curr_lambda_obj_factors() {
 
 void GDOP::callback_hessian() {
     update_curr_lambda_obj_factors();
-    problem.full->callback_aug_hes(curr_x.raw() + off_x, curr_x.raw() + off_xu_total,
-                                   lagrange_obj_factors /* exact mutlipliers */, curr_lambda.raw() /* exact mutlipliers */);
-    problem.boundary->callback_aug_hes(curr_x.raw(), curr_x.raw() + off_last_xu, curr_x.raw() + off_xu_total,
-                                       curr_sigma_f /* exact mutliplier */, &curr_lambda[off_fg_total] /* exact mutlipliers */);
+
+    problem.full->callback_aug_hes(get_curr_x_xu(), get_curr_x_p(), lagrange_obj_factors, get_curr_lamb_fg());
+    problem.boundary->callback_aug_hes(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p(), curr_sigma_f, get_curr_lamb_r());
     evaluation_state.hes_lag = true;
 }

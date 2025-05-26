@@ -77,7 +77,7 @@ public:
      * aug_pp_hes_buffer is $\lambda^T * \nabla²_{pp} (f, g) + lfactor * \nabla²_{pp} L$
      * lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
      * lagrange_factors are exact factor for lagrange terms in interval i, nodes j */
-    virtual void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) = 0;
+    virtual void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
@@ -154,7 +154,7 @@ public:
 
    /* lambdas are exact multipliers (no transform needed) to [r]
     * mayer_factor is eact multiplier (no transform needed) of M */
-    virtual void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) = 0;
+    virtual void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) = 0;
 
     void print_jacobian_sparsity_pattern() {
         std::cout << "\n=== MR Jacobian Sparsity ===\n================================\n";
@@ -243,7 +243,7 @@ public:
     inline f64 lfg_aug_hes(int entry, int interval_i, int node_j) {
         return full->aug_hes_buffer[entry + full->aug_hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
-    /* TODO: make me threaded */
+    /* TODO: add and make threaded */
     inline f64 lfg_aug_pp_hes(int entry) {
         return full->aug_pp_hes_buffer[entry];
     }

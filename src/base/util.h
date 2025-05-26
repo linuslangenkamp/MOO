@@ -31,7 +31,16 @@ public:
 
     template <typename T>
     void attach(T* ptr, void (*free_fn)(T*)) {
-        _to_free.emplace_back(ptr, [free_fn](void* p) { free_fn(static_cast<T*>(p)); });
+        if (ptr != nullptr)
+            _to_free.emplace_back(ptr, [free_fn](void* p) { free_fn((T*)(p)); });
+    }
+
+    template <typename T>
+    void attach(std::initializer_list<T*> ptrs, void (*free_fn)(T*)) {
+        for (T* ptr : ptrs) {
+            if (ptr != nullptr)
+                attach(ptr, free_fn);
+        }
     }
 
 private:
