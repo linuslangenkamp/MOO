@@ -36,18 +36,19 @@ typedef struct {
  * Variable pairs are grouped by (color1, color2) inside ColorPair blocks. */
 typedef struct {
   /* this is an array of ptrs to ColorPair, is NULL if (c1, c2) is not contained */
-  ColorPair** colorPairs;     // __getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
-  int* row;                   // flat COO row indices (i)
-  int* col;                   // flat COO column indices (j)
-  int size;                   // number of variables (Hessian is size × size)
-  int numFuncs;               // number of functions in the augmented Hessian
-  int lnnz;                   // number of lower triangular nonzeros
-  int** colsForColor;         // colsForColor[c] is an array of column indices in color c
-  int* colorSizes;            // colorSizes[c] is the number of columns in colorCols[c]
-  int numColors;              // number of seed vector colors
-  JACOBIAN* jac;              // input Jacobian with sparsity + coloring
-  modelica_real* ws_oldX;     // workspace array to remember old x values and seed vector for JVPs
-  modelica_real** ws_baseJac; // workspace stores all rows x colors of the base Jacobian J(x)
+  ColorPair** colorPairs;        // __getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
+  int* row;                      // flat COO row indices (i)
+  int* col;                      // flat COO column indices (j)
+  int size;                      // number of variables (Hessian is size × size)
+  int numFuncs;                  // number of functions in the augmented Hessian
+  int lnnz;                      // number of lower triangular nonzeros
+  int** colsForColor;            // colsForColor[c] is an array of column indices in color c
+  int* colorSizes;               // colorSizes[c] is the number of columns in colorCols[c]
+  int numColors;                 // number of seed vector colors
+  JACOBIAN* jac;                 // input Jacobian with sparsity + coloring
+  int** cscJacIndexFromRowColor; // mapping of J[function / row][color] -> index in flat Jacobian CSC buffer
+  modelica_real* ws_oldX;        // workspace array to remember old x values and seed vector for JVPs
+  modelica_real** ws_baseJac;    // workspace stores all rows x colors of the base Jacobian J(x)
 } HESSIAN_PATTERN;
 
 /* always use this if accessing HESSIAN_PATTERN.colorPairs
@@ -71,7 +72,7 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
 void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
 
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     modelica_real* lambda, modelica_real* hes);
+                                     modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
 
 void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
@@ -96,6 +97,7 @@ typedef struct {
   threadData_t* threadData;
   HESSIAN_PATTERN* hes_pattern;
   modelica_real* lambda;
+  modelica_real* jac_csc;
 } HessianFiniteDiffArgs;
 
 ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps);

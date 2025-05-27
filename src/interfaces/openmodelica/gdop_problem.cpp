@@ -58,7 +58,10 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
                 /* set wrapper lambda */
                 info.exc_hes->B_args.lambda = &lambda[fg_size * mesh.acc_nodes[i][j]];
             }
-            // FIXME: TODO: Make this use the previous Jacobian
+            /* set previous Jacobian *CSC* OpenModelica buffer */
+            info.exc_hes->B_args.jac_csc = &jac_buffer[jac_size * mesh.acc_nodes[i][j]];
+
+            /* call Hessian */
             __richardsonExtrapolation(info.exc_hes->B_extr, __forwardDiffHessianWrapper, &info.exc_hes->B_args,
                                       1e-8, 1, 2, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
         }

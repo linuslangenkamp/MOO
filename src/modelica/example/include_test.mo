@@ -1,4 +1,4 @@
-/*model include_test
+model include_test
   Real x1(start = 1, fixed=true) "kerogen";
   Real x2(start = 0, fixed=true) "pyrolytic bitumen";
   Real x3(start = 0, fixed=true) "oil & gas";
@@ -8,9 +8,9 @@
   Real k3;
   Real k4;
   Real k5;
-  Real final_c(min=0.3, max=0.3) = x1^2 + x2^2 + x3^2 annotation(isFinalConstraint=true);
+  //Real final_c(min=0.3, max=0.3) = x1^2 + x2^2 + x3^2 annotation(isFinalConstraint=true);
   input Real u(start=700, min=698.15, max = 748.15);
-  Real cost1 = - x2^5 * x3^2  annotation(isMayer=true);
+  Real cost1 = - x2  annotation(isMayer=true);
 equation
   k1 = exp(8.86 - 20300 / 1.9872 / u);
   k2 = exp(24.25 - 37400 / 1.9872 / u);
@@ -25,7 +25,7 @@ equation
     experiment(StartTime = 0, StopTime = 8, Tolerance = 1e-10, Interval = 0.05),
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", ipopt_init="CONST",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS,LOG_IPOPT"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
-end include_test;*/
+end include_test;
 
 
 /*
@@ -43,7 +43,7 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;*/
 
-
+/*
 model include_test
   Real x1(start = 1, fixed=true);
   Real x2(start = 1, fixed=true);
@@ -58,4 +58,4 @@ equation
     experiment(StartTime = 0, StopTime = 1, Tolerance = 1e-12, Interval = 0.1),
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", ipopt_init="CONST",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
-end include_test;
+end include_test;*/

@@ -125,9 +125,9 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   /* workspace memory */
   hes_pattern->ws_oldX = (modelica_real*)malloc(numVars * sizeof(modelica_real));
-  hes_pattern->ws_baseJac = (modelica_real**)malloc(numColors * sizeof(modelica_real*));
-  for (int c = 0; c < hes_pattern->numColors; c++) {
-    hes_pattern->ws_baseJac[c] = (modelica_real*)calloc(numFuncs, sizeof(modelica_real));
+  hes_pattern->ws_baseJac = (modelica_real**)malloc(numFuncs * sizeof(modelica_real*));
+  for (int row = 0; row < numFuncs; row++) {
+    hes_pattern->ws_baseJac[row] = (modelica_real*)calloc(numColors, sizeof(modelica_real));
   }
 
   // 6. remember columns in each color
@@ -138,7 +138,27 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
     memcpy(hes_pattern->colsForColor[i], colorCols[i].data(), size * sizeof(int));
   }
 
-  // 7. fill the coordinate format sparsity
+  // 7. set mapping from Jacobian[row][color] -> Jacobian CSC index
+   hes_pattern->cscJacIndexFromRowColor = (int**)malloc(numFuncs * sizeof(int*));
+  for (int row = 0; row < numFuncs; row++) {
+    hes_pattern->cscJacIndexFromRowColor[row] = (int*)malloc(numColors * sizeof(int));
+    for (int color = 0; color < numColors; color++) {
+      hes_pattern->cscJacIndexFromRowColor[row][color] = -1;
+    }
+  }
+
+  for (int color = 0; color < numColors; color++) {
+    const int* cols = hes_pattern->colsForColor[color];
+    for (int colIdx = 0; colIdx < hes_pattern->colorSizes[color]; colIdx++) {
+      int col = cols[colIdx];
+      for (unsigned int nz = sp->leadindex[col]; nz < sp->leadindex[col + 1]; nz++) {
+        int row = sp->index[nz];
+        hes_pattern->cscJacIndexFromRowColor[row][color] = nz;
+      }
+    }
+  }
+
+  // 8. fill the coordinate format sparsity
   for (const auto& coo : cooMap) {
     int var_row = coo.first.first;
     int var_col = coo.first.second;
@@ -150,7 +170,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   ColorPair* colorPair;
 
-  // 8. fill HESSIAN_PATTERN.colorPairs[c1][c2] -> ColorPair
+  // 9. fill HESSIAN_PATTERN.colorPairs[c1][c2] -> ColorPair
   for (int c1 = 0; c1 < numColors; c1++) {
     for (int c2 = 0; c2 <= c1; c2++) {
       std::vector<std::vector<int>> rowsVec;
@@ -230,10 +250,11 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * @param[in]  hes_pattern  Precomputed sparsity and coloring pattern for Hessian and Jacobian.
  * @param[in]  h            Perturbation step size (for now without nominals).
  * @param[in]  lambda       Adjoint vector (size = number of functions).
+ * @param[in]  jac_csc      (Optional) Jacobian values in CSC format, used to speed up Hessian calculation. NULL -> compute from scratch.
  * @param[out] hes          Output sparse Hessian values (COO format of hes_pattern, length = hes_pattern->nnz).
  */
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     modelica_real* lambda, modelica_real* hes) { // FIXME: TODO: add option to supply Jacobian!!
+                                     modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes) {
   /* 0. retrieve pointers */
   JACOBIAN*       jacobian     = hes_pattern->jac;
   modelica_real** ws_baseJac   = hes_pattern->ws_baseJac;
@@ -248,20 +269,23 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
   int uOffset = data->modelData->nVariablesReal - data->modelData->nStates - data->modelData->nInputVars
                 - data->modelData->nOptimizeConstraints - data->modelData->nOptimizeFinalConstraints;
 
-  /* 1. evaluate all JVPs J(x) * s_{c} of the current point x */
-  for (int c = 0; c < hes_pattern->numColors; c++) {
-    __setSeedVector(hes_pattern->colorSizes[c], hes_pattern->colsForColor[c], 1, seeds);
-    jacobian->evalColumn(data, threadData, jacobian, NULL);
+  /* 1. compute standard Jacobian, if jac_csc is NULL, else use the jac_csc as precomputed Jacobian */
+  if (!jac_csc) {
+    /* 1.b evaluate all JVPs J(x) * s_{c} of the current point x */
+    for (int color = 0; color < hes_pattern->numColors; color++) {
+      __setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 1, seeds);
+      jacobian->evalColumn(data, threadData, jacobian, NULL);
 
-    for (int colIndex = 0; colIndex < hes_pattern->colorSizes[c]; colIndex++) {
-      int col = hes_pattern->colsForColor[c][colIndex];
-      for (unsigned int nz = jacLeadIndex[col]; nz < jacLeadIndex[col + 1]; nz++) {
-        int row = jacIndex[nz];
-        ws_baseJac[c][row] = jvp[row];
+      for (int colIndex = 0; colIndex < hes_pattern->colorSizes[color]; colIndex++) {
+        int col = hes_pattern->colsForColor[color][colIndex];
+        for (unsigned int nz = jacLeadIndex[col]; nz < jacLeadIndex[col + 1]; nz++) {
+          int row = jacIndex[nz];
+          ws_baseJac[row][color] = jvp[row];
+        }
       }
-    }
 
-    __setSeedVector(hes_pattern->colorSizes[c], hes_pattern->colsForColor[c], 0, seeds);
+      __setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 0, seeds);
+    }
   }
 
   /* 2. loop over all colors c1 */
@@ -305,7 +329,8 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
            *       - f / fnRow indexes function rows where both ∂f/∂xᵢ and ∂f/∂xⱼ are nonzero */
           for (int fIdx = 0; fIdx < numContributingRows; fIdx++) {
             int fnRow = contributingRows[fIdx];
-            der += lambda[fnRow] * (jvp[fnRow] - ws_baseJac[c2][fnRow]);
+            f64 J_fnRow_c2 = (jac_csc ? jac_csc[hes_pattern->cscJacIndexFromRowColor[fnRow][c2]] : ws_baseJac[fnRow][c2]);
+            der += lambda[fnRow] * (jvp[fnRow] - J_fnRow_c2);
           }
 
           /* store and divide by step size, TODO: make h depend on variable nominal
@@ -434,8 +459,15 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
   }
   free(hes_pattern->colorSizes);
 
-  for (int c = 0; c < hes_pattern->numColors; c++) {
-    free(hes_pattern->ws_baseJac[c]);
+  if (hes_pattern->cscJacIndexFromRowColor) {
+    for (int row = 0; row < hes_pattern->numFuncs; row++) {
+      free(hes_pattern->cscJacIndexFromRowColor[row]);
+    }
+    free(hes_pattern->cscJacIndexFromRowColor);
+  }
+
+  for (int row = 0; row < hes_pattern->numFuncs; row++) {
+    free(hes_pattern->ws_baseJac[row]);
   }
   free(hes_pattern->ws_baseJac);
   free(hes_pattern->ws_oldX);
@@ -520,5 +552,5 @@ void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr f
 /* wrapper for __evalHessianForwardDifferences */
 void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result) {
   HessianFiniteDiffArgs* hessianArgs = (HessianFiniteDiffArgs*)args;
-  __evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h, hessianArgs->lambda, result);
+  __evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h, hessianArgs->lambda, hessianArgs->jac_csc, result);
 }

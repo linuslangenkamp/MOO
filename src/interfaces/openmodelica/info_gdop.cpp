@@ -65,10 +65,10 @@ ExchangeHessians::ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDO
     C_lambda(FixedVector<modelica_real>(!C_exists ? 0 : C->numFuncs)),
     D_lambda(FixedVector<modelica_real>(!D_exists ? 0 : D->numFuncs)),
 
-    A_args{data, threadData, A, A_lambda.raw()},
-    B_args{data, threadData, B, B_lambda.raw()},
-    C_args{data, threadData, C, C_lambda.raw()},
-    D_args{data, threadData, D, D_lambda.raw()} {
+    A_args{data, threadData, A, A_lambda.raw(), nullptr},
+    B_args{data, threadData, B, B_lambda.raw(), nullptr},
+    C_args{data, threadData, C, C_lambda.raw(), nullptr},
+    D_args{data, threadData, D, D_lambda.raw(), nullptr} {
     /* attach global, heap allocated C structs to auto free */
     info.auto_free.attach({A, B, C, D}, __freeHessianPattern);
     info.auto_free.attach({A_extr, B_extr, C_extr, D_extr}, __freeExtrapolationData);
