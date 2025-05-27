@@ -223,7 +223,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     init_eval(data, threadData, info, lfg, mr);
     init_jac(data, threadData, info, lfg, mr);
     init_hes(data, threadData, info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
-    
+
     return Problem(
         std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), collocation, mesh, std::move(g_bounds), data, threadData, info),
         std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), mesh, std::move(r_bounds), data, threadData, info),
@@ -242,7 +242,7 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
     std::vector<std::vector<f64>> x_guess;
     std::vector<std::vector<f64>> u_guess;
     std::vector<f64> p;
-    InterpolationMethod interpolation = InterpolationMethod::LINEAR;{};
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     for (int x = 0; x < info.x_size; x++) {
         x_guess.push_back({data->modelData->realVarsData[x].attribute.start, data->modelData->realVarsData[x].attribute.start});
@@ -254,4 +254,56 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
     // TODO: add p
 
     return Trajectory{t, x_guess, u_guess, p, interpolation};
+}
+
+/* this seems extremely dangerous, since some simulation data might not be properly initialized
+ * please extend this function if needed */
+Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+    /* TODO: add Trajectory of controls */
+    SOLVER_INFO solverInfo;
+    SIMULATION_INFO *simInfo = data->simulationInfo;
+    data->simulationInfo->numSteps = num_steps;
+    data->simulationInfo->stepSize = info.tf / (f64)num_steps;
+    simInfo->useStopTime = 1;
+    solverInfo.solverMethod = solver;
+    initializeSolverData(data, threadData, &solverInfo);
+    externalInputallocate(data);
+    setZCtol(fmin(data->simulationInfo->stepSize, data->simulationInfo->tolerance));
+    initializeModel(data, threadData, "", "", info.start_time);
+
+    /* vectors for Trajectory data */
+    std::vector<f64> t(num_steps + 1);
+    std::vector<std::vector<f64>> x_sim(num_steps + 1, std::vector<f64>(info.x_size));
+    std::vector<std::vector<f64>> u_sim(num_steps + 1, std::vector<f64>(info.u_size));
+    std::vector<f64> p_sim = std::vector<f64>(info.p_size);
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
+    t[0] = 0;
+
+    /* for now controls are constant == start*/
+    for (int step = 0; step < num_steps + 1; step++) {
+        for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
+            int u = info.u_indices_real_vars[u_idx];
+            u_sim[step][u_idx] = data->modelData->realVarsData[u].attribute.start;
+        }
+    }
+
+    for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
+        x_sim[0][x_idx] = data->modelData->realVarsData[x_idx].attribute.start;
+    }
+
+    int step = 1;
+    do {
+        /* call integrator */
+        solver_main_step(data, threadData, &solverInfo);
+
+        /* update the states and time */
+        for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
+            x_sim[step][x_idx] = data->localData[0]->realVars[x_idx];
+        }
+
+        t[step] = solverInfo.currentTime;
+        step++;
+    } while (solverInfo.currentTime < info.stop_time);
+
+    return Trajectory{t, x_sim, u_sim, p_sim, interpolation};
 }

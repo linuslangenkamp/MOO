@@ -131,3 +131,32 @@ Trajectory Trajectory::linear_interpolation(Mesh& mesh, Collocation& collocation
 
     return new_guess;
 }
+
+void Trajectory::print() {
+    auto print_vector = [](const std::string& name, const std::vector<f64>& vec) {
+        std::cout << name << " = [";
+        for (size_t i = 0; i < vec.size(); ++i) {
+            std::cout << vec[i];
+            if (i + 1 < vec.size()) std::cout << ", ";
+        }
+        std::cout << "]\n";
+    };
+
+    auto print_matrix = [](const std::string& name, const std::vector<std::vector<f64>>& mat) {
+        std::cout << name << " = [\n";
+        for (const auto& row : mat) {
+            std::cout << "  [";
+            for (size_t j = 0; j < row.size(); ++j) {
+                std::cout << row[j];
+                if (j + 1 < row.size()) std::cout << ", ";
+            }
+            std::cout << "],\n";
+        }
+        std::cout << "]\n";
+    };
+
+    print_vector("t", t);
+    print_matrix("x", x);
+    print_matrix("u", u);
+    print_vector("p", p);
+}

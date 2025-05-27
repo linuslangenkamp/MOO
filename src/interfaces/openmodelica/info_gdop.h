@@ -165,6 +165,4 @@ struct ExchangeHessians {
     ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDOP& info);
 };
 
-
-
 #endif // OPT_OM_INFO_GDOP_H

@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 include(ExternalProject)
 set(THIRD_PARTY_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/third-party-install/usr/local)
+set(OPENMODELICA_ROOT /home/linus/Projects/OpenModelica) # FIXME
 
 find_package(PkgConfig)
 
@@ -107,6 +108,9 @@ target_link_directories(optimization PRIVATE
 target_include_directories(optimization PRIVATE
   /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/c
   /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc
+  ${OPENMODELICA_ROOT}/OMCompiler
+  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/suitesparse
+  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/sundials
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

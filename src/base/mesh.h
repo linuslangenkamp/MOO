@@ -50,6 +50,8 @@ struct Trajectory {
 
     Trajectory interpolate(Mesh& mesh, Collocation& collocation);
     Trajectory linear_interpolation(Mesh& mesh, Collocation& collocation);
+
+    void print();
 };
 
 #endif  // OPT_MESH_H

@@ -42,5 +42,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
 
+    auto T = simulate(data, threadData, *info, S_GBODE, 100);
+    T.print();
     return 0;
 }

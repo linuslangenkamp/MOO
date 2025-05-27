@@ -2,6 +2,8 @@
 #define OPT_OM_GDOP_PROBLEM_H
 
 #include "simulation_data.h"
+#include "simulation/solver/gbode_main.h"
+#include "simulation/solver/external_input.h"
 
 #include <nlp/instances/gdop/problem.h>
 
@@ -37,5 +39,6 @@ public:
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
 Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info);
+Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps);
 
 #endif // OPT_OM_GDOP_PROBLEM_H

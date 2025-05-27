@@ -23,10 +23,10 @@ equation
   der(x4) = k5 * x1 * x2;
   annotation(
     experiment(StartTime = 0, StopTime = 8, Tolerance = 1e-10, Interval = 0.05),
-    __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", ipopt_init="CONST",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS,LOG_IPOPT"),
+    __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3",  noEquidistantTimeGrid="()",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS,LOG_IPOPT"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;
-
+//ipopt_init="CONST",
 
 /*
 model include_test
