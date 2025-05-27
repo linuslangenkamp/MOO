@@ -32,7 +32,7 @@ public:
     Problem& problem;           // continuous GDOP
     Collocation& collocation;   // collocation data
     Trajectory& guess;          // initial guess / trajectory, will be interpolated accordingly
-    NLP_State evaluation_state; // simple state to check which actions are / have to be performed for an iteration
+    NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
 
     // constant NLP derivative matrix part of the jacobian
     FixedVector<f64> const_der_jac;

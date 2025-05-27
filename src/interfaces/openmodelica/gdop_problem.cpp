@@ -63,7 +63,7 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
 
             /* call Hessian */
             __richardsonExtrapolation(info.exc_hes->B_extr, __forwardDiffHessianWrapper, &info.exc_hes->B_args,
-                                      1e-8, 1, 2, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
+                                      1e-6, 1, 2, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -112,16 +112,19 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
         int index_mayer = info.x_size + (int)(info.lagrange_exists);
         info.exc_hes->C_lambda[index_mayer] = mayer_factor;
         __richardsonExtrapolation(info.exc_hes->C_extr, __forwardDiffHessianWrapper, &info.exc_hes->C_args,
-                                  1e-8, 1, 2, 1, info.exc_hes->C_buffer.raw());
+                                  1e-6, 1, 2, 1, info.exc_hes->C_buffer.raw());
         for (auto& [index_C, index_buffer] : info.exc_hes->C_to_Mr_buffer) {
             aug_hes_buffer[index_buffer] += info.exc_hes->C_buffer[index_C];
         }
     }
 
     if (r_size != 0) {
+        /* set duals and precomputed Jacobian D */
         info.exc_hes->D_args.lambda = lambda;
+        info.exc_hes->D_args.jac_csc = &jac_buffer[info.exc_jac->D_coo.nnz_offset];
+
         __richardsonExtrapolation(info.exc_hes->D_extr, __forwardDiffHessianWrapper, &info.exc_hes->D_args,
-                                  1e-8, 1, 2, 1, info.exc_hes->D_buffer.raw());
+                                  1e-6, 1, 2, 1, info.exc_hes->D_buffer.raw());
         for (auto& [index_D, index_buffer] : info.exc_hes->D_to_Mr_buffer) {
             aug_hes_buffer[index_buffer] += info.exc_hes->D_buffer[index_D];
         }

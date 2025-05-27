@@ -22,9 +22,9 @@ bool IpoptAdapter::get_bounds_info(Ipopt::Index n, Ipopt::Number* x_l, Ipopt::Nu
 
 bool IpoptAdapter::get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number* x, bool init_z, Ipopt::Number* z_L,
                                       Ipopt::Number* z_U, Ipopt::Index m, bool init_lambda, Ipopt::Number* lambda) {
-    assert(init_x == true);
+    assert(init_x      == true);
     assert(init_lambda == false);
-    assert(init_z == false);
+    assert(init_z      == false);
     nlp.init_x.write_to(x);
     return true;
 };

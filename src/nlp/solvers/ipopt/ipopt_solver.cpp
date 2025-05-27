@@ -29,7 +29,7 @@ void IpoptSolver::init_IpoptApplication() {
     // set all the settings here
 
     // termination fallback
-    app->Options()->SetIntegerValue("max_iter", 250);
+    app->Options()->SetIntegerValue("max_iter", solver_flags.get_flag_f64_fallback("Iterations", 5000));
     app->Options()->SetNumericValue("max_cpu_time", solver_flags.get_flag_f64_fallback("CPUTime", 3600));
 
     // numeric values

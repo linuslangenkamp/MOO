@@ -85,7 +85,7 @@ if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
     target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
 else()
     message(STATUS "Configuration: Release")
-    target_compile_options(optimization PRIVATE -Wall -fno-var-tracking-assignments -O2 -g -fno-rtti )
+    target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O2 -g)
 endif()
 
 target_link_libraries(optimization PRIVATE ipopt coinmumps metis)

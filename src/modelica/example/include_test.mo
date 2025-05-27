@@ -8,7 +8,7 @@ model include_test
   Real k3;
   Real k4;
   Real k5;
-  //Real final_c(min=0.3, max=0.3) = x1^2 + x2^2 + x3^2 annotation(isFinalConstraint=true);
+  Real final_c(min=0.3, max=0.3) = x1^2 + x2^2 + x3^2 annotation(isFinalConstraint=true);
   input Real u(start=700, min=698.15, max = 748.15);
   Real cost1 = - x2  annotation(isMayer=true);
 equation

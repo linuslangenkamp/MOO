@@ -450,24 +450,43 @@ void GDOP::init_hessian() {
     }
 }
 
-/* nlp function evaluations happen in two stages:
- * 1. fill the input buffers -> evaluate all continuous callback functions and fill the output buffers
- * 2. evaluate the nlp function by accessing the structures and f64* defined in problem, simply use the filled buffers
+/*
+ * NLP function evaluations happen in two stages:
  * 
- * since all functions are evaluated in step 2, this can always be executed in parallel even if the callbacks were not parallel!
- * because of this structure, before every nlp evaluation check_new_x has to be performed and step 1 has to be executed in case
+ * 1. Callback / continuous problem computation:
+ *    - Fill input buffers (x, lambda, sigma).
+ *    - Run callbacks (evaluation, Jacobian, or, augmented Hessian) to compute all necessary information.
+ * 
+ * 2. NLP computation:
+ *    - Evaluate the NLP function using pre-filled buffers and structures.
+ *
+ * Because callbacks are only in stage 1, and all data is ready before stage 2, 
+ * the stage 2 computations are always thread-safe and parallelizable.
+ *
+ * Every NLP evaluation must call `check_new_x()` (and possibly lambda/sigma) to trigger callbacks if needed.
+ *
+ * Callback overview:
+ *
+ *            | Function      | `new_x` | `new_lambda` | Triggers Callback       | Needs Jacobian |
+ *            | ------------- | ------- | ------------ | ----------------------- | -------------- |
+ *            | `eval_f`      | +       | -            | `callback_evaluation()` | -              |
+ *            | `eval_g`      | +       | -            | `callback_evaluation()` | -              |
+ *            | `eval_grad_f` | +       | -            | `callback_jacobian()`   | +              |
+ *            | `eval_jac_g`  | +       | -            | `callback_jacobian()`   | +              |
+ *            | `eval_hes`    | +       | +            | `callback_hessian()`    | +              |
  */
 
+// check if a new x was received; if so, reset evaluation state and update current x.
 void GDOP::check_new_x(const f64* nlp_solver_x, bool new_x) {
     evaluation_state.check_reset_x(new_x);
     if (!evaluation_state.x_set_unscaled) {
-        // Scaler.scale(nlp_solver_x, curr_x), perform scaling here, memcpy nlp_solver_x -> unscaled -> scale
-        // rn we just memset the data to curr_x
+        // TODO: Apply scaling here if needed.
         curr_x.assign(nlp_solver_x, number_vars);
         evaluation_state.x_set_unscaled = true;
     }
 }
 
+// similar check for lambda (dual variables).
 void GDOP::check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda) {
     evaluation_state.check_reset_lambda(new_lambda);
     if (!evaluation_state.lambda_set) {
@@ -476,6 +495,7 @@ void GDOP::check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda)
     }
 }
 
+// check if sigma (objective scaling) changed; mark Hessian as outdated if so.
 void GDOP::check_new_sigma(const f64 sigma_f) {
     if (sigma_f != curr_sigma_f) {
         curr_sigma_f = sigma_f;
@@ -483,6 +503,7 @@ void GDOP::check_new_sigma(const f64 sigma_f) {
     }
 }
 
+// evaluate objective function
 void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_f) {
@@ -491,6 +512,7 @@ void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
     eval_f_internal();
 }
 
+// evaluate constraints
 void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.eval_g) {
@@ -499,31 +521,77 @@ void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
     eval_g_internal();
 }
 
+// evaluate gradient of objective
 void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.grad_f) {
         callback_jacobian();
     }
     eval_grad_f_internal();
-};
+}
 
- void GDOP::eval_jac_g(const f64* nlp_solver_x, bool new_x) {
+// evaluate Jacobian of constraints
+void GDOP::eval_jac_g(const f64* nlp_solver_x, bool new_x) {
     check_new_x(nlp_solver_x, new_x);
     if (!evaluation_state.jac_g) {
         callback_jacobian();
     }
     eval_jac_g_internal();
- }
+}
 
- void GDOP::eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma_f, bool new_x, bool new_lambda) {
+// Evaluate Hessian of the Lagrangian
+void GDOP::eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma_f, bool new_x, bool new_lambda) {
     check_new_x(nlp_solver_x, new_x);
     check_new_lambda(nlp_solver_lambda, new_lambda);
     check_new_sigma(sigma_f);
+
     if (!evaluation_state.hes_lag) {
+        // ensure Jacobian is available (required for numerical Hessian)
+        if (!evaluation_state.jac_g) {
+            callback_jacobian();
+        }
         callback_hessian();
     }
     eval_hes_internal();
- }
+}
+
+
+void GDOP::callback_evaluation() {
+    problem.full->callback_eval(get_curr_x_xu(), get_curr_x_p());
+    problem.boundary->callback_eval(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
+    evaluation_state.eval_f = true;
+    evaluation_state.eval_g = true;
+}
+
+void GDOP::callback_jacobian() {
+    problem.full->callback_jac(get_curr_x_xu(), get_curr_x_p());
+    problem.boundary->callback_jac(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
+    evaluation_state.grad_f = true;
+    evaluation_state.jac_g = true;
+}
+
+/* perform update of dual variables, such that callback can use the exact multiplier */
+void GDOP::update_curr_lambda_obj_factors() {
+    for (int i = 0; i < mesh.intervals; i++) {
+        f64 delta_t = mesh.delta_t[i];
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            if (problem.full->has_lagrange) {
+                lagrange_obj_factors[i][j] = curr_sigma_f * collocation.b[mesh.nodes[i]][j] * delta_t;
+            }
+            for (int f = 0; f < problem.full->f_size; f++) {
+                curr_lambda[off_acc_fg[i][j] + f] *= -delta_t;
+            }
+        }
+    }
+}
+
+void GDOP::callback_hessian() {
+    update_curr_lambda_obj_factors();
+
+    problem.full->callback_aug_hes(get_curr_x_xu(), get_curr_x_p(), lagrange_obj_factors, get_curr_lamb_fg());
+    problem.boundary->callback_aug_hes(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p(), curr_sigma_f, get_curr_lamb_r());
+    evaluation_state.hes_lag = true;
+}
 
 void GDOP::eval_f_internal() {
     f64 mayer = 0;
@@ -607,7 +675,7 @@ void GDOP::eval_jac_g_internal() {
             for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
                 // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
                 nnz_index += j + 1;
-                
+
                 // TODO: maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
                 int df_dx_counter = 0;
                 std::vector<JacobianSparsity>* df_dx = &problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
@@ -773,41 +841,4 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
     for (const auto& dp_dp : hes.dp_dp) {
         curr_hes[hes_h.access(dp_dp.row,   dp_dp.col)]   += problem.mr_aug_hes(dp_dp.buf_index);
     }
-}
-
-void GDOP::callback_evaluation() {
-    problem.full->callback_eval(get_curr_x_xu(), get_curr_x_p());
-    problem.boundary->callback_eval(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
-    evaluation_state.eval_f = true;
-    evaluation_state.eval_g = true;
-}
-
-void GDOP::callback_jacobian() {
-    problem.full->callback_jac(get_curr_x_xu(), get_curr_x_p());
-    problem.boundary->callback_jac(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
-    evaluation_state.grad_f = true;
-    evaluation_state.jac_g = true;
-}
-
-/* perform update of dual variables, such that callback can use the exact multiplier */
-void GDOP::update_curr_lambda_obj_factors() {
-    for (int i = 0; i < mesh.intervals; i++) {
-        f64 delta_t = mesh.delta_t[i];
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            if (problem.full->has_lagrange) {
-                lagrange_obj_factors[i][j] = curr_sigma_f * collocation.b[mesh.nodes[i]][j] * delta_t;
-            }
-            for (int f = 0; f < problem.full->f_size; f++) {
-                curr_lambda[off_acc_fg[i][j] + f] *= -delta_t;
-            }
-        }
-    }
-}
-
-void GDOP::callback_hessian() {
-    update_curr_lambda_obj_factors();
-
-    problem.full->callback_aug_hes(get_curr_x_xu(), get_curr_x_p(), lagrange_obj_factors, get_curr_lamb_fg());
-    problem.boundary->callback_aug_hes(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p(), curr_sigma_f, get_curr_lamb_r());
-    evaluation_state.hes_lag = true;
 }

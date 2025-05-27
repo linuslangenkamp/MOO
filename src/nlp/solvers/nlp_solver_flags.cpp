@@ -4,6 +4,7 @@ NLPSolverFlags::NLPSolverFlags(int argc, char** argv) {
     /* Default settings : add when needed */
     solver_settings["Hessian"] = "Exact";
     solver_settings["Tolerance"] = "1e-10";
+    solver_settings["Iterations"] = "5000";
     solver_settings["CPUTime"] = "3600";
     solver_settings["LinearSolver"] = "MUMPS";
     solver_settings["NLPSolver"] = "Ipopt";
