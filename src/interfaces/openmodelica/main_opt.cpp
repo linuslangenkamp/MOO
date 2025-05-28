@@ -35,14 +35,16 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto collocation = std::make_unique<Collocation>();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(info->tf, info->intervals, info->stages, *collocation));
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh, *collocation));
-    auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info)); // TODO: add proper strategies here
+
+    // TODO: add more strategies here
+    auto simulation_result = std::make_unique<Trajectory>(simulate(data, threadData, *info, S_DASSL, info->intervals));
+    auto initial_guess = std::make_unique<Trajectory>(simulation_result->linear_interpolation(*mesh, *collocation));
+    // auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info));
 
     GDOP gdop(*problem, *collocation, *mesh, *initial_guess);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
 
-    auto T = simulate(data, threadData, *info, S_GBODE, 100);
-    T.print();
     return 0;
 }

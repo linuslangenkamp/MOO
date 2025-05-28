@@ -12,22 +12,22 @@
 /* struct to handle all NLP Solver flags; special solver flags are named via solvername_flagname, e.g. Ipopt_MuInit */
 class NLPSolverFlags {
 public:
-    // Constructor: initializes with defaults and parses CLI args
+    // constructor: initializes with defaults and parses CLI args
     NLPSolverFlags(int argc, char** argv);
 
-    // Print all flags
+    // print all flags
     void print() const;
 
-    // Get value for a flag (returns empty string if not set)
+    // get value for a flag (returns empty string if not set)
     std::string get(const std::string& flag) const;
 
-    // Set flag to a specific value
+    // set flag to a specific value
     void set(const std::string& flag, const std::string& value);
 
-    // Check if a flag matches a specific value
+    // check if a flag matches a specific value
     bool check_flag(const std::string& flag, const std::string& value) const;
 
-    // Get flag as T, or fallback if not found or invalid
+    // get flag as T, or fallback if not found or invalid
     f64 get_flag_f64_fallback(const std::string& flag, const f64 fallback) const;
     std::string get_flag_string_fallback(const std::string& flag, const std::string& fallback) const;
 

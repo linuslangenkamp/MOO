@@ -258,8 +258,8 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
 
 /* this seems extremely dangerous, since some simulation data might not be properly initialized
  * please extend this function if needed */
+/* TODO: add Trajectory of controls */
 Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
-    /* TODO: add Trajectory of controls */
     SOLVER_INFO solverInfo;
     SIMULATION_INFO *simInfo = data->simulationInfo;
     data->simulationInfo->numSteps = num_steps;
@@ -273,37 +273,31 @@ Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER
 
     /* vectors for Trajectory data */
     std::vector<f64> t(num_steps + 1);
-    std::vector<std::vector<f64>> x_sim(num_steps + 1, std::vector<f64>(info.x_size));
-    std::vector<std::vector<f64>> u_sim(num_steps + 1, std::vector<f64>(info.u_size));
+    std::vector<std::vector<f64>> x_sim(info.x_size, std::vector<f64>(num_steps + 1));
+    std::vector<std::vector<f64>> u_sim(info.u_size, std::vector<f64>(num_steps + 1));
     std::vector<f64> p_sim = std::vector<f64>(info.p_size);
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
-    t[0] = 0;
 
-    /* for now controls are constant == start*/
-    for (int step = 0; step < num_steps + 1; step++) {
+    /* main simulation loop using fixed number of steps to avoid floating point errors, maybe investigate in the future */
+    for (int step = 0; step <= num_steps; step++) {
+        /* update with the previous states, controls and time */
+        for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
+            x_sim[x_idx][step] = data->localData[0]->realVars[x_idx]; // store state variables
+        }
+
+        /* for now just fill the controls as constant trajectory */
         for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
             int u = info.u_indices_real_vars[u_idx];
-            u_sim[step][u_idx] = data->modelData->realVarsData[u].attribute.start;
-        }
-    }
-
-    for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
-        x_sim[0][x_idx] = data->modelData->realVarsData[x_idx].attribute.start;
-    }
-
-    int step = 1;
-    do {
-        /* call integrator */
-        solver_main_step(data, threadData, &solverInfo);
-
-        /* update the states and time */
-        for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
-            x_sim[step][x_idx] = data->localData[0]->realVars[x_idx];
+            u_sim[u_idx][step] = data->localData[0]->realVars[u];
         }
 
-        t[step] = solverInfo.currentTime;
-        step++;
-    } while (solverInfo.currentTime < info.stop_time);
+        t[step] = solverInfo.currentTime; // store current time
+
+        /* only call integrator if we're not at the final step, else 'break' */
+        if (step < num_steps) {
+            solver_main_step(data, threadData, &solverInfo);
+        }
+    }
 
     return Trajectory{t, x_sim, u_sim, p_sim, interpolation};
 }

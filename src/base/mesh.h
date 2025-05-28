@@ -34,6 +34,7 @@ struct Mesh {
 
 // given some data trajectories t, x(t), u(t), p -> interpolate w.r.t. mesh and collocation scheme -> new fitting guess
 struct Trajectory {
+    // x[i][j] = x_i at time t[j]
     std::vector<f64> t;
     std::vector<std::vector<f64>> x;
     std::vector<std::vector<f64>> u;
