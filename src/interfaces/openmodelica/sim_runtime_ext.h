@@ -72,7 +72,7 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
 void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
 
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
+                                     int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
 
 void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
@@ -95,9 +95,10 @@ typedef struct {
 typedef struct {
   DATA* data;
   threadData_t* threadData;
-  HESSIAN_PATTERN* hes_pattern;
-  modelica_real* lambda;
-  modelica_real* jac_csc;
+  HESSIAN_PATTERN* hes_pattern; // Hessian structure
+  int* u_indices;               // indices of the inputs in realVars (REMOVE ME!)
+  modelica_real* lambda;        // dual variables for each function
+  modelica_real* jac_csc;       // precomputed Jacobian entries in CSC format (can be NULL)
 } HessianFiniteDiffArgs;
 
 ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps);

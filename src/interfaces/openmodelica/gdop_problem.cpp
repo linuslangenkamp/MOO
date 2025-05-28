@@ -38,7 +38,6 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
         for (int j = 0; j < mesh.nodes[i]; j++) {
             set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
             set_time(data, threadData, info, mesh.t[i][j]);
-            eval_current_point(data, threadData, info);
             /* TODO: check if B matrix does hold additional ders */
             if (has_lagrange) {
                 /* OpenModelica sorts the Functions as fLg, we have to swap the order for lambda
@@ -105,7 +104,6 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
     set_parameters(data, threadData, info, p);
     set_states(data, threadData, info, xf_nlp);
     set_time(data, threadData, info, mesh.tf);
-    eval_current_point(data, threadData, info);
     aug_hes_buffer.fill_zero();
 
     if (has_mayer) {
@@ -258,7 +256,6 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
 
 /* this seems extremely dangerous, since some simulation data might not be properly initialized
  * please extend this function if needed */
-/* TODO: add Trajectory of controls */
 Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
     SOLVER_INFO solverInfo;
     SIMULATION_INFO *simInfo = data->simulationInfo;
@@ -285,16 +282,18 @@ Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER
             x_sim[x_idx][step] = data->localData[0]->realVars[x_idx]; // store state variables
         }
 
+        /* TODO: add Trajectory of controls */
         /* for now just fill the controls as constant trajectory */
         for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
             int u = info.u_indices_real_vars[u_idx];
             u_sim[u_idx][step] = data->localData[0]->realVars[u];
         }
 
-        t[step] = solverInfo.currentTime; // store current time
+        t[step] = solverInfo.currentTime - info.start_time;
 
         /* only call integrator if we're not at the final step, else 'break' */
         if (step < num_steps) {
+            /* TODO: fix events, allow for most standard simulations */
             solver_main_step(data, threadData, &solverInfo);
         }
     }

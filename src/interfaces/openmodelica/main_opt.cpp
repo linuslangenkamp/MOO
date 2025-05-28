@@ -13,6 +13,7 @@
 
 #include "gdop_problem.h"
 
+// TODO: rename all variables on this OpenModelica side, clearly we use stuff from OPT (choose camelCase or _!)
 // TODO: wrap all this into a namespace OpenModelica or so
 
 /* entry point to the optimization runtime from OpenModelica generated code
@@ -27,6 +28,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     nlp_solver_flags->set("Tolerance", "1e-10");
     nlp_solver_flags->set("CPUTime", "3600");
     nlp_solver_flags->set("LinearSolver", "MUMPS");
+    nlp_solver_flags->set("Ipopt_DerivativeTest", "false");
     nlp_solver_flags->print();
     // TODO: add flag to set this 1, degree
     // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
@@ -37,11 +39,15 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh, *collocation));
 
     // TODO: add more strategies here
-    auto simulation_result = std::make_unique<Trajectory>(simulate(data, threadData, *info, S_DASSL, info->intervals));
-    auto initial_guess = std::make_unique<Trajectory>(simulation_result->linear_interpolation(*mesh, *collocation));
-    // auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info));
+    auto simulation_result = std::make_unique<Trajectory>(simulate(data, threadData, *info, S_IDA, info->intervals));
+    //auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info));
+    print_real_var_names_values(data);
 
-    GDOP gdop(*problem, *collocation, *mesh, *initial_guess);
+    auto B = info->exc_hes->B;
+    print_jacobian_sparsity(info->exc_hes->B->jac, true, "JAC B");
+    __printHessianPattern(B);
+
+    GDOP gdop(*problem, *collocation, *mesh, *simulation_result);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();

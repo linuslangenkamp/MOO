@@ -48,6 +48,12 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetStringValue("dependency_detection_with_rhs", "yes");
     app->Options()->SetNumericValue("nu_init", 1e-9);
     app->Options()->SetNumericValue("eta_phi", 1e-10);
+
+    // Hessian approximation
+    if (solver_flags.check_flag("Hessian", "LBFGS")) {
+        app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+    }
+
     // subproblem
     app->Options()->SetStringValue("linear_solver", solver_flags.get_flag_string_fallback("LinearSolver", "MUMPS"));
 
@@ -61,9 +67,10 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetStringValue("timing_statistics", "yes");
     app->Options()->SetIntegerValue("print_level", 5);
 
-    // testings
-    // app->Options()->SetStringValue("derivative_test", "second-order");
-    if (solver_flags.check_flag("Hessian", "LBFGS")) {
-        app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+    // testing + validation
+    if (solver_flags.check_flag("Ipopt_DerivativeTest", "true")) {
+        app->Options()->SetStringValue("derivative_test", "second-order");
+        app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
+        app->Options()->SetNumericValue("point_perturbation_radius", 0);
     }
 }

@@ -250,11 +250,12 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * @param[in]  hes_pattern  Precomputed sparsity and coloring pattern for Hessian and Jacobian.
  * @param[in]  h            Perturbation step size (for now without nominals).
  * @param[in]  lambda       Adjoint vector (size = number of functions).
+ * @param[in]  u_indices    Indices of the input variables. For Optimization, these can be obtained by calling data->callback->getInputVarIndicesInOptimization(). (I hate it that this is an arg; it should be somewhere in DATA or so.)
  * @param[in]  jac_csc      (Optional) Jacobian values in CSC format, used to speed up Hessian calculation. NULL -> compute from scratch.
  * @param[out] hes          Output sparse Hessian values (COO format of hes_pattern, length = hes_pattern->nnz).
  */
 void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes) {
+                                     int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes) {
   /* 0. retrieve pointers */
   JACOBIAN*       jacobian     = hes_pattern->jac;
   modelica_real** ws_baseJac   = hes_pattern->ws_baseJac;
@@ -266,12 +267,13 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
 
   /* TODO: Attention: for now we assume all inputs are control variables (to optimize); update this when needed! => iterate over all controls */
   int nStates = data->modelData->nStates;
-  int uOffset = data->modelData->nVariablesReal - data->modelData->nStates - data->modelData->nInputVars
-                - data->modelData->nOptimizeConstraints - data->modelData->nOptimizeFinalConstraints;
 
   /* 1. compute standard Jacobian, if jac_csc is NULL, else use the jac_csc as precomputed Jacobian */
   if (!jac_csc) {
-    /* 1.b evaluate all JVPs J(x) * s_{c} of the current point x */
+    /* 1.a. evaluate base system (needed for Jacobian columns) */
+    data->callback->functionDAE(data, threadData);
+
+    /* 1.b. evaluate all JVPs J(x) * s_{c} of the current point x */
     for (int color = 0; color < hes_pattern->numColors; color++) {
       __setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 1, seeds);
       jacobian->evalColumn(data, threadData, jacobian, NULL);
@@ -294,12 +296,14 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
     /* 4. peturbate current x_{c_1} := x + h * s_{c_1} */
     for (int columnIndex = 0; columnIndex < hes_pattern->colorSizes[c1]; columnIndex++) {
       int col = hes_pattern->colsForColor[c1][columnIndex];
-      int realVarsIndex = (col < nStates ? col : uOffset + col);
-
+      int realVarsIndex = (col < nStates ? col : u_indices[col - nStates]);
       /* remember the current realVars (to be perturbated) and perturbate */
       ws_oldX[columnIndex] = data->localData[0]->realVars[realVarsIndex];
       data->localData[0]->realVars[realVarsIndex] += h; /* TODO: incorporate nominals here for perturbation * nom */
     }
+
+    /* evaluate perturbated system (needed for Jacobian columns) */
+    data->callback->functionDAE(data, threadData);
 
     /* 5. loop over all colors c2 with index less or equal to c_1 */
     for (int c2 = 0; c2 <= c1; c2++) {
@@ -343,10 +347,10 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
       __setSeedVector(hes_pattern->colorSizes[c2], hes_pattern->colsForColor[c2], 0, seeds);
     }
 
-    /* 12. reset perturbated x */ 
+    /* 12. reset perturbated x */
     for (int columnIndex = 0; columnIndex < hes_pattern->colorSizes[c1]; columnIndex++) {
       int col = hes_pattern->colsForColor[c1][columnIndex];
-      int realVarsIndex = (col < nStates ? col : uOffset + col);
+      int realVarsIndex = (col < nStates ? col : u_indices[col - nStates]);
       data->localData[0]->realVars[realVarsIndex] = ws_oldX[columnIndex];
     }
   }
@@ -552,5 +556,6 @@ void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr f
 /* wrapper for __evalHessianForwardDifferences */
 void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result) {
   HessianFiniteDiffArgs* hessianArgs = (HessianFiniteDiffArgs*)args;
-  __evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h, hessianArgs->lambda, hessianArgs->jac_csc, result);
+  __evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h,
+                                  hessianArgs->u_indices, hessianArgs->lambda, hessianArgs->jac_csc, result);
 }

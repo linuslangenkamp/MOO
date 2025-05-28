@@ -6,9 +6,26 @@ void print_real_var_names(DATA* data) {
 }
 
 void print_real_var_names_values(DATA* data) {
-    printf("Time: %.17e\n", data->localData[0]->timeValue);
-    for (long idx = 0; idx < data->modelData->nVariablesReal; idx++)
-        printf("%s: %.17e\n", data->modelData->realVarsData[idx].info.name, data->localData[0]->realVars[idx]);
+    long maxNameLen = 2;
+
+    for (long idx = 0; idx < data->modelData->nVariablesReal; idx++) {
+        long nameLen = strlen(data->modelData->realVarsData[idx].info.name);
+        if (nameLen > maxNameLen)
+            maxNameLen = nameLen;
+    }
+
+    printf("Time :: %.17g\n", data->localData[0]->timeValue);
+    printf("--------------------------------------------------\n");
+
+    printf("%-8s :: %-*s :: %s\n", "Index", (int)maxNameLen, "Name", "Value");
+    printf("--------------------------------------------------\n");
+
+    for (long idx = 0; idx < data->modelData->nVariablesReal; idx++) {
+        printf("%-8ld :: %-*s :: %.17e\n", 
+               idx, 
+               (int)maxNameLen, data->modelData->realVarsData[idx].info.name, 
+               data->localData[0]->realVars[idx]);
+    }
 }
 
 void print_jacobian_sparsity(const JACOBIAN* jac, bool print_pattern, const char* name = nullptr) {
