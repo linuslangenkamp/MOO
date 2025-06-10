@@ -8,16 +8,7 @@ NLPSolverFlags::NLPSolverFlags(int argc, char** argv) {
     solver_settings["CPUTime"] = "3600";
     solver_settings["LinearSolver"] = "MUMPS";
     solver_settings["NLPSolver"] = "Ipopt";
-
-    /* parse from CLI? */
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--hessian" && i + 1 < argc) {
-            solver_settings["Hessian"] = argv[++i];
-        } else if (arg == "--tolerance" && i + 1 < argc) {
-            solver_settings["Tolerance"] = argv[++i];
-        }
-    }
+    solver_settings["IpoptDerivativeTest"] = "false";
 }
 
 void NLPSolverFlags::print() const {
@@ -37,6 +28,7 @@ void NLPSolverFlags::print() const {
         std::cout << std::left << std::setw(static_cast<int>(max_len) + 2)
                   << flag << ": " << value << std::endl;
     }
+    std::cout << "\n";
 }
 
 std::string NLPSolverFlags::get(const std::string& flag) const {

@@ -30,7 +30,7 @@ public:
     // get flag as T, or fallback if not found or invalid
     f64 get_flag_f64_fallback(const std::string& flag, const f64 fallback) const;
     std::string get_flag_string_fallback(const std::string& flag, const std::string& fallback) const;
-
+    std::string get_flag_bool_as_string(const std::string& flag_name, bool default_value) const;
 private:
     std::unordered_map<std::string, std::string> solver_settings;
 };

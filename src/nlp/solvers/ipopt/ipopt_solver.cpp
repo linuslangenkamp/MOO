@@ -38,16 +38,15 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetNumericValue("alpha_red_factor", 0.5);
+    // app->Options()->SetNumericValue("mu_init", 1e-15);
 
     // strategies
     app->Options()->SetStringValue("mu_strategy", "adaptive");
     app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
     app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
-    app->Options()->SetStringValue("bound_mult_init_method","constant");
-    app->Options()->SetStringValue("dependency_detection_with_rhs", "yes");
-    app->Options()->SetNumericValue("nu_init", 1e-9);
-    app->Options()->SetNumericValue("eta_phi", 1e-10);
+    // app->Options()->SetStringValue("bound_mult_init_method","constant");
+    // app->Options()->SetStringValue("dependency_detection_with_rhs", "yes");
 
     // Hessian approximation
     if (solver_flags.check_flag("Hessian", "LBFGS")) {
@@ -61,14 +60,16 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetStringValue("grad_f_constant", "no");
     app->Options()->SetStringValue("jac_c_constant", "no");
     app->Options()->SetStringValue("jac_d_constant", "no");
-    app->Options()->SetStringValue("hessian_constant", "no");
+    if (solver_flags.check_flag("QP", "true")) {
+        app->Options()->SetStringValue("hessian_constant", "yes");
+    }
 
     // info
     app->Options()->SetStringValue("timing_statistics", "yes");
     app->Options()->SetIntegerValue("print_level", 5);
 
     // testing + validation
-    if (solver_flags.check_flag("Ipopt_DerivativeTest", "true")) {
+    if (solver_flags.check_flag("IpoptDerivativeTest", "true")) {
         app->Options()->SetStringValue("derivative_test", "second-order");
         app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
         app->Options()->SetNumericValue("point_perturbation_radius", 0);

@@ -1,5 +1,6 @@
 #include "gdop.h"
 
+// TODO: add timings for each component
 
 void GDOP::init() {
     init_sizes_offsets();

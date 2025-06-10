@@ -24,16 +24,10 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     /* create info struct <-> same purpose as DATA* in OpenModeica */
     auto info = std::make_unique<InfoGDOP>(); // TODO: maybe refactor: s.t. info also holds DATA, threadData_t, and flags
     auto nlp_solver_flags = std::make_unique<NLPSolverFlags>(argc, argv);
-    // nlp_solver_flags->set("Hessian", "LBFGS");
-    nlp_solver_flags->set("Tolerance", "1e-10");
-    nlp_solver_flags->set("CPUTime", "3600");
-    nlp_solver_flags->set("LinearSolver", "MUMPS");
-    nlp_solver_flags->set("Ipopt_DerivativeTest", "false");
+    info->set_omc_flags(data, *nlp_solver_flags);
+    nlp_solver_flags->set("IpoptDerivativeTest", "false"); // debug
     nlp_solver_flags->print();
-    // TODO: add flag to set this 1, degree
-    // stages = atoi((char*)omc_flagValue[FLAG_OPTIMIZER_NP]); // but please rename this flag to FLAG_OPT_STAGES or so
 
-    info->set_time_horizon(data, 3);
     auto collocation = std::make_unique<Collocation>();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(info->tf, info->intervals, info->stages, *collocation));
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh, *collocation));
@@ -41,11 +35,6 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     // TODO: add more strategies here
     auto simulation_result = std::make_unique<Trajectory>(simulate(data, threadData, *info, S_IDA, info->intervals));
     //auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info));
-    print_real_var_names_values(data);
-
-    auto B = info->exc_hes->B;
-    print_jacobian_sparsity(info->exc_hes->B->jac, true, "JAC B");
-    __printHessianPattern(B);
 
     GDOP gdop(*problem, *collocation, *mesh, *simulation_result);
 

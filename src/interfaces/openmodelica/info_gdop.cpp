@@ -8,6 +8,38 @@ void InfoGDOP::set_time_horizon(DATA* data, int collocation) {
     stages = collocation;
 }
 
+void InfoGDOP::set_omc_flags(DATA* data, NLPSolverFlags& nlp_solver_flags) {
+    // set number of collocation nodes, default 3
+    char* cflags = (char*)omc_flagValue[FLAG_OPTIMIZER_NP];
+    set_time_horizon(data, cflags ? atoi(cflags) : 3);
+
+    std::ostringstream oss;
+    oss << std::scientific << data->simulationInfo->tolerance;
+    nlp_solver_flags.set("Tolerance", oss.str());
+
+    cflags = (char*)omc_flagValue[FLAG_LS_IPOPT];
+    if(cflags) nlp_solver_flags.set("LinearSolver", cflags);
+
+    cflags = (char*)omc_flagValue[FLAG_IPOPT_MAX_ITER];
+    if(cflags) nlp_solver_flags.set("Iterations", cflags);
+
+    cflags = (char*)omc_flagValue[FLAG_IPOPT_HESSE];
+    if (cflags) {
+        if (!strcasecmp(cflags, "BFGS") || !strcasecmp(cflags, "LBFGS")) {
+            nlp_solver_flags.set("Hessian", "LBFGS");
+        }
+        else if (!strcasecmp(cflags, "CONST") || !strcasecmp(cflags, "QP")) {
+            nlp_solver_flags.set("Hessian", "QP");
+        }
+        else if (!strcasecmp(cflags, "EXACT")) {
+            nlp_solver_flags.set("Hessian", "Exact");
+        }
+        else {
+            warningStreamPrint(OMC_LOG_STDOUT, 0, "Unsupported Hessian option: %s (use LBFGS, QP, or Exact)", cflags);
+        }
+    }
+}
+
 ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info) :
     /* set OpenModelica Jacobian ptrs, allocate memory, initilization of A, B, C, D */
     A(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_A])),

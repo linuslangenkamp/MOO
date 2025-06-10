@@ -9,7 +9,7 @@
   Real k4;
   Real k5;
   // Real final_c(min=0.3, max=0.3) = x1^2 + x2^2 + x3^2 annotation(isFinalConstraint=true);
-  input Real u(start=710, min=698.15, max = 748.15);
+  input Real u(start=700, min=698.15, max = 748.15);
   Real cost1 = - x2  annotation(isMayer=true);
 equation
   k1 = exp(8.86 - 20300 / 1.9872 / u);
@@ -26,7 +26,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3",  noEquidistantTimeGrid="()",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS,LOG_IPOPT"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test; 
-//ipopt_init="CONST",*/
+//ipopt_init="CONST",
 
 /*
 model include_test
@@ -115,7 +115,6 @@ model include_test
 //Submitted to ECOSM’12, Paris, France, 2012.
 
 
-/*output */
 
 output Real cost1 = (w_ice - 0.515309170685596)^2
 
@@ -129,9 +128,6 @@ output Real cost1 = (w_ice - 0.515309170685596)^2
 
 output Real cost2 = dot_m_f annotation(isLagrange=true);
 
-/* States in the diesel engine model
-
------------------------------------------------------------------------------*/
 
 Real w_ice(start=2.4989941562646081e-01, min = 4/state_norm1, max =220/state_norm1, fixed=true);
 
@@ -142,16 +138,10 @@ Real p_em(start=3.3926666666666666e-01, min = p_amb/state_norm3, max=3*p_amb/sta
 Real w_tc(start=6.8099999999999994e-02, min = 300/state_norm4, max=10000/state_norm4, fixed=true);
 
 
-/* Control inputs
-
------------------------------------------------------------------------------*/
-
 input Real u_f(start=0.5, min=0.0, max = 250/control_norm1);
 
 input Real u_wg(start=0.5, min=0.0, max = 1.0);
-  /* Constants
 
-      -----------------------------------------------------------------------------*/
 protected
 
   constant Real pi = 3.141592653589793;
@@ -255,10 +245,6 @@ protected
   constant Real w_fric = 2.4723010996875069e-005;
 
 
-/* States and controls
-
------------------------------------------------------------------------------*/
-
 protected
 
   Real W_ICE;
@@ -272,9 +258,6 @@ protected
   Real U_F;
 
 
-/* Compressor Massflow
-
------------------------------------------------------------------------------*/
 
   Real Pi_c;
 
@@ -289,23 +272,12 @@ protected
   Real P_c;
 
 
-/* Cylinder Airflow
-
------------------------------------------------------------------------------*/
-
   Real dot_m_ci;
 
-
-/* Cylinder Fuelflow
-
------------------------------------------------------------------------------*/
 
   Real dot_m_f;
 
 
-/* Cylinder Torque
-
------------------------------------------------------------------------------*/
 
   Real eta_ig;
 
@@ -318,9 +290,6 @@ protected
   Real T_ice;
 
 
-/* Cylinder Temperature Out
-
------------------------------------------------------------------------------*/
 
   Real Pi_e;
 
@@ -331,9 +300,6 @@ protected
   Real T_eo;
 
 
-/* Turbine Massflow
-
------------------------------------------------------------------------------*/
 
   Real Pi_t;
 
@@ -346,16 +312,10 @@ protected
   Real dot_m_t;
 
 
-/* Turbine Power
-
------------------------------------------------------------------------------*/
 
   Real P_t;
 
 
-  /* Wastegate Massflow
-
------------------------------------------------------------------------------*/
 
   Real Pi_wg;
 

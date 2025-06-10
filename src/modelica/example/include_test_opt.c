@@ -1,14 +1,3 @@
-//////////////////////////////////////////////////
-/* new stuff below */
-
-// OptimizationRuntime entry point
-extern int _main_OptimitationRuntime();
-#define CALL_OPT_RUNTIME TRUE
-#define CALL_SIM_RUNTIME FALSE
-
-
-//////////////////////////////////////////////////
-
 #include "include_test_model.h"
 #include "simulation/solver/events.h"
 
@@ -16,6 +5,17 @@ extern int _main_OptimitationRuntime();
 #define OMC_MAIN main
 #define OMC_CHAR char
 #define OMC_EXPORT extern
+
+//////////////////////////////////////////////////
+/* new stuff below */
+
+// OptimizationRuntime entry point
+extern int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData);
+#define CALL_OPT_RUNTIME TRUE
+#define CALL_SIM_RUNTIME FALSE
+
+
+//////////////////////////////////////////////////
 
 static int rml_execution_failed()
 {

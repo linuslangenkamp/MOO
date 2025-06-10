@@ -265,7 +265,6 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
   unsigned int*   jacLeadIndex = jacobian->sparsePattern->leadindex;
   unsigned int*   jacIndex     = jacobian->sparsePattern->index;
 
-  /* TODO: Attention: for now we assume all inputs are control variables (to optimize); update this when needed! => iterate over all controls */
   int nStates = data->modelData->nStates;
 
   /* 1. compute standard Jacobian, if jac_csc is NULL, else use the jac_csc as precomputed Jacobian */

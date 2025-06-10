@@ -2,11 +2,15 @@
 #define OPT_OM_INFO_GDOP_H
 
 #include "simulation_data.h"
+#include "simulation/solver/gbode_main.h"
+#include "simulation/solver/external_input.h"
 
 #include "sim_runtime_ext.h"
 
 #include <base/nlp_structs.h>
 #include <base/fixed_vector.h>
+#include <nlp/solvers/nlp_solver_flags.h>
+
 #include <memory>
 
 /* foward decl */
@@ -56,6 +60,7 @@ struct InfoGDOP {
     int intervals;  // model interval count
     int stages;     // stage count, TODO: set it with flags
 
+    void set_omc_flags(DATA* data, NLPSolverFlags& nlp_solver_flags);
     void set_time_horizon(DATA* data, int collocation);
 };
 
