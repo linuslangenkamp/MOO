@@ -18,7 +18,7 @@ public:
 
     FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
      Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info);
-                           
+
     void callback_eval(const f64* xu_nlp, const f64* p) override;
     void callback_jac(const f64* xu_nlp, const f64* p) override;
     void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) override;
@@ -35,6 +35,12 @@ public:
     void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
     void callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
     void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) override;
+};
+
+struct AuxiliaryTrajectory {
+    Trajectory& trajectory;
+    InfoGDOP& info;
+    SOLVER_INFO* solver_info;
 };
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& fLGR);

@@ -36,6 +36,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto simulation_result = std::make_unique<Trajectory>(simulate(data, threadData, *info, S_IDA, info->intervals));
     //auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info));
 
+    simulation_result->to_csv("sim.csv");
     GDOP gdop(*problem, *collocation, *mesh, *simulation_result);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);

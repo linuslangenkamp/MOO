@@ -254,49 +254,120 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
     return Trajectory{t, x_guess, u_guess, p, interpolation};
 }
 
+static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
+{
+    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit storage field in simulation_result
+    InfoGDOP& info = aux->info;
+    Trajectory& trajectory = aux->trajectory;
+    SOLVER_INFO* solver_info = aux->solver_info;
+
+    for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
+        trajectory.x[x_idx].push_back(data->localData[0]->realVars[x_idx]); // store state variables
+    }
+
+    /* for now just fill the controls as constant trajectory */
+    for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
+        int u = info.u_indices_real_vars[u_idx];
+        trajectory.u[u_idx].push_back(data->localData[0]->realVars[u]);
+    }
+
+    trajectory.t.push_back(solver_info->currentTime - info.start_time);
+}
+
+static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
+{
+    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit storage field in simulation_result
+    InfoGDOP& info = aux->info;
+    // Trajectory& trajectory = aux->trajectory;
+    // SOLVER_INFO* solver_info = aux->solver_info;
+
+    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {
+        // TODO: parameters trajectory.p[p_idx].push_back(data->localData[0]->realVars[(/* parameter index */)]);
+    }
+}
+
+Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+    SOLVER_INFO solver_info;
+    SIMULATION_INFO *simInfo = data->simulationInfo;
+    simInfo->numSteps = num_steps;
+    simInfo->stepSize = info.tf / (f64)num_steps;
+    simInfo->useStopTime = 1;
+    solver_info.solverMethod = solver;
+
+    initializeSolverData(data, threadData, &solver_info);
+    externalInputallocate(data);
+    setZCtol(fmin(simInfo->stepSize, simInfo->tolerance));
+    initializeModel(data, threadData, "", "", info.start_time);
+    data->real_time_sync.enabled = FALSE;
+
+    // allocate and reserve trajectory vectors
+    std::vector<f64> t;
+    t.reserve((num_steps + 1));
+
+    std::vector<std::vector<f64>> x_sim(info.x_size);
+    for (auto& v : x_sim) { v.reserve(num_steps + 1); }
+
+    std::vector<std::vector<f64>> u_sim(info.u_size);
+    for (auto& v : u_sim) { v.reserve(num_steps + 1); }
+
+    std::vector<f64> p_sim(info.p_size);
+
+    // create Trajectory object
+    Trajectory trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR};
+
+    // auxiliary data (passed as void* in storage member of sim_result)
+    auto aux = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{trajectory, info, &solver_info});
+
+    // define global sim_result
+    extern simulation_result sim_result;
+    sim_result.filename = NULL;
+    sim_result.numpoints = 0;
+    sim_result.cpuTime = 0;
+    sim_result.storage = aux.get();
+    sim_result.emit = trajectory_xut_emit;
+    sim_result.init = nullptr;
+    sim_result.writeParameterData = trajectory_p_emit;
+    sim_result.free = nullptr;
+    trajectory_xut_emit(&sim_result, data, threadData);
+
+    // call the simulation with custom emit
+    data->callback->performSimulation(data, threadData, &solver_info);
+
+    return trajectory;
+}
+
+
+
 /* this seems extremely dangerous, since some simulation data might not be properly initialized
  * please extend this function if needed */
-Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
-    SOLVER_INFO solverInfo;
+/*Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+    SOLVER_INFO solver_info;
     SIMULATION_INFO *simInfo = data->simulationInfo;
     data->simulationInfo->numSteps = num_steps;
     data->simulationInfo->stepSize = info.tf / (f64)num_steps;
     simInfo->useStopTime = 1;
-    solverInfo.solverMethod = solver;
-    initializeSolverData(data, threadData, &solverInfo);
+    solver_info.solverMethod = solver;
+    initializeSolverData(data, threadData, &solver_info);
     externalInputallocate(data);
     setZCtol(fmin(data->simulationInfo->stepSize, data->simulationInfo->tolerance));
     initializeModel(data, threadData, "", "", info.start_time);
 
-    /* vectors for Trajectory data */
+    data->real_time_sync.enabled = FALSE;
+
     std::vector<f64> t(num_steps + 1);
     std::vector<std::vector<f64>> x_sim(info.x_size, std::vector<f64>(num_steps + 1));
     std::vector<std::vector<f64>> u_sim(info.u_size, std::vector<f64>(num_steps + 1));
     std::vector<f64> p_sim = std::vector<f64>(info.p_size);
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
+    Trajectory trajectory{t, x_sim, u_sim, p_sim, interpolation};
 
-    /* main simulation loop using fixed number of steps to avoid floating point errors, maybe investigate in the future */
-    for (int step = 0; step <= num_steps; step++) {
-        /* update with the previous states, controls and time */
-        for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
-            x_sim[x_idx][step] = data->localData[0]->realVars[x_idx]; // store state variables
-        }
+    // create aux struct to pass as void*
+    AuxiliaryTrajectory aux{trajectory, info, &solver_info};
+    simulation_result* sim_result;
+    sim_result->storage = (&aux);
+    sim_result->emit = trajectory_emit;
 
-        /* TODO: add Trajectory of controls */
-        /* for now just fill the controls as constant trajectory */
-        for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
-            int u = info.u_indices_real_vars[u_idx];
-            u_sim[u_idx][step] = data->localData[0]->realVars[u];
-        }
+    data->callback->performSimulation(data, threadData, &solver_info);
 
-        t[step] = solverInfo.currentTime - info.start_time;
-
-        /* only call integrator if we're not at the final step, else 'break' */
-        if (step < num_steps) {
-            /* TODO: fix events, allow for most standard simulations */
-            solver_main_step(data, threadData, &solverInfo);
-        }
-    }
-
-    return Trajectory{t, x_sim, u_sim, p_sim, interpolation};
-}
+    return trajectory;
+}*/

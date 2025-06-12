@@ -160,3 +160,34 @@ void Trajectory::print() {
     print_matrix("u", u);
     print_vector("p", p);
 }
+
+
+void Trajectory::to_csv(const std::string& filename) const {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file for writing: " << filename << "\n";
+        return;
+    }
+
+    // header
+    file << "time";
+    for (size_t i = 0; i < x.size(); ++i)
+        file << ",x[" << i << "]";
+    for (size_t i = 0; i < u.size(); ++i)
+        file << ",u[" << i << "]";
+    file << "\n";
+
+    size_t num_rows = t.size();
+    file << std::setprecision(16);
+
+    for (size_t k = 0; k < num_rows; ++k) {
+        file << t[k];
+        for (size_t i = 0; i < x.size(); ++i)
+            file << "," << x[i][k];
+        for (size_t i = 0; i < u.size(); ++i)
+            file << "," << u[i][k];
+        file << "\n";
+    }
+
+    file.close();
+}

@@ -1,6 +1,10 @@
 #ifndef OPT_MESH_H
 #define OPT_MESH_H
 
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+
 #include "fixed_vector.h"
 #include "collocation.h"
 #include "util.h"
@@ -53,6 +57,7 @@ struct Trajectory {
     Trajectory linear_interpolation(Mesh& mesh, Collocation& collocation);
 
     void print();
+    void to_csv(const std::string& filename) const;
 };
 
 #endif  // OPT_MESH_H

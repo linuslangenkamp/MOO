@@ -27,8 +27,7 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test; 
 //ipopt_init="CONST",
-
-/*
+*/
 model include_test
   Real x1(start = 1, fixed=true) "kerogen";
   Real x2(start = 0, fixed=true) "pyrolytic bitumen";
@@ -65,14 +64,14 @@ equation
     experiment(StartTime = 0, StopTime = 8, Tolerance = 1e-10, Interval = 0.1),
     __OpenModelica_simulationFlags(
       s = "optimization",
-      optimizerNP = "1",
+      optimizerNP = "3",
       noEquidistantTimeGrid="()",
       lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"
     ),
-    __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian"
+    __OpenModelica_commandLineOptions = "+g=Optimica"
   );
 end include_test;
-*/
+
 
 /*
 model include_test
@@ -106,7 +105,7 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;*/
 
-
+/*
 model include_test
 
 
@@ -386,4 +385,4 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica"
   );
 
-end include_test;
+end include_test;*/
