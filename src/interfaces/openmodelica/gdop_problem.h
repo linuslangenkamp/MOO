@@ -44,7 +44,7 @@ struct AuxiliaryTrajectory {
 };
 
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
-Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info);
-Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps);
+std::unique_ptr<Trajectory> create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info);
+std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps);
 
 #endif // OPT_OM_GDOP_PROBLEM_H

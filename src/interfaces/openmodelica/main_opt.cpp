@@ -33,14 +33,17 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto problem = std::make_unique<Problem>(create_gdop(data, threadData, *info, *mesh, *collocation));
 
     // TODO: add more strategies here
-    auto simulation_result = std::make_unique<Trajectory>(simulate(data, threadData, *info, S_IDA, info->intervals));
-    //auto initial_guess = std::make_unique<Trajectory>(create_constant_guess(data, threadData, *info));
-
-    simulation_result->to_csv("sim.csv");
+    auto simulation_result = simulate(data, threadData, *info, S_DASSL, info->intervals)    ;
+    //auto initial_guess = create_constant_guess(data, threadData, *info);
     GDOP gdop(*problem, *collocation, *mesh, *simulation_result);
 
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
+
+    simulation_result->to_csv("simulation_moo.csv");
+    gdop.optimal_solution->to_csv("optimal_moo.csv");
+
+    // TODO: add one more stage: trajectory -> emit (set states, inputs, parameters for each t_ij, then all functionDAE each time)
 
     return 0;
 }

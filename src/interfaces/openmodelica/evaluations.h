@@ -10,6 +10,9 @@
 #include "info_gdop.h"
 #include "sim_runtime_ext.h"
 
+// TODO: try to not call functionDAE that often. Maybe create a workspace buffer where we memcpy the realVars after evaluation
+//       main advantage: no need to solve NLS several times!!
+
 /* init evaluations */
 void init_eval(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr);
 void init_eval_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg);

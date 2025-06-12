@@ -235,7 +235,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
 }
 
 // TODO: make a NLP initializer class with different init methods: simulation, bionic, constant, ...
-Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info) {
+std::unique_ptr<Trajectory> create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info) {
     std::vector<f64> t = {0, info.tf};
     std::vector<std::vector<f64>> x_guess;
     std::vector<std::vector<f64>> u_guess;
@@ -251,21 +251,20 @@ Trajectory create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP&
     }
     // TODO: add p
 
-    return Trajectory{t, x_guess, u_guess, p, interpolation};
+    return std::make_unique<Trajectory>(Trajectory{t, x_guess, u_guess, p, interpolation});
 }
 
 static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
-    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit storage field in simulation_result
+    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit void* field
     InfoGDOP& info = aux->info;
     Trajectory& trajectory = aux->trajectory;
     SOLVER_INFO* solver_info = aux->solver_info;
 
     for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
-        trajectory.x[x_idx].push_back(data->localData[0]->realVars[x_idx]); // store state variables
+        trajectory.x[x_idx].push_back(data->localData[0]->realVars[x_idx]);
     }
 
-    /* for now just fill the controls as constant trajectory */
     for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
         int u = info.u_indices_real_vars[u_idx];
         trajectory.u[u_idx].push_back(data->localData[0]->realVars[u]);
@@ -276,17 +275,16 @@ static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threa
 
 static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
-    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit storage field in simulation_result
+    // TODO: parameters trajectory.p[p_idx].push_back(data->localData[0]->realVars[(/* parameter index */)]);
+    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage;
     InfoGDOP& info = aux->info;
-    // Trajectory& trajectory = aux->trajectory;
-    // SOLVER_INFO* solver_info = aux->solver_info;
+    Trajectory& trajectory = aux->trajectory;
+    SOLVER_INFO* solver_info = aux->solver_info;
 
-    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {
-        // TODO: parameters trajectory.p[p_idx].push_back(data->localData[0]->realVars[(/* parameter index */)]);
-    }
+    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {}
 }
 
-Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
     SOLVER_INFO solver_info;
     SIMULATION_INFO *simInfo = data->simulationInfo;
     simInfo->numSteps = num_steps;
@@ -302,7 +300,7 @@ Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER
 
     // allocate and reserve trajectory vectors
     std::vector<f64> t;
-    t.reserve((num_steps + 1));
+    t.reserve(num_steps + 1);
 
     std::vector<std::vector<f64>> x_sim(info.x_size);
     for (auto& v : x_sim) { v.reserve(num_steps + 1); }
@@ -313,10 +311,10 @@ Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER
     std::vector<f64> p_sim(info.p_size);
 
     // create Trajectory object
-    Trajectory trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR};
+    auto trajectory = std::make_unique<Trajectory>(Trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR});
 
     // auxiliary data (passed as void* in storage member of sim_result)
-    auto aux = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{trajectory, info, &solver_info});
+    auto aux = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
 
     // define global sim_result
     extern simulation_result sim_result;
@@ -328,6 +326,8 @@ Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER
     sim_result.init = nullptr;
     sim_result.writeParameterData = trajectory_p_emit;
     sim_result.free = nullptr;
+
+    // call emit for time = 0
     trajectory_xut_emit(&sim_result, data, threadData);
 
     // call the simulation with custom emit
@@ -335,39 +335,3 @@ Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER
 
     return trajectory;
 }
-
-
-
-/* this seems extremely dangerous, since some simulation data might not be properly initialized
- * please extend this function if needed */
-/*Trajectory simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
-    SOLVER_INFO solver_info;
-    SIMULATION_INFO *simInfo = data->simulationInfo;
-    data->simulationInfo->numSteps = num_steps;
-    data->simulationInfo->stepSize = info.tf / (f64)num_steps;
-    simInfo->useStopTime = 1;
-    solver_info.solverMethod = solver;
-    initializeSolverData(data, threadData, &solver_info);
-    externalInputallocate(data);
-    setZCtol(fmin(data->simulationInfo->stepSize, data->simulationInfo->tolerance));
-    initializeModel(data, threadData, "", "", info.start_time);
-
-    data->real_time_sync.enabled = FALSE;
-
-    std::vector<f64> t(num_steps + 1);
-    std::vector<std::vector<f64>> x_sim(info.x_size, std::vector<f64>(num_steps + 1));
-    std::vector<std::vector<f64>> u_sim(info.u_size, std::vector<f64>(num_steps + 1));
-    std::vector<f64> p_sim = std::vector<f64>(info.p_size);
-    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
-    Trajectory trajectory{t, x_sim, u_sim, p_sim, interpolation};
-
-    // create aux struct to pass as void*
-    AuxiliaryTrajectory aux{trajectory, info, &solver_info};
-    simulation_result* sim_result;
-    sim_result->storage = (&aux);
-    sim_result->emit = trajectory_emit;
-
-    data->callback->performSimulation(data, threadData, &solver_info);
-
-    return trajectory;
-}*/

@@ -34,6 +34,8 @@ public:
     Trajectory& guess;          // initial guess / trajectory, will be interpolated accordingly
     NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
 
+    std::unique_ptr<Trajectory> optimal_solution = std::make_unique<Trajectory>(); // gets filled in finalize_solution()
+
     // constant NLP derivative matrix part of the jacobian
     FixedVector<f64> const_der_jac;
 
@@ -115,6 +117,7 @@ public:
     void eval_grad_f(const f64* nlp_solver_x, bool new_x);
     void eval_jac_g(const f64* nlp_solver_x, bool new_x);
     void eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma, bool new_x, bool new_lambda);
+    void finalize_solution(const f64 obj_opt, const f64* x_opt, void* args);
 };
 
 #endif // OPT_GDOP_H

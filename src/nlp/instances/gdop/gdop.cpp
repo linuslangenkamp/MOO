@@ -843,3 +843,39 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
         curr_hes[hes_h.access(dp_dp.row,   dp_dp.col)]   += problem.mr_aug_hes(dp_dp.buf_index);
     }
 }
+
+void GDOP::finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) {
+    optimal_solution->t.reserve(mesh.node_count + 1);
+    optimal_solution->x.resize(off_x);
+    optimal_solution->u.resize(off_u);
+
+    // TODO: add parameters to result trajectory
+    optimal_solution->p.reserve(off_p);
+
+    for (auto& v : optimal_solution->x) { v.reserve(mesh.node_count + 1); }
+    for (auto& v : optimal_solution->u) { v.reserve(mesh.node_count + 1); }
+
+    for (int x_index = 0; x_index < off_x; x_index++) {
+        optimal_solution->x[x_index].push_back(x_opt[x_index]);
+    }
+
+    for (int u_index = 0; u_index < off_u; u_index++) {
+        optimal_solution->u[u_index].push_back(/* TODO: interpolate backwards */ 0.0);
+    }
+
+    optimal_solution->t.push_back(0.0);
+
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            for (int x_index = 0; x_index < off_x; x_index++) {
+                optimal_solution->x[x_index].push_back(x_opt[off_acc_xu[i][j] + x_index]);
+            }
+
+            for (int u_index = 0; u_index < off_u; u_index++) {
+                optimal_solution->u[u_index].push_back(x_opt[off_acc_xu[i][j] + off_x + u_index]);
+            }
+
+            optimal_solution->t.push_back(mesh.t[i][j]);
+        }
+    }
+}

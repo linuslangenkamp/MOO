@@ -28,6 +28,8 @@ equation
 end include_test; 
 //ipopt_init="CONST",
 */
+
+/*
 model include_test
   Real x1(start = 1, fixed=true) "kerogen";
   Real x2(start = 0, fixed=true) "pyrolytic bitumen";
@@ -72,7 +74,7 @@ equation
   );
 end include_test;
 
-
+*/
 /*
 model include_test
   Real x1(start = 1, fixed=true);
@@ -105,7 +107,6 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;*/
 
-/*
 model include_test
 
 
@@ -385,4 +386,4 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica"
   );
 
-end include_test;*/
+end include_test;

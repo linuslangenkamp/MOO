@@ -65,6 +65,7 @@ public:
     virtual void eval_grad_f(const f64* nlp_solver_x, bool new_x) = 0; // fill curr_grad
     virtual void eval_jac_g(const f64* nlp_solver_x, bool new_x) = 0;  // fill curr_jac
     virtual void eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma, bool new_x, bool new_lambda) = 0; // fill curr_hes
+    virtual void finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) = 0; // finalize the solutions
 };
 
 #endif  // OPT_NLP_H
