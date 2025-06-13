@@ -860,7 +860,8 @@ void GDOP::finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) {
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        optimal_solution->u[u_index].push_back(/* TODO: interpolate backwards */ 0.0);
+        f64 u0 = collocation.interpolate(mesh.nodes[0], false, &x_opt[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+        optimal_solution->u[u_index].push_back(u0);
     }
 
     optimal_solution->t.push_back(0.0);

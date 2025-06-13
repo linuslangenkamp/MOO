@@ -3,7 +3,7 @@ from sympy import symbols, diff, expand, Poly, solve, N, re, im
 import time
 
 
-def genCppCode(clist, c0list, blist, Dlist, dps=250, mindps=40):
+def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
     mp.dps = mindps
 
     with open("radauConstantsC.txt", "w") as f:
@@ -50,6 +50,28 @@ def genCppCode(clist, c0list, blist, Dlist, dps=250, mindps=40):
                     outStr += str(D1[i][j]) + ","
                 outStr = outStr[:-1] + "},\n"
             outStr = outStr[:-2] + "},\n"
+        outStr = outStr[:-2] + "}\n"
+        f.write(outStr)
+
+    # barycentric weights (incl. 0)
+    with open("radauConstantsW0.txt", "w") as f:
+        outStr = "{"
+        for w0 in w0list:
+            outStr += "{"
+            for i in range(len(w0)):
+                outStr += str(w0[i]) + ","
+            outStr = outStr[:-1] + "},\n"
+        outStr = outStr[:-2] + "}\n"
+        f.write(outStr)
+
+    # barycentric weights (excl. 0)
+    with open("radauConstantsW.txt", "w") as f:
+        outStr = "{"
+        for w in wlist:
+            outStr += "{"
+            for i in range(len(w)):
+                outStr += str(w[i]) + ","
+            outStr = outStr[:-1] + "},\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -171,8 +193,9 @@ def generate(s, dps=150):
     # quadrature weights
     b = []
 
-    # helper for derivative matrices D1, D2
-    weights = [weight(c0, j) for j in range(len(c0))]
+    # barycentric weigths
+    weights0 = [weight(c0, j) for j in range(len(c0))]
+    weights = [weight(c, j) for j in range(len(c))]
     D1 = [[None for _ in range(len(c0))] for _ in range(len(c0))]  # diff matrix at c0
 
     # Barycentric Formulas from http://richard.baltensp.home.hefr.ch/Publications/3.pdf
@@ -187,20 +210,22 @@ def generate(s, dps=150):
                 b.append(integrate(lagr, c0, s))
         for j in range(s + 1):
             if i != j:
-                D1[i][j] = weights[j] / (weights[i] * (c0[i] - c0[j]))
+                D1[i][j] = weights0[j] / (weights0[i] * (c0[i] - c0[j]))
         D1[i][i] = -sum(D1[i][j] for j in range(s + 1) if j != i)
-    return c, c0, b, D1
+    return c, c0, b, D1, weights0, weights
 
 
-clist, c0list, blist, Dlist = [], [], [], []
+clist, c0list, blist, Dlist, w0list, wlist = [], [], [], [], [], []
 
 for m in range(2, 101):
     startTime = time.time()
-    c, c0, b, D = generate(m, 200)
+    c, c0, b, D, w0, w = generate(m, 200)
     clist.append(c)
     c0list.append(c0)
     blist.append(b)
     Dlist.append(D)
+    w0list.append(w0)
+    wlist.append(w)
     print(f"{m} {time.time() - startTime}")
 
-genCppCode(clist, c0list, blist, Dlist)
+genCppCode(clist, c0list, blist, Dlist, w0list, wlist)

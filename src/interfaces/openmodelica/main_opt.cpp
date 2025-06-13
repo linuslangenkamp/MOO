@@ -1,4 +1,4 @@
-// for xml, bin, json run in 
+// for xml, bin, json run in
 // Projects/Optimization/src/modelica/example$ ../../../build/src/modelica/example/include_test_cmk
 
 #include <iostream>
@@ -40,10 +40,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
 
-    simulation_result->to_csv("simulation_moo.csv");
-    gdop.optimal_solution->to_csv("optimal_moo.csv");
-
-    // TODO: add one more stage: trajectory -> emit (set states, inputs, parameters for each t_ij, then all functionDAE each time)
+    emit_trajectory_om(data, threadData, *gdop.optimal_solution, *info);
 
     return 0;
 }

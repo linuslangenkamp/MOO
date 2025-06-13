@@ -24,3 +24,31 @@ void Collocation::diff_matrix_multiply(const int scheme, const int x_size, const
         }
     }
 };
+
+f64 Collocation::interpolate(int scheme, bool contains_zero, const f64* values, int increment,
+                             f64 interval_start, f64 interval_end, f64 T) const {
+    const auto& nodes = contains_zero ? c0[scheme] : c[scheme];
+    const auto& weights = contains_zero ? w0[scheme] : w[scheme];
+
+    // rescale T to the [0, 1] nominal interval domain
+    f64 h = interval_end - interval_start;
+    f64 node_start = nodes[0];
+    f64 node_end = nodes[scheme - 1];
+    f64 T_hat = (T - interval_start) / h * (node_end - node_start) + node_start;
+
+    // check for exact match with any node to avoid division by zero
+    for (int j = 0; j < scheme; j++) {
+        if (std::abs(T_hat - nodes[j]) < 1e-14) return values[j];
+    }
+
+    // compute the barycentric interpolant
+    f64 numerator = 0.0;
+    f64 denominator = 0.0;
+    for (int j = 0; j < scheme; j++) {
+        f64 temp = weights[j] / (T_hat - nodes[j]);
+        numerator += temp * values[increment * j];
+        denominator += temp;
+    }
+
+    return numerator / denominator;
+};

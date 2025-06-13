@@ -235,6 +235,7 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
 }
 
 // TODO: make a NLP initializer class with different init methods: simulation, bionic, constant, ...
+//       always returns a unique_ptr<Trajectory>
 std::unique_ptr<Trajectory> create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info) {
     std::vector<f64> t = {0, info.tf};
     std::vector<std::vector<f64>> x_guess;
@@ -273,15 +274,17 @@ static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threa
     trajectory.t.push_back(solver_info->currentTime - info.start_time);
 }
 
+[[maybe_unused]]
 static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
-    // TODO: parameters trajectory.p[p_idx].push_back(data->localData[0]->realVars[(/* parameter index */)]);
+    // TODO: parameters
     AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage;
     InfoGDOP& info = aux->info;
     Trajectory& trajectory = aux->trajectory;
-    SOLVER_INFO* solver_info = aux->solver_info;
 
-    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {}
+    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {
+        trajectory.p.push_back(data->localData[0]->realVars[0 /* parameter index */]);
+    }
 }
 
 std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
@@ -303,10 +306,10 @@ std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoG
     t.reserve(num_steps + 1);
 
     std::vector<std::vector<f64>> x_sim(info.x_size);
-    for (auto& v : x_sim) { v.reserve(num_steps + 1); }
+    for (auto& v : x_sim) v.reserve(num_steps + 1);
 
     std::vector<std::vector<f64>> u_sim(info.u_size);
-    for (auto& v : u_sim) { v.reserve(num_steps + 1); }
+    for (auto& v : u_sim) v.reserve(num_steps + 1);
 
     std::vector<f64> p_sim(info.p_size);
 
@@ -317,21 +320,53 @@ std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoG
     auto aux = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
 
     // define global sim_result
-    extern simulation_result sim_result;
     sim_result.filename = NULL;
     sim_result.numpoints = 0;
     sim_result.cpuTime = 0;
     sim_result.storage = aux.get();
     sim_result.emit = trajectory_xut_emit;
     sim_result.init = nullptr;
-    sim_result.writeParameterData = trajectory_p_emit;
+    sim_result.writeParameterData = nullptr; // TODO: trajectory_p_emit
     sim_result.free = nullptr;
 
-    // call emit for time = 0
+    // emit for time = 0
     trajectory_xut_emit(&sim_result, data, threadData);
 
-    // call the simulation with custom emit
+    // simulation with custom emit
     data->callback->performSimulation(data, threadData, &solver_info);
 
     return trajectory;
+}
+
+void emit_trajectory_om(DATA* data, threadData_t* threadData, Trajectory& trajectory, InfoGDOP& info) {
+    // setting default emitter
+    if (!data->modelData->resultFileName) {
+        std::string result_file = std::string(data->modelData->modelFilePrefix) + "_res." + data->simulationInfo->outputFormat;
+        data->modelData->resultFileName = GC_strdup(result_file.c_str());
+    }
+    data->simulationInfo->numSteps = trajectory.t.size();
+    initializeResultData(data, threadData, 0);
+    sim_result.writeParameterData(&sim_result, data, threadData);
+
+    // allocate contiguous array for xu
+    FixedVector<f64> xu(trajectory.x.size() + trajectory.u.size());
+    for (size_t i = 0; i < trajectory.t.size(); i++) {
+        // move trajectory data in contiguous array
+        for (size_t x_index = 0; x_index < trajectory.x.size(); x_index++) {
+            xu[x_index] = trajectory.x[x_index][i];
+        }
+        for (size_t u_index = 0; u_index < trajectory.u.size(); u_index++) {
+            xu[trajectory.x.size() + u_index] = trajectory.u[u_index][i];
+        }
+
+        // evaluate all algebraic variables
+        set_time(data, threadData, info, info.start_time + trajectory.t[i]);
+        set_states_inputs(data, threadData, info, xu.raw());
+        eval_current_point(data, threadData, info);
+
+        // emit point
+        sim_result.emit(&sim_result, data, threadData);
+    }
+
+    sim_result.free(&sim_result, data, threadData);
 }

@@ -2,6 +2,7 @@
 #define OPT_OM_GDOP_PROBLEM_H
 
 #include "simulation_data.h"
+#include "simulation/simulation_runtime.h"
 #include "simulation/solver/gbode_main.h"
 #include "simulation/solver/external_input.h"
 
@@ -46,5 +47,7 @@ struct AuxiliaryTrajectory {
 Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
 std::unique_ptr<Trajectory> create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info);
 std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps);
+
+void emit_trajectory_om(DATA* data, threadData_t* threadData, Trajectory& trajectory, InfoGDOP& info);
 
 #endif // OPT_OM_GDOP_PROBLEM_H
