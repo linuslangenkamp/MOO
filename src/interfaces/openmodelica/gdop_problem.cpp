@@ -1,43 +1,42 @@
 #include "gdop_problem.h"
 
-// Dummy implementation of FullSweep_OM
+
 FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
-        Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info)
+        Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, InfoGDOP& info)
     : FullSweep(std::move(lfg), std::move(aug_hes), std::move(aug_pp_hes), collocation, mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
-                info.g_size, info.x_size, info.u_size, info.p_size),
-      data(data), threadData(threadData), info(info) {
+                info.g_size, info.x_size, info.u_size, info.p_size), info(info) {
 }
 void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
-    set_parameters(data, threadData, info, p);
+    set_parameters(info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
-            set_time(data, threadData, info, mesh.t[i][j]);
-            eval_current_point(data, threadData, info);
-            eval_lfg_write(data, threadData, info, &eval_buffer[eval_size * mesh.acc_nodes[i][j]]);
+            set_states_inputs(info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
+            set_time(info, mesh.t[i][j]);
+            eval_current_point(info);
+            eval_lfg_write(info, &eval_buffer[eval_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
 
 void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
-    set_parameters(data, threadData, info, p);
+    set_parameters(info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
-            set_time(data, threadData, info, mesh.t[i][j]);
-            eval_current_point(data, threadData, info);
+            set_states_inputs(info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
+            set_time(info, mesh.t[i][j]);
+            eval_current_point(info);
             /* TODO: check if B matrix does hold additional ders */
-            jac_eval_write_as_csc(data, threadData, info, info.exc_jac->B, &jac_buffer[jac_size * mesh.acc_nodes[i][j]]);
+            jac_eval_write_as_csc(info, info.exc_jac->B, &jac_buffer[jac_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
 
 void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) {
-    set_parameters(data, threadData, info, p);
+    set_parameters(info, p);
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            set_states_inputs(data, threadData, info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
-            set_time(data, threadData, info, mesh.t[i][j]);
+            set_states_inputs(info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
+            set_time(info, mesh.t[i][j]);
             /* TODO: check if B matrix does hold additional ders */
             if (has_lagrange) {
                 /* OpenModelica sorts the Functions as fLg, we have to swap the order for lambda
@@ -68,42 +67,40 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
 }
 
 BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::unique_ptr<AugmentedHessianMR> aug_hes, Mesh& mesh,
-                                   FixedVector<Bounds>&& r_bounds, DATA* data, threadData_t* threadData, InfoGDOP& info)
+                                   FixedVector<Bounds>&& r_bounds, InfoGDOP& info)
     : BoundarySweep(std::move(mr), std::move(aug_hes), mesh, std::move(r_bounds), info.mayer_exists,
-                    info.r_size, info.x_size, info.p_size),
-      data(data), threadData(threadData), info(info) {
-}
+                    info.r_size, info.x_size, info.p_size), info(info) {}
 
 void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
-    set_parameters(data, threadData, info, p);
-    set_states(data, threadData, info, xf_nlp);
-    set_time(data, threadData, info, mesh.tf);
-    eval_current_point(data, threadData, info);
-    eval_mr_write(data, threadData, info, eval_buffer.raw());
+    set_parameters(info, p);
+    set_states(info, xf_nlp);
+    set_time(info, mesh.tf);
+    eval_current_point(info);
+    eval_mr_write(info, eval_buffer.raw());
 }
 
 void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
-    set_parameters(data, threadData, info, p);
-    set_states(data, threadData, info, xf_nlp);
-    set_time(data, threadData, info, mesh.tf);
-    eval_current_point(data, threadData, info);
+    set_parameters(info, p);
+    set_states(info, xf_nlp);
+    set_time(info, mesh.tf);
+    eval_current_point(info);
     /* TODO: check if C matrix does hold additional ders */
     /* derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1] */
     if (has_mayer) {
-        jac_eval_write_first_row_as_csc(data, threadData, info, info.exc_jac->C, info.exc_jac->C_buffer.raw(),
+        jac_eval_write_first_row_as_csc(info, info.exc_jac->C, info.exc_jac->C_buffer.raw(),
                                         jac_buffer.raw(), info.exc_jac->C_coo);
     }
 
     if (info.exc_jac->D_exists) {
         /* TODO: check if D matrix does hold additional ders */
-        jac_eval_write_as_csc(data, threadData, info, info.exc_jac->D, &jac_buffer[info.exc_jac->D_coo.nnz_offset]);
+        jac_eval_write_as_csc(info, info.exc_jac->D, &jac_buffer[info.exc_jac->D_coo.nnz_offset]);
     }
 }
 
 void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) {
-    set_parameters(data, threadData, info, p);
-    set_states(data, threadData, info, xf_nlp);
-    set_time(data, threadData, info, mesh.tf);
+    set_parameters(info, p);
+    set_states(info, xf_nlp);
+    set_time(info, mesh.tf);
     aug_hes_buffer.fill_zero();
 
     if (has_mayer) {
@@ -129,7 +126,9 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
     }
 }
 
-Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
+Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
+    DATA* data = info.data;
+
     /* variable sizes */
     info.x_size = data->modelData->nStates;
     info.u_size = data->modelData->nInputVars;
@@ -166,14 +165,14 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     short der_indices_lagrange_realVars[2] = {-1, -1};
 
     /* this is really ugly IMO, fix this when ready for master! */
-    info.mayer_exists = (data->callback->mayer(data, &info.__address_mayer_real_vars, &der_index_mayer_realVars) >= 0);
+    info.mayer_exists = (data->callback->mayer(data, &info.address_mayer_real_vars, &der_index_mayer_realVars) >= 0);
     if (info.mayer_exists) {
-        info.index_mayer_real_vars = (int)(info.__address_mayer_real_vars - data->localData[0]->realVars);
+        info.index_mayer_real_vars = (int)(info.address_mayer_real_vars - data->localData[0]->realVars);
     }
 
-    info.lagrange_exists = (data->callback->lagrange(data, &info.__address_lagrange_real_vars, &der_indices_lagrange_realVars[0], &der_indices_lagrange_realVars[1]) >= 0);
+    info.lagrange_exists = (data->callback->lagrange(data, &info.address_lagrange_real_vars, &der_indices_lagrange_realVars[0], &der_indices_lagrange_realVars[1]) >= 0);
     if (info.lagrange_exists) {
-        info.index_lagrange_real_vars = (int)(info.__address_lagrange_real_vars - data->localData[0]->realVars);
+        info.index_lagrange_real_vars = (int)(info.address_lagrange_real_vars - data->localData[0]->realVars);
     }
 
     /* constraint bounds */
@@ -209,22 +208,22 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
     FixedVector<FunctionLFG> lfg((int)info.lagrange_exists + info.f_size + info.g_size);
 
     /* create CSC <-> COO exchange, init jacobians */
-    info.exc_jac = std::make_unique<ExchangeJacobians>(data, threadData, info);
+    info.exc_jac = std::make_unique<ExchangeJacobians>(info);
 
     /* create HESSIAN_PATTERNs and allocate buffers for extrapolation / evaluation */
-    info.exc_hes = std::make_unique<ExchangeHessians>(data, threadData, info);
+    info.exc_hes = std::make_unique<ExchangeHessians>(info);
     auto aug_hes_lfg = std::make_unique<AugmentedHessianLFG>();
     auto aug_hes_lfg_pp = std::make_unique<AugmentedParameterHessian>();
     auto aug_hes_mr = std::make_unique<AugmentedHessianMR>();
 
     /* init (OPT) */
-    init_eval(data, threadData, info, lfg, mr);
-    init_jac(data, threadData, info, lfg, mr);
-    init_hes(data, threadData, info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
+    init_eval(info, lfg, mr);
+    init_jac(info, lfg, mr);
+    init_hes(info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
 
     return Problem(
-        std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), collocation, mesh, std::move(g_bounds), data, threadData, info),
-        std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), mesh, std::move(r_bounds), data, threadData, info),
+        std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), collocation, mesh, std::move(g_bounds), info),
+        std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), mesh, std::move(r_bounds), info),
         mesh,
         std::move(x_bounds),
         std::move(u_bounds),
@@ -236,7 +235,9 @@ Problem create_gdop(DATA* data, threadData_t* threadData, InfoGDOP& info, Mesh& 
 
 // TODO: make a NLP initializer class with different init methods: simulation, bionic, constant, ...
 //       always returns a unique_ptr<Trajectory>
-std::unique_ptr<Trajectory> create_constant_guess(DATA* data, threadData_t* threadData, InfoGDOP& info) {
+std::unique_ptr<Trajectory> create_constant_guess(InfoGDOP& info) {
+    DATA* data = info.data;
+
     std::vector<f64> t = {0, info.tf};
     std::vector<std::vector<f64>> x_guess;
     std::vector<std::vector<f64>> u_guess;
@@ -287,7 +288,10 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
     }
 }
 
-std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+    DATA* data = info.data;
+    threadData_t* threadData = info.threadData;
+
     SOLVER_INFO solver_info;
     SIMULATION_INFO *simInfo = data->simulationInfo;
     simInfo->numSteps = num_steps;
@@ -329,7 +333,7 @@ std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoG
     sim_result.writeParameterData = nullptr; // TODO: trajectory_p_emit
     sim_result.free = nullptr;
 
-    // emit for time = 0
+    // emit for time = 0, TODO: do we need to set some initial values, how to set the controls?
     trajectory_xut_emit(&sim_result, data, threadData);
 
     // simulation with custom emit
@@ -338,7 +342,10 @@ std::unique_ptr<Trajectory> simulate(DATA* data, threadData_t* threadData, InfoG
     return trajectory;
 }
 
-void emit_trajectory_om(DATA* data, threadData_t* threadData, Trajectory& trajectory, InfoGDOP& info) {
+void emit_trajectory_om(Trajectory& trajectory, InfoGDOP& info) {
+    DATA* data = info.data;
+    threadData_t* threadData = info.threadData;
+
     // setting default emitter
     if (!data->modelData->resultFileName) {
         std::string result_file = std::string(data->modelData->modelFilePrefix) + "_res." + data->simulationInfo->outputFormat;
@@ -360,9 +367,9 @@ void emit_trajectory_om(DATA* data, threadData_t* threadData, Trajectory& trajec
         }
 
         // evaluate all algebraic variables
-        set_time(data, threadData, info, info.start_time + trajectory.t[i]);
-        set_states_inputs(data, threadData, info, xu.raw());
-        eval_current_point(data, threadData, info);
+        set_time(info, info.start_time + trajectory.t[i]);
+        set_states_inputs(info, xu.raw());
+        eval_current_point(info);
 
         // emit point
         sim_result.emit(&sim_result, data, threadData);

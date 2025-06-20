@@ -7,7 +7,6 @@
 #include <base/collocation.h>
 #include <base/fixed_vector.h>
 #include <base/linalg.h>
-#include <base/nlp_state.h>
 #include <base/nlp_structs.h>
 #include <base/mesh.h>
 #include <base/util.h>

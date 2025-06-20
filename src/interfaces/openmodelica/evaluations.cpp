@@ -1,18 +1,18 @@
 #include "evaluations.h"
 
 /* just enumerate them from 0 ... #lfg - 1 abd 0 ... #mr - 1, the correct placement will be handled in eval */
-void init_eval(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
-    init_eval_lfg(data, threadData, info, lfg);
-    init_eval_mr(data, threadData, info, mr);
+void init_eval(InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
+    init_eval_lfg(info, lfg);
+    init_eval_mr(info, mr);
 }
 
-void init_eval_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
+void init_eval_lfg(InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
     for (int i = 0; i < lfg.int_size(); i++) {
         lfg[i].buf_index = i;
     }
 }
 
-void init_eval_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionMR>& mr) {
+void init_eval_mr(InfoGDOP& info, FixedVector<FunctionMR>& mr) {
     for (int i = 0; i < mr.int_size(); i++) {
         mr[i].buf_index = i;
     }
@@ -20,12 +20,12 @@ void init_eval_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVec
 
 /* since its no problem and conversion from COO <-> CSC has been carried out, we just use the CSC ordering in the Jacobians
  * thus no use of memcpy at all, since we can pass out buffer! */
-void init_jac(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
-    init_jac_lfg(data, threadData, info, lfg);
-    init_jac_mr(data, threadData, info, mr);
+void init_jac(InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
+    init_jac_lfg(info, lfg);
+    init_jac_mr(info, mr);
 }
 
-void init_jac_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
+void init_jac_lfg(InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
     /* full B Jacobian */
     for (int nz = 0; nz < info.exc_jac->B_coo.nnz; nz++) {
         int row = info.exc_jac->B_coo.row[nz];
@@ -43,7 +43,7 @@ void init_jac_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVec
     }
 }
 
-void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVector<FunctionMR>& mr) {
+void init_jac_mr(InfoGDOP& info, FixedVector<FunctionMR>& mr) {
     /* M (first row) in C(COO) Jacobian */
     int nz_C = 0;
     if (info.mayer_exists) {
@@ -81,13 +81,13 @@ void init_jac_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, FixedVect
     }
 }
 
-void init_hes(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
+void init_hes(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
               AugmentedParameterHessian& aug_hes_lfg_pp, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
-    init_hes_lfg(data, threadData, info, aug_hes_lfg, aug_hes_lfg_pp);
-    init_hes_mr(data, threadData, info, aug_hes_mr, mr);
+    init_hes_lfg(info, aug_hes_lfg, aug_hes_lfg_pp);
+    init_hes_mr(info, aug_hes_mr, mr);
 }
 
-void init_hes_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
+void init_hes_lfg(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
                   AugmentedParameterHessian& aug_hes_lfg_pp) {
     /* TODO: include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
 
@@ -109,7 +109,7 @@ void init_hes_lfg(DATA* data, threadData_t* threadData, InfoGDOP& info, Augmente
     }
 }
 
-void init_hes_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
+void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
     HESSIAN_PATTERN* hes_c = info.exc_hes->C;
     HESSIAN_PATTERN* hes_d = info.exc_hes->D;
 
@@ -199,69 +199,69 @@ void init_hes_mr(DATA* data, threadData_t* threadData, InfoGDOP& info, Augmented
 }
 
 /* TODO: add me */
-void set_parameters(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* p) {
+void set_parameters(InfoGDOP& info, const f64* p) {
     return;
 }
 
-void set_states(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* x_ij) {
+void set_states(InfoGDOP& info, const f64* x_ij) {
     for (int x = 0; x < info.x_size; x++) {
-        data->localData[0]->realVars[info.index_x_real_vars + x] = (modelica_real) x_ij[x];
+        info.data->localData[0]->realVars[info.index_x_real_vars + x] = (modelica_real) x_ij[x];
     }
 }
 
-void set_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* u_ij) {
+void set_inputs(InfoGDOP& info, const f64* u_ij) {
     for (int u = 0; u < info.u_size; u++) {
-        data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) u_ij[u];
+        info.data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) u_ij[u];
     }
 }
 
-void set_states_inputs(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64* xu_ij) {
+void set_states_inputs(InfoGDOP& info, const f64* xu_ij) {
     for (int x = 0; x < info.x_size; x++) {
-        data->localData[0]->realVars[info.index_x_real_vars + x] = (modelica_real) xu_ij[x];
+        info.data->localData[0]->realVars[info.index_x_real_vars + x] = (modelica_real) xu_ij[x];
     }
 
     for (int u = 0; u < info.u_size; u++) {
-        data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) xu_ij[info.x_size + u];
+        info.data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) xu_ij[info.x_size + u];
     }
 }
 
-void set_time(DATA* data, threadData_t* threadData, InfoGDOP& info, const f64 t_ij) {
+void set_time(InfoGDOP& info, const f64 t_ij) {
     /* move time horizon to Modelica model time */
-    data->localData[0]->timeValue = (modelica_real) t_ij + info.start_time;
+    info.data->localData[0]->timeValue = (modelica_real) t_ij + info.start_time;
 }
 
-void eval_lfg_write(DATA* data, threadData_t* threadData, InfoGDOP& info, f64* eval_lfg_buffer) {
+void eval_lfg_write(InfoGDOP& info, f64* eval_lfg_buffer) {
     int nz = 0;
     /* L */
     if (info.lagrange_exists) {
-        eval_lfg_buffer[nz++] = data->localData[0]->realVars[info.index_lagrange_real_vars];
+        eval_lfg_buffer[nz++] = info.data->localData[0]->realVars[info.index_lagrange_real_vars];
     }
     /* f */
     for (int der_x = 0; der_x < info.f_size; der_x++) {
-        eval_lfg_buffer[nz++] = data->localData[0]->realVars[info.index_der_x_real_vars + der_x];
+        eval_lfg_buffer[nz++] = info.data->localData[0]->realVars[info.index_der_x_real_vars + der_x];
     }
     /* g */
     for (int g = 0; g < info.g_size; g++) {
-        eval_lfg_buffer[nz++] = data->localData[0]->realVars[info.index_g_real_vars + g];
+        eval_lfg_buffer[nz++] = info.data->localData[0]->realVars[info.index_g_real_vars + g];
     }
 }
 
-void eval_mr_write(DATA* data, threadData_t* threadData, InfoGDOP& info, f64* eval_mr_buffer) {
+void eval_mr_write(InfoGDOP& info, f64* eval_mr_buffer) {
     int nz = 0;
     /* M */
     if (info.mayer_exists) {
-        eval_mr_buffer[nz++] = data->localData[0]->realVars[info.index_mayer_real_vars];
+        eval_mr_buffer[nz++] = info.data->localData[0]->realVars[info.index_mayer_real_vars];
     }
     /* r */
     for (int r = 0; r < info.r_size; r++) {
-        eval_mr_buffer[nz++] = data->localData[0]->realVars[info.index_r_real_vars + r];
+        eval_mr_buffer[nz++] = info.data->localData[0]->realVars[info.index_r_real_vars + r];
     }
 }
 
-void jac_eval_write_first_row_as_csc(DATA* data, threadData_t* threadData, InfoGDOP& info, JACOBIAN* jacobian, f64* full_buffer,
+void jac_eval_write_first_row_as_csc(InfoGDOP& info, JACOBIAN* jacobian, f64* full_buffer,
                                      f64* eval_jac_buffer, Exchange_COO_CSC& exc) {
     assert(jacobian != NULL && jacobian->sparsePattern != NULL);
-    __evalJacobian(data, threadData, jacobian, NULL, full_buffer);
+    __evalJacobian(info.data, info.threadData, jacobian, NULL, full_buffer);
 
     for (int nz = 0; nz < exc.nnz_moved_row; nz++) {
         eval_jac_buffer[nz] = full_buffer[exc.coo_to_csc(nz)];

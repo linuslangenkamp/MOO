@@ -21,6 +21,11 @@ struct InfoGDOP {
     /* custom attaching and auto freeing of C-style mallocs / callocs */
     AutoFree auto_free;
 
+    DATA* data;               // pointer to OM data object
+    threadData_t* threadData; // pointer to OM threadData object
+    int argc;                 // commandline arg count OM
+    char** argv;              // commandline args OM
+
     /* problem sizes */
     int x_size;
     int u_size;
@@ -35,8 +40,8 @@ struct InfoGDOP {
     bool lagrange_exists;
 
     /* addresses in realVars */
-    modelica_real* __address_mayer_real_vars;
-    modelica_real* __address_lagrange_real_vars;
+    modelica_real* address_mayer_real_vars;
+    modelica_real* address_lagrange_real_vars;
 
     /* realVars variables indices */
     const int index_x_real_vars = 0;
@@ -60,8 +65,10 @@ struct InfoGDOP {
     int intervals;  // model interval count
     int stages;     // stage count, TODO: set it with flags
 
-    void set_omc_flags(DATA* data, NLPSolverFlags& nlp_solver_flags);
-    void set_time_horizon(DATA* data, int collocation);
+    InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv);
+
+    void set_omc_flags(NLPSolverFlags& nlp_solver_flags);
+    void set_time_horizon(int collocation);
 };
 
 /**
@@ -126,7 +133,7 @@ struct ExchangeJacobians {
     FixedVector<modelica_real> C_buffer;
     FixedVector<modelica_real> D_buffer;
 
-    ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info);
+    ExchangeJacobians(InfoGDOP& info);
 };
 
 struct ExchangeHessians {
@@ -167,7 +174,7 @@ struct ExchangeHessians {
     FixedVector<std::pair<int, int>> C_to_Mr_buffer;
     FixedVector<std::pair<int, int>> D_to_Mr_buffer;
 
-    ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDOP& info);
+    ExchangeHessians(InfoGDOP& info);
 };
 
 #endif // OPT_OM_INFO_GDOP_H

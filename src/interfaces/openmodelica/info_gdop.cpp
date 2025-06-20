@@ -1,6 +1,9 @@
 #include "info_gdop.h"
 
-void InfoGDOP::set_time_horizon(DATA* data, int collocation) {
+InfoGDOP::InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv) :
+                   data(data), threadData(threadData), argc(argc), argv(argv) {}
+
+void InfoGDOP::set_time_horizon(int collocation) {
     start_time = data->simulationInfo->startTime;
     stop_time = data->simulationInfo->stopTime;
     tf = stop_time - start_time;
@@ -8,10 +11,10 @@ void InfoGDOP::set_time_horizon(DATA* data, int collocation) {
     stages = collocation;
 }
 
-void InfoGDOP::set_omc_flags(DATA* data, NLPSolverFlags& nlp_solver_flags) {
+void InfoGDOP::set_omc_flags(NLPSolverFlags& nlp_solver_flags) {
     // set number of collocation nodes, default 3
     char* cflags = (char*)omc_flagValue[FLAG_OPTIMIZER_NP];
-    set_time_horizon(data, cflags ? atoi(cflags) : 3);
+    set_time_horizon(cflags ? atoi(cflags) : 3);
 
     std::ostringstream oss;
     oss << std::scientific << data->simulationInfo->tolerance;
@@ -40,16 +43,16 @@ void InfoGDOP::set_omc_flags(DATA* data, NLPSolverFlags& nlp_solver_flags) {
     }
 }
 
-ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoGDOP& info) :
+ExchangeJacobians::ExchangeJacobians(InfoGDOP& info) :
     /* set OpenModelica Jacobian ptrs, allocate memory, initilization of A, B, C, D */
-    A(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_A])),
-    B(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_B])),
-    C(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_C])),
-    D(&(data->simulationInfo->analyticJacobians[data->callback->INDEX_JAC_D])),
-    A_exists((bool)(data->callback->initialAnalyticJacobianA(data, threadData, A) == 0)),
-    B_exists((bool)(data->callback->initialAnalyticJacobianB(data, threadData, B) == 0)),
-    C_exists((bool)(data->callback->initialAnalyticJacobianC(data, threadData, C) == 0)),
-    D_exists((bool)(data->callback->initialAnalyticJacobianD(data, threadData, D) == 0)),
+    A(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_A])),
+    B(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_B])),
+    C(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_C])),
+    D(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_D])),
+    A_exists((bool)(info.data->callback->initialAnalyticJacobianA(info.data, info.threadData, A) == 0)),
+    B_exists((bool)(info.data->callback->initialAnalyticJacobianB(info.data, info.threadData, B) == 0)),
+    C_exists((bool)(info.data->callback->initialAnalyticJacobianC(info.data, info.threadData, C) == 0)),
+    D_exists((bool)(info.data->callback->initialAnalyticJacobianD(info.data, info.threadData, D) == 0)),
 
     /* create COO sparsity and CSC(OM) <-> COO(OPT, reordered) mappings */
     A_coo(Exchange_COO_CSC::from_csc((int*)A->sparsePattern->leadindex, (int*)A->sparsePattern->index,
@@ -71,7 +74,7 @@ ExchangeJacobians::ExchangeJacobians(DATA* data, threadData_t* threadData, InfoG
     D_buffer(FixedVector<modelica_real>(D_coo.nnz)) {
 }
 
-ExchangeHessians::ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDOP& info) :
+ExchangeHessians::ExchangeHessians(InfoGDOP& info) :
     A(__generateHessianPattern(info.exc_jac->A)),
     B(__generateHessianPattern(info.exc_jac->B)),
     C(__generateHessianPattern(info.exc_jac->C)),
@@ -97,10 +100,10 @@ ExchangeHessians::ExchangeHessians(DATA* data, threadData_t* threadData, InfoGDO
     C_lambda(FixedVector<modelica_real>(!C_exists ? 0 : C->numFuncs)),
     D_lambda(FixedVector<modelica_real>(!D_exists ? 0 : D->numFuncs)),
 
-    A_args{data, threadData, A, info.u_indices_real_vars.raw(), A_lambda.raw(), nullptr},
-    B_args{data, threadData, B, info.u_indices_real_vars.raw(), B_lambda.raw(), nullptr},
-    C_args{data, threadData, C, info.u_indices_real_vars.raw(), C_lambda.raw(), nullptr},
-    D_args{data, threadData, D, info.u_indices_real_vars.raw(), D_lambda.raw(), nullptr} {
+    A_args{info.data, info.threadData, A, info.u_indices_real_vars.raw(), A_lambda.raw(), nullptr},
+    B_args{info.data, info.threadData, B, info.u_indices_real_vars.raw(), B_lambda.raw(), nullptr},
+    C_args{info.data, info.threadData, C, info.u_indices_real_vars.raw(), C_lambda.raw(), nullptr},
+    D_args{info.data, info.threadData, D, info.u_indices_real_vars.raw(), D_lambda.raw(), nullptr} {
     /* attach global, heap allocated C structs to auto free */
     info.auto_free.attach({A, B, C, D}, __freeHessianPattern);
     info.auto_free.attach({A_extr, B_extr, C_extr, D_extr}, __freeExtrapolationData);
