@@ -48,6 +48,7 @@ set(SOURCES
     src/nlp/instances/gdop/gdop.cpp
 
     src/nlp/solvers/nlp_solver_flags.cpp
+    src/nlp/nlp_scaling.cpp
 
     src/nlp/solvers/ipopt/ipopt_adapter.cpp
     src/nlp/solvers/ipopt/ipopt_solver.cpp

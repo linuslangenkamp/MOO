@@ -478,35 +478,18 @@ void GDOP::init_hessian() {
  */
 
 // check if a new x was received; if so, reset evaluation state and update current x.
-void GDOP::check_new_x(const f64* nlp_solver_x, bool new_x) {
+void GDOP::check_new_x(bool new_x) {
     evaluation_state.check_reset_x(new_x);
-    if (!evaluation_state.x_set_unscaled) {
-        // TODO: Apply scaling here if needed.
-        curr_x.assign(nlp_solver_x, number_vars);
-        evaluation_state.x_set_unscaled = true;
-    }
 }
 
 // similar check for lambda (dual variables).
-void GDOP::check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda) {
+void GDOP::check_new_lambda(const bool new_lambda) {
     evaluation_state.check_reset_lambda(new_lambda);
-    if (!evaluation_state.lambda_set) {
-        curr_lambda.assign(nlp_solver_lambda, number_constraints);
-        evaluation_state.lambda_set = true;
-    }
-}
-
-// check if sigma (objective scaling) changed; mark Hessian as outdated if so.
-void GDOP::check_new_sigma(const f64 sigma_f) {
-    if (sigma_f != curr_sigma_f) {
-        curr_sigma_f = sigma_f;
-        evaluation_state.hes_lag = false;
-    }
 }
 
 // evaluate objective function
-void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
-    check_new_x(nlp_solver_x, new_x);
+void GDOP::eval_f(bool new_x) {
+    check_new_x(new_x);
     if (!evaluation_state.eval_f) {
         callback_evaluation();
     }
@@ -514,8 +497,8 @@ void GDOP::eval_f(const f64* nlp_solver_x, bool new_x) {
 }
 
 // evaluate constraints
-void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
-    check_new_x(nlp_solver_x, new_x);
+void GDOP::eval_g(bool new_x) {
+    check_new_x(new_x);
     if (!evaluation_state.eval_g) {
         callback_evaluation();
     }
@@ -523,8 +506,8 @@ void GDOP::eval_g(const f64* nlp_solver_x, bool new_x) {
 }
 
 // evaluate gradient of objective
-void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
-    check_new_x(nlp_solver_x, new_x);
+void GDOP::eval_grad_f(bool new_x) {
+    check_new_x(new_x);
     if (!evaluation_state.grad_f) {
         callback_jacobian();
     }
@@ -532,8 +515,8 @@ void GDOP::eval_grad_f(const f64* nlp_solver_x, bool new_x) {
 }
 
 // evaluate Jacobian of constraints
-void GDOP::eval_jac_g(const f64* nlp_solver_x, bool new_x) {
-    check_new_x(nlp_solver_x, new_x);
+void GDOP::eval_jac_g(bool new_x) {
+    check_new_x(new_x);
     if (!evaluation_state.jac_g) {
         callback_jacobian();
     }
@@ -541,10 +524,9 @@ void GDOP::eval_jac_g(const f64* nlp_solver_x, bool new_x) {
 }
 
 // Evaluate Hessian of the Lagrangian
-void GDOP::eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma_f, bool new_x, bool new_lambda) {
-    check_new_x(nlp_solver_x, new_x);
-    check_new_lambda(nlp_solver_lambda, new_lambda);
-    check_new_sigma(sigma_f);
+void GDOP::eval_hes(bool new_x, bool new_lambda) {
+    check_new_x(new_x);
+    check_new_lambda(new_lambda);
 
     if (!evaluation_state.hes_lag) {
         // ensure Jacobian is available (required for numerical Hessian)
@@ -555,7 +537,6 @@ void GDOP::eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 s
     }
     eval_hes_internal();
 }
-
 
 void GDOP::callback_evaluation() {
     problem.full->callback_eval(get_curr_x_xu(), get_curr_x_p());

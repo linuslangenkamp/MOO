@@ -101,9 +101,8 @@ public:
     inline f64* get_curr_lamb_r()  {return problem.boundary->r_size != 0 ? &curr_lambda[off_fg_total] : nullptr;}
 
     // nlp solver calls
-    void check_new_x(const f64* nlp_solver_x, bool new_x);
-    void check_new_lambda(const f64* nlp_solver_lambda, const bool new_lambda);
-    void check_new_sigma(const f64 obj_factor);
+    void check_new_x(bool new_x);
+    void check_new_lambda(const bool new_lambda);
     void eval_f_internal();
     void eval_g_internal();
     void eval_grad_f_internal();
@@ -111,11 +110,11 @@ public:
     void eval_hes_internal();
 
     // virtuals in NLP
-    void eval_f(const f64* nlp_solver_x, bool new_x);
-    void eval_g(const f64* nlp_solver_x, bool new_x);
-    void eval_grad_f(const f64* nlp_solver_x, bool new_x);
-    void eval_jac_g(const f64* nlp_solver_x, bool new_x);
-    void eval_hes(const f64* nlp_solver_x, const f64* nlp_solver_lambda, f64 sigma, bool new_x, bool new_lambda);
+    void eval_f(bool new_x);
+    void eval_g(bool new_x);
+    void eval_grad_f(bool new_x);
+    void eval_jac_g(bool new_x);
+    void eval_hes(bool new_x, bool new_lambda);
     void finalize_solution(const f64 obj_opt, const f64* x_opt, void* args);
 };
 

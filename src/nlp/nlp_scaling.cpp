@@ -1,0 +1,98 @@
+#include "nlp_scaling.h"
+
+// TODO: use BLAS here, and everywhere possible; these are literally straight vector ops
+
+NominalScaling::NominalScaling(FixedVector<f64>&& x_nominal, 
+                               FixedVector<f64>&& g_nominal,
+                               f64 f_nominal)
+    : x_scaling(std::move(x_nominal)),
+      g_scaling(std::move(g_nominal)),
+      f_scaling(1.0 / f_nominal)
+    {
+        for (size_t x = 0; x < x_nominal.size(); x++) {
+            x_scaling[x] = 1.0 / x_scaling[x];
+        }
+
+        for (size_t g = 0; g < g_nominal.size(); g++) {
+            g_scaling[g] = 1.0 / g_scaling[g];
+        }
+    }
+
+void NominalScaling::create_grad_scaling(int number_vars) {
+    grad_scaling = FixedVector<f64>(number_vars);
+
+    for (int i = 0; i < number_vars; i++) {
+        grad_scaling[i] = f_scaling / x_scaling[i];
+    }
+}
+
+void NominalScaling::create_jac_scaling(int* i_row_jac, int* j_col_jac, int jac_nnz) {
+    jac_scaling = FixedVector<f64>(jac_nnz);
+
+    for (int nz = 0; nz < jac_nnz; nz++) {
+        jac_scaling[nz] = g_scaling[i_row_jac[nz]] / x_scaling[j_col_jac[nz]];
+    }
+}
+
+void NominalScaling::create_hes_scaling(int* i_row_hes, int* j_col_hes, int hes_nnz) {
+    hes_scaling = FixedVector<f64>(hes_nnz);
+
+    for (int nz = 0; nz < hes_nnz; nz++) {
+        hes_scaling[nz] = 1.0 / (x_scaling[i_row_hes[nz]] * x_scaling[j_col_hes[nz]]);
+    }
+}
+
+// x_unscaled := x_nom * x_scaled
+void NominalScaling::unscale_x(const f64* x_scaled, f64* x_unscaled, int number_vars) {
+    Linalg::Dv(x_scaling.raw(), true, x_scaled, number_vars, x_unscaled);
+}
+
+// x_scaled := x_nom^{-1} * x_unscaled
+void NominalScaling::inplace_scale_x(f64* x_unscaled) {
+    Linalg::Dv_inplace(x_scaling.raw(), false, x_unscaled, x_scaling.size());
+}
+
+// g_scaled := g_nom^{-1} * g_unscaled
+void NominalScaling::inplace_scale_g(f64* g_unscaled) {
+    Linalg::Dv_inplace(g_scaling.raw(), false, g_unscaled, g_scaling.size());
+}
+
+// f_scaled := f_nom^{-1} * f_unscaled 
+void NominalScaling::scale_f(const f64* f_unscaled, f64* f_scaled) {
+    *f_scaled = f_scaling * (*f_unscaled);
+}
+
+// g_scaled := g_nom^{-1} * g_unscaled 
+void NominalScaling::scale_g(const f64* g_unscaled, f64* g_scaled, int number_constraints) {
+    Linalg::Dv(g_scaling.raw(), false, g_unscaled, number_constraints, g_scaled);
+}
+
+// grad_scaled := f_nom^{-1} * grad_unscaled * x_nom = grad_scaling * grad_unscaled
+void NominalScaling::scale_grad_f(const f64* grad_unscaled, f64* grad_scaled, int number_vars) {
+    if (grad_scaling.empty()) {
+        create_grad_scaling(number_vars);
+    }
+
+    Linalg::Dv(grad_scaling.raw(), false, grad_unscaled, number_vars, grad_scaled);
+}
+
+// jac_scaled := g_nom^{-1} * jac_unscaled * x_nom = jac_scaling * jac_unscaled
+void NominalScaling::scale_jac(const f64* jac_unscaled, f64* jac_scaled,
+                               int* i_row_jac, int* j_col_jac, int jac_nnz) {
+    if (jac_scaling.empty()) {
+        create_jac_scaling(i_row_jac, j_col_jac, jac_nnz);
+    }
+
+    Linalg::Dv(jac_scaling.raw(), false, jac_unscaled, jac_nnz, jac_scaled);
+}
+
+// hes_scaled := x_nom * H(sigma * f + lambda^T * g) * x_nom = hes_scaling * hes_unscaled
+// while the f and g scaling is absorbed into lambda and sigma 
+void NominalScaling::scale_hes(const f64* hes_unscaled, f64* hes_scaled,
+                               int* i_row_hes, int* j_col_hes, int hes_nnz) {
+    if (hes_scaling.empty()) {
+        create_hes_scaling(i_row_hes, j_col_hes, hes_nnz);
+    }
+
+    Linalg::Dv(hes_scaling.raw(), false, hes_unscaled, hes_nnz, hes_scaled);
+}

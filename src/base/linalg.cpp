@@ -18,6 +18,36 @@ namespace Linalg {
         return ret;
     }
 
+    void Dv(const f64* D, bool invD, const f64* x, const int size, f64* out) {
+        int i;
+
+        if (invD) {
+            for (i = 0; i < size; i++) {
+                out[i] = x[i] / D[i];
+            }
+        }
+        else {
+            for (i = 0; i < size; i++) {
+                out[i] = D[i] * x[i];
+            }
+        }
+    }
+
+    void Dv_inplace(const f64* D, bool invD, f64* x, const int size) {
+        int i;
+
+        if (invD) {
+            for (i = 0; i < size; i++) {
+                x[i] /= D[i];
+            }
+        }
+        else {
+            for (i = 0; i < size; i++) {
+                x[i] *= D[i];
+            }
+        }
+    }
+
     // these are not needed rn, scaling is delayed
     /** 
      * @brief Perform diagonal scaled axpy: out = D * (x + beta * y) or out = D^(-1) * (x + beta * y)

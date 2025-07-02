@@ -23,8 +23,8 @@ struct InfoGDOP {
 
     DATA* data;               // pointer to OM data object
     threadData_t* threadData; // pointer to OM threadData object
-    int argc;                 // commandline arg count OM
-    char** argv;              // commandline args OM
+    int argc;                 // command-line arg count OM
+    char** argv;              // command-line args OM
 
     /* problem sizes */
     int x_size;
@@ -63,7 +63,7 @@ struct InfoGDOP {
     f64 stop_time;  // model stop_time
     f64 tf;         // tf = start - stop, since t0 = 0 for OPT
     int intervals;  // model interval count
-    int stages;     // stage count, TODO: set it with flags
+    int stages;     // stage count
 
     InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv);
 
