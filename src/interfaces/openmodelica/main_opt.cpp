@@ -32,17 +32,23 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto problem = std::make_unique<Problem>(create_gdop(*info, *mesh, *collocation));
 
     // TODO: add more strategies here
-    // auto initial_guess = create_constant_guess(*info);
-    auto initial_guess = simulate(*info, S_DASSL, info->intervals);
-
+    auto const_trajectories = create_constant_guess(*info);
+    auto const_controls = std::make_unique<ControlTrajectory>(const_trajectories->copy_extract_controls());
+    auto simulated_initial_guess = simulate(*info, S_DASSL, info->intervals, *const_controls);
+    simulated_initial_guess->print();
 
     // TODO: i dont really like this pattern, think about it
-    auto gdop = std::make_unique<GDOP>(*problem, *collocation, *mesh, *initial_guess);
+    auto gdop = std::make_unique<GDOP>(*problem, *collocation, *mesh, *simulated_initial_guess);
     auto scaling = std::make_unique<NominalScaling>(create_gdop_om_nominal_scaling(*gdop, *info));
     gdop->set_scaling(std::move(scaling));
 
     IpoptSolver ipopt_solver(*gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
+
+    // TODO: add verification step in Solver - costates or resimulate with simulation runtime
+    auto optimal_control = gdop->optimal_solution->copy_extract_controls();
+    auto simulated_optimum = simulate(*info, S_DASSL, info->intervals, optimal_control);
+    simulated_optimum->print();
 
     emit_trajectory_om(*gdop->optimal_solution, *info);
 

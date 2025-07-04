@@ -1,5 +1,25 @@
 #include "gdop_problem.h"
 
+// use this field when needing some data object inside OpenModelica
+// callbacks / interfaces but no nice void* field exists
+static void *_global_reference_data_field = nullptr;
+
+// set the global pointer
+void set_global_reference_data(void *reference_data) {
+    assert(!_global_reference_data_field);         // assert nullptr
+    _global_reference_data_field = reference_data;
+}
+
+// get the global pointer
+void* get_global_reference_data() {
+    assert(_global_reference_data_field);          // assert non nullptr
+    return _global_reference_data_field;
+}
+
+// clear the global pointer
+void clear_global_reference_data() {
+    _global_reference_data_field = nullptr;
+}
 
 FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
         Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, InfoGDOP& info)
@@ -258,6 +278,27 @@ std::unique_ptr<Trajectory> create_constant_guess(InfoGDOP& info) {
     return std::make_unique<Trajectory>(Trajectory{t, x_guess, u_guess, p, interpolation});
 }
 
+static int control_trajectory_input_function(DATA* data, threadData_t* threadData) {
+    AuxiliaryControls* aux_controls = (AuxiliaryControls*)get_global_reference_data();
+
+    ControlTrajectory& controls = aux_controls->controls;
+    InfoGDOP& info = aux_controls->info;
+    f64* u_interpolation = aux_controls->u_interpolation.raw();
+
+    // important use data here not info.data
+    // for some reason a new data object is created for each solve
+    // but not important for now
+    f64 time = data->localData[0]->timeValue;
+
+    // transform back to GDOP time (always [0, tf])
+    time -= info.start_time;
+
+    controls.interpolate(time, u_interpolation);
+    set_inputs(info, u_interpolation);
+
+    return 0;
+}
+
 static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
     AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit void* field
@@ -277,7 +318,6 @@ static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threa
     trajectory.t.push_back(solver_info->currentTime - info.start_time);
 }
 
-[[maybe_unused]]
 static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
     // TODO: parameters
@@ -290,15 +330,15 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
     }
 }
 
-// TODO: check if this is fully correct, but seems so
-// for now, this works and does set state and control initial values
-// from e.g. initial equations / arameters
+// sets state and control initial values
+// from e.g. initial equations / parameters
 void initialize_model(InfoGDOP& info) {
     externalInputallocate(info.data);
     initializeModel(info.data, info.threadData, "", "", info.start_time);
 }
 
-std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
+std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver,
+                                     int num_steps, ControlTrajectory& controls) {
     DATA* data = info.data;
     threadData_t* threadData = info.threadData;
     SOLVER_INFO solver_info;
@@ -308,12 +348,6 @@ std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int n
     simInfo->stepSize = info.tf / (f64)num_steps;
     simInfo->useStopTime = 1;
     solver_info.solverMethod = solver;
-
-    initializeSolverData(data, threadData, &solver_info);
-    setZCtol(fmin(simInfo->stepSize, simInfo->tolerance));
-    initialize_model(info);
-
-    data->real_time_sync.enabled = FALSE;
 
     // allocate and reserve trajectory vectors
     std::vector<f64> t;
@@ -331,23 +365,49 @@ std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int n
     auto trajectory = std::make_unique<Trajectory>(Trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR});
 
     // auxiliary data (passed as void* in storage member of sim_result)
-    auto aux = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
+    auto aux_trajectory = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
 
     // define global sim_result
     sim_result.filename = NULL;
     sim_result.numpoints = 0;
     sim_result.cpuTime = 0;
-    sim_result.storage = aux.get();
+    sim_result.storage = aux_trajectory.get();
     sim_result.emit = trajectory_xut_emit;
     sim_result.init = nullptr;
-    sim_result.writeParameterData = nullptr; // TODO: trajectory_p_emit
+    sim_result.writeParameterData = trajectory_p_emit;
     sim_result.free = nullptr;
 
-    // emit for time = 0, TODO: do we need to set some initial values, how to set the controls?
+    // init simulation
+    initializeSolverData(data, threadData, &solver_info);
+    setZCtol(fmin(simInfo->stepSize, simInfo->tolerance));
+    initialize_model(info);
+    data->real_time_sync.enabled = FALSE;
+
+    // create an auxiliary object (stored in global void*)
+    // since the input_function interface offers no additional argument
+    FixedVector<f64> u_interpolation_buffer = FixedVector<f64>(info.u_size);
+    auto aux_controls = AuxiliaryControls{controls, info, u_interpolation_buffer};
+    set_global_reference_data(&aux_controls);
+
+    // set the new input function
+    auto generated_input_function = data->callback->input_function;
+    data->callback->input_function = control_trajectory_input_function;
+
+    // set controls for start time
+    controls.interpolate(0.0, u_interpolation_buffer.raw());
+    set_inputs(info, u_interpolation_buffer.raw());
+
+    // emit for time = t_0
     trajectory_xut_emit(&sim_result, data, threadData);
 
     // simulation with custom emit
     data->callback->performSimulation(data, threadData, &solver_info);
+
+    // reset to previous input function (from generated code)
+    data->callback->input_function = generated_input_function;
+
+    // set global aux data to nullptr
+    clear_global_reference_data();
 
     return trajectory;
 }

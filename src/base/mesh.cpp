@@ -201,24 +201,23 @@ ControlTrajectory Trajectory::copy_extract_controls() {
     return controls_copy;
 }
 
-std::vector<f64> ControlTrajectory::linear_interpolation(f64 t_query) const {
+void ControlTrajectory::linear_interpolation(f64 t_query, f64* interpolation_values) const {
     const size_t t_len = t.size();
-    std::vector<f64> u_interp(u.size());
 
     // out of bounds cases
     if (t_query <= t.front()) {
         for (size_t k = 0; k < u.size(); ++k) {
-            u_interp[k] = u[k][0];
+            interpolation_values[k] = u[k][0];
         }
         last_index = 0;
-        return u_interp;
+        return;
     }
     if (t_query >= t.back()) {
         for (size_t k = 0; k < u.size(); ++k) {
-            u_interp[k] = u[k].back();
+            interpolation_values[k] = u[k].back();
         }
         last_index = t_len - 2; // safe last segment
-        return u_interp;
+        return;
     }
 
     // search for the correct interval using the last_index
@@ -238,17 +237,18 @@ std::vector<f64> ControlTrajectory::linear_interpolation(f64 t_query) const {
     for (size_t k = 0; k < u.size(); ++k) {
         f64 u1 = u[k][i];
         f64 u2 = u[k][i + 1];
-        u_interp[k] = u1 + alpha * (u2 - u1);
+        interpolation_values[k] = u1 + alpha * (u2 - u1);
     }
 
     last_index = i; // keep last_index for next call
-    return u_interp;
+    return;
 }
 
-std::vector<f64> ControlTrajectory::interpolate(f64 t_query) {
+void ControlTrajectory::interpolate(f64 t_query, f64* interpolation_values) {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
-            return linear_interpolation(t_query);
+            linear_interpolation(t_query, interpolation_values);
+            return;
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }

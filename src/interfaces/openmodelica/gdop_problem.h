@@ -41,12 +41,18 @@ struct AuxiliaryTrajectory {
     SOLVER_INFO* solver_info;
 };
 
+struct AuxiliaryControls {
+    ControlTrajectory& controls;
+    InfoGDOP& info;
+    FixedVector<f64> u_interpolation;
+};
+
 NominalScaling create_gdop_om_nominal_scaling(GDOP& gdop, InfoGDOP& info);
 Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
 
 void initialize_model(InfoGDOP& info);
 std::unique_ptr<Trajectory> create_constant_guess(InfoGDOP& info);
-std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps);
+std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps, ControlTrajectory& controls);
 
 void emit_trajectory_om(Trajectory& trajectory, InfoGDOP& info);
 
