@@ -18,7 +18,7 @@ namespace Linalg {
         return ret;
     }
 
-    void Dv(const f64* D, bool invD, const f64* x, const int size, f64* out) {
+    void diagmat_vec(const f64* D, bool invD, const f64* x, const int size, f64* out) {
         int i;
 
         if (invD) {
@@ -33,7 +33,7 @@ namespace Linalg {
         }
     }
 
-    void Dv_inplace(const f64* D, bool invD, f64* x, const int size) {
+    void diagmat_vec_inplace(const f64* D, bool invD, f64* x, const int size) {
         int i;
 
         if (invD) {

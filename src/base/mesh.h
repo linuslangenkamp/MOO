@@ -36,6 +36,18 @@ struct Mesh {
     FixedField<int, 2> create_acc_offset_fg(int off_fg);
 };
 
+struct ControlTrajectory {
+    std::vector<f64> t;                       // time grid, monotonic increasing
+    std::vector<std::vector<f64>> u;          // u[k][j] = value of k-th control at t[j]
+    InterpolationMethod interpolation;
+
+    // for repeated interpolation, cache last index
+    mutable size_t last_index = 0;
+
+    std::vector<f64> interpolate(f64 t_query);
+    std::vector<f64> linear_interpolation(f64 t_query) const;
+};
+
 // given some data trajectories t, x(t), u(t), p -> interpolate w.r.t. mesh and collocation scheme -> new fitting guess
 struct Trajectory {
     // x[i][j] = x_i at time t[j]
@@ -55,6 +67,8 @@ struct Trajectory {
 
     Trajectory interpolate(Mesh& mesh, Collocation& collocation);
     Trajectory linear_interpolation(Mesh& mesh, Collocation& collocation);
+
+    ControlTrajectory copy_extract_controls();
 
     void print();
     void to_csv(const std::string& filename) const;

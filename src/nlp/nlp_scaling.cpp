@@ -9,11 +9,11 @@ NominalScaling::NominalScaling(FixedVector<f64>&& x_nominal,
       g_scaling(std::move(g_nominal)),
       f_scaling(1.0 / f_nominal)
     {
-        for (size_t x = 0; x < x_nominal.size(); x++) {
+        for (size_t x = 0; x < x_scaling.size(); x++) {
             x_scaling[x] = 1.0 / x_scaling[x];
         }
 
-        for (size_t g = 0; g < g_nominal.size(); g++) {
+        for (size_t g = 0; g < g_scaling.size(); g++) {
             g_scaling[g] = 1.0 / g_scaling[g];
         }
     }
@@ -44,17 +44,22 @@ void NominalScaling::create_hes_scaling(int* i_row_hes, int* j_col_hes, int hes_
 
 // x_unscaled := x_nom * x_scaled
 void NominalScaling::unscale_x(const f64* x_scaled, f64* x_unscaled, int number_vars) {
-    Linalg::Dv(x_scaling.raw(), true, x_scaled, number_vars, x_unscaled);
+    Linalg::diagmat_vec(x_scaling.raw(), true, x_scaled, number_vars, x_unscaled);
+}
+
+// f_scaled := f_nom * f_unscaled 
+void NominalScaling::unscale_f(const f64* f_scaled, f64* f_unscaled) {
+    *f_unscaled = (*f_scaled) / f_scaling;
 }
 
 // x_scaled := x_nom^{-1} * x_unscaled
 void NominalScaling::inplace_scale_x(f64* x_unscaled) {
-    Linalg::Dv_inplace(x_scaling.raw(), false, x_unscaled, x_scaling.size());
+    Linalg::diagmat_vec_inplace(x_scaling.raw(), false, x_unscaled, x_scaling.size());
 }
 
 // g_scaled := g_nom^{-1} * g_unscaled
 void NominalScaling::inplace_scale_g(f64* g_unscaled) {
-    Linalg::Dv_inplace(g_scaling.raw(), false, g_unscaled, g_scaling.size());
+    Linalg::diagmat_vec_inplace(g_scaling.raw(), false, g_unscaled, g_scaling.size());
 }
 
 // f_scaled := f_nom^{-1} * f_unscaled 
@@ -64,7 +69,7 @@ void NominalScaling::scale_f(const f64* f_unscaled, f64* f_scaled) {
 
 // g_scaled := g_nom^{-1} * g_unscaled 
 void NominalScaling::scale_g(const f64* g_unscaled, f64* g_scaled, int number_constraints) {
-    Linalg::Dv(g_scaling.raw(), false, g_unscaled, number_constraints, g_scaled);
+    Linalg::diagmat_vec(g_scaling.raw(), false, g_unscaled, number_constraints, g_scaled);
 }
 
 // grad_scaled := f_nom^{-1} * grad_unscaled * x_nom = grad_scaling * grad_unscaled
@@ -73,7 +78,7 @@ void NominalScaling::scale_grad_f(const f64* grad_unscaled, f64* grad_scaled, in
         create_grad_scaling(number_vars);
     }
 
-    Linalg::Dv(grad_scaling.raw(), false, grad_unscaled, number_vars, grad_scaled);
+    Linalg::diagmat_vec(grad_scaling.raw(), false, grad_unscaled, number_vars, grad_scaled);
 }
 
 // jac_scaled := g_nom^{-1} * jac_unscaled * x_nom = jac_scaling * jac_unscaled
@@ -83,7 +88,7 @@ void NominalScaling::scale_jac(const f64* jac_unscaled, f64* jac_scaled,
         create_jac_scaling(i_row_jac, j_col_jac, jac_nnz);
     }
 
-    Linalg::Dv(jac_scaling.raw(), false, jac_unscaled, jac_nnz, jac_scaled);
+    Linalg::diagmat_vec(jac_scaling.raw(), false, jac_unscaled, jac_nnz, jac_scaled);
 }
 
 // hes_scaled := x_nom * H(sigma * f + lambda^T * g) * x_nom = hes_scaling * hes_unscaled
@@ -94,5 +99,5 @@ void NominalScaling::scale_hes(const f64* hes_unscaled, f64* hes_scaled,
         create_hes_scaling(i_row_hes, j_col_hes, hes_nnz);
     }
 
-    Linalg::Dv(hes_scaling.raw(), false, hes_unscaled, hes_nnz, hes_scaled);
+    Linalg::diagmat_vec(hes_scaling.raw(), false, hes_unscaled, hes_nnz, hes_scaled);
 }

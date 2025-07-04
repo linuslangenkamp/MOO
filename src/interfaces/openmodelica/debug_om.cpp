@@ -5,6 +5,8 @@ void print_real_var_names(DATA* data) {
         printf("%s\n", data->modelData->realVarsData[idx].info.name);
 }
 
+void print_parameters(DATA* data) { printParameters(data, 1); }
+
 void print_real_var_names_values(DATA* data) {
     long maxNameLen = 2;
 
@@ -21,7 +23,7 @@ void print_real_var_names_values(DATA* data) {
     printf("--------------------------------------------------\n");
 
     for (long idx = 0; idx < data->modelData->nVariablesReal; idx++) {
-        printf("%-8ld :: %-*s :: %.17e\n", 
+        printf("%-8ld :: %-*s :: %+.17e\n", 
                idx, 
                (int)maxNameLen, data->modelData->realVarsData[idx].info.name, 
                data->localData[0]->realVars[idx]);

@@ -62,12 +62,28 @@ public:
     std::unique_ptr<Scaling> scaling = std::make_unique<NoScaling>();                            // generic scaling routine
     void set_scaling(std::unique_ptr<Scaling> new_scaling) { scaling = std::move(new_scaling); } // set the generic scaling routine
 
-    virtual void eval_f(bool new_x) = 0;      // fill curr_obj
-    virtual void eval_g(bool new_x) = 0;      // fill curr_g
-    virtual void eval_grad_f(bool new_x) = 0; // fill curr_grad
-    virtual void eval_jac_g(bool new_x) = 0;  // fill curr_jac
+    virtual void eval_f(bool new_x) = 0;                    // fill curr_obj
+    virtual void eval_g(bool new_x) = 0;                    // fill curr_g
+    virtual void eval_grad_f(bool new_x) = 0;               // fill curr_grad
+    virtual void eval_jac_g(bool new_x) = 0;                // fill curr_jac
     virtual void eval_hes(bool new_x, bool new_lambda) = 0; // fill curr_hes
-    virtual void finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) = 0; // finalize the solution
+    virtual void finalize_solution() = 0;                   // finalize the solution
+
+    inline void update_unscale_curr_x(bool new_x, const f64* x) {
+        if (new_x) scaling->unscale_x(x, curr_x.raw(), number_vars);
+    }
+
+    inline void update_unscale_curr_lambda(bool new_lambda, const f64* lambda) {
+        if (new_lambda) scaling->scale_g(lambda, curr_lambda.raw(), number_constraints);
+    }
+
+    inline void update_unscale_curr_sigma_f(const f64* sigma_f) {
+        scaling->scale_f(sigma_f, &curr_sigma_f);
+    }
+
+    inline void unscale_objective(const f64* obj) {
+        scaling->unscale_f(obj, &curr_obj);
+    }
 };
 
 #endif  // OPT_NLP_H

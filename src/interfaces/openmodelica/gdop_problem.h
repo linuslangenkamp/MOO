@@ -7,6 +7,7 @@
 #include "simulation/solver/external_input.h"
 
 #include <nlp/instances/gdop/problem.h>
+#include <nlp/instances/gdop/gdop.h>
 
 #include "evaluations.h"
 #include "debug_om.h"
@@ -40,7 +41,10 @@ struct AuxiliaryTrajectory {
     SOLVER_INFO* solver_info;
 };
 
+NominalScaling create_gdop_om_nominal_scaling(GDOP& gdop, InfoGDOP& info);
 Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
+
+void initialize_model(InfoGDOP& info);
 std::unique_ptr<Trajectory> create_constant_guess(InfoGDOP& info);
 std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps);
 

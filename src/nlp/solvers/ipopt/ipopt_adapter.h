@@ -20,17 +20,6 @@ public:
     // Attention: this part is super confusing, since the lambda and sigma_f *unscale* is actually a scale with g and f!!
     // this is the case, because the augmented Lagrangian does not allow for to scale f and g independently after evaluation
     // so the only possibility is to apply this scaling a priori by updating the duals and sigma_f
-    inline void update_unscale_curr_x(bool new_x, const f64* x) {
-        if (new_x) nlp.scaling->unscale_x(x, nlp.curr_x.raw(), nlp.number_vars);
-    }
-
-    inline void update_unscale_curr_lambda(bool new_lambda, const f64* lambda) {
-        if (new_lambda) nlp.scaling->scale_g(lambda, nlp.curr_lambda.raw(), nlp.number_constraints);
-    }
-
-    inline void update_unscale_curr_sigma_f(const f64* sigma_f) {
-        nlp.scaling->scale_f(sigma_f, &nlp.curr_sigma_f);
-    }
 
     bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override;
 

@@ -10,8 +10,8 @@ namespace Linalg {
     f64 dot(const int size, const f64* x, const f64* y);
     void dsaxpy(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
     void dgmv(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
-    void Dv(const f64* D, bool invD, const f64* x, const int size, f64* out);
-    void Dv_inplace(const f64* D, bool invD, f64* x, const int size);
+    void diagmat_vec(const f64* D, bool invD, const f64* x, const int size, f64* out);
+    void diagmat_vec_inplace(const f64* D, bool invD, f64* x, const int size);
 }
 
 #endif  // OPT_LINALG_H

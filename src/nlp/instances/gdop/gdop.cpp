@@ -16,9 +16,9 @@ void GDOP::init_sizes_offsets() {
     off_u = problem.u_size;
     off_p = problem.p_size;
     off_xu = off_x + off_u;
-    off_acc_xu = mesh.create_acc_offset_xu(off_x, off_xu);        // variables  x_ij offset
-    off_last_xu = off_acc_xu.back().back();                       // variables final grid point x_ij
-    off_xu_total = off_last_xu + off_xu;                          // first parameter
+    off_acc_xu = mesh.create_acc_offset_xu(off_x, off_xu);         // variables  x_ij offset
+    off_last_xu = off_acc_xu.back().back();                        // variables final grid point x_ij
+    off_xu_total = off_last_xu + off_xu;                           // first parameter
     number_vars = off_xu_total + problem.p_size;
     off_acc_fg = mesh.create_acc_offset_fg(problem.full->fg_size); // constraint f_ij offset
     off_fg_total = mesh.node_count * problem.full->fg_size;        // constraint r_0 offset
@@ -38,8 +38,6 @@ void GDOP::init_buffers() {
 }
 
 void GDOP::init_bounds() {
-    // TODO: perform scaling before the bounds are set!
-
     // standard bounds, but checking for x0_fixed or xf_fixed
     for (int x_index = 0; x_index < off_x; x_index++) {
         x_lb[x_index] = problem.x0_fixed[x_index] ? *problem.x0_fixed[x_index] : problem.x_bounds[x_index].lb;
@@ -660,23 +658,23 @@ void GDOP::eval_jac_g_internal() {
 
                 // TODO: maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
                 int df_dx_counter = 0;
-                std::vector<JacobianSparsity>* df_dx = &problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
+                std::vector<JacobianSparsity>& df_dx = problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
 
                 for (int x_elem = 0; x_elem < off_x; x_elem++) {
                     if (x_elem == f_index) {
                         // case for collocation block
                         // handle the diagonal collision of the diagonal jacobian block
                         // this means the derivative matrix linear combinations x_ik have k == j and df_k / dx_k != 0
-                        if (df_dx_counter < int_size(*df_dx) && (*df_dx)[df_dx_counter].col == x_elem) {
-                            curr_jac[nnz_index] -= mesh.delta_t[i] * problem.lfg_jac((*df_dx)[df_dx_counter].buf_index, i, j);
+                        if (df_dx_counter < int_size(df_dx) && (df_dx)[df_dx_counter].col == x_elem) {
+                            curr_jac[nnz_index] -= mesh.delta_t[i] * problem.lfg_jac((df_dx)[df_dx_counter].buf_index, i, j);
                             df_dx_counter++;
                         }
                         // even if df_k / dx_k == 0 => increment nnz from the collocation block nonzero
                         nnz_index++;
                     }
-                    else if (df_dx_counter < int_size(*df_dx) && (*df_dx)[df_dx_counter].col == x_elem){
+                    else if (df_dx_counter < int_size(df_dx) && (df_dx)[df_dx_counter].col == x_elem){
                         // no collision between collocation block and df / dx
-                        curr_jac[nnz_index++] -= mesh.delta_t[i] * problem.lfg_jac((*df_dx)[df_dx_counter].buf_index, i, j);
+                        curr_jac[nnz_index++] -= mesh.delta_t[i] * problem.lfg_jac((df_dx)[df_dx_counter].buf_index, i, j);
                         df_dx_counter++;
                     }
                 }
@@ -825,7 +823,7 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
     }
 }
 
-void GDOP::finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) {
+void GDOP::finalize_solution() {
     optimal_solution->t.reserve(mesh.node_count + 1);
     optimal_solution->x.resize(off_x);
     optimal_solution->u.resize(off_u);
@@ -837,11 +835,11 @@ void GDOP::finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) {
     for (auto& v : optimal_solution->u) { v.reserve(mesh.node_count + 1); }
 
     for (int x_index = 0; x_index < off_x; x_index++) {
-        optimal_solution->x[x_index].push_back(x_opt[x_index]);
+        optimal_solution->x[x_index].push_back(curr_x[x_index]);
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        f64 u0 = collocation.interpolate(mesh.nodes[0], false, &x_opt[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 u0 = collocation.interpolate(mesh.nodes[0], false, &curr_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
         optimal_solution->u[u_index].push_back(u0);
     }
 
@@ -850,11 +848,11 @@ void GDOP::finalize_solution(const f64 obj_opt, const f64* x_opt, void* args) {
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
-                optimal_solution->x[x_index].push_back(x_opt[off_acc_xu[i][j] + x_index]);
+                optimal_solution->x[x_index].push_back(curr_x[off_acc_xu[i][j] + x_index]);
             }
 
             for (int u_index = 0; u_index < off_u; u_index++) {
-                optimal_solution->u[u_index].push_back(x_opt[off_acc_xu[i][j] + off_x + u_index]);
+                optimal_solution->u[u_index].push_back(curr_x[off_acc_xu[i][j] + off_x + u_index]);
             }
 
             optimal_solution->t.push_back(mesh.t[i][j]);

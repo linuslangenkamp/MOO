@@ -128,7 +128,9 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
 
 Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
     DATA* data = info.data;
-
+    // at first call init for all start values
+    initialize_model(info);
+    
     /* variable sizes */
     info.x_size = data->modelData->nStates;
     info.u_size = data->modelData->nInputVars;
@@ -288,21 +290,29 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
     }
 }
 
+// TODO: check if this is fully correct, but seems so
+// for now, this works and does set state and control initial values
+// from e.g. initial equations / arameters
+void initialize_model(InfoGDOP& info) {
+    externalInputallocate(info.data);
+    initializeModel(info.data, info.threadData, "", "", info.start_time);
+}
+
 std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps) {
     DATA* data = info.data;
     threadData_t* threadData = info.threadData;
-
     SOLVER_INFO solver_info;
     SIMULATION_INFO *simInfo = data->simulationInfo;
+
     simInfo->numSteps = num_steps;
     simInfo->stepSize = info.tf / (f64)num_steps;
     simInfo->useStopTime = 1;
     solver_info.solverMethod = solver;
 
     initializeSolverData(data, threadData, &solver_info);
-    externalInputallocate(data);
     setZCtol(fmin(simInfo->stepSize, simInfo->tolerance));
-    initializeModel(data, threadData, "", "", info.start_time);
+    initialize_model(info);
+
     data->real_time_sync.enabled = FALSE;
 
     // allocate and reserve trajectory vectors
@@ -376,4 +386,72 @@ void emit_trajectory_om(Trajectory& trajectory, InfoGDOP& info) {
     }
 
     sim_result.free(&sim_result, data, threadData);
+}
+
+NominalScaling create_gdop_om_nominal_scaling(GDOP& gdop, InfoGDOP& info) {
+    // x, g, f of the NLP { min f(x) s.t. g_l <= g(x) <= g_l }
+    auto x_nominal = FixedVector<f64>(gdop.number_vars);
+    auto g_nominal = FixedVector<f64>(gdop.number_constraints);
+    f64  f_nominal = 1;
+
+    // get problem sizes
+    auto x_size  = info.x_size;
+    auto u_size  = info.u_size;
+    auto xu_size = info.xu_size;
+    auto f_size = info.f_size;
+    auto g_size = info.g_size;
+    auto r_size = info.r_size;
+    auto fg_size = f_size + g_size;
+
+    auto real_vars_data = info.data->modelData->realVarsData;
+
+    auto has_mayer = gdop.problem.boundary->has_mayer;
+    auto has_lagrange = gdop.problem.full->has_lagrange;
+
+    if (has_mayer && has_lagrange) {
+        f_nominal = (real_vars_data[info.index_mayer_real_vars].attribute.nominal +
+                     real_vars_data[info.index_lagrange_real_vars].attribute.nominal) / 2;
+    }
+    else if (has_lagrange) {
+        f_nominal = real_vars_data[info.index_lagrange_real_vars].attribute.nominal;
+    }
+    else if (has_mayer) {
+        f_nominal = real_vars_data[info.index_mayer_real_vars].attribute.nominal;
+    }
+    else {
+        // use default 1 - no objective set!
+    }
+
+    // x(t_0)
+    for (int x = 0; x < info.x_size; x++) {
+        x_nominal[x] = real_vars_data[x].attribute.nominal;
+    }
+
+    // (x, u)_(t_node)
+    for (int node = 0; node < gdop.mesh.node_count; node++) {
+        for (int x = 0; x < x_size; x++) {
+            x_nominal[x_size + node * xu_size + x] = real_vars_data[x].attribute.nominal;
+        }
+
+        for (int u = 0; u < u_size; u++) {
+            int u_real_vars = info.u_indices_real_vars[u];
+            x_nominal[2 * x_size + node * xu_size + u] = real_vars_data[u_real_vars].attribute.nominal;
+        }
+    }
+
+    for (int node = 0; node < gdop.mesh.node_count; node++) {
+        for (int f = 0; f < f_size; f++) {
+            g_nominal[node * fg_size + f] = x_nominal[f]; // reuse x nominal for dynamic for now!
+        }
+
+        for (int g = 0; g < g_size; g++) {
+            g_nominal[f_size + node * fg_size + g] = real_vars_data[info.index_g_real_vars + g].attribute.min;
+        }
+    }
+
+    for (int r = 0; r < r_size; r++) {
+        g_nominal[gdop.off_fg_total + r] = real_vars_data[info.index_r_real_vars + r].attribute.min;
+    }
+
+    return NominalScaling(std::move(x_nominal), std::move(g_nominal), f_nominal);
 }

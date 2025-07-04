@@ -43,21 +43,21 @@ bool IpoptAdapter::get_scaling_parameters(Ipopt::Number& obj_scaling, bool& use_
 };
 
 bool IpoptAdapter::eval_f(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Number& obj_value) {
-    update_unscale_curr_x(new_x, x);
+    nlp.update_unscale_curr_x(new_x, x);
     nlp.eval_f(new_x);     // TODO: pass new_x so callbacks are reset
     nlp.scaling->scale_f(&nlp.curr_obj, &obj_value);
     return true;
 };
 
 bool IpoptAdapter::eval_grad_f(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Number* grad_f) {
-    update_unscale_curr_x(new_x, x);
+    nlp.update_unscale_curr_x(new_x, x);
     nlp.eval_grad_f(new_x);
     nlp.scaling->scale_grad_f(nlp.curr_grad.raw(), grad_f, nlp.number_vars);
     return true;
 };
 
 bool IpoptAdapter::eval_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Index m, Ipopt::Number* g) {
-    update_unscale_curr_x(new_x, x);
+    nlp.update_unscale_curr_x(new_x, x);
     nlp.eval_g(new_x);
     nlp.scaling->scale_g(nlp.curr_g.raw(), g, nlp.number_constraints);
     return true;
@@ -70,7 +70,7 @@ bool IpoptAdapter::eval_jac_g(Ipopt::Index n, const Ipopt::Number* x, bool new_x
         nlp.j_col_jac.write_to(jCol);
     }
     else {
-        update_unscale_curr_x(new_x, x);
+        nlp.update_unscale_curr_x(new_x, x);
         nlp.eval_jac_g(new_x);
         nlp.scaling->scale_jac(nlp.curr_jac.raw(), values, nlp.i_row_jac.raw(), nlp.j_col_jac.raw(), nlp.nnz_jac);
     }
@@ -84,9 +84,9 @@ bool IpoptAdapter::eval_h(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ip
         nlp.j_col_hes.write_to(jCol);
     }
     else {
-        update_unscale_curr_x(new_x, x);
-        update_unscale_curr_lambda(new_lambda, lambda);
-        update_unscale_curr_sigma_f(&obj_factor);
+        nlp.update_unscale_curr_x(new_x, x);
+        nlp.update_unscale_curr_lambda(new_lambda, lambda);
+        nlp.update_unscale_curr_sigma_f(&obj_factor);
         nlp.eval_hes(new_x, new_lambda);
         nlp.scaling->scale_hes(nlp.curr_hes.raw(), values, nlp.i_row_hes.raw(), nlp.j_col_hes.raw(), nlp.nnz_hes);
     }
@@ -97,7 +97,9 @@ void IpoptAdapter::finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
                                      const Ipopt::Number* z_U, Ipopt::Index m, const Ipopt::Number* g, const Ipopt::Number* lambda,
                                      Ipopt::Number obj_value, const Ipopt::IpoptData* ip_data, Ipopt::IpoptCalculatedQuantities* ip_cq) {
     // TODO: to implement, maybe add option for warm start with lambda, ..., then return that also or in struct
-    nlp.finalize_solution(obj_value, x, NULL);
+    nlp.update_unscale_curr_x(true, x);
+    nlp.unscale_objective(&obj_value);
+    nlp.finalize_solution();
 };
 
 bool IpoptAdapter::intermediate_callback(Ipopt::AlgorithmMode mode, Ipopt::Index iter, Ipopt::Number obj_value, Ipopt::Number inf_pr, Ipopt::Number inf_du, Ipopt::Number mu, Ipopt::Number d_norm, Ipopt::Number regularization_size,

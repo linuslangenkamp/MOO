@@ -161,7 +161,6 @@ void Trajectory::print() {
     print_vector("p", p);
 }
 
-
 void Trajectory::to_csv(const std::string& filename) const {
     std::ofstream file(filename);
     if (!file.is_open()) {
@@ -190,4 +189,67 @@ void Trajectory::to_csv(const std::string& filename) const {
     }
 
     file.close();
+}
+
+ControlTrajectory Trajectory::copy_extract_controls() {
+    ControlTrajectory controls_copy;
+    controls_copy.t = t;                         // copies t from Trajectory
+    controls_copy.u = u;                         // copies u from Trajectory
+    controls_copy.interpolation = interpolation; // copy interpolation
+    controls_copy.last_index = 0;                // initialize last_index as 0
+
+    return controls_copy;
+}
+
+std::vector<f64> ControlTrajectory::linear_interpolation(f64 t_query) const {
+    const size_t t_len = t.size();
+    std::vector<f64> u_interp(u.size());
+
+    // out of bounds cases
+    if (t_query <= t.front()) {
+        for (size_t k = 0; k < u.size(); ++k) {
+            u_interp[k] = u[k][0];
+        }
+        last_index = 0;
+        return u_interp;
+    }
+    if (t_query >= t.back()) {
+        for (size_t k = 0; k < u.size(); ++k) {
+            u_interp[k] = u[k].back();
+        }
+        last_index = t_len - 2; // safe last segment
+        return u_interp;
+    }
+
+    // search for the correct interval using the last_index
+    size_t i = last_index;
+    while (i + 1 < t_len && t_query > t[i + 1]) {
+        ++i;
+    }
+    while (i > 0 && t_query < t[i]) {
+        --i;
+    }
+
+    // interval [t[i], t[i+1]]
+    f64 t1 = t[i];
+    f64 t2 = t[i + 1];
+    f64 alpha = (t_query - t1) / (t2 - t1);
+
+    for (size_t k = 0; k < u.size(); ++k) {
+        f64 u1 = u[k][i];
+        f64 u2 = u[k][i + 1];
+        u_interp[k] = u1 + alpha * (u2 - u1);
+    }
+
+    last_index = i; // keep last_index for next call
+    return u_interp;
+}
+
+std::vector<f64> ControlTrajectory::interpolate(f64 t_query) {
+    switch (interpolation) {
+        case InterpolationMethod::LINEAR:
+            return linear_interpolation(t_query);
+        default:
+            throw std::runtime_error("Unknown interpolation method!");
+    }
 }

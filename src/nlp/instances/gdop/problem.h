@@ -197,7 +197,7 @@ public:
       p_bounds(std::move(p_bounds)), x0_fixed(std::move(x0_fixed)), xf_fixed(std::move(xf_fixed)),
       x_size(this->full->x_size), u_size(this->full->u_size), p_size(this->full->p_size) {
     };
-    
+
     std::unique_ptr<FullSweep> full;
     std::unique_ptr<BoundarySweep> boundary;
 
@@ -265,7 +265,7 @@ public:
     inline f64 mr_jac(int entry) {
         return boundary->jac_buffer[entry];
     }
-    
+
     inline f64 mr_aug_hes(int entry) {
         return boundary->aug_hes_buffer[entry];
     }

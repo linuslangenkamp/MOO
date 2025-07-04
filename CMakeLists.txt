@@ -16,7 +16,7 @@ ProcessorCount(N)
 
 # CONFIGURE_COMMAND ./configure CFLAGS=-Ofast FCFLAGS=-Ofast\ -fopenmp --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
 
-#[[
+
 ExternalProject_Add(mumps-ext
     GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
     GIT_TAG releases/3.0.7
@@ -24,6 +24,7 @@ ExternalProject_Add(mumps-ext
     CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
     BUILD_COMMAND make -j${N}
     BUILD_IN_SOURCE true
+    EXCLUDE_FROM_ALL true
 )
 
 
@@ -34,11 +35,12 @@ ExternalProject_Add(ipopt-ext
     BUILD_COMMAND make -j${N}
     BUILD_IN_SOURCE true
     DEPENDS mumps-ext
+    EXCLUDE_FROM_ALL true
 )
 
-add_dependencies(optimization ipopt-ext mumps-ext)
+# add_dependencies(optimization ipopt-ext mumps-ext)
 
-#]]
+
 
 set(SOURCES
     src/base/collocation.cpp

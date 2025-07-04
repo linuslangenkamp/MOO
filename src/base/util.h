@@ -1,10 +1,12 @@
 #ifndef OPT_UTIL_H
 #define OPT_UTIL_H
 
-#include <any>
 #include <functional>
+#include <iostream>
+#include <cstdio>
 #include <vector>
 #include <cmath>
+#include <any>
 
 /* simple typedef for the Number, for using f32 or something later */
 typedef double f64;

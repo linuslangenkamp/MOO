@@ -25,7 +25,6 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto info = std::make_unique<InfoGDOP>(data, threadData, argc, argv); // TODO: maybe refactor: s.t. info also holds DATA, threadData_t, and flags
     auto nlp_solver_flags = std::make_unique<NLPSolverFlags>(argc, argv);
     info->set_omc_flags(*nlp_solver_flags);
-    nlp_solver_flags->set("IpoptDerivativeTest", "false"); // debug
     nlp_solver_flags->print();
 
     auto collocation = std::make_unique<Collocation>();
@@ -33,14 +32,19 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto problem = std::make_unique<Problem>(create_gdop(*info, *mesh, *collocation));
 
     // TODO: add more strategies here
-    auto simulation_result = simulate(*info, S_DASSL, info->intervals)    ;
-    //auto initial_guess = create_constant_guess(data, threadData, *info);
-    GDOP gdop(*problem, *collocation, *mesh, *simulation_result);
+    // auto initial_guess = create_constant_guess(*info);
+    auto initial_guess = simulate(*info, S_DASSL, info->intervals);
 
-    IpoptSolver ipopt_solver(gdop, *nlp_solver_flags);
+
+    // TODO: i dont really like this pattern, think about it
+    auto gdop = std::make_unique<GDOP>(*problem, *collocation, *mesh, *initial_guess);
+    auto scaling = std::make_unique<NominalScaling>(create_gdop_om_nominal_scaling(*gdop, *info));
+    gdop->set_scaling(std::move(scaling));
+
+    IpoptSolver ipopt_solver(*gdop, *nlp_solver_flags);
     ipopt_solver.optimize();
 
-    emit_trajectory_om(*gdop.optimal_solution, *info);
+    emit_trajectory_om(*gdop->optimal_solution, *info);
 
     return 0;
 }

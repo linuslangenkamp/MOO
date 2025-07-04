@@ -92,6 +92,13 @@ public:
         memset(_data.get(), 0, _size * sizeof(T));
     }
 
+    // fills the vector with some data of the same len
+    constexpr void assign(const T* data) {
+        assert(data != nullptr);
+
+        memcpy(_data.get(), data, _size * sizeof(T));
+    }
+
     // fills the vector with some data with given len: vector[offset] = data[0], ..., vector[offset + len - 1] = data[len - 1]
     constexpr void assign(const T* data, std::size_t len, std::size_t offset = 0) {
         assert(data != nullptr);

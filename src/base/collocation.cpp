@@ -27,7 +27,7 @@ void Collocation::diff_matrix_multiply(const int scheme, const int x_size, const
 
 f64 Collocation::interpolate(int scheme, bool contains_zero, const f64* values, int increment,
                              f64 interval_start, f64 interval_end, f64 T) const {
-    const auto& nodes = contains_zero ? c0[scheme] : c[scheme];
+    const auto& nodes   = contains_zero ? c0[scheme] : c[scheme];
     const auto& weights = contains_zero ? w0[scheme] : w[scheme];
 
     // rescale T to the [0, 1] nominal interval domain
