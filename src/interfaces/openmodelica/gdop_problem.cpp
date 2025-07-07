@@ -394,10 +394,9 @@ std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver,
     data->callback->input_function = control_trajectory_input_function;
 
     // set controls for start time
+    // emit for time = t_0
     controls.interpolate(0.0, u_interpolation_buffer.raw());
     set_inputs(info, u_interpolation_buffer.raw());
-
-    // emit for time = t_0
     trajectory_xut_emit(&sim_result, data, threadData);
 
     // simulation with custom emit
@@ -505,12 +504,12 @@ NominalScaling create_gdop_om_nominal_scaling(GDOP& gdop, InfoGDOP& info) {
         }
 
         for (int g = 0; g < g_size; g++) {
-            g_nominal[f_size + node * fg_size + g] = real_vars_data[info.index_g_real_vars + g].attribute.min;
+            g_nominal[f_size + node * fg_size + g] = real_vars_data[info.index_g_real_vars + g].attribute.nominal;
         }
     }
 
     for (int r = 0; r < r_size; r++) {
-        g_nominal[gdop.off_fg_total + r] = real_vars_data[info.index_r_real_vars + r].attribute.min;
+        g_nominal[gdop.off_fg_total + r] = real_vars_data[info.index_r_real_vars + r].attribute.nominal;
     }
 
     return NominalScaling(std::move(x_nominal), std::move(g_nominal), f_nominal);

@@ -15,6 +15,7 @@
 
 // TODO: rename all variables on this OpenModelica side, clearly we use stuff from OPT (choose camelCase or _!)
 // TODO: wrap all this into a namespace OpenModelica or so
+// TODO: add a simple optional plotting lib (open source)
 
 /* entry point to the optimization runtime from OpenModelica generated code
  * this dir, i.e. interfaces/openmodelica, defines the glue code (Mesh, Problem, Flags, CallSimulation) between the runtime and the simulation code */
