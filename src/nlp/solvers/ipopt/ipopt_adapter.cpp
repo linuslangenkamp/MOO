@@ -44,7 +44,7 @@ bool IpoptAdapter::get_scaling_parameters(Ipopt::Number& obj_scaling, bool& use_
 
 bool IpoptAdapter::eval_f(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ipopt::Number& obj_value) {
     nlp.update_unscale_curr_x(new_x, x);
-    nlp.eval_f(new_x);     // TODO: pass new_x so callbacks are reset
+    nlp.eval_f(new_x);
     nlp.scaling->scale_f(&nlp.curr_obj, &obj_value);
     return true;
 };

@@ -10,6 +10,9 @@
 struct Bounds {
     f64 lb = MINUS_INFINITY;
     f64 ub = PLUS_INFINITY;
+
+    bool has_lower() const { return lb != MINUS_INFINITY; }
+    bool has_upper() const { return ub != PLUS_INFINITY; }
 };
 
 struct JacobianSparsity {

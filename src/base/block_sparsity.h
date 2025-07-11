@@ -122,7 +122,7 @@ struct BlockSparsity {
             // for E -> F
             case BlockType::RowOffset:
                 return row_offset_prev[row] + row_size[row] * block_count + block[row][col];
-                
+
             default:
                return access(row, col);
         }

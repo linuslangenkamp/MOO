@@ -6,6 +6,7 @@
 build/
 out/
 bin/
+docs/
 dist/
 CMakeFiles/
 CMakeCache.txt

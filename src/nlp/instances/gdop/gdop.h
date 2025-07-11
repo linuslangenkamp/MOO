@@ -76,7 +76,7 @@ public:
     void init_jacobian_nonzeros();
     void init_jacobian_sparsity_pattern();
     void init_hessian();
-    
+
     /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
     void update_curr_lambda_obj_factors();
 

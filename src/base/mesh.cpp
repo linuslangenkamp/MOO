@@ -164,7 +164,7 @@ void Trajectory::print() {
 void Trajectory::to_csv(const std::string& filename) const {
     std::ofstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "Failed to open file for writing: " << filename << "\n";
+        std::cerr << "[Warning] Failed to open file for writing: " << filename << "\n";
         return;
     }
 
