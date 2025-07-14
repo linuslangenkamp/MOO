@@ -6,12 +6,16 @@
 #include <interfaces/openmodelica/main_opt.h>
 
 #include <base/collocation.h>
+#include <base/log.h>
 #include <base/mesh.h>
 
 #include <nlp/solvers/ipopt/ipopt_solver.h>
 #include <nlp/instances/gdop/gdop.h>
 
 #include "gdop_problem.h"
+#include "scaling.h"
+
+using namespace OpenModelica;
 
 // TODO: rename all variables on this OpenModelica side, clearly we use stuff from OPT (choose camelCase or _!)
 // TODO: wrap all this into a namespace OpenModelica or so
@@ -20,7 +24,7 @@
 /* entry point to the optimization runtime from OpenModelica generated code
  * this dir, i.e. interfaces/openmodelica, defines the glue code (Mesh, Problem, Flags, CallSimulation) between the runtime and the simulation code */
 int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
-    printf("Entry point [OPT] - _main_OptimitationRuntime\n\n");
+    LOG_PREFIX('*', "Entry point [OPT] - _main_OptimitationRuntime\n");
 
     /* create info struct <-> same purpose as DATA* in OpenModeica */
     auto info = InfoGDOP(data, threadData, argc, argv);
@@ -32,14 +36,10 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto mesh = Mesh::create_equidistant_fixed_stages(info.tf, info.intervals, info.stages, collocation);
     auto problem = create_gdop(info, mesh, collocation);
 
-    // TODO: add more strategies here
-    auto const_trajectories = create_constant_guess(info);
-    auto const_controls = ControlTrajectory(const_trajectories->copy_extract_controls());
-    auto simulated_initial_guess = simulate(info, S_DASSL, info.intervals, const_controls);
-    simulated_initial_guess->print();
+    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_DASSL));
+    auto gdop = GDOP::GDOP(problem, collocation, mesh, std::move(strategies));
 
-    auto gdop = GDOP(problem, collocation, mesh, *simulated_initial_guess);
-    auto scaling = std::make_unique<NominalScaling>(create_gdop_om_nominal_scaling(gdop, info));
+    auto scaling = std::make_unique<NominalScaling>(create_gdop_nominal_scaling(gdop, info));
     gdop.set_scaling(std::move(scaling));
 
     IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
@@ -47,10 +47,10 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     // TODO: add verification step in Solver - costates or resimulate with simulation runtime
     auto optimal_control = gdop.optimal_solution->copy_extract_controls();
-    auto simulated_optimum = simulate(info, S_DASSL, info.intervals, optimal_control);
+    auto simulated_optimum = gdop.strategies->simulate(gdop, optimal_control, info.intervals, 0.0, info.tf, gdop.get_curr_x_x0());
     simulated_optimum->print();
 
-    emit_trajectory_om(*gdop.optimal_solution, info);
+    emit_to_result_file(*gdop.optimal_solution, info);
 
     return 0;
 }

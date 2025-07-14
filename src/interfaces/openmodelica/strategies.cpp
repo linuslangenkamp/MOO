@@ -1,0 +1,254 @@
+#include "strategies.h"
+
+namespace OpenModelica {
+
+// TODO: make more initializer methods: bionic?!
+
+// use this field when needing some data object inside OpenModelica
+// callbacks / interfaces but no nice void* field exists
+static void *_global_reference_data_field = nullptr;
+
+// set the global pointer
+void set_global_reference_data(void *reference_data) {
+    assert(!_global_reference_data_field);         // assert nullptr
+    _global_reference_data_field = reference_data;
+}
+
+// get the global pointer
+void* get_global_reference_data() {
+    assert(_global_reference_data_field);          // assert non nullptr
+    return _global_reference_data_field;
+}
+
+// clear the global pointer
+void clear_global_reference_data() {
+    _global_reference_data_field = nullptr;
+}
+
+static int control_trajectory_input_function(DATA* data, threadData_t* threadData) {
+    AuxiliaryControls* aux_controls = (AuxiliaryControls*)get_global_reference_data();
+
+    const ControlTrajectory& controls = aux_controls->controls;
+    InfoGDOP& info = aux_controls->info;
+    f64* u_interpolation = aux_controls->u_interpolation.raw();
+
+    // important use data here not info.data
+    // for some reason a new data object is created for each solve
+    // but not important for now
+    f64 time = data->localData[0]->timeValue;
+
+    // transform back to GDOP time (always [0, tf])
+    time -= info.model_start_time;
+
+    controls.interpolate(time, u_interpolation);
+    set_inputs(info, u_interpolation);
+
+    return 0;
+}
+
+static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
+{
+    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit void* field
+    InfoGDOP& info = aux->info;
+    Trajectory& trajectory = aux->trajectory;
+    SOLVER_INFO* solver_info = aux->solver_info;
+
+    for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
+        trajectory.x[x_idx].push_back(data->localData[0]->realVars[x_idx]);
+    }
+
+    for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
+        int u = info.u_indices_real_vars[u_idx];
+        trajectory.u[u_idx].push_back(data->localData[0]->realVars[u]);
+    }
+
+    trajectory.t.push_back(solver_info->currentTime - info.model_start_time);
+}
+
+static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
+{
+    // TODO: parameters
+    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage;
+    InfoGDOP& info = aux->info;
+    Trajectory& trajectory = aux->trajectory;
+
+    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {
+        trajectory.p.push_back(data->localData[0]->realVars[0 /* parameter index */]);
+    }
+}
+
+// TODO: make strategy for it
+void emit_to_result_file(Trajectory& trajectory, InfoGDOP& info) {
+    DATA* data = info.data;
+    threadData_t* threadData = info.threadData;
+
+    // setting default emitter
+    if (!data->modelData->resultFileName) {
+        std::string result_file = std::string(data->modelData->modelFilePrefix) + "_res." + data->simulationInfo->outputFormat;
+        data->modelData->resultFileName = GC_strdup(result_file.c_str());
+    }
+    data->simulationInfo->numSteps = trajectory.t.size();
+    initializeResultData(data, threadData, 0);
+    sim_result.writeParameterData(&sim_result, data, threadData);
+
+    // allocate contiguous array for xu
+    FixedVector<f64> xu(trajectory.x.size() + trajectory.u.size());
+    for (size_t i = 0; i < trajectory.t.size(); i++) {
+        // move trajectory data in contiguous array
+        for (size_t x_index = 0; x_index < trajectory.x.size(); x_index++) {
+            xu[x_index] = trajectory.x[x_index][i];
+        }
+        for (size_t u_index = 0; u_index < trajectory.u.size(); u_index++) {
+            xu[trajectory.x.size() + u_index] = trajectory.u[u_index][i];
+        }
+
+        // evaluate all algebraic variables
+        set_time(info, info.model_start_time + trajectory.t[i]);
+        set_states_inputs(info, xu.raw());
+        eval_current_point(info);
+
+        // emit point
+        sim_result.emit(&sim_result, data, threadData);
+    }
+
+    sim_result.free(&sim_result, data, threadData);
+}
+
+// sets state and control initial values
+// from e.g. initial equations / parameters
+void initialize_model(InfoGDOP& info) {
+    externalInputallocate(info.data);
+    initializeModel(info.data, info.threadData, "", "", info.model_start_time);
+}
+
+ConstantInitialization::ConstantInitialization(InfoGDOP& info)
+  : info(info) {}
+
+std::unique_ptr<Trajectory> ConstantInitialization::operator()(GDOP::GDOP& gdop) {
+    DATA* data = info.data;
+
+    std::vector<f64> t = {0, info.tf};
+    std::vector<std::vector<f64>> x_guess;
+    std::vector<std::vector<f64>> u_guess;
+    std::vector<f64> p;
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
+
+    for (int x = 0; x < info.x_size; x++) {
+        x_guess.push_back({data->modelData->realVarsData[x].attribute.start, data->modelData->realVarsData[x].attribute.start});
+    }
+
+    for (int u : info.u_indices_real_vars) {
+        u_guess.push_back({data->modelData->realVarsData[u].attribute.start, data->modelData->realVarsData[u].attribute.start});
+    }
+
+    // TODO: add p
+
+    return std::make_unique<Trajectory>(Trajectory{t, x_guess, u_guess, p, interpolation});
+}
+
+Simulation::Simulation(InfoGDOP& info, SOLVER_METHOD solver)
+  : info(info), solver(solver) {}
+
+std::unique_ptr<Trajectory> Simulation::operator()(GDOP::GDOP& gdop, const ControlTrajectory& controls, int num_steps,
+                                                   f64 start_time, f64 stop_time, f64* x_start_values) {
+    DATA* data = info.data;
+    threadData_t* threadData = info.threadData;
+    SOLVER_INFO solver_info;
+    SIMULATION_INFO *simInfo = data->simulationInfo;
+
+    solver_info.solverMethod = solver;
+    simInfo->numSteps  = num_steps;
+    simInfo->startTime = start_time + info.model_start_time; // shift by model start time
+    simInfo->stopTime  = stop_time  + info.model_start_time; // shift by model start time
+    simInfo->stepSize  = (stop_time - start_time) / (f64)num_steps;
+    simInfo->useStopTime = 1;
+
+    // allocate and reserve trajectory vectors
+    std::vector<f64> t;
+    t.reserve(num_steps + 1);
+
+    std::vector<std::vector<f64>> x_sim(info.x_size);
+    for (auto& v : x_sim) v.reserve(num_steps + 1);
+
+    std::vector<std::vector<f64>> u_sim(info.u_size);
+    for (auto& v : u_sim) v.reserve(num_steps + 1);
+
+    std::vector<f64> p_sim(info.p_size);
+
+    // create Trajectory object
+    auto trajectory = std::make_unique<Trajectory>(Trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR});
+
+    // auxiliary data (passed as void* in storage member of sim_result)
+    auto aux_trajectory = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
+
+    // define global sim_result
+    sim_result.filename = NULL;
+    sim_result.numpoints = 0;
+    sim_result.cpuTime = 0;
+    sim_result.storage = aux_trajectory.get();
+    sim_result.emit = trajectory_xut_emit;
+    sim_result.init = nullptr;
+    sim_result.writeParameterData = trajectory_p_emit;
+    sim_result.free = nullptr;
+
+    // init simulation
+    initializeSolverData(data, threadData, &solver_info);
+    setZCtol(fmin(simInfo->stepSize, simInfo->tolerance));
+    initialize_model(info);
+    data->real_time_sync.enabled = FALSE;
+
+    // create an auxiliary object (stored in global void*)
+    // since the input_function interface offers no additional argument
+    FixedVector<f64> u_interpolation_buffer = FixedVector<f64>(info.u_size);
+    auto aux_controls = AuxiliaryControls{controls, info, u_interpolation_buffer};
+    set_global_reference_data(&aux_controls);
+
+    // set the new input function
+    auto generated_input_function = data->callback->input_function;
+    data->callback->input_function = control_trajectory_input_function;
+
+    // set states for start time
+    set_states(info, x_start_values);
+
+    // set controls for start time
+    // emit for time = start_time
+    controls.interpolate(start_time, u_interpolation_buffer.raw());
+    set_inputs(info, u_interpolation_buffer.raw());
+    trajectory_xut_emit(&sim_result, data, threadData);
+
+    // simulation with custom emit
+    data->callback->performSimulation(data, threadData, &solver_info);
+
+    // reset to previous input function (from generated code)
+    data->callback->input_function = generated_input_function;
+
+    // set global aux data to nullptr
+    clear_global_reference_data();
+
+    return trajectory;
+}
+
+SimulationStep::SimulationStep(std::shared_ptr<Simulation> simulation)
+  : simulation(simulation) {}
+
+std::unique_ptr<Trajectory> SimulationStep::operator()(GDOP::GDOP& gdop, const ControlTrajectory& u,
+                                                       f64 start_time, f64 stop_time, f64* x_start_values) {
+    return (*simulation)(gdop, u, 1, start_time, stop_time, x_start_values);
+}
+
+// Strategies to store all strategies
+GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
+    auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
+    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_DASSL));
+    auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
+    auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(
+                                                  GDOP::SimulationInitialization(const_initialization_strategy, simulation_strategy));
+
+    return {simulation_initialization_strategy,
+            simulation_strategy,
+            simulation_step_strategy,
+            std::make_shared<GDOP::DefaultNoMeshRefinement>()};
+};
+
+
+} // namespace OpenModelica

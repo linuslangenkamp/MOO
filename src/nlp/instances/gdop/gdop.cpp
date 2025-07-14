@@ -2,6 +2,8 @@
 
 // TODO: add timings for each component
 
+namespace GDOP {
+
 void GDOP::init() {
     init_sizes_offsets();
     init_buffers();
@@ -91,7 +93,10 @@ void GDOP::init_bounds() {
 }
 
 void GDOP::init_starting_point() {
-    Trajectory new_guess = guess.interpolate(mesh, collocation);
+    // call init strategy
+    auto guess = strategies->initialize(*this);
+
+    Trajectory new_guess = guess->interpolate(mesh, collocation);
 
     for (int x_index = 0; x_index < off_x; x_index++) {
         init_x[x_index] = new_guess.x[x_index][0];
@@ -859,3 +864,5 @@ void GDOP::finalize_solution() {
         }
     }
 }
+
+} // namespace GDOP

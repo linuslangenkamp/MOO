@@ -1,12 +1,14 @@
 #include "info_gdop.h"
 
+namespace OpenModelica {
+
 InfoGDOP::InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv) :
                    data(data), threadData(threadData), argc(argc), argv(argv) {}
 
 void InfoGDOP::set_time_horizon(int collocation) {
-    start_time = data->simulationInfo->startTime;
-    stop_time = data->simulationInfo->stopTime;
-    tf = stop_time - start_time;
+    model_start_time = data->simulationInfo->startTime;
+    model_stop_time = data->simulationInfo->stopTime;
+    tf = model_stop_time - model_start_time;
     intervals = (int)(round(tf/data->simulationInfo->stepSize));
     stages = collocation;
 }
@@ -108,3 +110,5 @@ ExchangeHessians::ExchangeHessians(InfoGDOP& info) :
     info.auto_free.attach({A, B, C, D}, __freeHessianPattern);
     info.auto_free.attach({A_extr, B_extr, C_extr, D_extr}, __freeExtrapolationData);
 }
+
+} // namespace OpenModelica

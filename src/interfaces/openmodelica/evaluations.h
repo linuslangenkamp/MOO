@@ -10,6 +10,8 @@
 #include "info_gdop.h"
 #include "sim_runtime_ext.h"
 
+namespace OpenModelica {
+
 // TODO: try to not call functionDAE that often. Maybe create a workspace buffer where we memcpy the realVars after evaluation
 //       main advantage: no need to solve NLS several times!!
 
@@ -61,5 +63,7 @@ inline void jac_eval_write_as_csc(InfoGDOP& info, JACOBIAN* jacobian, f64* eval_
  * stored in Exchange_COO_CSC.coo_to_csc(nz). */
 void jac_eval_write_first_row_as_csc(InfoGDOP& info, JACOBIAN* jacobian, f64* full_buffer,
                                      f64* eval_jac_buffer, Exchange_COO_CSC& exc);
+
+} // namespace OpenModelica
 
 #endif // OPT_OM_EVALUATIONS_H

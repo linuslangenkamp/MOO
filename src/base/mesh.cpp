@@ -244,7 +244,7 @@ void ControlTrajectory::linear_interpolation(f64 t_query, f64* interpolation_val
     return;
 }
 
-void ControlTrajectory::interpolate(f64 t_query, f64* interpolation_values) {
+void ControlTrajectory::interpolate(f64 t_query, f64* interpolation_values) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
             linear_interpolation(t_query, interpolation_values);

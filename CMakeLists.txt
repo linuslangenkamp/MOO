@@ -14,40 +14,13 @@ pkg_check_modules(COINHSL coinhsl)
 include(ProcessorCount)
 ProcessorCount(N)
 
-# CONFIGURE_COMMAND ./configure CFLAGS=-Ofast FCFLAGS=-Ofast\ -fopenmp --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
-
-
-ExternalProject_Add(mumps-ext
-    GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
-    GIT_TAG releases/3.0.7
-    PATCH_COMMAND ${CMAKE_BINARY_DIR}/mumps-ext-prefix/src/mumps-ext/get.Mumps
-    CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
-    BUILD_COMMAND make -j${N}
-    BUILD_IN_SOURCE true
-    EXCLUDE_FROM_ALL true
-)
-
-
-ExternalProject_Add(ipopt-ext
-    GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
-    GIT_TAG releases/3.14.16
-    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
-    BUILD_COMMAND make -j${N}
-    BUILD_IN_SOURCE true
-    DEPENDS mumps-ext
-    EXCLUDE_FROM_ALL true
-)
-
-# add_dependencies(optimization ipopt-ext mumps-ext)
-
-
-
 set(SOURCES
     src/base/collocation.cpp
     src/base/mesh.cpp
     src/base/linalg.cpp
 
     src/nlp/instances/gdop/gdop.cpp
+    src/nlp/instances/gdop/gdop_strategies.cpp
 
     src/nlp/solvers/nlp_solver_flags.cpp
     src/nlp/nlp_scaling.cpp
@@ -61,11 +34,12 @@ set(SOURCES
     src/interfaces/openmodelica/evaluations.cpp
     src/interfaces/openmodelica/debug_om.cpp
     src/interfaces/openmodelica/sim_runtime_ext.cpp
+    src/interfaces/openmodelica/scaling.cpp
+    src/interfaces/openmodelica/strategies.cpp
 
     # src/nlp/instances/gdop/test_problem_impl.cpp
     # stashed/steady_state/parameter_test.cpp
 )
-
 
 add_library(optimization SHARED ${SOURCES})
 
@@ -74,6 +48,106 @@ target_include_directories(optimization
   PRIVATE ${CMAKE_SOURCE_DIR}/src
 )
 
+###### START FMT
+
+option(WITH_FMT "Build and link with 'fmt' library" TRUE)
+
+if(WITH_FMT)
+  message(STATUS "Library 'fmt' will be built from source and linked (WITH_FMT=TRUE)")
+  target_compile_definitions(optimization PRIVATE WITH_FMT)
+else()
+  message(STATUS "Library 'fmt' is disabled (WITH_FMT=FALSE)")
+endif()
+
+if(WITH_FMT)
+  ExternalProject_Add(fmt-ext
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 11.2.0
+    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${THIRD_PARTY_INSTALL_PREFIX}
+                -DFMT_DOC=OFF
+                -DFMT_TEST=OFF
+                -DFMT_FUZZ=OFF
+                -DFMT_INSTALL=ON
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                -DBUILD_SHARED_LIBS=OFF
+    EXCLUDE_FROM_ALL TRUE
+  )
+endif()
+
+if(WITH_FMT)
+  #add_dependencies(optimization fmt-ext)
+  target_include_directories(optimization PRIVATE
+    ${THIRD_PARTY_INSTALL_PREFIX}/include
+  )
+  target_link_directories(optimization PRIVATE
+    ${THIRD_PARTY_INSTALL_PREFIX}/lib
+  )
+  target_link_libraries(optimization PRIVATE fmt)
+endif()
+
+###### END FMT
+
+###### START DISABLE_LOGGING
+
+option(DISABLE_LOGGING "Disable logging macros" FALSE)
+
+if(DISABLE_LOGGING)
+  message(STATUS "Define DISABLE_LOGGING set to TRUE")
+  target_compile_definitions(optimization PRIVATE DISABLE_LOGGING)
+else()
+  message(STATUS "Define DISABLE_LOGGING set to FALSE")
+endif()
+
+###### END DISABLE_LOGGING
+
+###### START MUMPS + Ipopt
+
+# TODO: enable build w/o mumps or ipopt
+
+option(WITH_MUMPS "Build and link with 'MUMPS' library" TRUE)
+
+if(WITH_MUMPS)
+  message(STATUS "Library 'MUMPS' will be built from source and linked (WITH_MUMPS=TRUE)")
+  target_compile_definitions(optimization PRIVATE WITH_MUMPS)
+else()
+  message(STATUS "Library 'MUMPS' is disabled (WITH_MUMPS=FALSE)")
+endif()
+
+# CONFIGURE_COMMAND ./configure CFLAGS=-Ofast FCFLAGS=-Ofast\ -fopenmp --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+ExternalProject_Add(mumps-ext
+    GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
+    GIT_TAG releases/3.0.7
+    PATCH_COMMAND ${CMAKE_BINARY_DIR}/mumps-ext-prefix/src/mumps-ext/get.Mumps
+    CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+    BUILD_COMMAND make -j${N}
+    BUILD_IN_SOURCE true
+    EXCLUDE_FROM_ALL true
+    BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libdmumps.a
+)
+
+option(WITH_IPOPT "Build and link with 'Ipopt' library" TRUE)
+
+if(WITH_IPOPT)
+  message(STATUS "Library 'Ipopt' will be built from source and linked (WITH_IPOPT=TRUE)")
+  target_compile_definitions(optimization PRIVATE WITH_IPOPT)
+else()
+  message(STATUS "Library 'Ipopt' is disabled (WITH_IPOPT=FALSE)")
+endif()
+
+ExternalProject_Add(ipopt-ext
+    GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
+    GIT_TAG releases/3.14.16
+    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+    BUILD_COMMAND make -j${N}
+    BUILD_IN_SOURCE true
+    DEPENDS mumps-ext
+    EXCLUDE_FROM_ALL true
+    BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libipopt.a
+)
+
+#add_dependencies(optimization ipopt-ext mumps-ext)
+
+##### END MUMPS + Ipopt
 
 target_include_directories(optimization PUBLIC include)
 
@@ -84,7 +158,7 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 #add_compile_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 #add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 
-if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Configuration: Debug")
     target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g")

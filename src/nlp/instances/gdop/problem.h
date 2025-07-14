@@ -8,6 +8,7 @@
 #include <base/nlp_structs.h>
 #include <base/mesh.h>
 
+namespace GDOP {
 
 class FullSweep {
 public:
@@ -270,5 +271,7 @@ public:
         return boundary->aug_hes_buffer[entry];
     }
 };
+
+} // namespace GDOP
 
 #endif // OPT_GDOP_PROBLEM_H

@@ -1,5 +1,7 @@
 #include "evaluations.h"
 
+namespace OpenModelica {
+
 /* just enumerate them from 0 ... #lfg - 1 abd 0 ... #mr - 1, the correct placement will be handled in eval */
 void init_eval(InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
     init_eval_lfg(info, lfg);
@@ -227,7 +229,7 @@ void set_states_inputs(InfoGDOP& info, const f64* xu_ij) {
 
 void set_time(InfoGDOP& info, const f64 t_ij) {
     /* move time horizon to Modelica model time */
-    info.data->localData[0]->timeValue = (modelica_real) t_ij + info.start_time;
+    info.data->localData[0]->timeValue = (modelica_real) t_ij + info.model_start_time;
 }
 
 void eval_lfg_write(InfoGDOP& info, f64* eval_lfg_buffer) {
@@ -267,3 +269,5 @@ void jac_eval_write_first_row_as_csc(InfoGDOP& info, JACOBIAN* jacobian, f64* fu
         eval_jac_buffer[nz] = full_buffer[exc.coo_to_csc(nz)];
     }
 }
+
+} // namespace OpenModelica

@@ -1,25 +1,6 @@
 #include "gdop_problem.h"
 
-// use this field when needing some data object inside OpenModelica
-// callbacks / interfaces but no nice void* field exists
-static void *_global_reference_data_field = nullptr;
-
-// set the global pointer
-void set_global_reference_data(void *reference_data) {
-    assert(!_global_reference_data_field);         // assert nullptr
-    _global_reference_data_field = reference_data;
-}
-
-// get the global pointer
-void* get_global_reference_data() {
-    assert(_global_reference_data_field);          // assert non nullptr
-    return _global_reference_data_field;
-}
-
-// clear the global pointer
-void clear_global_reference_data() {
-    _global_reference_data_field = nullptr;
-}
+namespace OpenModelica {
 
 FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
         Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, InfoGDOP& info)
@@ -146,11 +127,11 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
     }
 }
 
-Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
+GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
     DATA* data = info.data;
     // at first call init for all start values
     initialize_model(info);
-    
+
     /* variable sizes */
     info.x_size = data->modelData->nStates;
     info.u_size = data->modelData->nInputVars;
@@ -243,7 +224,7 @@ Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
     init_jac(info, lfg, mr);
     init_hes(info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
 
-    return Problem(
+    return GDOP::Problem(
         std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), collocation, mesh, std::move(g_bounds), info),
         std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), mesh, std::move(r_bounds), info),
         mesh,
@@ -255,262 +236,4 @@ Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
     );
 }
 
-// TODO: make a NLP initializer class with different init methods: simulation, bionic, constant, ...
-//       always returns a unique_ptr<Trajectory>
-std::unique_ptr<Trajectory> create_constant_guess(InfoGDOP& info) {
-    DATA* data = info.data;
-
-    std::vector<f64> t = {0, info.tf};
-    std::vector<std::vector<f64>> x_guess;
-    std::vector<std::vector<f64>> u_guess;
-    std::vector<f64> p;
-    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
-
-    for (int x = 0; x < info.x_size; x++) {
-        x_guess.push_back({data->modelData->realVarsData[x].attribute.start, data->modelData->realVarsData[x].attribute.start});
-    }
-
-    for (int u : info.u_indices_real_vars) {
-        u_guess.push_back({data->modelData->realVarsData[u].attribute.start, data->modelData->realVarsData[u].attribute.start});
-    }
-    // TODO: add p
-
-    return std::make_unique<Trajectory>(Trajectory{t, x_guess, u_guess, p, interpolation});
-}
-
-static int control_trajectory_input_function(DATA* data, threadData_t* threadData) {
-    AuxiliaryControls* aux_controls = (AuxiliaryControls*)get_global_reference_data();
-
-    ControlTrajectory& controls = aux_controls->controls;
-    InfoGDOP& info = aux_controls->info;
-    f64* u_interpolation = aux_controls->u_interpolation.raw();
-
-    // important use data here not info.data
-    // for some reason a new data object is created for each solve
-    // but not important for now
-    f64 time = data->localData[0]->timeValue;
-
-    // transform back to GDOP time (always [0, tf])
-    time -= info.start_time;
-
-    controls.interpolate(time, u_interpolation);
-    set_inputs(info, u_interpolation);
-
-    return 0;
-}
-
-static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
-{
-    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit void* field
-    InfoGDOP& info = aux->info;
-    Trajectory& trajectory = aux->trajectory;
-    SOLVER_INFO* solver_info = aux->solver_info;
-
-    for (int x_idx = 0; x_idx < info.x_size; x_idx++) {
-        trajectory.x[x_idx].push_back(data->localData[0]->realVars[x_idx]);
-    }
-
-    for (int u_idx = 0; u_idx < info.u_size; u_idx++) {
-        int u = info.u_indices_real_vars[u_idx];
-        trajectory.u[u_idx].push_back(data->localData[0]->realVars[u]);
-    }
-
-    trajectory.t.push_back(solver_info->currentTime - info.start_time);
-}
-
-static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
-{
-    // TODO: parameters
-    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage;
-    InfoGDOP& info = aux->info;
-    Trajectory& trajectory = aux->trajectory;
-
-    for (int p_idx = 0; p_idx < info.p_size; p_idx++) {
-        trajectory.p.push_back(data->localData[0]->realVars[0 /* parameter index */]);
-    }
-}
-
-// sets state and control initial values
-// from e.g. initial equations / parameters
-void initialize_model(InfoGDOP& info) {
-    externalInputallocate(info.data);
-    initializeModel(info.data, info.threadData, "", "", info.start_time);
-}
-
-std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver,
-                                     int num_steps, ControlTrajectory& controls) {
-    DATA* data = info.data;
-    threadData_t* threadData = info.threadData;
-    SOLVER_INFO solver_info;
-    SIMULATION_INFO *simInfo = data->simulationInfo;
-
-    simInfo->numSteps = num_steps;
-    simInfo->stepSize = info.tf / (f64)num_steps;
-    simInfo->useStopTime = 1;
-    solver_info.solverMethod = solver;
-
-    // allocate and reserve trajectory vectors
-    std::vector<f64> t;
-    t.reserve(num_steps + 1);
-
-    std::vector<std::vector<f64>> x_sim(info.x_size);
-    for (auto& v : x_sim) v.reserve(num_steps + 1);
-
-    std::vector<std::vector<f64>> u_sim(info.u_size);
-    for (auto& v : u_sim) v.reserve(num_steps + 1);
-
-    std::vector<f64> p_sim(info.p_size);
-
-    // create Trajectory object
-    auto trajectory = std::make_unique<Trajectory>(Trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR});
-
-    // auxiliary data (passed as void* in storage member of sim_result)
-    auto aux_trajectory = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
-
-    // define global sim_result
-    sim_result.filename = NULL;
-    sim_result.numpoints = 0;
-    sim_result.cpuTime = 0;
-    sim_result.storage = aux_trajectory.get();
-    sim_result.emit = trajectory_xut_emit;
-    sim_result.init = nullptr;
-    sim_result.writeParameterData = trajectory_p_emit;
-    sim_result.free = nullptr;
-
-    // init simulation
-    initializeSolverData(data, threadData, &solver_info);
-    setZCtol(fmin(simInfo->stepSize, simInfo->tolerance));
-    initialize_model(info);
-    data->real_time_sync.enabled = FALSE;
-
-    // create an auxiliary object (stored in global void*)
-    // since the input_function interface offers no additional argument
-    FixedVector<f64> u_interpolation_buffer = FixedVector<f64>(info.u_size);
-    auto aux_controls = AuxiliaryControls{controls, info, u_interpolation_buffer};
-    set_global_reference_data(&aux_controls);
-
-    // set the new input function
-    auto generated_input_function = data->callback->input_function;
-    data->callback->input_function = control_trajectory_input_function;
-
-    // set controls for start time
-    // emit for time = t_0
-    controls.interpolate(0.0, u_interpolation_buffer.raw());
-    set_inputs(info, u_interpolation_buffer.raw());
-    trajectory_xut_emit(&sim_result, data, threadData);
-
-    // simulation with custom emit
-    data->callback->performSimulation(data, threadData, &solver_info);
-
-    // reset to previous input function (from generated code)
-    data->callback->input_function = generated_input_function;
-
-    // set global aux data to nullptr
-    clear_global_reference_data();
-
-    return trajectory;
-}
-
-void emit_trajectory_om(Trajectory& trajectory, InfoGDOP& info) {
-    DATA* data = info.data;
-    threadData_t* threadData = info.threadData;
-
-    // setting default emitter
-    if (!data->modelData->resultFileName) {
-        std::string result_file = std::string(data->modelData->modelFilePrefix) + "_res." + data->simulationInfo->outputFormat;
-        data->modelData->resultFileName = GC_strdup(result_file.c_str());
-    }
-    data->simulationInfo->numSteps = trajectory.t.size();
-    initializeResultData(data, threadData, 0);
-    sim_result.writeParameterData(&sim_result, data, threadData);
-
-    // allocate contiguous array for xu
-    FixedVector<f64> xu(trajectory.x.size() + trajectory.u.size());
-    for (size_t i = 0; i < trajectory.t.size(); i++) {
-        // move trajectory data in contiguous array
-        for (size_t x_index = 0; x_index < trajectory.x.size(); x_index++) {
-            xu[x_index] = trajectory.x[x_index][i];
-        }
-        for (size_t u_index = 0; u_index < trajectory.u.size(); u_index++) {
-            xu[trajectory.x.size() + u_index] = trajectory.u[u_index][i];
-        }
-
-        // evaluate all algebraic variables
-        set_time(info, info.start_time + trajectory.t[i]);
-        set_states_inputs(info, xu.raw());
-        eval_current_point(info);
-
-        // emit point
-        sim_result.emit(&sim_result, data, threadData);
-    }
-
-    sim_result.free(&sim_result, data, threadData);
-}
-
-NominalScaling create_gdop_om_nominal_scaling(GDOP& gdop, InfoGDOP& info) {
-    // x, g, f of the NLP { min f(x) s.t. g_l <= g(x) <= g_l }
-    auto x_nominal = FixedVector<f64>(gdop.number_vars);
-    auto g_nominal = FixedVector<f64>(gdop.number_constraints);
-    f64  f_nominal = 1;
-
-    // get problem sizes
-    auto x_size  = info.x_size;
-    auto u_size  = info.u_size;
-    auto xu_size = info.xu_size;
-    auto f_size = info.f_size;
-    auto g_size = info.g_size;
-    auto r_size = info.r_size;
-    auto fg_size = f_size + g_size;
-
-    auto real_vars_data = info.data->modelData->realVarsData;
-
-    auto has_mayer = gdop.problem.boundary->has_mayer;
-    auto has_lagrange = gdop.problem.full->has_lagrange;
-
-    if (has_mayer && has_lagrange) {
-        f_nominal = (real_vars_data[info.index_mayer_real_vars].attribute.nominal +
-                     real_vars_data[info.index_lagrange_real_vars].attribute.nominal) / 2;
-    }
-    else if (has_lagrange) {
-        f_nominal = real_vars_data[info.index_lagrange_real_vars].attribute.nominal;
-    }
-    else if (has_mayer) {
-        f_nominal = real_vars_data[info.index_mayer_real_vars].attribute.nominal;
-    }
-    else {
-        // use default 1 - no objective set!
-    }
-
-    // x(t_0)
-    for (int x = 0; x < info.x_size; x++) {
-        x_nominal[x] = real_vars_data[x].attribute.nominal;
-    }
-
-    // (x, u)_(t_node)
-    for (int node = 0; node < gdop.mesh.node_count; node++) {
-        for (int x = 0; x < x_size; x++) {
-            x_nominal[x_size + node * xu_size + x] = real_vars_data[x].attribute.nominal;
-        }
-
-        for (int u = 0; u < u_size; u++) {
-            int u_real_vars = info.u_indices_real_vars[u];
-            x_nominal[2 * x_size + node * xu_size + u] = real_vars_data[u_real_vars].attribute.nominal;
-        }
-    }
-
-    for (int node = 0; node < gdop.mesh.node_count; node++) {
-        for (int f = 0; f < f_size; f++) {
-            g_nominal[node * fg_size + f] = x_nominal[f]; // reuse x nominal for dynamic for now!
-        }
-
-        for (int g = 0; g < g_size; g++) {
-            g_nominal[f_size + node * fg_size + g] = real_vars_data[info.index_g_real_vars + g].attribute.nominal;
-        }
-    }
-
-    for (int r = 0; r < r_size; r++) {
-        g_nominal[gdop.off_fg_total + r] = real_vars_data[info.index_r_real_vars + r].attribute.nominal;
-    }
-
-    return NominalScaling(std::move(x_nominal), std::move(g_nominal), f_nominal);
-}
+} // namespace OpenModelica

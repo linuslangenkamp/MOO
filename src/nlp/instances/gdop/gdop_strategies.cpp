@@ -1,7 +1,11 @@
 #include "gdop_strategies.h"
+#include "gdop.h"
 
-// TODO: add namespace GDOP::Strategies::* or add declaration directly to GDOP class? yields nicer syntax
-namespace StrategiesGDOP {
+// TODO: add doxygen everywhere
+// TODO: replace couts with format error_log() and log() prints
+// TODO: add namespaces for every "major folder" :: NLP, Ipopt, OM, Base
+
+namespace GDOP {
 
 std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(GDOP& gdop) {
     const auto& problem = gdop.problem;
@@ -65,8 +69,14 @@ std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(GDOP& gdop
 }
 
 // no simulation available
-std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(GDOP& gdop, const ControlTrajectory& u) {
+std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(GDOP& gdop, const ControlTrajectory& u, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
     std::cerr << "[Warning] No Simulation strategy set: returning nullptr." << std::endl;
+    return nullptr;
+}
+
+// no simulation step available
+std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(GDOP& gdop, const ControlTrajectory& u, f64 start_time, f64 stop_time, f64* x_start_values) {
+    std::cerr << "[Warning] No SimulationStep strategy set: returning nullptr." << std::endl;
     return nullptr;
 }
 
@@ -76,4 +86,32 @@ std::unique_ptr<Trajectory> DefaultNoMeshRefinement::operator()(GDOP& gdop) {
     return nullptr;
 }
 
-} // namespace StrategiesGDOP
+// proper strategies
+
+SimulationInitialization::SimulationInitialization(std::shared_ptr<Initialization> initialization,
+                                                   std::shared_ptr<Simulation> simulation)
+  : initialization(initialization), simulation(simulation) {}
+
+std::unique_ptr<Trajectory> SimulationInitialization::operator()(GDOP& gdop) {
+    auto simple_guess       = (*initialization)(gdop);                 // call simple, e.g. constant guess
+    auto extracted_controls = simple_guess->copy_extract_controls();   // extract controls of the guess
+
+    size_t x_size = simple_guess->x.size();
+    FixedVector<f64> x0(x_size);
+    for (size_t i = 0; i < x_size; i++) { x0[i] = simple_guess->x[i][0]; }
+
+    auto simulated_guess    = (*simulation)(gdop, extracted_controls, gdop.mesh.node_count, // perform simulation using the controls and config
+                                            0.0, gdop.mesh.tf, x0.raw());
+    return simulated_guess;
+}
+
+// default strategy collection
+
+Strategies Strategies::default_strategies() {
+    return {std::make_shared<DefaultConstantInitialization>(),
+            std::make_shared<DefaultNoSimulation>(),
+            std::make_shared<DefaultNoSimulationStep>(),
+            std::make_shared<DefaultNoMeshRefinement>()};
+};
+
+} // namespace GDOP

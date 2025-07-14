@@ -35,6 +35,7 @@ struct Mesh {
     FixedField<int, 2> create_acc_offset_fg(int off_fg);
 };
 
+
 struct ControlTrajectory {
     std::vector<f64> t;                       // time grid, monotonic increasing
     std::vector<std::vector<f64>> u;          // u[k][j] = value of k-th control at t[j]
@@ -43,7 +44,7 @@ struct ControlTrajectory {
     // for repeated interpolation, cache last index
     mutable size_t last_index = 0;
 
-    void interpolate(f64 t_query, f64* interpolation_values);
+    void interpolate(f64 t_query, f64* interpolation_values) const;
     void linear_interpolation(f64 t_query, f64* interpolation_values) const;
 };
 

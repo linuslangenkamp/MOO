@@ -10,9 +10,12 @@
 #include <nlp/instances/gdop/gdop.h>
 
 #include "evaluations.h"
+#include "strategies.h"
 #include "debug_om.h"
 
-class FullSweep_OM : public FullSweep {
+namespace OpenModelica {
+
+class FullSweep_OM : public GDOP::FullSweep {
 public:
     InfoGDOP& info;
 
@@ -24,7 +27,7 @@ public:
     void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) override;
 };
 
-class BoundarySweep_OM : public BoundarySweep {
+class BoundarySweep_OM : public GDOP::BoundarySweep {
 public:
     InfoGDOP& info;
 
@@ -35,25 +38,8 @@ public:
     void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) override;
 };
 
-struct AuxiliaryTrajectory {
-    Trajectory& trajectory;
-    InfoGDOP& info;
-    SOLVER_INFO* solver_info;
-};
+GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
 
-struct AuxiliaryControls {
-    ControlTrajectory& controls;
-    InfoGDOP& info;
-    FixedVector<f64> u_interpolation;
-};
-
-NominalScaling create_gdop_om_nominal_scaling(GDOP& gdop, InfoGDOP& info);
-Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& fLGR);
-
-void initialize_model(InfoGDOP& info);
-std::unique_ptr<Trajectory> create_constant_guess(InfoGDOP& info);
-std::unique_ptr<Trajectory> simulate(InfoGDOP& info, SOLVER_METHOD solver, int num_steps, ControlTrajectory& controls);
-
-void emit_trajectory_om(Trajectory& trajectory, InfoGDOP& info);
+} // namespace OpenModelica
 
 #endif // OPT_OM_GDOP_PROBLEM_H

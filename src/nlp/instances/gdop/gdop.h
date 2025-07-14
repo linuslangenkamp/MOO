@@ -13,16 +13,26 @@
 #include <nlp/nlp.h>
 
 #include "problem.h"
+#include "gdop_strategies.h"
 
+namespace GDOP {
 
+// TODO: think about this. Should we also delay the strategies? Maybe we want to use different strategies from time to time?!
 class GDOP : public NLP {
 public:
-    GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, Trajectory& guess)
+    GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, std::unique_ptr<Strategies> strategies)
         : NLP(),
           mesh(mesh),
           problem(problem),
-          collocation(collocation),
-          guess(guess) {
+          collocation(collocation) {
+
+        if (strategies != nullptr) {
+            this->strategies = std::move(strategies);
+        }
+        else {
+            this->strategies = std::make_unique<Strategies>(Strategies::default_strategies());
+        }
+
         init();
     }
 
@@ -30,8 +40,10 @@ public:
     Mesh& mesh;                 // grid / mesh
     Problem& problem;           // continuous GDOP
     Collocation& collocation;   // collocation data
-    Trajectory& guess;          // initial guess / trajectory, will be interpolated accordingly
     NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
+
+    // strategies for initialization, simulation, mesh refinement etc.
+    std::unique_ptr<Strategies> strategies;
 
     std::unique_ptr<Trajectory> optimal_solution = std::make_unique<Trajectory>(); // gets filled in finalize_solution()
 
@@ -117,6 +129,8 @@ public:
     void eval_hes(bool new_x, bool new_lambda);
     void finalize_solution();
 };
+
+} // namespace GDOP
 
 #endif // OPT_GDOP_H
 

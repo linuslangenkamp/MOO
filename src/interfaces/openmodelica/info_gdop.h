@@ -13,6 +13,8 @@
 
 #include <memory>
 
+namespace OpenModelica {
+
 /* foward decl */
 struct ExchangeJacobians;
 struct ExchangeHessians;
@@ -59,11 +61,11 @@ struct InfoGDOP {
     std::unique_ptr<ExchangeHessians> exc_hes;
 
     /* time horizon */
-    f64 start_time; // model start_time
-    f64 stop_time;  // model stop_time
-    f64 tf;         // tf = start - stop, since t0 = 0 for OPT
-    int intervals;  // model interval count
-    int stages;     // stage count
+    f64 model_start_time; // model start_time
+    f64 model_stop_time;  // model stop_time
+    f64 tf;               // tf = start - stop, since t0 = 0 for OPT
+    int intervals;        // model interval count
+    int stages;           // stage count
 
     InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv);
 
@@ -176,5 +178,7 @@ struct ExchangeHessians {
 
     ExchangeHessians(InfoGDOP& info);
 };
+
+} // namespace OpenModelica
 
 #endif // OPT_OM_INFO_GDOP_H

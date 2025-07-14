@@ -1,5 +1,7 @@
 #include "debug_om.h"
 
+namespace OpenModelica {
+
 void print_real_var_names(DATA* data) {
     for (long idx = 0; idx < data->modelData->nVariablesReal; idx++)
         printf("%s\n", data->modelData->realVarsData[idx].info.name);
@@ -99,3 +101,5 @@ void print_bounds_fixed_vector(FixedVector<Bounds>& vec) {
         std::cout << "lb: " << b.lb << ", ub: " << b.ub << "\n";
     }
 }
+
+} // namespace OpenModelica
