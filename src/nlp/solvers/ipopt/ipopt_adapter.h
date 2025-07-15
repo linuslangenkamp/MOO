@@ -10,12 +10,13 @@
 
 #include <nlp/nlp.h>
 
+namespace IpoptSolver {
 
 class IpoptAdapter : public Ipopt::TNLP {
 public:
-    explicit IpoptAdapter(NLP& nlp) : nlp(nlp) {}
+    explicit IpoptAdapter(NLP::NLP& nlp) : nlp(nlp) {}
 
-    NLP& nlp;
+    NLP::NLP& nlp;
 
     // Attention: this part is super confusing, since the lambda and sigma_f *unscale* is actually a scale with g and f!!
     // this is the case, because the augmented Lagrangian does not allow for to scale f and g independently after evaluation
@@ -46,5 +47,7 @@ public:
     bool intermediate_callback(Ipopt::AlgorithmMode mode, Ipopt::Index iter, Ipopt::Number obj_value, Ipopt::Number inf_pr, Ipopt::Number inf_du, Ipopt::Number mu, Ipopt::Number d_norm, Ipopt::Number regularization_size,
      Ipopt::Number alpha_du, Ipopt::Number alpha_pr, Ipopt::Index ls_trials, const Ipopt::IpoptData* ip_data, Ipopt::IpoptCalculatedQuantities* ip_cq);
 };
+
+} // namespace IpoptSolver
 
 #endif // OPT_IPOPT_ADAPTER_H

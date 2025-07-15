@@ -5,6 +5,8 @@
 
 #include "nlp_scaling.h"
 
+namespace NLP {
+
 /* generic NLP base class - can be used with the generic NLP_Solver interface
  * allows for a nice abstraction / to use any NLP solver when implementing this NLP
  * 
@@ -59,6 +61,7 @@ public:
 
     // TODO: add a generic block BFGS routine, which can calculate blocks of the Lagrangian Hessian $\nabla_{xx} \mathcal{L}_{AA -> BB}$
 
+    // TODO: fantastic!! Add Strategies to NLP!! and Scaling is always part of it. Then GDOP::Strategies inherits that class!!
     std::unique_ptr<Scaling> scaling = std::make_unique<NoScaling>();                            // generic scaling routine
     void set_scaling(std::unique_ptr<Scaling> new_scaling) { scaling = std::move(new_scaling); } // set the generic scaling routine
 
@@ -85,5 +88,7 @@ public:
         scaling->unscale_f(obj, &curr_obj);
     }
 };
+
+} // namespace NLP
 
 #endif  // OPT_NLP_H

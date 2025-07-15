@@ -2,6 +2,8 @@
 
 // TODO: use BLAS here, and everywhere possible; these are literally straight vector ops
 
+namespace NLP {
+
 NominalScaling::NominalScaling(FixedVector<f64>&& x_nominal, 
                                FixedVector<f64>&& g_nominal,
                                f64 f_nominal)
@@ -101,3 +103,5 @@ void NominalScaling::scale_hes(const f64* hes_unscaled, f64* hes_scaled,
 
     Linalg::diagmat_vec(hes_scaling.raw(), false, hes_unscaled, hes_nnz, hes_scaled);
 }
+
+} // namespace NLP

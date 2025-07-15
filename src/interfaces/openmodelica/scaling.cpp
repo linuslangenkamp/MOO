@@ -2,7 +2,7 @@
 
 namespace OpenModelica {
 
-NominalScaling create_gdop_nominal_scaling(GDOP::GDOP& gdop, InfoGDOP& info) {
+NLP::NominalScaling create_gdop_nominal_scaling(GDOP::GDOP& gdop, InfoGDOP& info) {
     // x, g, f of the NLP { min f(x) s.t. g_l <= g(x) <= g_l }
     auto x_nominal = FixedVector<f64>(gdop.number_vars);
     auto g_nominal = FixedVector<f64>(gdop.number_constraints);
@@ -67,7 +67,7 @@ NominalScaling create_gdop_nominal_scaling(GDOP::GDOP& gdop, InfoGDOP& info) {
         g_nominal[gdop.off_fg_total + r] = real_vars_data[info.index_r_real_vars + r].attribute.nominal;
     }
 
-    return NominalScaling(std::move(x_nominal), std::move(g_nominal), f_nominal);
+    return NLP::NominalScaling(std::move(x_nominal), std::move(g_nominal), f_nominal);
 }
 
 } // namespace OpenModelica

@@ -10,7 +10,6 @@
 
 namespace OpenModelica {
 
-
 struct AuxiliaryTrajectory {
     Trajectory& trajectory;
     InfoGDOP& info;
@@ -24,13 +23,12 @@ struct AuxiliaryControls {
 };
 
 void initialize_model(InfoGDOP& info);
-void emit_to_result_file(Trajectory& trajectory, InfoGDOP& info);
 
 struct ConstantInitialization : public GDOP::Initialization {
     InfoGDOP& info;
     ConstantInitialization(InfoGDOP& info);
 
-    std::unique_ptr<Trajectory> operator()(GDOP::GDOP& gdop) override;
+    std::unique_ptr<Trajectory> operator()(const GDOP::GDOP& gdop) override;
 };
 
 // TODO: maybe think about how we provide these configurations to the Strategy?
@@ -41,7 +39,7 @@ struct Simulation : public GDOP::Simulation {
 
     Simulation(InfoGDOP& info, SOLVER_METHOD solver);
 
-    std::unique_ptr<Trajectory> operator()(GDOP::GDOP& gdop, const ControlTrajectory& u, int num_steps,
+    std::unique_ptr<Trajectory> operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls, int num_steps,
                                            f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
@@ -50,8 +48,16 @@ struct SimulationStep : public GDOP::SimulationStep {
 
     SimulationStep(std::shared_ptr<Simulation> simulation);
 
-    std::unique_ptr<Trajectory> operator()(GDOP::GDOP& gdop, const ControlTrajectory& u,
+    std::unique_ptr<Trajectory> operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls,
                                            f64 start_time, f64 stop_time, f64* x_start_values) override;
+};
+
+struct MatEmitter : public GDOP::Emitter {
+    InfoGDOP& info;
+
+    MatEmitter(InfoGDOP& info);
+
+    int operator()(const GDOP::GDOP& gdop, const Trajectory& trajectory) override;
 };
 
 // Strategies object

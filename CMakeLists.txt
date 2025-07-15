@@ -16,6 +16,7 @@ ProcessorCount(N)
 
 set(SOURCES
     src/base/collocation.cpp
+    src/base/trajectory.cpp
     src/base/mesh.cpp
     src/base/linalg.cpp
 

@@ -7,7 +7,7 @@
 
 namespace OpenModelica {
 
-NominalScaling create_gdop_nominal_scaling(GDOP::GDOP& gdop, InfoGDOP& info);
+NLP::NominalScaling create_gdop_nominal_scaling(GDOP::GDOP& gdop, InfoGDOP& info);
 
 } // namespace OpenModelica
 

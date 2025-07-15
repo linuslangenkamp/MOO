@@ -13,7 +13,7 @@ void InfoGDOP::set_time_horizon(int collocation) {
     stages = collocation;
 }
 
-void InfoGDOP::set_omc_flags(NLPSolverFlags& nlp_solver_flags) {
+void InfoGDOP::set_omc_flags(NLP::NLPSolverFlags& nlp_solver_flags) {
     // set number of collocation nodes, default 3
     char* cflags = (char*)omc_flagValue[FLAG_OPTIMIZER_NP];
     set_time_horizon(cflags ? atoi(cflags) : 3);

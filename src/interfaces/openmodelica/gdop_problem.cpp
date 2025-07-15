@@ -129,6 +129,7 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
 
 GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
     DATA* data = info.data;
+
     // at first call init for all start values
     initialize_model(info);
 

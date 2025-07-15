@@ -69,7 +69,7 @@ struct InfoGDOP {
 
     InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv);
 
-    void set_omc_flags(NLPSolverFlags& nlp_solver_flags);
+    void set_omc_flags(NLP::NLPSolverFlags& nlp_solver_flags);
     void set_time_horizon(int collocation);
 };
 

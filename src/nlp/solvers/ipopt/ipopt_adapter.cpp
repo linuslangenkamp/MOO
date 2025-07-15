@@ -2,6 +2,7 @@
 
 #include "ipopt_adapter.h"
 
+namespace IpoptSolver {
 
 bool IpoptAdapter::get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) {
     n = nlp.number_vars;
@@ -108,3 +109,4 @@ bool IpoptAdapter::intermediate_callback(Ipopt::AlgorithmMode mode, Ipopt::Index
     return true;
 };
 
+} // namespace IpoptSolver

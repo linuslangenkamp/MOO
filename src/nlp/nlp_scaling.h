@@ -5,6 +5,8 @@
 #include "base/fixed_vector.h"
 #include "base/util.h"
 
+namespace NLP {
+
 /**
  * @brief interface for NLP variable and function scaling.
  *
@@ -98,5 +100,7 @@ public:
     void scale_hes(const f64* hes_unscaled, f64* hes_scaled,
                    int* i_row_hes, int* j_col_hes, int hes_nnz) override;
 };
+
+} // namespace NLP
 
 #endif // OPT_NLP_SCALING_H

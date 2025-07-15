@@ -96,7 +96,7 @@ void GDOP::init_starting_point() {
     // call init strategy
     auto guess = strategies->initialize(*this);
 
-    Trajectory new_guess = guess->interpolate(mesh, collocation);
+    Trajectory new_guess = guess->interpolate_onto_mesh(mesh, collocation);
 
     for (int x_index = 0; x_index < off_x; x_index++) {
         init_x[x_index] = new_guess.x[x_index][0];

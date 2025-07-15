@@ -5,11 +5,14 @@
 
 #include <nlp/nlp_solver.h>
 #include "base/nlp_structs.h"
+#include "base/log.h"
 #include "ipopt_adapter.h"
 
-class IpoptSolver : NLPSolver {
+namespace IpoptSolver {
+
+class IpoptSolver : NLP::NLPSolver {
 public:
-    IpoptSolver(NLP& nlp, NLPSolverFlags& solver_flags);
+    IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags);
 
     virtual ~IpoptSolver() = default;
 
@@ -19,5 +22,7 @@ public:
     void optimize() override;
     void init_IpoptApplication();
 };
+
+} // namespace IpoptSolver
 
 #endif // OPT_IPOPT_SOLVER_H

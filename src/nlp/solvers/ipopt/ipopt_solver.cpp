@@ -1,7 +1,8 @@
 #include "ipopt_solver.h"
 
+namespace IpoptSolver {
 
-IpoptSolver::IpoptSolver(NLP& nlp, NLPSolverFlags& solver_flags)
+IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags)
     : NLPSolver(nlp, solver_flags),
       adapter(new IpoptAdapter(nlp)),
       app(IpoptApplicationFactory()) {
@@ -12,17 +13,97 @@ IpoptSolver::IpoptSolver(NLP& nlp, NLPSolverFlags& solver_flags)
 void IpoptSolver::optimize() {
     Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(adapter);
 
-    if (status == Ipopt::Solve_Succeeded) {
-        std::cout << "\n[Ipopt Interface] Optimization succeeded!" << std::endl;
-    } else {
-        std::cout << "[Ipopt Interface] Optimization failed with status: " << status << std::endl;
+    switch (status) {
+        case Ipopt::Solve_Succeeded:
+            LOG_SUCCESS("[Ipopt Interface] Optimization succeeded!");
+            break;
+
+        case Ipopt::Solved_To_Acceptable_Level:
+            LOG_SUCCESS("[Ipopt Interface] Optimization succeeded (acceptable)!");
+            break;
+
+        case Ipopt::Infeasible_Problem_Detected:
+            LOG_WARNING("[Ipopt Interface] Infeasible problem detected.");
+            break;
+
+        case Ipopt::Search_Direction_Becomes_Too_Small:
+            LOG_WARNING("[Ipopt Interface] Search direction became too small.");
+            break;
+
+        case Ipopt::Diverging_Iterates:
+            LOG_WARNING("[Ipopt Interface] Diverging iterates.");
+            break;
+
+        case Ipopt::User_Requested_Stop:
+            LOG_WARNING("[Ipopt Interface] Optimization stopped by user request.");
+            break;
+
+        case Ipopt::Feasible_Point_Found:
+            LOG_WARNING("[Ipopt Interface] Feasible point found.");
+            break;
+
+        case Ipopt::Maximum_Iterations_Exceeded:
+            LOG_WARNING("[Ipopt Interface] Maximum iterations exceeded.");
+            break;
+
+        case Ipopt::Restoration_Failed:
+            LOG_ERROR("[Ipopt Interface] Restoration failed.");
+            break;
+
+        case Ipopt::Error_In_Step_Computation:
+            LOG_ERROR("[Ipopt Interface] Error in step computation.");
+            break;
+
+        case Ipopt::Maximum_CpuTime_Exceeded:
+            LOG_WARNING("[Ipopt Interface] Maximum CPU time exceeded.");
+            break;
+
+        case Ipopt::Maximum_WallTime_Exceeded:
+            LOG_WARNING("[Ipopt Interface] Maximum wall time exceeded.");
+            break;
+
+        case Ipopt::Not_Enough_Degrees_Of_Freedom:
+            LOG_ERROR("[Ipopt Interface] Not enough degrees of freedom.");
+            break;
+
+        case Ipopt::Invalid_Problem_Definition:
+            LOG_ERROR("[Ipopt Interface] Invalid problem definition.");
+            break;
+
+        case Ipopt::Invalid_Option:
+            LOG_ERROR("[Ipopt Interface] Invalid option.");
+            break;
+
+        case Ipopt::Invalid_Number_Detected:
+            LOG_ERROR("[Ipopt Interface] Invalid number detected.");
+            break;
+
+        case Ipopt::Unrecoverable_Exception:
+            LOG_ERROR("[Ipopt Interface] Unrecoverable exception occurred.");
+            break;
+
+        case Ipopt::NonIpopt_Exception_Thrown:
+            LOG_ERROR("[Ipopt Interface] Non-Ipopt exception thrown.");
+            break;
+
+        case Ipopt::Insufficient_Memory:
+            LOG_ERROR("[Ipopt Interface] Insufficient memory.");
+            break;
+
+        case Ipopt::Internal_Error:
+            LOG_ERROR("[Ipopt Interface] Internal error.");
+            break;
+
+        default:
+            LOG_ERROR("[Ipopt Interface] Unknown return status: {}", (int)status);
+            break;
     }
 }
 
 void IpoptSolver::init_IpoptApplication() {
     Ipopt::ApplicationReturnStatus status = app->Initialize();
     if (status != Ipopt::Solve_Succeeded) {
-        std::cout << "[Ipopt Interface] Error during application initialization!" << std::endl;
+        LOG_ERROR("[Ipopt Interface] Error during application initialization!");
         abort();
     }
 
@@ -75,3 +156,5 @@ void IpoptSolver::init_IpoptApplication() {
         app->Options()->SetNumericValue("point_perturbation_radius", 0);
     }
 }
+
+} // namespace IpoptSolver

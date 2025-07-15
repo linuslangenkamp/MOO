@@ -1,5 +1,7 @@
 #include "nlp_solver_flags.h"
 
+namespace NLP {
+
 NLPSolverFlags::NLPSolverFlags(int argc, char** argv) {
     /* Default settings : add when needed */
     solver_settings["Hessian"] = "Exact";
@@ -18,18 +20,21 @@ void NLPSolverFlags::print() const {
     }
 
     int col1_width = static_cast<int>(max_len) + 2;
-    std::string header = 
-        std::string("Flag") + std::string(col1_width - 4, ' ') + "| Value";
 
-    std::cout << header << std::endl;
-    std::cout << std::string(header.length(), '-') << std::endl;
+    // Header line: "Flag" + padding + "| Value"
+    LOG("Flag{:<{}}| Value", "", col1_width - 4);
 
+    // Separator line: a bunch of '-' characters matching header width
+    LOG("{:-^{}}", "", col1_width + 7);
+
+    // Flags and values, left aligned with padding
     for (const auto& [flag, value] : solver_settings) {
-        std::cout << std::left << std::setw(static_cast<int>(max_len) + 2)
-                  << flag << ": " << value << std::endl;
+        LOG("{:<{}}: {}", flag, col1_width, value);
     }
-    std::cout << "\n";
+
+    LOG("");  // blank line at end
 }
+
 
 std::string NLPSolverFlags::get(const std::string& flag) const {
     auto it = solver_settings.find(flag);
@@ -67,3 +72,5 @@ std::string NLPSolverFlags::get_flag_string_fallback(const std::string& flag, co
     }
     return fallback;
 }
+
+} // namespace NLP

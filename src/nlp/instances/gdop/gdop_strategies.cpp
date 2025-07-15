@@ -7,7 +7,42 @@
 
 namespace GDOP {
 
-std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(GDOP& gdop) {
+// === no-op strategies ===
+
+// no simulation available
+std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
+    LOG_ERROR("No Simulation strategy set: returning nullptr.");
+    return nullptr;
+}
+
+// no simulation step available
+std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const GDOP& gdop, const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
+    LOG_ERROR("No SimulationStep strategy set: returning nullptr.");
+    return nullptr;
+}
+
+// no mesh refinement available
+std::unique_ptr<Trajectory> DefaultNoMeshRefinement::operator()(const GDOP& gdop) {
+    LOG_ERROR("No MeshRefinement strategy set: returning nullptr.");
+    return nullptr;
+}
+
+// no emitter
+int DefaultNoEmitter::operator()(const GDOP& gdop, const Trajectory& trajectory) {
+    LOG_ERROR("No Emitter strategy set: returning -1.");
+    return -1;
+}
+
+// no verifier
+bool DefaultNoVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory) {
+    LOG_ERROR("No Verifier strategy set: returning false.");
+    return false;
+}
+
+// === non no-op strategies ===
+
+// default initialization (is not really proper, but an implementation)
+std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(const GDOP& gdop) {
     const auto& problem = gdop.problem;
 
     const size_t x_size = problem.x_bounds.size();
@@ -28,8 +63,8 @@ std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(GDOP& gdop
         auto x0_opt = problem.x0_fixed[x];
         auto xf_opt = problem.xf_fixed[x];
 
-        // initial and final fixed: linear interpolation
         if (x0_opt && xf_opt) {
+            // initial and final fixed: linear interpolation
             x_guess[x] = { *x0_opt, *xf_opt };
         } else if (x0_opt) {
             // initial fixed: constant at initial
@@ -68,50 +103,87 @@ std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(GDOP& gdop
     return std::make_unique<Trajectory>(Trajectory{ t, x_guess, u_guess, p_guess, interpolation });
 }
 
-// no simulation available
-std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(GDOP& gdop, const ControlTrajectory& u, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
-    std::cerr << "[Warning] No Simulation strategy set: returning nullptr." << std::endl;
-    return nullptr;
-}
-
-// no simulation step available
-std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(GDOP& gdop, const ControlTrajectory& u, f64 start_time, f64 stop_time, f64* x_start_values) {
-    std::cerr << "[Warning] No SimulationStep strategy set: returning nullptr." << std::endl;
-    return nullptr;
-}
-
-// no mesh refinement available
-std::unique_ptr<Trajectory> DefaultNoMeshRefinement::operator()(GDOP& gdop) {
-    std::cerr << "[Warning] No MeshRefinement strategy set: returning nullptr." << std::endl;
-    return nullptr;
-}
-
-// proper strategies
-
+// proper simulation-based initialization strategy
 SimulationInitialization::SimulationInitialization(std::shared_ptr<Initialization> initialization,
                                                    std::shared_ptr<Simulation> simulation)
   : initialization(initialization), simulation(simulation) {}
 
-std::unique_ptr<Trajectory> SimulationInitialization::operator()(GDOP& gdop) {
-    auto simple_guess       = (*initialization)(gdop);                 // call simple, e.g. constant guess
-    auto extracted_controls = simple_guess->copy_extract_controls();   // extract controls of the guess
-
-    size_t x_size = simple_guess->x.size();
-    FixedVector<f64> x0(x_size);
-    for (size_t i = 0; i < x_size; i++) { x0[i] = simple_guess->x[i][0]; }
-
-    auto simulated_guess    = (*simulation)(gdop, extracted_controls, gdop.mesh.node_count, // perform simulation using the controls and config
-                                            0.0, gdop.mesh.tf, x0.raw());
+std::unique_ptr<Trajectory> SimulationInitialization::operator()(const GDOP& gdop) {
+    auto simple_guess       = (*initialization)(gdop);                                           // call simple, e.g. constant guess
+    auto extracted_controls = simple_guess->copy_extract_controls();                             // extract controls from the guess
+    auto exctracted_x0      = simple_guess->extract_initial_states();                            // extract x(t_0) from the guess
+    auto simulated_guess    = (*simulation)(gdop, extracted_controls, gdop.mesh.node_count, 0.0, // perform simulation using the controls and gdop config
+                                            gdop.mesh.tf, exctracted_x0.raw());
     return simulated_guess;
+}
+
+// csv emit
+CSVEmitter::CSVEmitter(std::string filename) : filename(filename) {}
+
+int CSVEmitter::operator()(const GDOP& gdop, const Trajectory& trajectory) { return trajectory.to_csv(filename); }
+
+// simulation-based verification
+SimulationVerifier::SimulationVerifier(std::shared_ptr<Simulation> simulation,
+                                       Linalg::Norm norm,
+                                       FixedVector<f64>&& tolerances)
+    : simulation(simulation), norm(norm), tolerances(std::move(tolerances)) {}
+
+bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory) {
+    auto extracted_controls = trajectory.copy_extract_controls();   // extract controls from the trajectory
+    auto exctracted_x0      = trajectory.extract_initial_states();  // extract x(t_0) from the trajectory
+
+    // perform simulation using the controls, gdop config and a very high number of nodes
+    int  high_node_count    = 10 * gdop.mesh.node_count;
+    auto simulation_result  = (*simulation)(gdop, extracted_controls, high_node_count,
+                                             0.0, gdop.mesh.tf, exctracted_x0.raw());
+
+    // result of high resolution simulation is interpolated onto lower resolution mesh
+    auto interpolated_sim   = simulation_result->interpolate_onto_mesh(gdop.mesh, gdop.collocation);
+
+    // calculate errors for each state in given norm (between provided and simulated states)
+    auto errors             = trajectory.state_errors(interpolated_sim, norm);
+
+    bool is_valid = true;
+
+    LOG_START_MODULE("Simulation-Based Verification");
+    // TODO: add a log for this header style, then we can define a unified scheme for the framework
+    LOG("{:>8} | {:>12} | {:>12}", "State", "Error", "Tolerance");
+    LOG("{:-<38}", "");
+
+    for (size_t x_idx = 0; x_idx < trajectory.x.size(); ++x_idx) {
+        f64 tol = tolerances[x_idx];
+        f64 err = errors[x_idx];
+
+        LOG("{:<8} | {:>12.3e} | {:>12.3e}",
+            fmt::format("x[{}]", x_idx), err, tol);
+
+        if (err > tol) {
+            is_valid = false;
+        }
+    }
+
+    LOG("{:-<38}", "");
+
+    if (is_valid) {
+        LOG_SUCCESS("All state errors within tolerances.");
+    } else {
+        LOG_WARNING("One or more state errors exceeded tolerances.");
+    }
+
+    return is_valid;
 }
 
 // default strategy collection
 
 Strategies Strategies::default_strategies() {
-    return {std::make_shared<DefaultConstantInitialization>(),
-            std::make_shared<DefaultNoSimulation>(),
-            std::make_shared<DefaultNoSimulationStep>(),
-            std::make_shared<DefaultNoMeshRefinement>()};
+    Strategies strategy;
+    strategy.initialization  = std::make_shared<DefaultConstantInitialization>();
+    strategy.simulation      = std::make_shared<DefaultNoSimulation>();
+    strategy.simulation_step = std::make_shared<DefaultNoSimulationStep>();
+    strategy.mesh_refinement = std::make_shared<DefaultNoMeshRefinement>();
+    strategy.emitter         = std::make_shared<DefaultNoEmitter>();
+    strategy.verifier        = std::make_shared<DefaultNoVerifier>();
+    return strategy;
 };
 
 } // namespace GDOP

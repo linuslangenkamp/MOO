@@ -93,7 +93,7 @@ end include_test;
 */
 
 model include_test
-  parameter Real NOMINAL = 1e12;
+  parameter Real NOMINAL = 1; // 1e12
   Real y1(start=NOMINAL, fixed=true, nominal=NOMINAL);
   Real y2(start=0, fixed=true, nominal=1/NOMINAL);
   input Real u(min=0, max=5, start=2);

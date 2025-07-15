@@ -7,6 +7,7 @@
 #include "nlp/solvers/nlp_solver_flags.h"
 #include "nlp.h"
 
+namespace NLP {
 
 class NLPSolver {
 public:
@@ -20,5 +21,7 @@ public:
 
     virtual void optimize() = 0;
 };
+
+}
 
 #endif // OPT_NLP_SOLVER_H

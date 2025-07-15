@@ -5,6 +5,7 @@
 
 #include <base/block_sparsity.h>
 #include <base/collocation.h>
+#include <base/trajectory.h>
 #include <base/fixed_vector.h>
 #include <base/linalg.h>
 #include <base/nlp_structs.h>
@@ -18,10 +19,10 @@
 namespace GDOP {
 
 // TODO: think about this. Should we also delay the strategies? Maybe we want to use different strategies from time to time?!
-class GDOP : public NLP {
+class GDOP : public NLP::NLP {
 public:
     GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, std::unique_ptr<Strategies> strategies)
-        : NLP(),
+        : NLP::NLP(),
           mesh(mesh),
           problem(problem),
           collocation(collocation) {
@@ -33,7 +34,7 @@ public:
             this->strategies = std::make_unique<Strategies>(Strategies::default_strategies());
         }
 
-        init();
+        init(); // TODO: refactor this, such that the solver calls init() / reinit() on optimize() call
     }
 
     // structures

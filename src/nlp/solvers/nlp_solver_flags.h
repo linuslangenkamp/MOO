@@ -7,6 +7,9 @@
 #include <iomanip>
 
 #include "base/util.h"
+#include "base/log.h"
+
+namespace NLP {
 
 // TODO: this is WIP
 /* struct to handle all NLP Solver flags; special solver flags are named via solvername_flagname, e.g. Ipopt_MuInit */
@@ -34,5 +37,7 @@ public:
 private:
     std::unordered_map<std::string, std::string> solver_settings;
 };
+
+} // namespace NLP
 
 #endif // OPT_NLP_SOLVER_FLAGS_H

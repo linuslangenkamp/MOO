@@ -40,7 +40,7 @@ static int control_trajectory_input_function(DATA* data, threadData_t* threadDat
     // transform back to GDOP time (always [0, tf])
     time -= info.model_start_time;
 
-    controls.interpolate(time, u_interpolation);
+    controls.interpolate_at(time, u_interpolation);
     set_inputs(info, u_interpolation);
 
     return 0;
@@ -77,8 +77,10 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
     }
 }
 
+MatEmitter::MatEmitter(InfoGDOP& info) : info(info) {}
+
 // TODO: make strategy for it
-void emit_to_result_file(Trajectory& trajectory, InfoGDOP& info) {
+int MatEmitter::operator()(const GDOP::GDOP& gdop, const Trajectory& trajectory) {
     DATA* data = info.data;
     threadData_t* threadData = info.threadData;
 
@@ -87,6 +89,7 @@ void emit_to_result_file(Trajectory& trajectory, InfoGDOP& info) {
         std::string result_file = std::string(data->modelData->modelFilePrefix) + "_res." + data->simulationInfo->outputFormat;
         data->modelData->resultFileName = GC_strdup(result_file.c_str());
     }
+
     data->simulationInfo->numSteps = trajectory.t.size();
     initializeResultData(data, threadData, 0);
     sim_result.writeParameterData(&sim_result, data, threadData);
@@ -112,6 +115,8 @@ void emit_to_result_file(Trajectory& trajectory, InfoGDOP& info) {
     }
 
     sim_result.free(&sim_result, data, threadData);
+
+    return 0;
 }
 
 // sets state and control initial values
@@ -124,7 +129,7 @@ void initialize_model(InfoGDOP& info) {
 ConstantInitialization::ConstantInitialization(InfoGDOP& info)
   : info(info) {}
 
-std::unique_ptr<Trajectory> ConstantInitialization::operator()(GDOP::GDOP& gdop) {
+std::unique_ptr<Trajectory> ConstantInitialization::operator()(const GDOP::GDOP& gdop) {
     DATA* data = info.data;
 
     std::vector<f64> t = {0, info.tf};
@@ -149,7 +154,7 @@ std::unique_ptr<Trajectory> ConstantInitialization::operator()(GDOP::GDOP& gdop)
 Simulation::Simulation(InfoGDOP& info, SOLVER_METHOD solver)
   : info(info), solver(solver) {}
 
-std::unique_ptr<Trajectory> Simulation::operator()(GDOP::GDOP& gdop, const ControlTrajectory& controls, int num_steps,
+std::unique_ptr<Trajectory> Simulation::operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls, int num_steps,
                                                    f64 start_time, f64 stop_time, f64* x_start_values) {
     DATA* data = info.data;
     threadData_t* threadData = info.threadData;
@@ -182,14 +187,14 @@ std::unique_ptr<Trajectory> Simulation::operator()(GDOP::GDOP& gdop, const Contr
     auto aux_trajectory = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
 
     // define global sim_result
-    sim_result.filename = NULL;
-    sim_result.numpoints = 0;
-    sim_result.cpuTime = 0;
-    sim_result.storage = aux_trajectory.get();
-    sim_result.emit = trajectory_xut_emit;
-    sim_result.init = nullptr;
+    sim_result.filename           = nullptr;
+    sim_result.numpoints          = 0;
+    sim_result.cpuTime            = 0;
+    sim_result.storage            = aux_trajectory.get();
+    sim_result.emit               = trajectory_xut_emit;
+    sim_result.init               = nullptr;
     sim_result.writeParameterData = trajectory_p_emit;
-    sim_result.free = nullptr;
+    sim_result.free               = nullptr;
 
     // init simulation
     initializeSolverData(data, threadData, &solver_info);
@@ -207,13 +212,11 @@ std::unique_ptr<Trajectory> Simulation::operator()(GDOP::GDOP& gdop, const Contr
     auto generated_input_function = data->callback->input_function;
     data->callback->input_function = control_trajectory_input_function;
 
-    // set states for start time
-    set_states(info, x_start_values);
-
-    // set controls for start time
+    // set states and controls for start time
     // emit for time = start_time
-    controls.interpolate(start_time, u_interpolation_buffer.raw());
+    controls.interpolate_at(start_time, u_interpolation_buffer.raw());
     set_inputs(info, u_interpolation_buffer.raw());
+    if (x_start_values) set_states(info, x_start_values);
     trajectory_xut_emit(&sim_result, data, threadData);
 
     // simulation with custom emit
@@ -231,23 +234,37 @@ std::unique_ptr<Trajectory> Simulation::operator()(GDOP::GDOP& gdop, const Contr
 SimulationStep::SimulationStep(std::shared_ptr<Simulation> simulation)
   : simulation(simulation) {}
 
-std::unique_ptr<Trajectory> SimulationStep::operator()(GDOP::GDOP& gdop, const ControlTrajectory& u,
+std::unique_ptr<Trajectory> SimulationStep::operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls,
                                                        f64 start_time, f64 stop_time, f64* x_start_values) {
-    return (*simulation)(gdop, u, 1, start_time, stop_time, x_start_values);
+    const int num_steps = 1;
+    return (*simulation)(gdop, controls, num_steps, start_time, stop_time, x_start_values);
 }
 
 // Strategies to store all strategies
 GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
+    GDOP::Strategies strategies;
+
     auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
     auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_DASSL));
     auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
     auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(
                                                   GDOP::SimulationInitialization(const_initialization_strategy, simulation_strategy));
+    auto emitter                            = std::make_shared<MatEmitter>(MatEmitter(info));
 
-    return {simulation_initialization_strategy,
-            simulation_strategy,
-            simulation_step_strategy,
-            std::make_shared<GDOP::DefaultNoMeshRefinement>()};
+    // TODO: do proper tolerances here
+    FixedVector<f64> verifier_tolerances(info.x_size);
+    for (int idx = 0; idx < info.x_size; idx++) { verifier_tolerances[idx] = 1e-4; }
+    auto verifier                           = std::make_shared<GDOP::SimulationVerifier>(
+                                                  GDOP::SimulationVerifier(simulation_strategy, Linalg::Norm::NORM_INF, std::move(verifier_tolerances)));
+
+    strategies.initialization  = simulation_initialization_strategy;
+    strategies.simulation      = simulation_strategy;
+    strategies.simulation_step = simulation_step_strategy;
+    strategies.mesh_refinement = std::make_shared<GDOP::DefaultNoMeshRefinement>();
+    strategies.emitter         = emitter;
+    strategies.verifier        = verifier;
+
+    return strategies;
 };
 
 

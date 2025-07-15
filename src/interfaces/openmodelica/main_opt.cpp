@@ -18,7 +18,6 @@
 using namespace OpenModelica;
 
 // TODO: rename all variables on this OpenModelica side, clearly we use stuff from OPT (choose camelCase or _!)
-// TODO: wrap all this into a namespace OpenModelica or so
 // TODO: add a simple optional plotting lib (open source)
 
 /* entry point to the optimization runtime from OpenModelica generated code
@@ -28,7 +27,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     /* create info struct <-> same purpose as DATA* in OpenModeica */
     auto info = InfoGDOP(data, threadData, argc, argv);
-    auto nlp_solver_flags = NLPSolverFlags(argc, argv);
+    auto nlp_solver_flags = NLP::NLPSolverFlags(argc, argv);
     info.set_omc_flags(nlp_solver_flags);
     nlp_solver_flags.print();
 
@@ -39,18 +38,20 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_DASSL));
     auto gdop = GDOP::GDOP(problem, collocation, mesh, std::move(strategies));
 
-    auto scaling = std::make_unique<NominalScaling>(create_gdop_nominal_scaling(gdop, info));
+    auto scaling = std::make_unique<NLP::NominalScaling>(create_gdop_nominal_scaling(gdop, info));
     gdop.set_scaling(std::move(scaling));
 
-    IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
+    IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
     ipopt_solver.optimize();
 
     // TODO: add verification step in Solver - costates or resimulate with simulation runtime
     auto optimal_control = gdop.optimal_solution->copy_extract_controls();
     auto simulated_optimum = gdop.strategies->simulate(gdop, optimal_control, info.intervals, 0.0, info.tf, gdop.get_curr_x_x0());
     simulated_optimum->print();
+    gdop.strategies->emitter = std::make_shared<GDOP::CSVEmitter>(GDOP::CSVEmitter("opt_out.csv"));
+    gdop.strategies->emit(gdop, *gdop.optimal_solution);
 
-    emit_to_result_file(*gdop.optimal_solution, info);
+    gdop.strategies->verify(gdop, *gdop.optimal_solution);
 
     return 0;
 }
