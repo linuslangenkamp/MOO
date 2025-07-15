@@ -4,6 +4,8 @@ namespace OpenModelica {
 
 // TODO: make more initializer methods: bionic?!
 
+// ==================== Helpers for Emit and Simulation ====================
+
 // use this field when needing some data object inside OpenModelica
 // callbacks / interfaces but no nice void* field exists
 static void *_global_reference_data_field = nullptr;
@@ -77,6 +79,15 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
     }
 }
 
+// sets state and control initial values
+// from e.g. initial equations / parameters
+void initialize_model(InfoGDOP& info) {
+    externalInputallocate(info.data);
+    initializeModel(info.data, info.threadData, "", "", info.model_start_time);
+}
+
+// ==================== Emit to MAT file ====================
+
 MatEmitter::MatEmitter(InfoGDOP& info) : info(info) {}
 
 // TODO: make strategy for it
@@ -119,12 +130,7 @@ int MatEmitter::operator()(const GDOP::GDOP& gdop, const Trajectory& trajectory)
     return 0;
 }
 
-// sets state and control initial values
-// from e.g. initial equations / parameters
-void initialize_model(InfoGDOP& info) {
-    externalInputallocate(info.data);
-    initializeModel(info.data, info.threadData, "", "", info.model_start_time);
-}
+// ==================== Constant Initialization  ====================
 
 ConstantInitialization::ConstantInitialization(InfoGDOP& info)
   : info(info) {}
@@ -150,6 +156,8 @@ std::unique_ptr<Trajectory> ConstantInitialization::operator()(const GDOP::GDOP&
 
     return std::make_unique<Trajectory>(Trajectory{t, x_guess, u_guess, p, interpolation});
 }
+
+// ==================== Simulation  ====================
 
 Simulation::Simulation(InfoGDOP& info, SOLVER_METHOD solver)
   : info(info), solver(solver) {}
@@ -231,6 +239,8 @@ std::unique_ptr<Trajectory> Simulation::operator()(const GDOP::GDOP& gdop, const
     return trajectory;
 }
 
+// ==================== Simulation Step  ====================
+
 SimulationStep::SimulationStep(std::shared_ptr<Simulation> simulation)
   : simulation(simulation) {}
 
@@ -240,7 +250,7 @@ std::unique_ptr<Trajectory> SimulationStep::operator()(const GDOP::GDOP& gdop, c
     return (*simulation)(gdop, controls, num_steps, start_time, stop_time, x_start_values);
 }
 
-// === NominalScalingFactory ===
+// ==================== Nominal Scaling Factory ====================
 
 std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP& gdop) {
     // x, g, f of the NLP { min f(x) s.t. g_l <= g(x) <= g_l }
@@ -310,7 +320,7 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
     return std::make_shared<NLP::NominalScaling>(std::move(x_nominal), std::move(g_nominal), f_nominal);
 }
 
-// Strategies to store all strategies
+// default strategies for OpenModelica
 GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     GDOP::Strategies strategies;
 
@@ -339,6 +349,5 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
 
     return strategies;
 };
-
 
 } // namespace OpenModelica

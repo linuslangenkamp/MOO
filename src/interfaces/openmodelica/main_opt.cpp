@@ -34,6 +34,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto mesh = Mesh::create_equidistant_fixed_stages(info.tf, info.intervals, info.stages, collocation);
     auto problem = create_gdop(info, mesh, collocation);
 
+    // auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());
     auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_DASSL));
     auto gdop = GDOP::GDOP(problem, collocation, mesh, std::move(strategies));
 

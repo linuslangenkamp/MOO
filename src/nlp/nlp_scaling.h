@@ -34,7 +34,6 @@ public:
  */
 class NoScaling : public Scaling {
 public:
-
     void inplace_scale_x(f64* x_unscaled) override {}
 
     void inplace_scale_g(f64* g_unscaled) override {}

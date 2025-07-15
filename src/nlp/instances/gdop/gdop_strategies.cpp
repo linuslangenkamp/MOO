@@ -3,11 +3,10 @@
 
 // TODO: add doxygen everywhere
 // TODO: replace couts with format error_log() and log() prints
-// TODO: add namespaces for every "major folder" :: NLP, Ipopt, OM, Base
 
 namespace GDOP {
 
-// === no-op strategies ===
+// ==================== no-op strategies ====================
 
 // no simulation available
 std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
@@ -39,7 +38,12 @@ bool DefaultNoVerifier::operator()(const GDOP& gdop, const Trajectory& trajector
     return false;
 }
 
-// === non no-op strategies ===
+// no scaling
+std::shared_ptr<NLP::Scaling> DefaultNoScalingFactory::operator()(const GDOP& gdop) {
+    return std::make_shared<NLP::NoScaling>(NLP::NoScaling());
+};
+
+// ==================== non no-op strategies ====================
 
 // default initialization (is not really proper, but an implementation)
 std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(const GDOP& gdop) {
@@ -174,7 +178,6 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
 }
 
 // default strategy collection
-
 Strategies Strategies::default_strategies() {
     Strategies strategy;
     strategy.initialization  = std::make_shared<DefaultConstantInitialization>();
@@ -183,6 +186,7 @@ Strategies Strategies::default_strategies() {
     strategy.mesh_refinement = std::make_shared<DefaultNoMeshRefinement>();
     strategy.emitter         = std::make_shared<DefaultNoEmitter>();
     strategy.verifier        = std::make_shared<DefaultNoVerifier>();
+    strategy.scaling_factory = std::make_shared<DefaultNoScalingFactory>();
     return strategy;
 };
 

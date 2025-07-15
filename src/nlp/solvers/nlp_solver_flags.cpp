@@ -21,18 +21,15 @@ void NLPSolverFlags::print() const {
 
     int col1_width = static_cast<int>(max_len) + 2;
 
-    // Header line: "Flag" + padding + "| Value"
     LOG("Flag{:<{}}| Value", "", col1_width - 4);
 
-    // Separator line: a bunch of '-' characters matching header width
     LOG("{:-^{}}", "", col1_width + 7);
 
-    // Flags and values, left aligned with padding
     for (const auto& [flag, value] : solver_settings) {
         LOG("{:<{}}: {}", flag, col1_width, value);
     }
 
-    LOG("");  // blank line at end
+    LOG("");
 }
 
 
@@ -56,9 +53,7 @@ f64 NLPSolverFlags::get_flag_f64_fallback(const std::string& flag, const f64 fal
         try {
             return std::stod(it->second);
         } catch (...) {
-            std::cout << "Invalid F64 flag: \"" << flag 
-                      << "\" with value \"" << it->second 
-                      << "\" — defaulting to " << fallback << std::endl;
+            LOG_WARNING("Invalid f64 flag: {} with value {} - defaulting to {}.", flag, it->second, fallback);
             return fallback;
         }
     }

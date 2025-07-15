@@ -24,7 +24,8 @@ struct AuxiliaryControls {
 
 void initialize_model(InfoGDOP& info);
 
-struct ConstantInitialization : public GDOP::Initialization {
+class ConstantInitialization : public GDOP::Initialization {
+public:
     InfoGDOP& info;
     ConstantInitialization(InfoGDOP& info);
 
@@ -33,7 +34,8 @@ struct ConstantInitialization : public GDOP::Initialization {
 
 // TODO: maybe think about how we provide these configurations to the Strategy?
 // Do we want to pass a grant SimulationInfo { num_steps, start_time, stop_time } ?
-struct Simulation : public GDOP::Simulation {
+class Simulation : public GDOP::Simulation {
+public:
     InfoGDOP& info;
     SOLVER_METHOD solver;
 
@@ -43,7 +45,8 @@ struct Simulation : public GDOP::Simulation {
                                            f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
-struct SimulationStep : public GDOP::SimulationStep {
+class SimulationStep : public GDOP::SimulationStep {
+public:
     std::shared_ptr<Simulation> simulation;
 
     SimulationStep(std::shared_ptr<Simulation> simulation);
@@ -52,7 +55,8 @@ struct SimulationStep : public GDOP::SimulationStep {
                                            f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
-struct MatEmitter : public GDOP::Emitter {
+class MatEmitter : public GDOP::Emitter {
+public:
     InfoGDOP& info;
 
     MatEmitter(InfoGDOP& info);
@@ -69,7 +73,6 @@ public:
     std::shared_ptr<NLP::Scaling> operator()(const GDOP::GDOP& gdop) override;
 };
 
-// Strategies object
 GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver);
 
 } // namespace OpenModelica
