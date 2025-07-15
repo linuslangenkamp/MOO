@@ -13,7 +13,6 @@
 #include <nlp/instances/gdop/gdop.h>
 
 #include "gdop_problem.h"
-#include "scaling.h"
 
 using namespace OpenModelica;
 
@@ -37,9 +36,6 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_DASSL));
     auto gdop = GDOP::GDOP(problem, collocation, mesh, std::move(strategies));
-
-    auto scaling = std::make_unique<NLP::NominalScaling>(create_gdop_nominal_scaling(gdop, info));
-    gdop.set_scaling(std::move(scaling));
 
     IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
     ipopt_solver.optimize();

@@ -35,7 +35,6 @@ set(SOURCES
     src/interfaces/openmodelica/evaluations.cpp
     src/interfaces/openmodelica/debug_om.cpp
     src/interfaces/openmodelica/sim_runtime_ext.cpp
-    src/interfaces/openmodelica/scaling.cpp
     src/interfaces/openmodelica/strategies.cpp
 
     # src/nlp/instances/gdop/test_problem_impl.cpp

@@ -60,6 +60,15 @@ struct MatEmitter : public GDOP::Emitter {
     int operator()(const GDOP::GDOP& gdop, const Trajectory& trajectory) override;
 };
 
+class NominalScalingFactory : public GDOP::ScalingFactory {
+public:
+    InfoGDOP& info;
+
+    NominalScalingFactory(InfoGDOP& info) : info{info} {}
+
+    std::shared_ptr<NLP::Scaling> operator()(const GDOP::GDOP& gdop) override;
+};
+
 // Strategies object
 GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver);
 

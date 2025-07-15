@@ -11,6 +11,7 @@ void GDOP::init() {
     init_jacobian();
     init_hessian();
     init_starting_point();
+    set_scaling(strategies->create_scaling(*this));
 }
 
 void GDOP::init_sizes_offsets() {

@@ -6,6 +6,8 @@
 #include <src/base/trajectory.h>
 #include <src/base/log.h>
 
+#include <src/nlp/nlp.h>
+
 // Strategies define interchangeable behaviors for key stages such as initialization, simulation,
 // mesh refinement, result emission, and optimality verification in the GDOP optimization process.
 // This file offers simple default and generic advanced strategy implementations that may be used.
@@ -105,6 +107,12 @@ struct SimulationVerifier : public Verifier {
     bool operator()(const GDOP& gdop, const Trajectory& trajectory) override;
 };
 
+struct ScalingFactory {
+    virtual std::shared_ptr<NLP::Scaling> operator()(const GDOP& gdop) = 0;
+};
+
+// TODO: add default scaling here also
+
 // -- Strategies --
 
 struct Strategies {
@@ -114,6 +122,7 @@ struct Strategies {
     std::shared_ptr<MeshRefinement> mesh_refinement;
     std::shared_ptr<Emitter>        emitter;
     std::shared_ptr<Verifier>       verifier;
+    std::shared_ptr<ScalingFactory> scaling_factory;
 
     static Strategies default_strategies();
 
@@ -139,6 +148,10 @@ struct Strategies {
 
     auto verify(const GDOP& gdop, const Trajectory& trajectory) {
         return (*verifier)(gdop, trajectory);
+    }
+
+    auto create_scaling(const GDOP& gdop) {
+        return (*scaling_factory)(gdop);
     }
 };
 
