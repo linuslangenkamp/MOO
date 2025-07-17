@@ -75,7 +75,7 @@ public:
 
         return _data[index];
     }
-    
+
     // assign vector to other vector of equal size
     constexpr FixedVector& operator=(const FixedVector &other) {
         assert(_size == other._size);

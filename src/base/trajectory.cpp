@@ -24,7 +24,7 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(Mesh& mesh, Collocation& col
     new_guess.x.resize(x.size());
     new_guess.u.resize(u.size());
 
-    // interpolate x(t)
+    // === interpolate states ===
     for (int k = 0; k < int_size(x); k++) {
         new_guess.x[k].resize(new_t.size());
         for (int i = 0; i < int_size(new_t); i++) {
@@ -47,7 +47,7 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(Mesh& mesh, Collocation& col
         }
     }
 
-    // interpolate u(t)
+    // === interpolate controls ===
     for (int k = 0; k < int_size(u); k++) {
         new_guess.u[k].resize(new_t.size());
         for (int i = 0; i < int_size(new_t); i++) {

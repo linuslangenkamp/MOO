@@ -16,21 +16,46 @@ public:
     // Idea: Call Fullsweep.setValues(), Fullsweep.callback_eval(), callback_jac(), callHess() -> Just iterate over COO
     // function evals / diffs are on callback interfaced side
 
-    FullSweep(FixedVector<FunctionLFG>&& lfg_in, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
-     Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, bool has_lagrange, int f_size, int g_size, int x_size, int u_size, int p_size)
-    : lfg(std::move(lfg_in)), aug_hes(std::move(aug_hes)), aug_pp_hes(std::move(aug_pp_hes)), collocation(collocation), mesh(mesh), g_bounds(std::move(g_bounds)),
-      has_lagrange(has_lagrange), f_index_start((int) has_lagrange), f_index_end(f_index_start + f_size), g_index_start(f_index_end),
-      g_index_end(g_index_start + g_size), f_size(f_size), g_size(g_size), fg_size(f_size + g_size), x_size(x_size), u_size(u_size),
-      p_size(p_size), eval_size(lfg.size()), aug_hes_size(this->aug_hes->nnz()) {
+    FullSweep(FixedVector<FunctionLFG>&& lfg_in,
+              std::unique_ptr<AugmentedHessianLFG> aug_hes,
+              std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
+              Collocation& collocation,
+              Mesh& mesh,
+              FixedVector<Bounds>&& g_bounds,
+              bool has_lagrange,
+              int f_size,
+              int g_size,
+              int x_size,
+              int u_size,
+              int p_size)
+    : lfg(std::move(lfg_in)),
+      aug_hes(std::move(aug_hes)),
+      aug_pp_hes(std::move(aug_pp_hes)),
+      collocation(collocation),
+      mesh(mesh),
+      g_bounds(std::move(g_bounds)),
+      has_lagrange(has_lagrange),
+      f_index_start((int) has_lagrange),
+      f_index_end(f_index_start + f_size),
+      g_index_start(f_index_end),
+      g_index_end(g_index_start + g_size),
+      f_size(f_size),
+      g_size(g_size),
+      fg_size(f_size + g_size),
+      x_size(x_size),
+      u_size(u_size),
+      p_size(p_size),
+      eval_size(lfg.size()),
+      aug_hes_size(this->aug_hes->nnz())
+      {
         for (const auto& func : lfg) {
             jac_size += func.jac.nnz();
         }
-        eval_buffer = FixedVector<f64>(mesh.node_count * eval_size);
-        jac_buffer = FixedVector<f64>(mesh.node_count * jac_size);
-        aug_hes_buffer = FixedVector<f64>(mesh.node_count * aug_hes_size);
+        resize_buffers();
     };
 
     virtual ~FullSweep() = default;
+    // TODO: add good explanation of the interface
 
     FixedVector<FunctionLFG> lfg;
     std::unique_ptr<AugmentedHessianLFG> aug_hes;
@@ -65,7 +90,11 @@ public:
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
     FixedVector<f64> aug_pp_hes_buffer; // make it like list<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
-    // TODO: add good explanation of the interface
+    void resize_buffers() {
+        eval_buffer = FixedVector<f64>(mesh.node_count * eval_size);
+        jac_buffer = FixedVector<f64>(mesh.node_count * jac_size);
+        aug_hes_buffer = FixedVector<f64>(mesh.node_count * aug_hes_size);
+    }
 
     // fill eval_buffer accoring to sparsity structure
     virtual void callback_eval(const f64* xu_nlp, const f64* p) = 0;
@@ -115,17 +144,26 @@ public:
 
 class BoundarySweep {
 public:
-    BoundarySweep(FixedVector<FunctionMR>&& mr_in, std::unique_ptr<AugmentedHessianMR> aug_hes, Mesh& mesh,
-                  FixedVector<Bounds>&& r_bounds, bool has_mayer, int r_size, int x_size, int p_size)
-    : mr(std::move(mr_in)), aug_hes(std::move(aug_hes)), mesh(mesh), r_bounds(std::move(r_bounds)), has_mayer(has_mayer),
-      r_index_start((int) has_mayer), r_index_end(r_index_start + r_size), r_size(r_size), x_size(x_size), p_size(p_size) {
-        int jac_buffer_size = 0;
-        for (const auto& func : mr) {
-            jac_buffer_size += func.jac.nnz();
-        }
-        eval_buffer = FixedVector<f64>(r_index_end);
-        jac_buffer = FixedVector<f64>(jac_buffer_size);
-        aug_hes_buffer = FixedVector<f64>(this->aug_hes->nnz());
+    BoundarySweep(FixedVector<FunctionMR>&& mr_in,
+                  std::unique_ptr<AugmentedHessianMR> aug_hes,
+                  Mesh& mesh,
+                  FixedVector<Bounds>&& r_bounds,
+                  bool has_mayer,
+                  int r_size,
+                  int x_size,
+                  int p_size)
+    : mr(std::move(mr_in)),
+      aug_hes(std::move(aug_hes)),
+      mesh(mesh),
+      r_bounds(std::move(r_bounds)),
+      has_mayer(has_mayer),
+      r_index_start((int) has_mayer),
+      r_index_end(r_index_start + r_size),
+      r_size(r_size),
+      x_size(x_size),
+      p_size(p_size)
+    {
+        resize_buffers();
     };
 
     virtual ~BoundarySweep() = default;
@@ -148,6 +186,16 @@ public:
     FixedVector<f64> eval_buffer;
     FixedVector<f64> jac_buffer;
     FixedVector<f64> aug_hes_buffer;
+
+    void resize_buffers() {
+        int jac_buffer_size = 0;
+        for (const auto& func : mr) {
+            jac_buffer_size += func.jac.nnz();
+        }
+        eval_buffer = FixedVector<f64>(r_index_end);
+        jac_buffer = FixedVector<f64>(jac_buffer_size);
+        aug_hes_buffer = FixedVector<f64>(aug_hes->nnz());
+    }
 
     virtual void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
 
@@ -215,6 +263,11 @@ public:
     int u_size;
     int p_size;
 
+    void resize_buffers() {
+        full->resize_buffers();
+        boundary->resize_buffers();
+    }
+
     // FIXME: TODO: get rid of int where possible: below could actually overflow with decent hardware!
     //              for now it might be sufficient to just static cast to size_t for the calculations, since
     //              in nearly all other calculations with indices these are not that large
@@ -244,6 +297,7 @@ public:
     inline f64 lfg_aug_hes(int entry, int interval_i, int node_j) {
         return full->aug_hes_buffer[entry + full->aug_hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
+
     /* TODO: add and make threaded */
     inline f64 lfg_aug_pp_hes(int entry) {
         return full->aug_pp_hes_buffer[entry];

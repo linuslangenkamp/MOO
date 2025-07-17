@@ -4,6 +4,9 @@
 
 namespace GDOP {
 
+// TODO: make a concept how to and when to init what, how does the reinit work?
+// How does mesh refinement work? How do initial guesses work (including lambda interpolation!)? What is the Orchestrator structure?
+
 void GDOP::init() {
     init_sizes_offsets();
     init_buffers();
@@ -14,16 +17,38 @@ void GDOP::init() {
     set_scaling(strategies->create_scaling(*this));
 }
 
+void GDOP::create_acc_offset_xu(int off_x, int off_xu) {
+    off_acc_xu = FixedField<int, 2>(mesh.intervals);
+    int off = off_x;
+    for (int i = 0; i < mesh.intervals; i++) {
+        off_acc_xu[i] = FixedVector<int>(mesh.nodes[i]);
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            off_acc_xu[i][j] = off;
+            off += off_xu;
+        }
+    }
+}
+
+void GDOP::create_acc_offset_fg(int off_fg) {
+    off_acc_fg = FixedField<int, 2>(mesh.acc_nodes.size());
+    for (int i = 0; i < mesh.intervals; i++) {
+        off_acc_fg[i] = FixedVector<int>(mesh.acc_nodes[i]);
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            off_acc_fg[i][j] = mesh.acc_nodes[i][j] * off_fg;
+        }
+    }
+}
+
 void GDOP::init_sizes_offsets() {
     off_x = problem.x_size;
     off_u = problem.u_size;
     off_p = problem.p_size;
     off_xu = off_x + off_u;
-    off_acc_xu = mesh.create_acc_offset_xu(off_x, off_xu);         // variables  x_ij offset
+    create_acc_offset_xu(off_x, off_xu);                           // variables  x_ij offset
     off_last_xu = off_acc_xu.back().back();                        // variables final grid point x_ij
     off_xu_total = off_last_xu + off_xu;                           // first parameter
     number_vars = off_xu_total + problem.p_size;
-    off_acc_fg = mesh.create_acc_offset_fg(problem.full->fg_size); // constraint f_ij offset
+    create_acc_offset_fg(problem.full->fg_size);                   // constraint f_ij offset
     off_fg_total = mesh.node_count * problem.full->fg_size;        // constraint r_0 offset
     number_constraints = problem.boundary->r_size + off_fg_total;
 }

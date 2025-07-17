@@ -18,21 +18,15 @@
 
 namespace GDOP {
 
-// TODO: think about this. Should we also delay the strategies? Maybe we want to use different strategies from time to time?!
 class GDOP : public NLP::NLP {
 public:
     GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, std::unique_ptr<Strategies> strategies)
         : NLP::NLP(),
           mesh(mesh),
           problem(problem),
-          collocation(collocation) {
-
-        if (strategies != nullptr) {
-            this->strategies = std::move(strategies);
-        }
-        else {
-            this->strategies = std::make_unique<Strategies>(Strategies::default_strategies());
-        }
+          collocation(collocation),
+          strategies(strategies ? std::move(strategies)
+                                : std::make_unique<Strategies>(Strategies::default_strategies())) {
 
         init(); // TODO: refactor this, such that the solver calls init() / reinit() on optimize() call
     }
@@ -78,6 +72,10 @@ public:
     BlockSparsity hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
     BlockSparsity hes_g = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::Exact);
     BlockSparsity hes_h = BlockSparsity::create_lower_triangular(problem.p_size, BlockType::Exact);
+
+    // helpers for initialize offsets 
+    void create_acc_offset_xu(int off_x, int off_xu);
+    void create_acc_offset_fg(int off_fg);
 
     // init nlp and sparsity
     void init();

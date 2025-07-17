@@ -33,25 +33,42 @@ Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages, Co
     return {intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
-FixedField<int, 2> Mesh::create_acc_offset_xu(int off_x, int off_xu) {
-    FixedField<int, 2> off_acc_xu(intervals);
-    int off = off_x;
-    for (int i = 0; i < intervals; i++) {
-        off_acc_xu[i] = FixedVector<int>(nodes[i]);
-        for (int j = 0; j < nodes[i]; j++) {
-            off_acc_xu[i][j] = off;
-            off += off_xu;
-        }
-    }
-    return off_acc_xu;
-}
+void Mesh::update_from_grid_and_nodes(FixedVector<f64>&& new_grid,
+                                      FixedVector<int>&& new_nodes_per_interval,
+                                      Collocation& collocation) {
+    grid = std::move(new_grid);
+    nodes = std::move(new_nodes_per_interval);
+    intervals = new_nodes_per_interval.size();
 
-FixedField<int, 2> Mesh::create_acc_offset_fg(int off_fg) {
-    FixedField<int, 2> acc_fg = acc_nodes;
+    // update delta_t
+    FixedVector<f64> new_delta_t(intervals);
     for (int i = 0; i < intervals; i++) {
-        for (int j = 0; j < nodes[i] ; j++) {
-            acc_fg[i][j] *= off_fg;
+        new_delta_t[i] = grid[i + 1] - grid[i];
+    }
+
+    // update node_count
+    node_count = std::accumulate(nodes.begin(), nodes.end(), 0);
+
+    // update t and acc_nodes: allocate per row based on actual number of nodes
+    FixedField<f64, 2> new_t(intervals);
+    FixedField<int, 2> new_acc_nodes(intervals);
+
+    int global_index = 0;
+    for (int i = 0; i < intervals; ++i) {
+        int p = nodes[i];
+        f64 h = new_delta_t[i];
+
+        new_t[i] = FixedVector<f64>(p);
+        new_acc_nodes[i] = FixedVector<int>(p);
+
+        for (int j = 0; j < p; ++j) {
+            new_t[i][j] = grid[i] + h * collocation.c[p][j];
+            new_acc_nodes[i][j] = global_index++;
         }
     }
-    return acc_fg;
+
+    // move into structure
+    delta_t = std::move(new_delta_t);
+    t = std::move(new_t);
+    acc_nodes = std::move(new_acc_nodes);
 }

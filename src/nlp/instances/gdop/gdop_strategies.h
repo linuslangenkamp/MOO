@@ -198,10 +198,12 @@ public:
     bool operator()(const GDOP& gdop, const Trajectory& trajectory) override;
 };
 
+// TODO: add costate verifier
+
 // ==================== Strategies Object ====================
 
 /**
- * @brief Aggregates all strategy components into a single configuration object.
+ * @brief Aggregates all strategy components into a single object.
  *
  * This class holds shared pointers to each pluggable strategy interface:
  * initialization, simulation, mesh refinement, emission, verification, scaling ...

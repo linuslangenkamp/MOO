@@ -158,9 +158,10 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 #add_compile_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 #add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 
+# TODO: Make it a clean build with -Wextra
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Configuration: Debug")
-    target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
+    target_compile_options(optimization PRIVATE -Wall -ignore -fno-rtti -fno-var-tracking-assignments -O0 -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g")
 else()
     message(STATUS "Configuration: Release")

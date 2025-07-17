@@ -41,7 +41,6 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
     ipopt_solver.optimize();
 
-    // TODO: add verification step in Solver - costates or resimulate with simulation runtime
     auto optimal_control = gdop.optimal_solution->copy_extract_controls();
     auto simulated_optimum = gdop.strategies->simulate(gdop, optimal_control, info.intervals, 0.0, info.tf, gdop.get_curr_x_x0());
     simulated_optimum->print();
@@ -50,5 +49,8 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     gdop.strategies->verify(gdop, *gdop.optimal_solution);
 
+    gdop.mesh = mesh;
+    gdop.problem.resize_buffers();
+    ipopt_solver.optimize();
     return 0;
 }

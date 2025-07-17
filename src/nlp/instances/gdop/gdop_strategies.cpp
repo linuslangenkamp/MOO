@@ -150,23 +150,29 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
     bool is_valid = true;
 
     LOG_START_MODULE("Simulation-Based Verification");
-    // TODO: add a log for this header style, then we can define a unified scheme for the framework
-    LOG("{:>8} | {:>12} | {:>12}", "State", "Error", "Tolerance");
-    LOG("{:-<38}", "");
 
-    for (size_t x_idx = 0; x_idx < trajectory.x.size(); ++x_idx) {
+    FixedTableFormat<4> fmt = {{7, 12, 12, 4}};
+
+    LOG_HEADER(fmt, "State", "Error", "Tolerance", "Pass");
+    LOG_DASHES(fmt);
+
+    for (size_t x_idx = 0; x_idx < trajectory.x.size(); x_idx++) {
         f64 tol = tolerances[x_idx];
         f64 err = errors[x_idx];
+        bool pass = (err <= tol);
 
-        LOG("{:<8} | {:>12.3e} | {:>12.3e}",
-            fmt::format("x[{}]", x_idx), err, tol);
+        LOG_ROW(fmt,
+            fmt::format("x[{}]", x_idx),
+            fmt::format("{:.3e}", err),
+            fmt::format("{:.3e}", tol),
+            pass ? "" : "x");
 
-        if (err > tol) {
+        if (!pass) {
             is_valid = false;
         }
     }
 
-    LOG("{:-<38}", "");
+    LOG_DASHES(fmt);
 
     if (is_valid) {
         LOG_SUCCESS("All state errors within tolerances.");
