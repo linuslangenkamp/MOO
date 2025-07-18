@@ -13,8 +13,6 @@ void GDOP::init() {
     init_bounds();
     init_jacobian();
     init_hessian();
-    init_starting_point();
-    set_scaling(strategies->create_scaling(*this));
 }
 
 void GDOP::create_acc_offset_xu(int off_x, int off_xu) {
@@ -118,11 +116,14 @@ void GDOP::init_bounds() {
     }
 }
 
-void GDOP::init_starting_point() {
-    // call init strategy
-    auto guess = strategies->initialize(*this);
+void GDOP::set_initial_guess(std::unique_ptr<Trajectory> initial_trajectory) {
+    initial_guess = std::move(initial_trajectory);
+}
 
-    Trajectory new_guess = guess->interpolate_onto_mesh(mesh, collocation);
+void GDOP::init_starting_point() {
+    assert(initial_guess);
+
+    Trajectory new_guess = initial_guess->interpolate_onto_mesh(mesh, collocation);
 
     for (int x_index = 0; x_index < off_x; x_index++) {
         init_x[x_index] = new_guess.x[x_index][0];
@@ -395,6 +396,7 @@ void GDOP::init_hessian() {
                 // TODO: maybe move this to outer loop
                 for (auto [row, col] : B.set) {
                     int xu_hes_index = hes_b.access(row, col, mesh.acc_nodes[i][j]);
+                    off_acc_xu[i][j];
                     i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -855,6 +857,8 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
 }
 
 void GDOP::finalize_solution() {
+    optimal_solution = std::make_unique<Trajectory>();
+
     optimal_solution->t.reserve(mesh.node_count + 1);
     optimal_solution->x.resize(off_x);
     optimal_solution->u.resize(off_u);

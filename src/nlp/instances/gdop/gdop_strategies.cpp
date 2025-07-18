@@ -10,36 +10,38 @@ namespace GDOP {
 
 // no simulation available
 std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
-    LOG_ERROR("No Simulation strategy set: returning nullptr.");
+    LOG_WARNING("No Simulation strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no simulation step available
 std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const GDOP& gdop, const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
-    LOG_ERROR("No SimulationStep strategy set: returning nullptr.");
+    LOG_WARNING("No SimulationStep strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no mesh refinement available
-std::unique_ptr<Trajectory> DefaultNoMeshRefinement::operator()(const GDOP& gdop) {
-    LOG_ERROR("No MeshRefinement strategy set: returning nullptr.");
+void DefaultNoMeshRefinement::reinit() {}
+std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::detect(const GDOP& gdop) {
+    LOG_WARNING("No MeshRefinement strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no emitter
 int DefaultNoEmitter::operator()(const GDOP& gdop, const Trajectory& trajectory) {
-    LOG_ERROR("No Emitter strategy set: returning -1.");
+    LOG_WARNING("No Emitter strategy set: returning -1.");
     return -1;
 }
 
 // no verifier
 bool DefaultNoVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory) {
-    LOG_ERROR("No Verifier strategy set: returning false.");
+    LOG_WARNING("No Verifier strategy set: returning false.");
     return false;
 }
 
 // no scaling
 std::shared_ptr<NLP::Scaling> DefaultNoScalingFactory::operator()(const GDOP& gdop) {
+    LOG_WARNING("No ScalingFactory strategy set: fallback to DefaultNoScalingFactory.");
     return std::make_shared<NLP::NoScaling>(NLP::NoScaling());
 };
 
@@ -47,6 +49,8 @@ std::shared_ptr<NLP::Scaling> DefaultNoScalingFactory::operator()(const GDOP& gd
 
 // default initialization (is not really proper, but an implementation)
 std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(const GDOP& gdop) {
+    LOG_WARNING("No Initialization strategy set: fallback to DefaultConstantInitialization.");
+
     const auto& problem = gdop.problem;
 
     const size_t x_size = problem.x_bounds.size();
@@ -149,9 +153,10 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
 
     bool is_valid = true;
 
-    LOG_START_MODULE("Simulation-Based Verification");
+    FixedTableFormat<4> fmt = {{7,             12,            12,            4},
+                               {Align::Center, Align::Center, Align::Center, Align::Center}};
 
-    FixedTableFormat<4> fmt = {{7, 12, 12, 4}};
+    LOG_START_MODULE(fmt, "Simulation-Based Verification");
 
     LOG_HEADER(fmt, "State", "Error", "Tolerance", "Pass");
     LOG_DASHES(fmt);
@@ -165,7 +170,7 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
             fmt::format("x[{}]", x_idx),
             fmt::format("{:.3e}", err),
             fmt::format("{:.3e}", tol),
-            pass ? "" : "x");
+            pass ? "PASS" : "FAIL");
 
         if (!pass) {
             is_valid = false;
@@ -180,7 +185,57 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
         LOG_WARNING("One or more state errors exceeded tolerances.");
     }
 
+    LOG_DASHES_LN(fmt);
+
     return is_valid;
+}
+
+void L2BN::reinit() {
+    phase_one_iteration = 0;
+    phase_two_iteration = 0;
+    max_phase_one_iterations = 3;
+    max_phase_two_iterations = 3;
+}
+
+// L2BN mesh refinement algorithm
+std::unique_ptr<MeshUpdate> L2BN::detect(const GDOP& gdop) {
+    const auto& mesh = gdop.mesh;
+
+    // constant degree for all intervals
+    const int p = mesh.nodes[0];
+    FixedVector<f64> new_grid;
+
+    // L2BN
+    if (phase_one_iteration < max_phase_one_iterations) {
+        // phase I - full bisection case
+        new_grid = FixedVector<f64>(2 * mesh.grid.size() - 1);
+        for (int i = 0; i < mesh.grid.int_size() - 1; i++) {
+            new_grid[2 * i] = mesh.grid[i];
+            new_grid[2 * i + 1] = 0.5 * (mesh.grid[i] + mesh.grid[i + 1]);
+        }
+        new_grid[2 * mesh.grid.size() - 2] = mesh.tf;
+        phase_one_iteration++;
+    }
+    else if (phase_two_iteration < max_phase_two_iterations) {
+        // phase II - non-smoothness detection
+
+        // bool termination = true;
+        phase_two_iteration++;
+    }
+
+    if (new_grid.empty()) {
+        // termination
+        return nullptr;
+    }
+
+    // set constant polynomial degree
+    FixedVector<int> new_nodes(new_grid.size() - 1);
+    for (int i = 0; i < new_nodes.int_size(); i++) {
+        new_nodes[i] = p;
+    }
+
+    return std::make_unique<MeshUpdate>(std::move(new_grid),
+                                        std::move(new_nodes));
 }
 
 // default strategy collection

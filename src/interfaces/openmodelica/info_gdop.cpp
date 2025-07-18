@@ -19,7 +19,7 @@ void InfoGDOP::set_omc_flags(NLP::NLPSolverFlags& nlp_solver_flags) {
     set_time_horizon(cflags ? atoi(cflags) : 3);
 
     std::ostringstream oss;
-    oss << std::scientific << data->simulationInfo->tolerance;
+    oss << data->simulationInfo->tolerance;
     nlp_solver_flags.set("Tolerance", oss.str());
 
     cflags = (char*)omc_flagValue[FLAG_LS_IPOPT];
@@ -40,7 +40,7 @@ void InfoGDOP::set_omc_flags(NLP::NLPSolverFlags& nlp_solver_flags) {
             nlp_solver_flags.set("Hessian", "Exact");
         }
         else {
-            warningStreamPrint(OMC_LOG_STDOUT, 0, "Unsupported Hessian option: %s (use LBFGS, QP, or Exact)", cflags);
+            LOG_WARNING("Unsupported Hessian option: %s (use LBFGS, QP, or Exact)", cflags);
         }
     }
 }

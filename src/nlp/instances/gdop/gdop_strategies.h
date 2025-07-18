@@ -79,7 +79,9 @@ public:
  */
 class MeshRefinement {
 public:
-    virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop) = 0;
+    virtual void reinit() = 0;
+    virtual std::unique_ptr<MeshUpdate> detect(const GDOP& gdop) = 0;
+    //virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop) = 0;
 };
 
 /**
@@ -138,7 +140,8 @@ public:
 
 class DefaultNoMeshRefinement : public MeshRefinement {
 public:
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop) override;
+    void reinit() override;
+    std::unique_ptr<MeshUpdate> detect(const GDOP& gdop) override;
 };
 
 class DefaultNoEmitter : public Emitter {
@@ -174,6 +177,18 @@ public:
     SimulationInitialization(std::shared_ptr<Initialization> initialization, std::shared_ptr<Simulation> simulation);
 
     std::unique_ptr<Trajectory> operator()(const GDOP& gdop) override;
+};
+
+// -- L2-Boundary-Norm Mesh Refinement Strategy --
+class L2BN : public MeshRefinement {
+public:
+    int phase_one_iteration;
+    int phase_two_iteration;
+    int max_phase_one_iterations;
+    int max_phase_two_iterations;
+
+    void reinit() override;
+    std::unique_ptr<MeshUpdate> detect(const GDOP& gdop) override;
 };
 
 // -- emit optimal solution to csv --
@@ -234,8 +249,8 @@ public:
         return (*simulation_step)(gdop, controls, start_time, stop_time, x_start_values);
     }
 
-    auto refine(const GDOP& gdop) {
-        return (*mesh_refinement)(gdop);
+    auto detect(const GDOP& gdop) {
+        return mesh_refinement->detect(gdop);
     }
 
     auto emit(const GDOP& gdop, const Trajectory& trajectory) {
@@ -248,6 +263,11 @@ public:
 
     auto create_scaling(const GDOP& gdop) {
         return (*scaling_factory)(gdop);
+    }
+
+    void reinit() {
+        // add others if we have an internal state that changes from problem to problem
+        mesh_refinement->reinit();
     }
 };
 

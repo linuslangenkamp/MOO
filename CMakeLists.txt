@@ -22,6 +22,7 @@ set(SOURCES
 
     src/nlp/instances/gdop/gdop.cpp
     src/nlp/instances/gdop/gdop_strategies.cpp
+    src/nlp/instances/gdop/gdop_orchestrator.cpp
 
     src/nlp/solvers/nlp_solver_flags.cpp
     src/nlp/nlp_scaling.cpp
@@ -161,7 +162,7 @@ target_link_directories(optimization PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 # TODO: Make it a clean build with -Wextra
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Configuration: Debug")
-    target_compile_options(optimization PRIVATE -Wall -ignore -fno-rtti -fno-var-tracking-assignments -O0 -g)
+    target_compile_options(optimization PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g")
 else()
     message(STATUS "Configuration: Release")

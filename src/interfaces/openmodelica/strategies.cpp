@@ -342,7 +342,7 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     strategies.initialization  = simulation_initialization_strategy;
     strategies.simulation      = simulation_strategy;
     strategies.simulation_step = simulation_step_strategy;
-    strategies.mesh_refinement = std::make_shared<GDOP::DefaultNoMeshRefinement>();
+    strategies.mesh_refinement = std::make_shared<GDOP::L2BN>();
     strategies.emitter         = emitter;
     strategies.verifier        = verifier;
     strategies.scaling_factory = scaling_factory;

@@ -10,7 +10,7 @@
 #include <base/mesh.h>
 
 #include <nlp/solvers/ipopt/ipopt_solver.h>
-#include <nlp/instances/gdop/gdop.h>
+#include <nlp/instances/gdop/gdop_orchestrator.h>
 
 #include "gdop_problem.h"
 
@@ -24,7 +24,10 @@ using namespace OpenModelica;
 int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
     LOG_PREFIX('*', "Entry point [OPT] - _main_OptimitationRuntime\n");
 
-    /* create info struct <-> same purpose as DATA* in OpenModeica */
+    // disable omc logs
+    memset(omc_useStream, 0, OMC_SIM_LOG_MAX * sizeof(int));
+
+    /* create info struct <-> same purpose as DATA* in OpenModelica */
     auto info = InfoGDOP(data, threadData, argc, argv);
     auto nlp_solver_flags = NLP::NLPSolverFlags(argc, argv);
     info.set_omc_flags(nlp_solver_flags);
@@ -35,22 +38,18 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto problem = create_gdop(info, mesh, collocation);
 
     // auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());
-    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_DASSL));
-    auto gdop = GDOP::GDOP(problem, collocation, mesh, std::move(strategies));
+    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_GBODE));
+    auto gdop = GDOP::GDOP(problem, collocation, mesh);
 
     IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
-    ipopt_solver.optimize();
 
-    auto optimal_control = gdop.optimal_solution->copy_extract_controls();
-    auto simulated_optimum = gdop.strategies->simulate(gdop, optimal_control, info.intervals, 0.0, info.tf, gdop.get_curr_x_x0());
-    simulated_optimum->print();
-    gdop.strategies->emitter = std::make_shared<GDOP::CSVEmitter>(GDOP::CSVEmitter("opt_out.csv"));
-    gdop.strategies->emit(gdop, *gdop.optimal_solution);
+    auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), ipopt_solver);
 
-    gdop.strategies->verify(gdop, *gdop.optimal_solution);
+    orchestrator.optimize();
 
+    /*
     gdop.mesh = mesh;
     gdop.problem.resize_buffers();
-    ipopt_solver.optimize();
+    ipopt_solver.optimize();*/
     return 0;
 }

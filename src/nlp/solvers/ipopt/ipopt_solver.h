@@ -10,7 +10,7 @@
 
 namespace IpoptSolver {
 
-class IpoptSolver : NLP::NLPSolver {
+class IpoptSolver : public NLP::NLPSolver {
 public:
     IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags);
 

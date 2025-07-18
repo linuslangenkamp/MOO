@@ -176,8 +176,7 @@ void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<Fun
                 hes_c_index++;
             }
             else {
-                std::cout << "Error: Hessian entry (row=" << mayer_hess.row << ", col=" << mayer_hess.col
-                        << ") from hes_d not found in augmented pattern!" << std::endl;
+                LOG_ERROR("Hessian entry row = {}, col = {} from hes_d not found in augmented pattern!", mayer_hess.row, mayer_hess.col);
                 std::abort();
             }
         }
@@ -192,8 +191,7 @@ void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<Fun
             if (it != sparsity_to_lnz.end()) {
                 info.exc_hes->D_to_Mr_buffer[i] = {i, it->second};
             } else {
-                std::cout << "Error: Hessian entry (row=" << row << ", col=" << col
-                        << ") from hes_d not found in augmented pattern!" << std::endl;
+                LOG_ERROR("Hessian entry row = {}, col = {} from hes_d not found in augmented pattern!", row, col);
                 std::abort();
             }
         }

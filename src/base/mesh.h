@@ -10,6 +10,17 @@
 #include "collocation.h"
 #include "util.h"
 
+
+struct MeshUpdate {
+  FixedVector<f64> new_grid;
+  FixedVector<int> new_nodes_per_interval;
+
+  MeshUpdate(FixedVector<f64>&& new_grid,
+             FixedVector<int>&& new_nodes_per_interval)
+  : new_grid(std::move(new_grid)),
+    new_nodes_per_interval(std::move(new_nodes_per_interval)) {}
+};
+
 struct Mesh {
   Mesh(int intervals,
       f64 tf,
@@ -39,9 +50,7 @@ struct Mesh {
     FixedField<int, 2> acc_nodes; // number of nodes to the left of index (i, j)
 
     static Mesh create_equidistant_fixed_stages(f64 tf, int intervals, int p, Collocation& collocation); 
-    void update_from_grid_and_nodes(FixedVector<f64>&& new_grid,
-                                    FixedVector<int>&& new_nodes_per_interval,
-                                    Collocation& collocation);
+    void update(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation);
 };
 
 #endif  // OPT_MESH_H

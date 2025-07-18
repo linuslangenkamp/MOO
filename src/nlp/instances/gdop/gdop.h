@@ -20,16 +20,13 @@ namespace GDOP {
 
 class GDOP : public NLP::NLP {
 public:
-    GDOP(Problem& problem, Collocation& collocation, Mesh& mesh, std::unique_ptr<Strategies> strategies)
+    GDOP(Problem& problem,
+         Collocation& collocation,
+         Mesh& mesh)
         : NLP::NLP(),
           mesh(mesh),
           problem(problem),
-          collocation(collocation),
-          strategies(strategies ? std::move(strategies)
-                                : std::make_unique<Strategies>(Strategies::default_strategies())) {
-
-        init(); // TODO: refactor this, such that the solver calls init() / reinit() on optimize() call
-    }
+          collocation(collocation) {}
 
     // structures
     Mesh& mesh;                 // grid / mesh
@@ -37,10 +34,9 @@ public:
     Collocation& collocation;   // collocation data
     NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
 
-    // strategies for initialization, simulation, mesh refinement etc.
-    std::unique_ptr<Strategies> strategies;
-
-    std::unique_ptr<Trajectory> optimal_solution = std::make_unique<Trajectory>(); // gets filled in finalize_solution()
+    // initial guess
+    std::unique_ptr<Trajectory> initial_guess;    // initial trajectory guess (set by initialization strategy)
+    std::unique_ptr<Trajectory> optimal_solution; // gets filled in finalize_solution()
 
     // constant NLP derivative matrix part of the jacobian
     FixedVector<f64> const_der_jac;
@@ -82,7 +78,10 @@ public:
     void init_sizes_offsets();
     void init_buffers();
     void init_bounds();
+
+    void set_initial_guess(std::unique_ptr<Trajectory> initial_trajectory);
     void init_starting_point();
+
     void init_jacobian();
     void init_jacobian_nonzeros();
     void init_jacobian_sparsity_pattern();

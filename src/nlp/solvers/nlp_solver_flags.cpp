@@ -14,24 +14,22 @@ NLPSolverFlags::NLPSolverFlags(int argc, char** argv) {
 }
 
 void NLPSolverFlags::print() const {
-    size_t max_len = 5;
-    for (const auto& [flag, _] : solver_settings) {
-        max_len = std::max(max_len, flag.length());
-    }
+    FixedTableFormat<2> fmt = {
+        {25,            15},
+        {Align::Center, Align::Center}
+    };
 
-    int col1_width = static_cast<int>(max_len) + 2;
+    LOG_START_MODULE(fmt, "NLP Solver Flags");
 
-    LOG("Flag{:<{}}| Value", "", col1_width - 4);
-
-    LOG("{:-^{}}", "", col1_width + 7);
+    LOG_HEADER(fmt, "Flag", "Value");
+    LOG_DASHES(fmt);
 
     for (const auto& [flag, value] : solver_settings) {
-        LOG("{:<{}}: {}", flag, col1_width, value);
+        LOG_ROW(fmt, flag, value);
     }
 
-    LOG("");
+    LOG_DASHES_LN(fmt);
 }
-
 
 std::string NLPSolverFlags::get(const std::string& flag) const {
     auto it = solver_settings.find(flag);

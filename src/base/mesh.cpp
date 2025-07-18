@@ -33,12 +33,10 @@ Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages, Co
     return {intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
-void Mesh::update_from_grid_and_nodes(FixedVector<f64>&& new_grid,
-                                      FixedVector<int>&& new_nodes_per_interval,
-                                      Collocation& collocation) {
-    grid = std::move(new_grid);
-    nodes = std::move(new_nodes_per_interval);
-    intervals = new_nodes_per_interval.size();
+void Mesh::update(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation) {
+    grid = std::move(mesh_update->new_grid);
+    nodes = std::move(mesh_update->new_nodes_per_interval);
+    intervals = nodes.size();
 
     // update delta_t
     FixedVector<f64> new_delta_t(intervals);
@@ -54,14 +52,14 @@ void Mesh::update_from_grid_and_nodes(FixedVector<f64>&& new_grid,
     FixedField<int, 2> new_acc_nodes(intervals);
 
     int global_index = 0;
-    for (int i = 0; i < intervals; ++i) {
+    for (int i = 0; i < intervals; i++) {
         int p = nodes[i];
         f64 h = new_delta_t[i];
 
         new_t[i] = FixedVector<f64>(p);
         new_acc_nodes[i] = FixedVector<int>(p);
 
-        for (int j = 0; j < p; ++j) {
+        for (int j = 0; j < p; j++) {
             new_t[i][j] = grid[i] + h * collocation.c[p][j];
             new_acc_nodes[i][j] = global_index++;
         }
