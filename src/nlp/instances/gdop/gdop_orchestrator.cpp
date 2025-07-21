@@ -12,7 +12,7 @@ void MeshRefinementOrchestrator::optimize() {
     // create initial guess
     auto initial_guess = strategies->initialize(gdop);
 
-    // TODOS: - set solver flags after refinement, fix poly interpolation, fix verify / update, dont use interpolation - make own strategy for reinit
+    // TODOS: - set solver flags after refinement, fix verify / update, dont use interpolation - make own strategy for reinit
 
     for(;;) {
         // create inital guess

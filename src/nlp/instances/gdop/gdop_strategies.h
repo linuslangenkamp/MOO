@@ -94,9 +94,6 @@ public:
     virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) = 0;
 };
 
-// TODO: Reinitilization Strategy!!
-// TODO: How to induce NLP Solver Flags from Mesh Refinement?
-
 /**
  * @brief Strategy for emitting output, such as writing CSV, MAT files or logging.
  *
@@ -191,7 +188,6 @@ class PolynomialInterpolation : public Interpolation {
 public:
     std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) override;
 };
-
 
 // -- combined Strategy (simple Initialization, extract Controls, simulate) --
 class SimulationInitialization : public Initialization {

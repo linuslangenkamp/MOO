@@ -212,61 +212,66 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const GDOP& gdop
 
     const int x_size = static_cast<int>(old_x.size());
     const int u_size = static_cast<int>(old_u.size());
-    const int new_node_count = new_mesh.node_count;
+    const int grid_size = new_mesh.node_count + 1;
 
     std::vector<f64> new_t;
-    std::vector<std::vector<f64>> new_x(x_size, std::vector<f64>(new_node_count));
-    std::vector<std::vector<f64>> new_u(u_size, std::vector<f64>(new_node_count));
+    std::vector<std::vector<f64>> new_x(x_size, std::vector<f64>(grid_size));
+    std::vector<std::vector<f64>> new_u(u_size, std::vector<f64>(grid_size));
 
-    int global_node_index = 0;
+    new_t.push_back(0.0);
+
+    for (int x_idx = 0; x_idx < x_size; x_idx++) {
+        new_x[x_idx][0] = old_x[x_idx][0]; // x(t_0)
+    }
+
+    for (int u_idx = 0; u_idx < u_size; u_idx++) {
+        new_u[u_idx][0] = old_u[u_idx][0]; // u(t_0)
+    }
+
+    int global_grid_index = 1;
     int current_old_interval = 0;
+    int offset = 0;
 
-    for (int i = 0; i < new_mesh.intervals; ++i) {
+    for (int i = 0; i < new_mesh.intervals; i++) {
         int scheme_new = new_mesh.nodes[i];
 
-        for (int j = 0; j < scheme_new; ++j, ++global_node_index) {
+        for (int j = 0; j < scheme_new; j++) {
             f64 t_query = new_mesh.t[i][j];
             new_t.push_back(t_query);
 
-            // Walk forward until we find the correct old interval
             while (current_old_interval + 1 < old_mesh.intervals &&
-                   t_query > old_mesh.grid[current_old_interval + 1] + 1e-12) {
-                ++current_old_interval;
+                old_mesh.grid[current_old_interval + 1] < t_query) {
+                offset += old_mesh.nodes[current_old_interval];
+                current_old_interval++;
             }
 
-            // Always interpolate with p+2 points: x_{i-1,p}, x_{i,0}, ..., x_{i,p}
             const int old_p_order = old_mesh.nodes[current_old_interval];
             const bool contains_zero = true;
-
-            // Get offset of x_{i,0}
-            int offset = old_mesh.acc_nodes[current_old_interval][0];
-
-            // Move back by 1 to include x_{i-1,p} if not at first interval
-            if (current_old_interval > 0) {
-                offset -= 1;
-            }
 
             f64 t_start = old_mesh.grid[current_old_interval];
             f64 t_end   = t_start + old_mesh.delta_t[current_old_interval];
 
-            for (int x_idx = 0; x_idx < x_size; ++x_idx) {
-                const f64* x_vals = old_x[x_idx].data() + offset;
-                new_x[x_idx][global_node_index] = colloc.interpolate(
+            for (int x_idx = 0; x_idx < x_size; x_idx++) {
+                const f64* x_vals = &old_x[x_idx][offset];
+                new_x[x_idx][global_grid_index] = colloc.interpolate(
                     old_p_order, contains_zero, x_vals, 1,
                     t_start, t_end, t_query
                 );
             }
 
-            for (int u_idx = 0; u_idx < u_size; ++u_idx) {
-                const f64* u_vals = old_u[u_idx].data() + offset;
-                new_u[u_idx][global_node_index] = colloc.interpolate(
+            for (int u_idx = 0; u_idx < u_size; u_idx++) {
+                const f64* u_vals = &old_u[u_idx][offset];
+                new_u[u_idx][global_grid_index] = colloc.interpolate(
                     old_p_order, contains_zero, u_vals, 1,
                     t_start, t_end, t_query
                 );
             }
+
+            global_grid_index++;
         }
     }
 
+    assert(global_grid_index == grid_size);
     return std::make_unique<Trajectory>(
         std::move(new_t), std::move(new_x), std::move(new_u),
         old_p, InterpolationMethod::LINEAR);

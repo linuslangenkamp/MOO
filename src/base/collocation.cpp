@@ -97,22 +97,23 @@ f64 Collocation::interpolate(int scheme, bool contains_zero, const f64* values, 
                              f64 interval_start, f64 interval_end, f64 point) const {
     const auto& nodes   = contains_zero ? c0[scheme] : c[scheme];
     const auto& weights = contains_zero ? w0[scheme] : w[scheme];
+    const int node_count = scheme + static_cast<int>(contains_zero);
 
     // rescale T to the [0, 1] nominal interval domain
-    f64 h = interval_end - interval_start;
+    f64 h          = interval_end - interval_start;
     f64 node_start = nodes[0];
-    f64 node_end = nodes[scheme - 1];
-    f64 point_hat = (point - interval_start) / h * (node_end - node_start) + node_start;
+    f64 node_end   = nodes.back();
+    f64 point_hat  = (point - interval_start) / h * (node_end - node_start) + node_start;
 
     // check for exact match with any node to avoid division by zero
-    for (int j = 0; j < scheme; j++) {
+    for (int j = 0; j < node_count; j++) {
         if (std::abs(point_hat - nodes[j]) < 1e-14) return values[j];
     }
 
     // compute the barycentric interpolant
     f64 numerator = 0.0;
     f64 denominator = 0.0;
-    for (int j = 0; j < scheme; j++) {
+    for (int j = 0; j < node_count; j++) {
         f64 temp = weights[j] / (point_hat - nodes[j]);
         numerator += temp * values[increment * j];
         denominator += temp;
