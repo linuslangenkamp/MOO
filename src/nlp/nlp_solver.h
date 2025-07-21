@@ -20,6 +20,8 @@ public:
     NLPSolverFlags& solver_flags;
 
     virtual void optimize() = 0;
+    // virtual void set_default_flags() = 0;
+    // virtual void set_flags(NLPSolverFlags& new_flags) = 0;
 };
 
 }

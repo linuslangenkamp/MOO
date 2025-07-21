@@ -32,7 +32,6 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto nlp_solver_flags = NLP::NLPSolverFlags(argc, argv);
     info.set_omc_flags(nlp_solver_flags);
     nlp_solver_flags.print();
-
     auto collocation = Collocation();
     auto mesh = Mesh::create_equidistant_fixed_stages(info.tf, info.intervals, info.stages, collocation);
     auto problem = create_gdop(info, mesh, collocation);

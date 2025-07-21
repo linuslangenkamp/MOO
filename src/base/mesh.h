@@ -40,17 +40,18 @@ struct Mesh {
         acc_nodes(std::move(acc_nodes)) {
   }
 
-    int intervals;                // number of intervals
-    int node_count;               // number of collocation nodes (sum over all intervals)
-    f64 tf;                       // final time
-    FixedVector<f64>   grid;      // grid base points
-    FixedVector<f64>   delta_t;   // step size h for each interval
-    FixedField<f64, 2> t;         // mesh points t_{i, j} = grid[i] + delta_t[i] * c[i][j] (c: collocation nodes for interval i)
-    FixedVector<int>   nodes;     // number of collocation nodes p for each interval
-    FixedField<int, 2> acc_nodes; // number of nodes to the left of index (i, j)
+  int intervals;                // number of intervals
+  int node_count;               // number of collocation nodes (sum over all intervals)
+  f64 tf;                       // final time
+  FixedVector<f64>   grid;      // grid base points
+  FixedVector<f64>   delta_t;   // step size h for each interval
+  FixedField<f64, 2> t;         // mesh points t_{i, j} = grid[i] + delta_t[i] * c[i][j] (c: collocation nodes for interval i)
+  FixedVector<int>   nodes;     // number of collocation nodes p for each interval
+  FixedField<int, 2> acc_nodes; // number of nodes to the left of index (i, j)
 
-    static Mesh create_equidistant_fixed_stages(f64 tf, int intervals, int p, Collocation& collocation); 
-    void update(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation);
+  static Mesh create_equidistant_fixed_stages(f64 tf, int intervals, int p, Collocation& collocation);
+  Mesh(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation);
+  void move_from(Mesh&& other);
 };
 
 #endif  // OPT_MESH_H

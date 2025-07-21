@@ -30,43 +30,51 @@ Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages, Co
         }
     }
     int node_count = stages * intervals;
-    return {intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
+    return Mesh{intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
-void Mesh::update(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation) {
-    grid = std::move(mesh_update->new_grid);
-    nodes = std::move(mesh_update->new_nodes_per_interval);
-    intervals = nodes.size();
+Mesh::Mesh(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation)
+    : grid(std::move(mesh_update->new_grid)),
+      nodes(std::move(mesh_update->new_nodes_per_interval))
+{
+    intervals = nodes.int_size();
+    tf = grid.back();
 
-    // update delta_t
-    FixedVector<f64> new_delta_t(intervals);
+    // compute delta_t
+    delta_t = FixedVector<f64>(intervals);
     for (int i = 0; i < intervals; i++) {
-        new_delta_t[i] = grid[i + 1] - grid[i];
+        delta_t[i] = grid[i + 1] - grid[i];
     }
 
-    // update node_count
+    // compute node_count
     node_count = std::accumulate(nodes.begin(), nodes.end(), 0);
 
-    // update t and acc_nodes: allocate per row based on actual number of nodes
-    FixedField<f64, 2> new_t(intervals);
-    FixedField<int, 2> new_acc_nodes(intervals);
+    // allocate t and acc_nodes
+    t = FixedField<f64, 2>(intervals);
+    acc_nodes = FixedField<int, 2>(intervals);
 
     int global_index = 0;
     for (int i = 0; i < intervals; i++) {
         int p = nodes[i];
-        f64 h = new_delta_t[i];
+        f64 h = delta_t[i];
 
-        new_t[i] = FixedVector<f64>(p);
-        new_acc_nodes[i] = FixedVector<int>(p);
+        t[i] = FixedVector<f64>(p);
+        acc_nodes[i] = FixedVector<int>(p);
 
         for (int j = 0; j < p; j++) {
-            new_t[i][j] = grid[i] + h * collocation.c[p][j];
-            new_acc_nodes[i][j] = global_index++;
+            t[i][j] = grid[i] + h * collocation.c[p][j];
+            acc_nodes[i][j] = global_index++;
         }
     }
+}
 
-    // move into structure
-    delta_t = std::move(new_delta_t);
-    t = std::move(new_t);
-    acc_nodes = std::move(new_acc_nodes);
+void Mesh::move_from(Mesh&& other) {
+    intervals = other.intervals;
+    tf = other.tf;
+    grid = std::move(other.grid);
+    delta_t = std::move(other.delta_t);
+    t = std::move(other.t);
+    nodes = std::move(other.nodes);
+    acc_nodes = std::move(other.acc_nodes);
+    node_count = other.node_count;
 }

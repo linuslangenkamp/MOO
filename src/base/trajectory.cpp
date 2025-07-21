@@ -1,6 +1,39 @@
 #include "trajectory.h"
 
-Trajectory Trajectory::interpolate_onto_mesh(Mesh& mesh, Collocation& collocation) {
+bool Trajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
+    // check size of time vector: expect mesh.node_count + 1 (t = 0.0 included)
+    if ((int)t.size() != mesh.node_count + 1) {
+        return false;
+    }
+
+    // check that times match mesh points exactly (or within a small tolerance, only check t > 0 as not included in mesh.t)
+    int index = 1;
+    const double tol = 1e-12;
+    for (int i = 0; i < mesh.intervals; ++i) {
+        for (int j = 0; j < mesh.nodes[i]; ++j) {
+            if (std::abs(t[index++] - mesh.t[i][j]) > tol) {
+                return false;
+            }
+        }
+    }
+
+    // check that x and u time dimension matches t.size()
+    for (const auto& xi : x) {
+        if (xi.size() != t.size()) {
+            return false;
+        }
+    }
+    for (const auto& ui : u) {
+        if (ui.size() != t.size()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
             return interpolate_onto_mesh_linear(mesh, collocation);
@@ -9,7 +42,7 @@ Trajectory Trajectory::interpolate_onto_mesh(Mesh& mesh, Collocation& collocatio
     }
 }
 
-Trajectory Trajectory::interpolate_onto_mesh_linear(Mesh& mesh, Collocation& collocation) {
+Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
     Trajectory new_guess;
 
     std::vector<double> new_t = {0};

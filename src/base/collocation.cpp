@@ -1,25 +1,74 @@
 #include "collocation.h"
 
-/*
- * input: values - f(c_1), ..., f(c_m)
- * output: int_{0}^{1} f(t) dt \approx sum_{k=1}^{m} b_k * f(c_k), m stages, b_k weights, c_k nodes
+/**
+ * @brief Approximate the integral of a function over [0, 1] using collocation weights. @runtime: O(scheme).
+ * 
+ * @note  Provides exact integration for all polynomials of degree <= 2 * scheme - 2
+ * 
+ * This computes:
+ * \f[
+ * \int_0^1 f(t)\,dt \approx \sum_{k=1}^{m} b_k \cdot f(c_k)
+ * \f]
+ * where:
+ * - \( f(c_k) \) are the input values at collocation nodes,
+ * - \( b_k \) are the collocation weights for integration.
+ *
+ * @param scheme  Degree of the collocation scheme (number of collocation points).
+ * @param values  Array of function values at the collocation nodes \( f(c_1), \dots, f(c_m) \), of length `scheme`.
+ * @return        Approximation of the integral over the interval [0, 1].
  */
-f64 Collocation::integrate(const f64* values, const int scheme) {
+f64 Collocation::integrate(const int scheme, const f64* values) const {
     return Linalg::dot(scheme, values, b[scheme].data());
 };
 
-void Collocation::diff_matrix_multiply(const int scheme, const int x_size, const int xu_size, const int fg_size,
-                                       const f64* x_prev, const f64* x_new, f64* out) {
-    for (int row = 1; row < scheme + 1; row++) {
-        for (int x_index = 0; x_index < x_size; x_index++) {
-            int out_row = (row - 1) * fg_size + x_index;
+/**
+ * @brief Apply the full collocation differentiation matrix D to an input vector. @runtime: O(scheme^2).
+ *
+ * This computes y := D * x where D is the (scheme + 1) × (scheme + 1) collocation differentiation matrix.
+ *
+ * @param scheme  Degree of the collocation scheme (number of collocation points in the interval).
+ * @param in      Input vector of length (scheme + 1), e.g., values at t_0, ..., t_p.
+ * @param out     Output vector of length (scheme + 1), contains the result of D * in.
+ */
+void Collocation::diff_matrix_multiply(const int scheme, const f64* in, f64* out) const {
+    for (int row = 0; row < scheme + 1; row++) {
+        out[row] = Linalg::dot(scheme + 1, D[scheme][row].data(), in);
+    }
+}
 
-            // col = 0 -> x_pref
+/**
+ * @brief Applies the collocation differentiation matrix to a block of state vectors. @runtime: O(scheme^2 * x_size).
+ *
+ * This function computes one block of collocation constraints using the differentiation matrix
+ * for a given collocation scheme. It performs a strided matrix-vector multiplication, where
+ * both the input and output are flattened with strides to accommodate interleaved variables.
+ *
+ * where `x_new` is accessed with a stride (`x_stride`) to handle flattened and interleaved
+ * state/control vectors (e.g. x + u sizes), and `out` is written using a stride (`out_stride`) to account for
+ * the full size of one collocation constraint block (e.g. f + g sizes).
+ *
+ * @param scheme     Degree of the collocation scheme (number of collocation points in the interval).
+ * @param x_size     Number of state variables (size of each x vector).
+ * @param x_stride   Stride between consecutive vectors in `x_new` (i.e. size of x + u).
+ * @param out_stride Stride between output rows (i.e. size of one full constraint block).
+ * @param x_prev     Pointer to the previous node's state/control values (at t_i == t_{i-1, p_{i-1}}).
+ * @param x_new      Pointer to strided new values at collocation points (from t_{i, 0} to t_{i, p_{i}}),
+ * @param out        Pointer to the output buffer where results are accumulated (has stride out_stride).
+ */
+void Collocation::diff_matrix_multiply_block_strided(const int scheme, const int x_size, const int x_stride, const int out_stride,
+                                                     const f64* x_prev, const f64* x_new, f64* out) const {
+    for (int row = 1; row < scheme + 1; row++) {
+        int out_row_base = (row - 1) * out_stride;
+
+        for (int x_index = 0; x_index < x_size; x_index++) {
+            int out_row = out_row_base + x_index;
+
+            // col = 0 -> x_pref; D_{:, 0} * x_0
             out[out_row] += D[scheme][row][0] * x_prev[x_index];
 
-            // col > 0 -> x_new
+            // col > 0 -> x_new; D_{:, col} * x_col, col > 0
             for (int col = 1; col < scheme + 1; col++) {
-                out[out_row] += D[scheme][row][col] * x_new[(col - 1) * xu_size + x_index];
+                out[out_row] += D[scheme][row][col] * x_new[(col - 1) * x_stride + x_index];
             }
         }
     }

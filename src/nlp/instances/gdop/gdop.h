@@ -60,14 +60,14 @@ public:
 
     // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
     // for further info see hessian layout at the bottom
-    BlockSparsity hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
-    BlockSparsity hes_b = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Offset);
-    BlockSparsity hes_c = BlockSparsity::create_rectangular(problem.x_size + problem.u_size, problem.x_size, BlockType::Exact);
-    BlockSparsity hes_d = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Exact);
-    BlockSparsity hes_e = BlockSparsity::create_rectangular(problem.p_size, problem.x_size, BlockType::Exact);
-    BlockSparsity hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
-    BlockSparsity hes_g = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::Exact);
-    BlockSparsity hes_h = BlockSparsity::create_lower_triangular(problem.p_size, BlockType::Exact);
+    BlockSparsity hes_a;
+    BlockSparsity hes_b;
+    BlockSparsity hes_c;
+    BlockSparsity hes_d;
+    BlockSparsity hes_e;
+    BlockSparsity hes_f;
+    BlockSparsity hes_g;
+    BlockSparsity hes_h;
 
     // helpers for initialize offsets 
     void create_acc_offset_xu(int off_x, int off_xu);

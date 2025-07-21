@@ -32,15 +32,17 @@ struct Trajectory {
 
     Trajectory() = default;
 
-    // TODO: move me?
     Trajectory(std::vector<f64> t, std::vector<std::vector<f64>> x, std::vector<std::vector<f64>> u,
                std::vector<f64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
         : t(t), x(x), u(u), p(p), interpolation(interpolation) {
     }
 
+    // checks if a trajectory has the same nodes as a mesh + collocation (valid Trajectory + Collocation)
+    bool compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const;
+
     // create new trajectories based on mesh & collocation
-    Trajectory interpolate_onto_mesh(Mesh& mesh, Collocation& collocation);
-    Trajectory interpolate_onto_mesh_linear(Mesh& mesh, Collocation& collocation);
+    Trajectory interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const;
+    Trajectory interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const;
 
     // extract + copy information from the trajectory
     ControlTrajectory copy_extract_controls() const;

@@ -99,7 +99,7 @@ struct BlockSparsity {
 
     inline void insert(const int row, const int col, const int index) {
         block[row][col] = index;
-        nnz++; // TODO: FIXME: MAJOR: THESE ARE THE ISSUE. ONLY DO THAT ON FIRST INIT() CALL
+        nnz++;
     }
 
     // mapping (row, col) -> index in some larger sparsity structure

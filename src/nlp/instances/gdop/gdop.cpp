@@ -123,26 +123,29 @@ void GDOP::set_initial_guess(std::unique_ptr<Trajectory> initial_trajectory) {
 void GDOP::init_starting_point() {
     assert(initial_guess);
 
-    Trajectory new_guess = initial_guess->interpolate_onto_mesh(mesh, collocation);
+    // interpolate to mesh if not compatible
+    if (!initial_guess->compatible_with_mesh(mesh, collocation)) {
+        initial_guess = std::make_unique<Trajectory>(initial_guess->interpolate_onto_mesh(mesh, collocation));
+    }
 
     for (int x_index = 0; x_index < off_x; x_index++) {
-        init_x[x_index] = new_guess.x[x_index][0];
+        init_x[x_index] = initial_guess->x[x_index][0];
     }
 
     int index = 1;
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
-                init_x[off_acc_xu[i][j] + x_index] = new_guess.x[x_index][index];
+                init_x[off_acc_xu[i][j] + x_index] = initial_guess->x[x_index][index];
             }
             for (int u_index = 0; u_index < off_u; u_index++) {
-                init_x[off_acc_xu[i][j] + off_x + u_index] = new_guess.u[u_index][index];
+                init_x[off_acc_xu[i][j] + off_x + u_index] = initial_guess->u[u_index][index];
             }
             index++;
         }
     }
     for (int p_index = 0; p_index < off_p; p_index++) {
-        init_x[off_xu_total + p_index] = new_guess.p[p_index];
+        init_x[off_xu_total + p_index] = initial_guess->p[p_index];
     }
 }
 
@@ -328,6 +331,16 @@ void GDOP::init_jacobian_sparsity_pattern() {
 
 void GDOP::init_hessian() {
     // takes O(nnz(A) + nnz(B) + ...+ nnz(H)) for creation of ** Maps and O(nnz(Hessian)) for creation of Hessian sparsity pattern
+
+    // stage 0: reset block sparsities
+    hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
+    hes_b = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Offset);
+    hes_c = BlockSparsity::create_rectangular(problem.x_size + problem.u_size, problem.x_size, BlockType::Exact);
+    hes_d = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Exact);
+    hes_e = BlockSparsity::create_rectangular(problem.p_size, problem.x_size, BlockType::Exact);
+    hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
+    hes_g = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::Exact);
+    hes_h = BlockSparsity::create_lower_triangular(problem.p_size, BlockType::Exact);
 
     // stage 1: calculate IndexSet and nnz
     OrderedIndexSet A, B, C, D, E, F, G, H;
@@ -660,10 +673,10 @@ void GDOP::eval_grad_f_internal() {
 void GDOP::eval_g_internal() {
     curr_g.fill_zero();
     for (int i = 0; i < mesh.intervals; i++) {
-        collocation.diff_matrix_multiply(mesh.nodes[i], off_x, off_xu, problem.full->fg_size,
-                                          &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
-                                          &curr_x[off_acc_xu[i][0]],                                       // collocation point states
-                                          &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
+        collocation.diff_matrix_multiply_block_strided(mesh.nodes[i], off_x, off_xu, problem.full->fg_size,
+                                         &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
+                                         &curr_x[off_acc_xu[i][0]],                                       // collocation point states
+                                         &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
                 curr_g[off_acc_fg[i][j] + f_index] -= mesh.delta_t[i] * problem.lfg_eval_f(f_index, i, j);

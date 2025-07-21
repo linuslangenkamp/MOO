@@ -73,16 +73,29 @@ public:
 };
 
 /**
- * @brief Strategy for refining the time or state mesh.
- * TODO: since Trajectory output is wrong; think of inplace or not inplace?!
- * maybe return base points + the degrees?!
+ * @brief Strategy for refining the mesh points and polynomial degrees.
  */
 class MeshRefinement {
 public:
-    virtual void reinit() = 0;
-    virtual std::unique_ptr<MeshUpdate> detect(const GDOP& gdop) = 0;
-    //virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop) = 0;
+    virtual void reinit(const GDOP& gdop) = 0;
+    virtual std::unique_ptr<MeshUpdate> operator()(const GDOP& gdop) = 0;
 };
+
+/**
+ * @brief Strategy for interpolating a Trajectory onto a new Mesh
+ *
+ * @param gdop Optimization problem with old Mesh.
+ * @param new_mesh New Mesh to interpolate onto.
+ * @param trajectory Trajectory to interpolate.
+ * @return A unique_ptr to the resulting interpolated trajectory.
+ */
+class Interpolation {
+public:
+    virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) = 0;
+};
+
+// TODO: Reinitilization Strategy!!
+// TODO: How to induce NLP Solver Flags from Mesh Refinement?
 
 /**
  * @brief Strategy for emitting output, such as writing CSV, MAT files or logging.
@@ -140,8 +153,13 @@ public:
 
 class DefaultNoMeshRefinement : public MeshRefinement {
 public:
-    void reinit() override;
-    std::unique_ptr<MeshUpdate> detect(const GDOP& gdop) override;
+    void reinit(const GDOP& gdop) override;
+    std::unique_ptr<MeshUpdate> operator()(const GDOP& gdop) override;
+};
+
+class DefaultLinearInterpolation : public Interpolation {
+public:
+    std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) override;
 };
 
 class DefaultNoEmitter : public Emitter {
@@ -168,6 +186,13 @@ public:
 
 // ==================== more advanced Strategies ====================
 
+// -- uses Collocation scheme to interpolate States and Controls --
+class PolynomialInterpolation : public Interpolation {
+public:
+    std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) override;
+};
+
+
 // -- combined Strategy (simple Initialization, extract Controls, simulate) --
 class SimulationInitialization : public Initialization {
 public:
@@ -180,15 +205,24 @@ public:
 };
 
 // -- L2-Boundary-Norm Mesh Refinement Strategy --
-class L2BN : public MeshRefinement {
+class L2BoundaryNorm : public MeshRefinement {
 public:
     int phase_one_iteration;
     int phase_two_iteration;
     int max_phase_one_iterations;
     int max_phase_two_iterations;
 
-    void reinit() override;
-    std::unique_ptr<MeshUpdate> detect(const GDOP& gdop) override;
+    // on-interval
+    f64 lambda;
+    f64 mesh_size_zero;
+
+    // corner
+    FixedVector<f64> CTOL_1;
+    FixedVector<f64> CTOL_2;
+
+    void reinit(const GDOP& gdop) override;
+
+    std::unique_ptr<MeshUpdate> operator()(const GDOP& gdop) override;
 };
 
 // -- emit optimal solution to csv --
@@ -231,6 +265,7 @@ public:
     std::shared_ptr<Simulation>     simulation;
     std::shared_ptr<SimulationStep> simulation_step;
     std::shared_ptr<MeshRefinement> mesh_refinement;
+    std::shared_ptr<Interpolation>  interpolation;
     std::shared_ptr<Emitter>        emitter;
     std::shared_ptr<Verifier>       verifier;
     std::shared_ptr<ScalingFactory> scaling_factory;
@@ -250,7 +285,11 @@ public:
     }
 
     auto detect(const GDOP& gdop) {
-        return mesh_refinement->detect(gdop);
+        return (*mesh_refinement)(gdop);
+    }
+
+    auto interpolate(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) {
+        return (*interpolation)(gdop, new_mesh, trajectory);
     }
 
     auto emit(const GDOP& gdop, const Trajectory& trajectory) {
@@ -265,9 +304,9 @@ public:
         return (*scaling_factory)(gdop);
     }
 
-    void reinit() {
+    void reinit(const GDOP& gdop) {
         // add others if we have an internal state that changes from problem to problem
-        mesh_refinement->reinit();
+        mesh_refinement->reinit(gdop);
     }
 };
 

@@ -113,23 +113,23 @@
     };
 
     template <size_t N>
-    constexpr inline void log_dashes_fast(const FixedTableFormat<N>& fmt) {
-        fmt::print("{:-<{}}\n", "", fmt.total_width());
+    constexpr inline void log_dashes_fast(const FixedTableFormat<N>& ftf) {
+        fmt::print("{:-<{}}\n", "", ftf.total_width());
     }
 
     template <size_t N, typename... Args>
-    constexpr inline void log_row_fast(const FixedTableFormat<N>& fmt, Args&&... args) {
+    constexpr inline void log_row_fast(const FixedTableFormat<N>& ftf, Args&&... args) {
         static_assert(sizeof...(Args) == N, "Number of columns must match format definition.");
         size_t i = 0;
         const char* sep = "";
-        ((fmt::print("{}{}", sep, fmt::format(fmt.fmt_strings[i++], args)), sep = " | "), ...);
+        ((fmt::print("{}{}", sep, fmt::format(ftf.fmt_strings[i++], args)), sep = " | "), ...);
         fmt::print("\n");
     }
 
-    #define LOG_ROW(fmt, ...)       do { log_row_fast(fmt, __VA_ARGS__); }         while (0)
-    #define LOG_HEADER(fmt, ...)    do { log_row_fast(fmt, __VA_ARGS__); }         while (0)
-    #define LOG_DASHES(fmt)         do { log_dashes_fast(fmt); }                   while (0)
-    #define LOG_DASHES_LN(fmt)      do { log_dashes_fast(fmt); fmt::println(""); } while (0)
+    #define LOG_ROW(ftf, ...)       do { log_row_fast(ftf, __VA_ARGS__); }         while (0)
+    #define LOG_HEADER(ftf, ...)    do { log_row_fast(ftf, __VA_ARGS__); }         while (0)
+    #define LOG_DASHES(ftf)         do { log_dashes_fast(ftf); }                   while (0)
+    #define LOG_DASHES_LN(ftf)      do { log_dashes_fast(ftf); fmt::println(""); } while (0)
 
 #endif
 

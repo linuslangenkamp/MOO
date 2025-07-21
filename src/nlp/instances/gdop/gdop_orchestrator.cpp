@@ -3,46 +3,54 @@
 namespace GDOP {
 
 void MeshRefinementOrchestrator::optimize() {
-    // reset strategies
-    strategies->reinit();
-
     // initialize GDOP (creates sparsity, bounds, ...)
     gdop.init();
 
-    // create inital guess
-    auto inital_guess = strategies->initialize(gdop);
-    gdop.set_initial_guess(std::move(inital_guess));
-    gdop.init_starting_point();
+    // reset strategies
+    strategies->reinit(gdop);
 
-optimizer:
-    // set scaling
-    auto scaling = strategies->create_scaling(gdop);
-    gdop.set_scaling(scaling);
+    // create initial guess
+    auto initial_guess = strategies->initialize(gdop);
 
-    // optimizer loop
-    solver.optimize();
+    // TODOS: - set solver flags after refinement, fix poly interpolation, fix verify / update, dont use interpolation - make own strategy for reinit
 
-    // mesh refinement
-    if (true) {
+    for(;;) {
+        // create inital guess
+        gdop.set_initial_guess(std::move(initial_guess));
+        gdop.init_starting_point();
+
+        // set scaling
+        auto scaling = strategies->create_scaling(gdop);
+        gdop.set_scaling(scaling);
+
+        // optimizer loop
+        solver.optimize();
+
+        // optional
+        strategies->verify(gdop, *gdop.optimal_solution);
+
+        // mesh refinement
+
         // 1. detect intervals and degrees (new vectors)
         auto mesh_update = strategies->detect(gdop);
 
-        if (!mesh_update) { goto finalize; }
+        if (!mesh_update) { break; }
 
-        // 2. interpolate with old mesh and MeshUpdate to new Mesh -> new initial guess | what about lambda interpolation?
-        // 3. update mesh and update the buffers and stuff in GDOP
-        gdop.mesh.update(std::move(mesh_update), gdop.collocation); // TODO: make thin wrapper in GDOP
+        // 2. create refined Mesh
+        auto refined_mesh = Mesh(std::move(mesh_update), gdop.collocation);
+
+        // 3. interpolate to new mesh -> new initial guess | what about lambda interpolation?
+        initial_guess = strategies->interpolate(gdop, refined_mesh, *gdop.optimal_solution);
+
+        // 4. update mesh
+        gdop.mesh.move_from(std::move(refined_mesh));
+
+        // 5. update the buffers and init the GDOP
         gdop.init();
         gdop.problem.resize_buffers();
-        // 4. set new initial guess
-
-        // 5. goto solver.optimize()
-        goto optimizer;
     }
 
-finalize:
-    // verify and emit optimal solution
-    strategies->verify(gdop, *gdop.optimal_solution);
+    // emit optimal solution, maybe set verify only here
     strategies->emit(gdop, *gdop.optimal_solution);
 }
 

@@ -32,11 +32,16 @@ struct Collocation {
     const std::vector<std::vector<f64>> w =
 #include "../data/radauConstantsW.data"
 
+    inline size_t get_max_scheme() const { return c.size(); }
+
     // integral 0 to 1 of some values
-    f64 integrate(const f64* values, const int scheme);
+    f64 integrate(const int scheme, const f64* values) const;
+
+    // multiply with the complete diff matrix: out := D * in
+    void diff_matrix_multiply(const int scheme, const f64* in, f64* out) const;
 
     // multiply given differentiation matrix scheme with x_prev, (x_i0, ui0, xi1, ui1, ..., xnm, unm) u only for offset
-    void diff_matrix_multiply(const int scheme, const int x_size, const int xu_size, const int fg_size, const f64* x_prev, const f64* x_new, f64* out);
+    void diff_matrix_multiply_block_strided(const int scheme, const int x_size, const int xu_size, const int fg_size, const f64* x_prev, const f64* x_new, f64* out) const;
 
     // evaluate the interpolating polynomial at some point T
     f64 interpolate(int scheme, bool contains_zero, const f64* values, int stride, f64 interval_start, f64 interval_end, f64 T) const;

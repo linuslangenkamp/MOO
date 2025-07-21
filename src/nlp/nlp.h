@@ -61,9 +61,7 @@ public:
 
     // TODO: add a generic block BFGS routine, which can calculate blocks of the Lagrangian Hessian $\nabla_{xx} \mathcal{L}_{AA -> BB}$
 
-    // TODO: fantastic!! Add Strategies to NLP!! and Scaling is always part of it. Then GDOP::Strategies inherits that class!!
-
-    std::shared_ptr<Scaling> scaling = std::make_shared<NoScaling>();                            // generic scaling routine
+    std::shared_ptr<Scaling> scaling = std::make_shared<NoScaling>();                 // generic scaling routine
     void set_scaling(std::shared_ptr<Scaling> new_scaling) { scaling = new_scaling; } // set the generic scaling routine
 
     virtual void eval_f(bool new_x) = 0;                    // fill curr_obj

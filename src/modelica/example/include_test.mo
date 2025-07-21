@@ -91,7 +91,20 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;
 */
+model include_test
+  Real x(start=1, fixed=true);
+  input Real u;
+  output Real cost_l = 0.5 * (x^2 + u^2)  annotation(isLagrange=true);
+  Real FINAL(min=0, max=0) = 1.5 - x annotation(isFinalConstraint=true);
+equation
+  der(x) = -x^3 + u;
+  annotation(
+    experiment(StartTime = 0, StopTime = 10000, Tolerance = 1e-12, Interval = 0.05),
+    __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
+    __OpenModelica_commandLineOptions = "+g=Optimica");
+end include_test;
 
+/*
 model include_test
   parameter Real NOMINAL = 1; // 1e12
   Real y1(start=NOMINAL, fixed=true, nominal=NOMINAL);
@@ -110,7 +123,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica");
 end include_test;
-
+*/
 /*
 model include_test
   Real y1(start=1, fixed=true);

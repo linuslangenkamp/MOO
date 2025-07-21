@@ -81,6 +81,7 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
 
 // sets state and control initial values
 // from e.g. initial equations / parameters
+// TODO: make this non-leaky!
 void initialize_model(InfoGDOP& info) {
     externalInputallocate(info.data);
     initializeModel(info.data, info.threadData, "", "", info.model_start_time);
@@ -325,7 +326,7 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     GDOP::Strategies strategies;
 
     auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
-    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_DASSL));
+    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_GBODE));
     auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
     auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(
                                                   GDOP::SimulationInitialization(const_initialization_strategy, simulation_strategy));
@@ -342,7 +343,8 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     strategies.initialization  = simulation_initialization_strategy;
     strategies.simulation      = simulation_strategy;
     strategies.simulation_step = simulation_step_strategy;
-    strategies.mesh_refinement = std::make_shared<GDOP::L2BN>();
+    strategies.mesh_refinement = std::make_shared<GDOP::L2BoundaryNorm>();
+    strategies.interpolation   = std::make_shared<GDOP::PolynomialInterpolation>();
     strategies.emitter         = emitter;
     strategies.verifier        = verifier;
     strategies.scaling_factory = scaling_factory;
