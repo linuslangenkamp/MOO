@@ -31,12 +31,16 @@ class GDOP;
  * Implementations may use bounds, analytical guesses, or results of simulation.
  *
  * @param gdop Optimization problem (read-only).
- * @return A unique_ptr to a Trajectory object representing the initial state guess.
+ * @return A unique_ptr to a PrimalDualTrajectory object representing the initial state guess.
  */
 class Initialization {
 public:
-    virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop) = 0; 
+    virtual std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP& gdop) = 0; 
 };
+
+
+// reinit:  auto detect(const Mesh& mesh_old, const Mesh& mesh_new, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+
 
 /**
  * @brief Strategy for simulating the full system over the entire time horizon.
@@ -77,8 +81,7 @@ public:
     virtual void reinit(const GDOP& gdop) = 0;
     virtual std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh,
                                                    const Collocation& collocation,
-                                                   const Trajectory& trajectory,
-                                                   const CostateTrajectory& costates) = 0;
+                                                   const PrimalDualTrajectory& trajectory) = 0;
 };
 
 /**
@@ -91,10 +94,11 @@ public:
  */
 class Interpolation {
 public:
-    virtual std::unique_ptr<Trajectory> operator()(const Mesh& old_mesh,
-                                                   const Mesh& new_mesh,
-                                                   const Collocation& collocation,
-                                                   const Trajectory& trajectory) = 0;
+    virtual std::vector<f64> operator()(const Mesh& old_mesh,
+                                        const Mesh& new_mesh,
+                                        const Collocation& collocation,
+                                        const std::vector<f64>& values,
+                                        bool contains_zero) = 0;
 };
 
 /**
@@ -122,7 +126,7 @@ public:
  */
 class Verifier {
 public:
-    virtual bool operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) = 0;
+    virtual bool operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) = 0;
 };
 
 /**
@@ -156,15 +160,16 @@ public:
 class DefaultNoMeshRefinement : public MeshRefinement {
 public:
     void reinit(const GDOP& gdop) override;
-    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) override;
+    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
 };
 
 class DefaultLinearInterpolation : public Interpolation {
 public:
-    std::unique_ptr<Trajectory> operator()(const Mesh& old_mesh,
-                                           const Mesh& new_mesh,
-                                           const Collocation& collocation,
-                                           const Trajectory& trajectory) override;
+    std::vector<f64> operator()(const Mesh& old_mesh,
+                                const Mesh& new_mesh,
+                                const Collocation& collocation,
+                                const std::vector<f64>& values,
+                                bool contains_zero) override;
 };
 
 class DefaultNoEmitter : public Emitter {
@@ -174,7 +179,7 @@ public:
 
 class DefaultNoVerifier : public Verifier {
 public:
-    bool operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) override;
+    bool operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) override;
 };
 
 // -- simple default scaling (no scaling) --
@@ -186,7 +191,7 @@ public:
 // -- simple default initialization (checks bounds and chooses initial value depending on that) --
 class DefaultConstantInitialization : public Initialization {
 public:
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop) override;
+    std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP& gdop) override;
 };
 
 // ==================== more advanced Strategies ====================
@@ -194,10 +199,11 @@ public:
 // -- uses Collocation scheme to interpolate States and Controls --
 class PolynomialInterpolation : public Interpolation {
 public:
-    std::unique_ptr<Trajectory> operator()(const Mesh& old_mesh,
-                                           const Mesh& new_mesh,
-                                           const Collocation& collocation,
-                                           const Trajectory& trajectory) override;
+    std::vector<f64> operator()(const Mesh& old_mesh,
+                                const Mesh& new_mesh,
+                                const Collocation& collocation,
+                                const std::vector<f64>& values,
+                                bool contains_zero) override;
 };
 
 // -- combined Strategy (simple Initialization, extract Controls, simulate) --
@@ -208,7 +214,7 @@ public:
 
     SimulationInitialization(std::shared_ptr<Initialization> initialization, std::shared_ptr<Simulation> simulation);
 
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop) override;
+    std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP& gdop) override;
 };
 
 // -- L2-Boundary-Norm Mesh Refinement Strategy --
@@ -229,7 +235,7 @@ public:
 
     void reinit(const GDOP& gdop) override;
 
-    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) override;
+    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
 };
 
 // -- emit optimal solution to csv --
@@ -251,10 +257,10 @@ public:
 
     SimulationVerifier(std::shared_ptr<Simulation> simulation, Linalg::Norm norm, FixedVector<f64>&& tolerances);
 
-    bool operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) override;
+    bool operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) override;
 };
 
-// TODO: add costate verifier
+// TODO: add costates verifier
 
 // ==================== Strategies Object ====================
 
@@ -291,20 +297,20 @@ public:
         return (*simulation_step)(controls, start_time, stop_time, x_start_values);
     }
 
-    auto detect(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) {
-        return (*mesh_refinement)(mesh, collocation, trajectory, costates);
+    auto detect(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+        return (*mesh_refinement)(mesh, collocation, trajectory);
     }
 
-    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const Trajectory& trajectory) {
-        return (*interpolation)(old_mesh, new_mesh, collocation, trajectory);
+    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const std::vector<f64>& values, bool contains_zero) {
+        return (*interpolation)(old_mesh, new_mesh, collocation, values, contains_zero);
     }
 
     auto emit(const Trajectory& trajectory) {
         return (*emitter)(trajectory);
     }
 
-    auto verify(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) {
-        return (*verifier)(gdop, trajectory, costates);
+    auto verify(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
+        return (*verifier)(gdop, trajectory);
     }
 
     auto create_scaling(const GDOP& gdop) {

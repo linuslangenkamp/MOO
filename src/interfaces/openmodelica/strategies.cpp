@@ -135,7 +135,7 @@ int MatEmitter::operator()(const Trajectory& trajectory) {
 ConstantInitialization::ConstantInitialization(InfoGDOP& info)
   : info(info) {}
 
-std::unique_ptr<Trajectory> ConstantInitialization::operator()(const GDOP::GDOP& gdop) {
+std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const GDOP::GDOP& gdop) {
     DATA* data = info.data;
 
     std::vector<f64> t = {0, info.tf};
@@ -154,7 +154,7 @@ std::unique_ptr<Trajectory> ConstantInitialization::operator()(const GDOP::GDOP&
 
     // TODO: add p
 
-    return std::make_unique<Trajectory>(Trajectory{t, x_guess, u_guess, p, interpolation});
+    return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(t, x_guess, u_guess, p, interpolation));
 }
 
 // ==================== Simulation  ====================

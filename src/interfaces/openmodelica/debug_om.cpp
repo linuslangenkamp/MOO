@@ -75,15 +75,17 @@ void print_jacobian_sparsity(const JACOBIAN* jac, bool print_pattern, const char
     }
 
     printf("\n=== JACOBIAN SPARSITY PLOT ===\n");
-printf("      "); for (unsigned int col = 0; col < nCols; ++col) printf("%u", col % 10); printf("\n");
-    for (unsigned int row = 0; row < nRows; ++row) {
+    printf("      ");
+    for (unsigned int col = 0; col < nCols; col++) printf("%u", col % 10);
+
+    printf("\n");
+
+    for (unsigned int row = 0; row < nRows; row++) {
         printf("%4u: ", row); // row index
-        for (unsigned int col = 0; col < nCols; ++col) {
-            unsigned int col_start = sp->leadindex[col];
-            unsigned int col_end = sp->leadindex[col + 1];
+        for (unsigned int col = 0; col < nCols; col++) {
             bool found = false;
-            for (unsigned int i = col_start; i < col_end; ++i) {
-                if (sp->index[i] == row) {
+            for (unsigned int nz = sp->leadindex[col]; nz < sp->leadindex[col + 1]; nz++) {
+                if (sp->index[nz] == row) {
                     found = true;
                     break;
                 }

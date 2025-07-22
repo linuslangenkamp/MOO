@@ -22,7 +22,7 @@ std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const ControlTra
 // no mesh refinement available
 void DefaultNoMeshRefinement::reinit(const GDOP& gdop) {}
 
-std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) {
+std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
     LOG_WARNING("No MeshRefinement strategy set: returning nullptr.");
     return nullptr;
 }
@@ -34,7 +34,7 @@ int DefaultNoEmitter::operator()(const Trajectory& trajectory) {
 }
 
 // no verifier
-bool DefaultNoVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) {
+bool DefaultNoVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
     LOG_WARNING("No Verifier strategy set: returning false.");
     return false;
 }
@@ -48,7 +48,7 @@ std::shared_ptr<NLP::Scaling> DefaultNoScalingFactory::operator()(const GDOP& gd
 // ==================== non no-op strategies ====================
 
 // default initialization (is not really proper, but an implementation)
-std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(const GDOP& gdop) {
+std::unique_ptr<PrimalDualTrajectory> DefaultConstantInitialization::operator()(const GDOP& gdop) {
     LOG_WARNING("No Initialization strategy set: fallback to DefaultConstantInitialization.");
 
     const auto& problem = gdop.problem;
@@ -108,15 +108,44 @@ std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(const GDOP
         p_guess[p] = val;
     }
 
-    return std::make_unique<Trajectory>(Trajectory{ t, x_guess, u_guess, p_guess, interpolation });
+    return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(t, x_guess, u_guess, p_guess, interpolation));
 }
 
+// TODO: make this without aux allocation of new_t and old_t
 // interpolate trajectory to new mesh with simple linear interpolation
-std::unique_ptr<Trajectory> DefaultLinearInterpolation::operator()(const Mesh& old_mesh,
-                                                                   const Mesh& new_mesh,
-                                                                   const Collocation& collocation,
-                                                                   const Trajectory& trajectory) {
-    return std::make_unique<Trajectory>(trajectory.interpolate_onto_mesh_linear(new_mesh, collocation));
+std::vector<f64> DefaultLinearInterpolation::operator()(
+    const Mesh& old_mesh,
+    const Mesh& new_mesh,
+    const Collocation&,
+    const std::vector<f64>& values,
+    bool contains_zero)
+{
+    std::vector<f64> old_t;
+    std::vector<f64> new_t;
+
+    old_t.reserve(old_mesh.node_count + (contains_zero ? 1 : 0));
+    new_t.reserve(new_mesh.node_count + (contains_zero ? 1 : 0));
+
+    if (contains_zero) {
+        old_t.push_back(0.0);
+        new_t.push_back(0.0);
+    }
+
+    for (int i = 0; i < old_mesh.intervals; i++) {
+        for (int j = 0; j < old_mesh.nodes[i]; j++) {
+            old_t.push_back(old_mesh.t[i][j]);
+        }
+    }
+
+    for (int i = 0; i < new_mesh.intervals; i++) {
+        for (int j = 0; j < new_mesh.nodes[i]; j++) {
+            new_t.push_back(new_mesh.t[i][j]);
+        }
+    }
+
+    std::vector<f64> out;
+    interpolate_linear_single(old_t, values, new_t, out);
+    return out;
 }
 
 // proper simulation-based initialization strategy
@@ -124,14 +153,15 @@ SimulationInitialization::SimulationInitialization(std::shared_ptr<Initializatio
                                                    std::shared_ptr<Simulation> simulation)
   : initialization(initialization), simulation(simulation) {}
 
-std::unique_ptr<Trajectory> SimulationInitialization::operator()(const GDOP& gdop) {
-    auto simple_guess       = (*initialization)(gdop);                                             // call simple, e.g. constant guess
-    auto extracted_controls = simple_guess->copy_extract_controls();                               // extract controls from the guess
-    auto exctracted_x0      = simple_guess->extract_initial_states();                              // extract x(t_0) from the guess
-    auto simulated_guess    = (*simulation)(extracted_controls, gdop.mesh.node_count, 0.0,         // perform simulation using the controls and gdop config
+std::unique_ptr<PrimalDualTrajectory> SimulationInitialization::operator()(const GDOP& gdop) {
+    auto simple_guess         = (*initialization)(gdop);                                             // call simple, e.g. constant guess
+    auto& simple_guess_primal = simple_guess->primals;
+    auto extracted_controls   = simple_guess_primal->copy_extract_controls();                        // extract controls from the guess
+    auto exctracted_x0        = simple_guess_primal->extract_initial_states();                       // extract x(t_0) from the guess
+    auto simulated_guess      = (*simulation)(extracted_controls, gdop.mesh.node_count, 0.0,         // perform simulation using the controls and gdop config
                                             gdop.mesh.tf, exctracted_x0.raw());
-    auto interpolated_sim   = simulated_guess->interpolate_onto_mesh(gdop.mesh, gdop.collocation); // interpolate simulation to current mesh + collocation
-    return std::make_unique<Trajectory>(interpolated_sim);
+    auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.mesh, gdop.collocation); // interpolate simulation to current mesh + collocation
+    return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(interpolated_sim));
 }
 
 // csv emit
@@ -145,12 +175,14 @@ SimulationVerifier::SimulationVerifier(std::shared_ptr<Simulation> simulation,
                                        FixedVector<f64>&& tolerances)
     : simulation(simulation), norm(norm), tolerances(std::move(tolerances)) {}
 
-bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) {
-    auto extracted_controls = trajectory.copy_extract_controls();   // extract controls from the trajectory
-    auto exctracted_x0      = trajectory.extract_initial_states();  // extract x(t_0) from the trajectory
+bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
+    auto& trajectory_primal = trajectory.primals;
+    auto extracted_controls = trajectory_primal->copy_extract_controls();   // extract controls from the trajectory
+    auto exctracted_x0      = trajectory_primal->extract_initial_states();  // extract x(t_0) from the trajectory
 
     // perform simulation using the controls, gdop config and a high number of nodes
     int  high_node_count    = 10 * gdop.mesh.node_count;
+
     // TODO: we must be able to set the mesh / grid ourselves, as we know where to increase resolution? Ask how to achieve that!
     auto simulation_result  = (*simulation)(extracted_controls, high_node_count,
                                             0.0, gdop.mesh.tf, exctracted_x0.raw());
@@ -159,7 +191,7 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
     auto interpolated_sim   = simulation_result->interpolate_onto_mesh(gdop.mesh, gdop.collocation);
 
     // calculate errors for each state in given norm (between provided and simulated states)
-    auto errors             = trajectory.state_errors(interpolated_sim, norm);
+    auto errors             = trajectory_primal->state_errors(interpolated_sim, norm);
 
     bool is_valid = true;
 
@@ -171,7 +203,7 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
     LOG_HEADER(ftf, "State", fmt::format("Error [{}]", Linalg::norm_to_string(norm)), "Tolerance", "Pass");
     LOG_DASHES(ftf);
 
-    for (size_t x_idx = 0; x_idx < trajectory.x.size(); x_idx++) {
+    for (size_t x_idx = 0; x_idx < trajectory_primal->x.size(); x_idx++) {
         f64 tol = tolerances[x_idx];
         f64 err = errors[x_idx];
         bool pass = (err <= tol);
@@ -201,35 +233,21 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
 }
 
 // interpolate trajectory to new mesh with collocation scheme - polynomial interpolation
-std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const Mesh& old_mesh,
-                                                                const Mesh& new_mesh,
-                                                                const Collocation& collocation,
-                                                                const Trajectory& trajectory) {
-    const auto& old_x = trajectory.x;
-    const auto& old_u = trajectory.u;
-    const auto& old_p = trajectory.p;
-
-    const int x_size = static_cast<int>(old_x.size());
-    const int u_size = static_cast<int>(old_u.size());
-    const int grid_size = new_mesh.node_count + 1;
-
-    std::vector<f64> new_t;
-    std::vector<std::vector<f64>> new_x(x_size, std::vector<f64>(grid_size));
-    std::vector<std::vector<f64>> new_u(u_size, std::vector<f64>(grid_size));
+std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
+                                                     const Mesh& new_mesh,
+                                                     const Collocation& collocation,
+                                                     const std::vector<f64>& values,
+                                                     bool contains_zero) {
+    const int grid_size = new_mesh.node_count + static_cast<int>(contains_zero);
+    std::vector<f64> new_values(grid_size);
 
     // === t = 0.0 ===
-    new_t.push_back(0.0);
-
-    for (int x_idx = 0; x_idx < x_size; x_idx++) {
-        new_x[x_idx][0] = old_x[x_idx][0];
-    }
-
-    for (int u_idx = 0; u_idx < u_size; u_idx++) {
-        new_u[u_idx][0] = old_u[u_idx][0];
+    if (contains_zero) {
+        new_values[0] = values[0];
     }
 
     // === t = t_{i,j} ===
-    int global_grid_index = 1;
+    int global_grid_index = static_cast<int>(contains_zero);
     int current_old_interval = 0;
     int offset = 0;
 
@@ -238,7 +256,6 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const Mesh& old_
 
         for (int j = 0; j < scheme_new; j++) {
             f64 t_query = new_mesh.t[i][j];
-            new_t.push_back(t_query);
 
             while (current_old_interval + 1 < old_mesh.intervals &&
                 old_mesh.grid[current_old_interval + 1] < t_query) {
@@ -246,27 +263,18 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const Mesh& old_
                 current_old_interval++;
             }
 
-            const int old_p_order = old_mesh.nodes[current_old_interval];
-            const bool contains_zero = true;
+            const int stride            = 1;
+            const int old_p_order       = old_mesh.nodes[current_old_interval];
+            const bool contains_zero_ij = !(i == 0 && !contains_zero);
+            const f64* values_i         = values.data() + offset;
 
             f64 t_start = old_mesh.grid[current_old_interval];
-            f64 t_end   = t_start + old_mesh.delta_t[current_old_interval];
+            f64 t_end   = old_mesh.grid[current_old_interval + 1];
 
-            for (int x_idx = 0; x_idx < x_size; x_idx++) {
-                const f64* x_vals = &old_x[x_idx][offset];
-                new_x[x_idx][global_grid_index] = collocation.interpolate(
-                    old_p_order, contains_zero, x_vals, 1,
-                    t_start, t_end, t_query
-                );
-            }
-
-            for (int u_idx = 0; u_idx < u_size; u_idx++) {
-                const f64* u_vals = &old_u[u_idx][offset];
-                new_u[u_idx][global_grid_index] = collocation.interpolate(
-                    old_p_order, contains_zero, u_vals, 1,
-                    t_start, t_end, t_query
-                );
-            }
+            new_values[global_grid_index] = collocation.interpolate(
+                old_p_order, contains_zero_ij, values_i, stride,
+                t_start, t_end, t_query
+            );
 
             global_grid_index++;
         }
@@ -274,18 +282,15 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const Mesh& old_
 
     assert(global_grid_index == grid_size);
 
-    return std::make_unique<Trajectory>(
-        std::move(new_t), std::move(new_x), std::move(new_u),
-        old_p, InterpolationMethod::LINEAR);
+    return new_values;
 }
-
 
 // L2BoundaryNorm reinit for next call
 void L2BoundaryNorm::reinit(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
     max_phase_one_iterations = 0;
-    max_phase_two_iterations = 5;
+    max_phase_two_iterations = 3;
 
     // on-interval
     mesh_lambda    = 0.0;
@@ -299,7 +304,9 @@ void L2BoundaryNorm::reinit(const GDOP& gdop) {
 }
 
 // L2BoundaryNorm mesh refinement algorithm
-std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) {
+std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+    auto& trajectory_primal = trajectory.primals;
+
     // constant degree for all intervals
     const int p = mesh.nodes[0];
 
@@ -333,8 +340,8 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
         f64 p_boundary_1_this_end;
         f64 p_boundary_2_this_end;
 
-        for (size_t u_idx = 0; u_idx < trajectory.u.size(); u_idx++) {
-            auto const& u_vec = trajectory.u[u_idx];
+        for (size_t u_idx = 0; u_idx < trajectory_primal->u.size(); u_idx++) {
+            auto const& u_vec = trajectory_primal->u[u_idx];
 
             // compute range of u
             auto [min_it, max_it] = std::minmax_element(u_vec.begin(), u_vec.end());

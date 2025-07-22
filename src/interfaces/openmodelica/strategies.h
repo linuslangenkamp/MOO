@@ -29,7 +29,7 @@ public:
     InfoGDOP& info;
     ConstantInitialization(InfoGDOP& info);
 
-    std::unique_ptr<Trajectory> operator()(const GDOP::GDOP& gdop) override;
+    std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP::GDOP& gdop) override;
 };
 
 // TODO: maybe think about how we provide these configurations to the Strategy?

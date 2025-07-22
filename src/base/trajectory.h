@@ -13,7 +13,7 @@ enum class InterpolationMethod {
 struct ControlTrajectory {
     std::vector<f64> t;                       // time grid, monotonic increasing
     std::vector<std::vector<f64>> u;          // u[k][j] = value of k-th control at t[j]
-    InterpolationMethod interpolation;
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     // for repeated interpolation, cache last index
     mutable size_t last_index = 0;
@@ -29,7 +29,7 @@ struct Trajectory {
     std::vector<std::vector<f64>> x;
     std::vector<std::vector<f64>> u;
     std::vector<f64> p;
-    InterpolationMethod interpolation;
+    InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     Trajectory() = default;
 
@@ -100,9 +100,29 @@ struct CostateTrajectory {
     int to_csv(const std::string& filename) const;
 };
 
+struct PrimalDualTrajectory {
+    std::unique_ptr<Trajectory> primals;
+    std::unique_ptr<CostateTrajectory> costates;
+
+    // primals + costates constructor
+    PrimalDualTrajectory(std::unique_ptr<Trajectory> primals_,
+                         std::unique_ptr<CostateTrajectory> costates_)
+        : primals(std::move(primals_)), costates(std::move(costates_)) {}
+
+    // primals only constructor
+    PrimalDualTrajectory(std::unique_ptr<Trajectory> primals_)
+        : primals(std::move(primals_)), costates(nullptr) {}
+};
+
 // === shared helpers for Trajectory and CostateTrajectory ===
 
-void interpolate_linear(
+void interpolate_linear_single(
+    const std::vector<double>& t,
+    const std::vector<double>& values,
+    const std::vector<double>& new_t,
+    std::vector<double>& out_values);
+
+void interpolate_linear_multiple(
     const std::vector<double>& t,
     const std::vector<std::vector<double>>& values,
     const std::vector<double>& new_t,

@@ -17,17 +17,17 @@ Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation
 Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
     Trajectory new_traj;
 
-    std::vector<double> new_t = {0};
+    std::vector<f64> new_t = {0};
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            double new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
+            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
             new_t.push_back(new_time);
         }
     }
 
     new_traj.t = new_t;
-    interpolate_linear(t, x, new_t, new_traj.x);
-    interpolate_linear(t, u, new_t, new_traj.u);
+    interpolate_linear_multiple(t, x, new_t, new_traj.x);
+    interpolate_linear_multiple(t, u, new_t, new_traj.u);
     new_traj.p = p;
 
     return new_traj;
@@ -177,17 +177,17 @@ CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh, con
 CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
     CostateTrajectory new_dual;
 
-    std::vector<double> new_t;
+    std::vector<f64> new_t;
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            double new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
+            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
             new_t.push_back(new_time);
         }
     }
 
     new_dual.t = new_t;
-    interpolate_linear(t, costates_f, new_t, new_dual.costates_f);
-    interpolate_linear(t, costates_g, new_t, new_dual.costates_g);
+    interpolate_linear_multiple(t, costates_f, new_t, new_dual.costates_f);
+    interpolate_linear_multiple(t, costates_g, new_t, new_dual.costates_g);
     new_dual.costates_r = costates_r;
 
     return new_dual;
@@ -210,12 +210,12 @@ int CostateTrajectory::to_csv(const std::string& filename) const {
 // === helpers for Dual and standard Trajectory ===
 
 bool check_time_compatibility(
-    const std::vector<double>& t_vec,
-    const std::vector<std::vector<std::vector<double>>>& fields_to_check,
+    const std::vector<f64>& t_vec,
+    const std::vector<std::vector<std::vector<f64>>>& fields_to_check,
     const Mesh& mesh,
-    bool include_initial_time // true for Trajectory, false for CostateTrajectory
-) {
-    const double tol = 1e-12;
+    bool include_initial_time /* true for Trajectory, false for CostateTrajectory */ )
+{
+    const f64 tol = 1e-12;
 
     int expected_size = mesh.node_count + (include_initial_time ? 1 : 0);
     if ((int)t_vec.size() != expected_size) {
@@ -242,33 +242,43 @@ bool check_time_compatibility(
     return true;
 }
 
-void interpolate_linear(
-    const std::vector<double>& t,
-    const std::vector<std::vector<double>>& values,
+void interpolate_linear_single(
+    const std::vector<double>& old_t,
+    const std::vector<double>& values,
     const std::vector<double>& new_t,
-    std::vector<std::vector<double>>& out_values)
+    std::vector<double>& out_values)
+{
+    out_values.resize(new_t.size());
+
+    for (int i = 0; i < int(new_t.size()); i++) {
+        double t_new = new_t[i];
+        auto it = std::lower_bound(old_t.begin(), old_t.end(), t_new);
+
+        if (it == old_t.begin()) {
+            out_values[i] = values[0];
+        } else if (it == old_t.end()) {
+            out_values[i] = values.back();
+        } else {
+            int idx = std::distance(old_t.begin(), it);
+            double t1 = old_t[idx - 1];
+            double t2 = old_t[idx];
+            double y1 = values[idx - 1];
+            double y2 = values[idx];
+            out_values[i] = y1 + (t_new - t1) * (y2 - y1) / (t2 - t1);
+        }
+    }
+}
+
+void interpolate_linear_multiple(
+    const std::vector<f64>& old_t,
+    const std::vector<std::vector<f64>>& values,
+    const std::vector<f64>& new_t,
+    std::vector<std::vector<f64>>& out_values)
 {
     int fields = int(values.size());
     out_values.resize(fields);
     for (int field = 0; field < fields; field++) {
-        out_values[field].resize(new_t.size());
-        for (int i = 0; i < int(new_t.size()); i++) {
-            double t_new = new_t[i];
-            auto it = std::lower_bound(t.begin(), t.end(), t_new);
-
-            if (it == t.begin()) {
-                out_values[field][i] = values[field][0];
-            } else if (it == t.end()) {
-                out_values[field][i] = values[field].back();
-            } else {
-                int idx = std::distance(t.begin(), it);
-                double t1 = t[idx - 1];
-                double t2 = t[idx];
-                double y1 = values[field][idx - 1];
-                double y2 = values[field][idx];
-                out_values[field][i] = y1 + (t_new - t1) * (y2 - y1) / (t2 - t1);
-            }
-        }
+        interpolate_linear_single(old_t, values[field], new_t, out_values[field]);
     }
 }
 
