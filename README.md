@@ -1,4 +1,4 @@
-    ```textfile
+  
                                           __  __   ___   ___
                                          |  \/  | / _ \ / _ \   MODELICA
                                          | |\/| || | | | | | |     / OPTIMIZER
@@ -63,4 +63,4 @@
                   |   - linalg.*, mesh.*, trajectory.* (Core mathematical & numerical ops)  |
                   |   - collocation.*, util.h, log.h (Helper utilities)                     |
                   +-------------------------------------------------------------------------+
-    ```
+  
