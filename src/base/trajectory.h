@@ -1,6 +1,7 @@
 #ifndef OPT_TRAJECTORY_H
 #define OPT_TRAJECTORY_H
 
+#include "log.h"
 #include "mesh.h"
 #include "linalg.h"
 #include "collocation.h"
@@ -21,7 +22,7 @@ struct ControlTrajectory {
     void interpolate_at_linear(f64 t_query, f64* interpolation_values) const;
 };
 
-// given some data trajectories t, x(t), u(t), p -> interpolate w.r.t. mesh and collocation scheme -> new fitting guess
+// given some data trajectories t, x(t), u(t), p
 struct Trajectory {
     // x[i][j] = x_i(t_j) = x_i at time t[j] 
     std::vector<f64> t;
@@ -36,6 +37,13 @@ struct Trajectory {
                std::vector<f64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
         : t(t), x(x), u(u), p(p), interpolation(interpolation) {
     }
+
+    Trajectory(const Trajectory& other)
+        : t(other.t),
+          x(other.x),
+          u(other.u),
+          p(other.p),
+          interpolation(other.interpolation) {}
 
     // checks if a trajectory has the same nodes as a mesh + collocation (valid Trajectory + Collocation)
     bool compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const;
@@ -56,5 +64,67 @@ struct Trajectory {
     void print();
     int to_csv(const std::string& filename) const;
 };
+
+// dual trajectory for [costates_f, costates_g]_{ij} constraints, costates_r constraints
+struct CostateTrajectory {
+    // costates_f[i][j] = costates_f_i(t_j) = costates_f_i at time t[j] 
+    std::vector<f64> t;
+    std::vector<std::vector<f64>> costates_f;
+    std::vector<std::vector<f64>> costates_g;
+    std::vector<f64> costates_r;
+    InterpolationMethod interpolation;
+
+    CostateTrajectory() = default;
+
+    CostateTrajectory(std::vector<f64> t, std::vector<std::vector<f64>> costates_f, std::vector<std::vector<f64>> costates_g,
+                   std::vector<f64> costates_r, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
+        : t(t), costates_f(costates_f), costates_g(costates_g), costates_r(costates_r), interpolation(interpolation) {
+    }
+
+    CostateTrajectory(const CostateTrajectory& other)
+        : t(other.t),
+          costates_f(other.costates_f),
+          costates_g(other.costates_g),
+          costates_r(other.costates_r),
+          interpolation(other.interpolation) {}
+
+    // checks if a dual trajectory has the same nodes as a mesh + collocation (valid CostateTrajectory + Collocation)
+    bool compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const;
+
+    // create new trajectories based on mesh & collocation
+    CostateTrajectory interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const;
+    CostateTrajectory interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const;
+
+    // dumps
+    void print();
+    int to_csv(const std::string& filename) const;
+};
+
+// === shared helpers for Trajectory and CostateTrajectory ===
+
+void interpolate_linear(
+    const std::vector<double>& t,
+    const std::vector<std::vector<double>>& values,
+    const std::vector<double>& new_t,
+    std::vector<std::vector<double>>& out_values);
+
+bool check_time_compatibility(
+    const std::vector<double>& t_vec,
+    const std::vector<std::vector<std::vector<double>>>& fields_to_check,
+    const Mesh& mesh,
+    bool include_initial_time /* true for Trajectory, false for CostateTrajectory */);
+
+int write_trajectory_csv(
+    const std::string& filename,
+    const std::vector<f64>& t,
+    const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
+    const std::string& static_name,
+    const std::vector<f64>& static_field);
+
+void print_trajectory(
+    const std::vector<f64>& t,
+    const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
+    const std::string& static_name,
+    const std::vector<f64>& static_field);
 
 #endif // OPT_TRAJECTORY_H

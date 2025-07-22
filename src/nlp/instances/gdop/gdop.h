@@ -35,8 +35,12 @@ public:
     NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
 
     // initial guess
-    std::unique_ptr<Trajectory> initial_guess;    // initial trajectory guess (set by initialization strategy)
-    std::unique_ptr<Trajectory> optimal_solution; // gets filled in finalize_solution()
+    std::unique_ptr<Trajectory> initial_guess_primals;         // initial trajectory guess (set by initialization strategy)
+    std::unique_ptr<CostateTrajectory> initial_guess_costates; // initial costate guess (set by initialization strategy, may be nullptr)
+
+    // optimal solution
+    std::unique_ptr<Trajectory> optimal_primals;               // gets filled in finalize_solution()
+    std::unique_ptr<CostateTrajectory> optimal_costates;       // gets filled in finalize_solution()
 
     // constant NLP derivative matrix part of the jacobian
     FixedVector<f64> const_der_jac;
@@ -80,12 +84,15 @@ public:
     void init_bounds();
 
     void set_initial_guess(std::unique_ptr<Trajectory> initial_trajectory);
+    void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
     void init_starting_point();
 
     void init_jacobian();
     void init_jacobian_nonzeros();
     void init_jacobian_sparsity_pattern();
     void init_hessian();
+
+    void reinit(Mesh&& mesh);
 
     /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
     void update_curr_lambda_obj_factors();
@@ -126,6 +133,8 @@ public:
     void eval_jac_g(bool new_x);
     void eval_hes(bool new_x, bool new_lambda);
     void finalize_solution();
+    void finalize_optimal_primals();
+    void finalize_optimal_costates();
 };
 
 } // namespace GDOP

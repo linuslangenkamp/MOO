@@ -2,20 +2,19 @@
 #include "gdop.h"
 
 // TODO: add doxygen everywhere
-// TODO: replace couts with format error_log() and log() prints
 
 namespace GDOP {
 
 // ==================== no-op strategies ====================
 
 // no simulation available
-std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
+std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
     LOG_WARNING("No Simulation strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no simulation step available
-std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const GDOP& gdop, const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
+std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
     LOG_WARNING("No SimulationStep strategy set: returning nullptr.");
     return nullptr;
 }
@@ -23,19 +22,19 @@ std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const GDOP& gdop
 // no mesh refinement available
 void DefaultNoMeshRefinement::reinit(const GDOP& gdop) {}
 
-std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::operator()(const GDOP& gdop) {
+std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) {
     LOG_WARNING("No MeshRefinement strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no emitter
-int DefaultNoEmitter::operator()(const GDOP& gdop, const Trajectory& trajectory) {
+int DefaultNoEmitter::operator()(const Trajectory& trajectory) {
     LOG_WARNING("No Emitter strategy set: returning -1.");
     return -1;
 }
 
 // no verifier
-bool DefaultNoVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory) {
+bool DefaultNoVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) {
     LOG_WARNING("No Verifier strategy set: returning false.");
     return false;
 }
@@ -113,10 +112,11 @@ std::unique_ptr<Trajectory> DefaultConstantInitialization::operator()(const GDOP
 }
 
 // interpolate trajectory to new mesh with simple linear interpolation
-std::unique_ptr<Trajectory> DefaultLinearInterpolation::operator()(const GDOP& gdop,
+std::unique_ptr<Trajectory> DefaultLinearInterpolation::operator()(const Mesh& old_mesh,
                                                                    const Mesh& new_mesh,
+                                                                   const Collocation& collocation,
                                                                    const Trajectory& trajectory) {
-    return std::make_unique<Trajectory>(trajectory.interpolate_onto_mesh_linear(new_mesh, gdop.collocation));
+    return std::make_unique<Trajectory>(trajectory.interpolate_onto_mesh_linear(new_mesh, collocation));
 }
 
 // proper simulation-based initialization strategy
@@ -128,7 +128,7 @@ std::unique_ptr<Trajectory> SimulationInitialization::operator()(const GDOP& gdo
     auto simple_guess       = (*initialization)(gdop);                                             // call simple, e.g. constant guess
     auto extracted_controls = simple_guess->copy_extract_controls();                               // extract controls from the guess
     auto exctracted_x0      = simple_guess->extract_initial_states();                              // extract x(t_0) from the guess
-    auto simulated_guess    = (*simulation)(gdop, extracted_controls, gdop.mesh.node_count, 0.0,   // perform simulation using the controls and gdop config
+    auto simulated_guess    = (*simulation)(extracted_controls, gdop.mesh.node_count, 0.0,         // perform simulation using the controls and gdop config
                                             gdop.mesh.tf, exctracted_x0.raw());
     auto interpolated_sim   = simulated_guess->interpolate_onto_mesh(gdop.mesh, gdop.collocation); // interpolate simulation to current mesh + collocation
     return std::make_unique<Trajectory>(interpolated_sim);
@@ -137,7 +137,7 @@ std::unique_ptr<Trajectory> SimulationInitialization::operator()(const GDOP& gdo
 // csv emit
 CSVEmitter::CSVEmitter(std::string filename) : filename(filename) {}
 
-int CSVEmitter::operator()(const GDOP& gdop, const Trajectory& trajectory) { return trajectory.to_csv(filename); }
+int CSVEmitter::operator()(const Trajectory& trajectory) { return trajectory.to_csv(filename); }
 
 // simulation-based verification
 SimulationVerifier::SimulationVerifier(std::shared_ptr<Simulation> simulation,
@@ -145,14 +145,15 @@ SimulationVerifier::SimulationVerifier(std::shared_ptr<Simulation> simulation,
                                        FixedVector<f64>&& tolerances)
     : simulation(simulation), norm(norm), tolerances(std::move(tolerances)) {}
 
-bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory) {
+bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) {
     auto extracted_controls = trajectory.copy_extract_controls();   // extract controls from the trajectory
     auto exctracted_x0      = trajectory.extract_initial_states();  // extract x(t_0) from the trajectory
 
     // perform simulation using the controls, gdop config and a high number of nodes
     int  high_node_count    = 10 * gdop.mesh.node_count;
-    auto simulation_result  = (*simulation)(gdop, extracted_controls, high_node_count,
-                                             0.0, gdop.mesh.tf, exctracted_x0.raw());
+    // TODO: we must be able to set the mesh / grid ourselves, as we know where to increase resolution? Ask how to achieve that!
+    auto simulation_result  = (*simulation)(extracted_controls, high_node_count,
+                                            0.0, gdop.mesh.tf, exctracted_x0.raw());
 
     // result of high resolution simulation is interpolated onto lower resolution mesh
     auto interpolated_sim   = simulation_result->interpolate_onto_mesh(gdop.mesh, gdop.collocation);
@@ -200,12 +201,10 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const Trajectory& trajecto
 }
 
 // interpolate trajectory to new mesh with collocation scheme - polynomial interpolation
-std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const GDOP& gdop,
-                                                                 const Mesh& new_mesh,
-                                                                 const Trajectory& trajectory) {
-    const auto& old_mesh = gdop.mesh;
-    const auto& colloc   = gdop.collocation;
-
+std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const Mesh& old_mesh,
+                                                                const Mesh& new_mesh,
+                                                                const Collocation& collocation,
+                                                                const Trajectory& trajectory) {
     const auto& old_x = trajectory.x;
     const auto& old_u = trajectory.u;
     const auto& old_p = trajectory.p;
@@ -218,16 +217,18 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const GDOP& gdop
     std::vector<std::vector<f64>> new_x(x_size, std::vector<f64>(grid_size));
     std::vector<std::vector<f64>> new_u(u_size, std::vector<f64>(grid_size));
 
+    // === t = 0.0 ===
     new_t.push_back(0.0);
 
     for (int x_idx = 0; x_idx < x_size; x_idx++) {
-        new_x[x_idx][0] = old_x[x_idx][0]; // x(t_0)
+        new_x[x_idx][0] = old_x[x_idx][0];
     }
 
     for (int u_idx = 0; u_idx < u_size; u_idx++) {
-        new_u[u_idx][0] = old_u[u_idx][0]; // u(t_0)
+        new_u[u_idx][0] = old_u[u_idx][0];
     }
 
+    // === t = t_{i,j} ===
     int global_grid_index = 1;
     int current_old_interval = 0;
     int offset = 0;
@@ -253,7 +254,7 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const GDOP& gdop
 
             for (int x_idx = 0; x_idx < x_size; x_idx++) {
                 const f64* x_vals = &old_x[x_idx][offset];
-                new_x[x_idx][global_grid_index] = colloc.interpolate(
+                new_x[x_idx][global_grid_index] = collocation.interpolate(
                     old_p_order, contains_zero, x_vals, 1,
                     t_start, t_end, t_query
                 );
@@ -261,7 +262,7 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const GDOP& gdop
 
             for (int u_idx = 0; u_idx < u_size; u_idx++) {
                 const f64* u_vals = &old_u[u_idx][offset];
-                new_u[u_idx][global_grid_index] = colloc.interpolate(
+                new_u[u_idx][global_grid_index] = collocation.interpolate(
                     old_p_order, contains_zero, u_vals, 1,
                     t_start, t_end, t_query
                 );
@@ -272,6 +273,7 @@ std::unique_ptr<Trajectory> PolynomialInterpolation::operator()(const GDOP& gdop
     }
 
     assert(global_grid_index == grid_size);
+
     return std::make_unique<Trajectory>(
         std::move(new_t), std::move(new_x), std::move(new_u),
         old_p, InterpolationMethod::LINEAR);
@@ -283,10 +285,10 @@ void L2BoundaryNorm::reinit(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
     max_phase_one_iterations = 0;
-    max_phase_two_iterations = 15;
+    max_phase_two_iterations = 5;
 
     // on-interval
-    lambda         = 0.0;
+    mesh_lambda    = 0.0;
     mesh_size_zero = gdop.mesh.intervals;
 
     // corner
@@ -297,10 +299,7 @@ void L2BoundaryNorm::reinit(const GDOP& gdop) {
 }
 
 // L2BoundaryNorm mesh refinement algorithm
-std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const GDOP& gdop) {
-    const auto& mesh = gdop.mesh;
-    const auto& collocation = gdop.collocation;
-
+std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) {
     // constant degree for all intervals
     const int p = mesh.nodes[0];
 
@@ -334,13 +333,15 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const GDOP& gdop) {
         f64 p_boundary_1_this_end;
         f64 p_boundary_2_this_end;
 
-        for (auto const& u_vec : gdop.optimal_solution->u) {
+        for (size_t u_idx = 0; u_idx < trajectory.u.size(); u_idx++) {
+            auto const& u_vec = trajectory.u[u_idx];
+
             // compute range of u
             auto [min_it, max_it] = std::minmax_element(u_vec.begin(), u_vec.end());
             f64 u_range = *max_it - *min_it;
 
             // TODO: what about nominals? What about u == const. ?
-            f64 TOL_1 = u_range * pow(10, -lambda) / mesh_size_zero;
+            f64 TOL_1 = u_range * pow(10, -mesh_lambda) / mesh_size_zero;
             f64 TOL_2 = TOL_1 / 2;
 
             for (int i = 0; i < mesh.grid.int_size() - 1; i++) {
@@ -393,7 +394,7 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const GDOP& gdop) {
                     f64 ERR_1 = std::abs(p1_i1 - p_boundary_1_last_end) / (1.0 + std::min(std::abs(p1_i1), std::abs(p_boundary_1_last_end)));
                     f64 ERR_2 = std::abs(p2_i1 - p_boundary_2_last_end) / (1.0 + std::min(std::abs(p2_i1), std::abs(p_boundary_2_last_end)));
 
-                    if (ERR_1 > TOL_1 || ERR_2 > TOL_2) {
+                    if (ERR_1 > CTOL_1[u_idx] || ERR_2 > CTOL_2[u_idx]) {
                         terminated = false;
 
                         // insert this / center midpoint + left / previous midpoint

@@ -11,7 +11,7 @@
 
 namespace NLP {
 
-// TODO: this is WIP
+// TODO: this is WIP, add FlagMap as in 7/21/25 Email
 /* struct to handle all NLP Solver flags; special solver flags are named via solvername_flagname, e.g. Ipopt_MuInit */
 class NLPSolverFlags {
 public:

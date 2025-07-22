@@ -4,9 +4,8 @@
 #include <functional>
 #include <memory>
 #include <src/base/trajectory.h>
-#include <src/base/log.h>
-
 #include <src/nlp/nlp.h>
+#include <src/base/log.h>
 
 // Strategies define interchangeable behaviors for key stages such as initialization, simulation,
 // mesh refinement, result emission, and optimality verification in the GDOP optimization process.
@@ -42,7 +41,6 @@ public:
 /**
  * @brief Strategy for simulating the full system over the entire time horizon.
  *
- * @param gdop Optimization problem (read-only).
  * @param controls Control inputs to apply.
  * @param num_steps Number of integration steps.
  * @param start_time Starting time of the simulation.
@@ -52,7 +50,7 @@ public:
  */
 class Simulation {
 public:
-    virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) = 0;
+    virtual std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) = 0;
 };
 
 /**
@@ -60,7 +58,6 @@ public:
  *
  * Useful for finer-grained validation or model checking.
  *
- * @param gdop Optimization problem (read-only).
  * @param controls Control input to apply (must include the time interval).
  * @param start_time Start of the step.
  * @param stop_time End of the step.
@@ -69,7 +66,7 @@ public:
  */
 class SimulationStep {
 public:
-    virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) = 0;
+    virtual std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) = 0;
 };
 
 /**
@@ -78,7 +75,10 @@ public:
 class MeshRefinement {
 public:
     virtual void reinit(const GDOP& gdop) = 0;
-    virtual std::unique_ptr<MeshUpdate> operator()(const GDOP& gdop) = 0;
+    virtual std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh,
+                                                   const Collocation& collocation,
+                                                   const Trajectory& trajectory,
+                                                   const CostateTrajectory& costates) = 0;
 };
 
 /**
@@ -91,7 +91,10 @@ public:
  */
 class Interpolation {
 public:
-    virtual std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) = 0;
+    virtual std::unique_ptr<Trajectory> operator()(const Mesh& old_mesh,
+                                                   const Mesh& new_mesh,
+                                                   const Collocation& collocation,
+                                                   const Trajectory& trajectory) = 0;
 };
 
 /**
@@ -105,9 +108,11 @@ public:
  */
 class Emitter {
 public:
-    virtual int operator()(const GDOP& gdop, const Trajectory& trajectory) = 0;
+    virtual int operator()(const Trajectory& trajectory) = 0;
 };
 
+
+// TODO: this should accept GDOP&, Trajectory& (optimal solution), CostateTrajectory& (dual optimum)
 /**
  * @brief Strategy for verifying optimality / quality post-optimization.
  *
@@ -117,7 +122,7 @@ public:
  */
 class Verifier {
 public:
-    virtual bool operator()(const GDOP& gdop, const Trajectory& trajectory) = 0;
+    virtual bool operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) = 0;
 };
 
 /**
@@ -140,33 +145,36 @@ public:
 
 class DefaultNoSimulation : public Simulation {
 public:
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) override;
+    std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
 class DefaultNoSimulationStep : public SimulationStep {
 public:
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) override;
+    std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
 class DefaultNoMeshRefinement : public MeshRefinement {
 public:
     void reinit(const GDOP& gdop) override;
-    std::unique_ptr<MeshUpdate> operator()(const GDOP& gdop) override;
+    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) override;
 };
 
 class DefaultLinearInterpolation : public Interpolation {
 public:
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) override;
+    std::unique_ptr<Trajectory> operator()(const Mesh& old_mesh,
+                                           const Mesh& new_mesh,
+                                           const Collocation& collocation,
+                                           const Trajectory& trajectory) override;
 };
 
 class DefaultNoEmitter : public Emitter {
 public:
-    int operator()(const GDOP& gdop, const Trajectory& trajectory) override;
+    int operator()(const Trajectory& trajectory) override;
 };
 
 class DefaultNoVerifier : public Verifier {
 public:
-    bool operator()(const GDOP& gdop, const Trajectory& trajectory) override;
+    bool operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) override;
 };
 
 // -- simple default scaling (no scaling) --
@@ -186,7 +194,10 @@ public:
 // -- uses Collocation scheme to interpolate States and Controls --
 class PolynomialInterpolation : public Interpolation {
 public:
-    std::unique_ptr<Trajectory> operator()(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) override;
+    std::unique_ptr<Trajectory> operator()(const Mesh& old_mesh,
+                                           const Mesh& new_mesh,
+                                           const Collocation& collocation,
+                                           const Trajectory& trajectory) override;
 };
 
 // -- combined Strategy (simple Initialization, extract Controls, simulate) --
@@ -209,7 +220,7 @@ public:
     int max_phase_two_iterations;
 
     // on-interval
-    f64 lambda;
+    f64 mesh_lambda;
     f64 mesh_size_zero;
 
     // corner
@@ -218,7 +229,7 @@ public:
 
     void reinit(const GDOP& gdop) override;
 
-    std::unique_ptr<MeshUpdate> operator()(const GDOP& gdop) override;
+    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) override;
 };
 
 // -- emit optimal solution to csv --
@@ -228,7 +239,7 @@ public:
 
     CSVEmitter(std::string filename);
 
-    int operator()(const GDOP& gdop, const Trajectory& trajectory) override;
+    int operator()(const Trajectory& trajectory) override;
 };
 
 // -- verify optimality by full simulation and state comparison with given norm --
@@ -240,7 +251,7 @@ public:
 
     SimulationVerifier(std::shared_ptr<Simulation> simulation, Linalg::Norm norm, FixedVector<f64>&& tolerances);
 
-    bool operator()(const GDOP& gdop, const Trajectory& trajectory) override;
+    bool operator()(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) override;
 };
 
 // TODO: add costate verifier
@@ -272,28 +283,28 @@ public:
         return (*initialization)(gdop);
     }
 
-    auto simulate(const GDOP& gdop, const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
-        return (*simulation)(gdop, controls, num_steps, start_time, stop_time, x_start_values);
+    auto simulate(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
+        return (*simulation)(controls, num_steps, start_time, stop_time, x_start_values);
     }
 
-    auto simulate_step(const GDOP& gdop, const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
-        return (*simulation_step)(gdop, controls, start_time, stop_time, x_start_values);
+    auto simulate_step(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
+        return (*simulation_step)(controls, start_time, stop_time, x_start_values);
     }
 
-    auto detect(const GDOP& gdop) {
-        return (*mesh_refinement)(gdop);
+    auto detect(const Mesh& mesh, const Collocation& collocation, const Trajectory& trajectory, const CostateTrajectory& costates) {
+        return (*mesh_refinement)(mesh, collocation, trajectory, costates);
     }
 
-    auto interpolate(const GDOP& gdop, const Mesh& new_mesh, const Trajectory& trajectory) {
-        return (*interpolation)(gdop, new_mesh, trajectory);
+    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const Trajectory& trajectory) {
+        return (*interpolation)(old_mesh, new_mesh, collocation, trajectory);
     }
 
-    auto emit(const GDOP& gdop, const Trajectory& trajectory) {
-        return (*emitter)(gdop, trajectory);
+    auto emit(const Trajectory& trajectory) {
+        return (*emitter)(trajectory);
     }
 
-    auto verify(const GDOP& gdop, const Trajectory& trajectory) {
-        return (*verifier)(gdop, trajectory);
+    auto verify(const GDOP& gdop, const Trajectory& trajectory, const CostateTrajectory& costates) {
+        return (*verifier)(gdop, trajectory, costates);
     }
 
     auto create_scaling(const GDOP& gdop) {
@@ -301,7 +312,7 @@ public:
     }
 
     void reinit(const GDOP& gdop) {
-        // add others if we have an internal state that changes from problem to problem
+        // add others if we have an internal state that changes during optimization (e.g. mesh refinement iteration count)
         mesh_refinement->reinit(gdop);
     }
 };

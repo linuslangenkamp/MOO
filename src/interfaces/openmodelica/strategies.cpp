@@ -91,8 +91,7 @@ void initialize_model(InfoGDOP& info) {
 
 MatEmitter::MatEmitter(InfoGDOP& info) : info(info) {}
 
-// TODO: make strategy for it
-int MatEmitter::operator()(const GDOP::GDOP& gdop, const Trajectory& trajectory) {
+int MatEmitter::operator()(const Trajectory& trajectory) {
     DATA* data = info.data;
     threadData_t* threadData = info.threadData;
 
@@ -163,7 +162,7 @@ std::unique_ptr<Trajectory> ConstantInitialization::operator()(const GDOP::GDOP&
 Simulation::Simulation(InfoGDOP& info, SOLVER_METHOD solver)
   : info(info), solver(solver) {}
 
-std::unique_ptr<Trajectory> Simulation::operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls, int num_steps,
+std::unique_ptr<Trajectory> Simulation::operator()(const ControlTrajectory& controls, int num_steps,
                                                    f64 start_time, f64 stop_time, f64* x_start_values) {
     DATA* data = info.data;
     threadData_t* threadData = info.threadData;
@@ -245,10 +244,10 @@ std::unique_ptr<Trajectory> Simulation::operator()(const GDOP::GDOP& gdop, const
 SimulationStep::SimulationStep(std::shared_ptr<Simulation> simulation)
   : simulation(simulation) {}
 
-std::unique_ptr<Trajectory> SimulationStep::operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls,
+std::unique_ptr<Trajectory> SimulationStep::operator()(const ControlTrajectory& controls,
                                                        f64 start_time, f64 stop_time, f64* x_start_values) {
     const int num_steps = 1;
-    return (*simulation)(gdop, controls, num_steps, start_time, stop_time, x_start_values);
+    return (*simulation)(controls, num_steps, start_time, stop_time, x_start_values);
 }
 
 // ==================== Nominal Scaling Factory ====================
@@ -282,9 +281,6 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
     }
     else if (has_mayer) {
         f_nominal = real_vars_data[info.index_mayer_real_vars].attribute.nominal;
-    }
-    else {
-        // use default 1 - no objective set!
     }
 
     // x(t_0)
@@ -326,7 +322,7 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     GDOP::Strategies strategies;
 
     auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
-    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_GBODE));
+    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_IDA));
     auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
     auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(
                                                   GDOP::SimulationInitialization(const_initialization_strategy, simulation_strategy));

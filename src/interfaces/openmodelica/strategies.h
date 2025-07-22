@@ -41,7 +41,7 @@ public:
 
     Simulation(InfoGDOP& info, SOLVER_METHOD solver);
 
-    std::unique_ptr<Trajectory> operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls, int num_steps,
+    std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, int num_steps,
                                            f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
@@ -51,7 +51,7 @@ public:
 
     SimulationStep(std::shared_ptr<Simulation> simulation);
 
-    std::unique_ptr<Trajectory> operator()(const GDOP::GDOP& gdop, const ControlTrajectory& controls,
+    std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls,
                                            f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
@@ -61,7 +61,7 @@ public:
 
     MatEmitter(InfoGDOP& info);
 
-    int operator()(const GDOP::GDOP& gdop, const Trajectory& trajectory) override;
+    int operator()(const Trajectory& trajectory) override;
 };
 
 class NominalScalingFactory : public GDOP::ScalingFactory {

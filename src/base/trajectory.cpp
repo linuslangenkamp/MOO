@@ -2,36 +2,8 @@
 
 bool Trajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
     // check size of time vector: expect mesh.node_count + 1 (t = 0.0 included)
-    if ((int)t.size() != mesh.node_count + 1) {
-        return false;
-    }
-
-    // check that times match mesh points exactly (or within a small tolerance, only check t > 0 as not included in mesh.t)
-    int index = 1;
-    const double tol = 1e-12;
-    for (int i = 0; i < mesh.intervals; ++i) {
-        for (int j = 0; j < mesh.nodes[i]; ++j) {
-            if (std::abs(t[index++] - mesh.t[i][j]) > tol) {
-                return false;
-            }
-        }
-    }
-
-    // check that x and u time dimension matches t.size()
-    for (const auto& xi : x) {
-        if (xi.size() != t.size()) {
-            return false;
-        }
-    }
-    for (const auto& ui : u) {
-        if (ui.size() != t.size()) {
-            return false;
-        }
-    }
-
-    return true;
+    return check_time_compatibility(t, {x, u}, mesh, /* include_initial_time */ true);
 }
-
 
 Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
     switch (interpolation) {
@@ -43,7 +15,7 @@ Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation
 }
 
 Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
-    Trajectory new_guess;
+    Trajectory new_traj;
 
     std::vector<double> new_t = {0};
     for (int i = 0; i < mesh.intervals; i++) {
@@ -53,121 +25,26 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Coll
         }
     }
 
-    new_guess.t = new_t;
-    new_guess.x.resize(x.size());
-    new_guess.u.resize(u.size());
+    new_traj.t = new_t;
+    interpolate_linear(t, x, new_t, new_traj.x);
+    interpolate_linear(t, u, new_t, new_traj.u);
+    new_traj.p = p;
 
-    // === interpolate states ===
-    for (int k = 0; k < int_size(x); k++) {
-        new_guess.x[k].resize(new_t.size());
-        for (int i = 0; i < int_size(new_t); i++) {
-            double t_new = new_t[i];
-            auto it = std::lower_bound(t.begin(), t.end(), t_new);
-            if (it == t.begin()) {
-                new_guess.x[k][i] = x[k][0];
-            }
-            else if (it == t.end()) {
-                new_guess.x[k][i] = x[k].back();
-            }
-            else {
-                int idx = std::distance(t.begin(), it);
-                double t1 = t[idx - 1];
-                double t2 = t[idx];
-                double x1 = x[k][idx - 1];
-                double x2 = x[k][idx];
-                new_guess.x[k][i] = x1 + (t_new - t1) * (x2 - x1) / (t2 - t1);
-            }
-        }
-    }
-
-    // === interpolate controls ===
-    for (int k = 0; k < int_size(u); k++) {
-        new_guess.u[k].resize(new_t.size());
-        for (int i = 0; i < int_size(new_t); i++) {
-            double t_new = new_t[i];
-            auto it = std::lower_bound(t.begin(), t.end(), t_new);
-            if (it == t.begin()) {
-                new_guess.u[k][i] = u[k][0];
-            }
-            else if (it == t.end()) {
-                new_guess.u[k][i] = u[k].back();
-            }
-            else {
-                int idx = std::distance(t.begin(), it);
-                double t1 = t[idx - 1];
-                double t2 = t[idx];
-                double u1 = u[k][idx - 1];
-                double u2 = u[k][idx];
-                new_guess.u[k][i] = u1 + (t_new - t1) * (u2 - u1) / (t2 - t1);
-            }
-        }
-    }
-
-    // static parameters
-    new_guess.p = p;
-
-    return new_guess;
+    return new_traj;
 }
 
 void Trajectory::print() {
-    auto print_vector = [](const std::string& name, const std::vector<f64>& vec) {
-        std::cout << name << " = [";
-        for (size_t i = 0; i < vec.size(); ++i) {
-            std::cout << vec[i];
-            if (i + 1 < vec.size()) std::cout << ", ";
-        }
-        std::cout << "]\n";
-    };
-
-    auto print_matrix = [](const std::string& name, const std::vector<std::vector<f64>>& mat) {
-        std::cout << name << " = [\n";
-        for (const auto& row : mat) {
-            std::cout << "  [";
-            for (size_t j = 0; j < row.size(); ++j) {
-                std::cout << row[j];
-                if (j + 1 < row.size()) std::cout << ", ";
-            }
-            std::cout << "],\n";
-        }
-        std::cout << "]\n";
-    };
-
-    print_vector("t", t);
-    print_matrix("x", x);
-    print_matrix("u", u);
-    print_vector("p", p);
+    print_trajectory(t, {
+        {"x", x},
+        {"u", u}
+    }, "p", p);
 }
 
 int Trajectory::to_csv(const std::string& filename) const {
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "[Warning] Failed to open file for writing: " << filename << "\n";
-        return -1;
-    }
-
-    // header
-    file << "time";
-    for (size_t i = 0; i < x.size(); ++i)
-        file << ",x[" << i << "]";
-    for (size_t i = 0; i < u.size(); ++i)
-        file << ",u[" << i << "]";
-    file << "\n";
-
-    size_t num_rows = t.size();
-    file << std::setprecision(16);
-
-    for (size_t k = 0; k < num_rows; ++k) {
-        file << t[k];
-        for (size_t i = 0; i < x.size(); ++i)
-            file << "," << x[i][k];
-        for (size_t i = 0; i < u.size(); ++i)
-            file << "," << u[i][k];
-        file << "\n";
-    }
-
-    file.close();
-
-    return 0;
+    return write_trajectory_csv(filename, t, {
+        {"x", x},
+        {"u", u}
+    }, "p", p);
 }
 
 FixedVector<f64> Trajectory::extract_initial_states() const {
@@ -183,7 +60,7 @@ FixedVector<f64> Trajectory::extract_initial_states() const {
 FixedVector<f64> Trajectory::state_errors_inf_norm(const Trajectory& other) const {
     FixedVector<f64> max_abs_errors(x.size());
 
-    for (size_t x_idx = 0; x_idx < x.size(); ++x_idx) {
+    for (size_t x_idx = 0; x_idx < x.size(); x_idx++) {
         const auto& x_traj_1 = x[x_idx];
         const auto& x_traj_2 = other.x[x_idx];
 
@@ -192,7 +69,7 @@ FixedVector<f64> Trajectory::state_errors_inf_norm(const Trajectory& other) cons
         }
 
         f64* max_err = &max_abs_errors[x_idx];
-        for (size_t t_idx = 0; t_idx < x_traj_1.size(); ++t_idx) {
+        for (size_t t_idx = 0; t_idx < x_traj_1.size(); t_idx++) {
             f64 diff = std::abs(x_traj_1[t_idx] - x_traj_2[t_idx]);
             if (diff > *max_err) {
                 *max_err = diff;
@@ -215,6 +92,8 @@ FixedVector<f64> Trajectory::state_errors(const Trajectory& other, Linalg::Norm 
             throw std::runtime_error("Unknown interpolation method!");
     }
 }
+
+// === Control Trajectory ===
 
 ControlTrajectory Trajectory::copy_extract_controls() const {
     ControlTrajectory controls_copy;
@@ -277,4 +156,207 @@ void ControlTrajectory::interpolate_at(f64 t_query, f64* interpolation_values) c
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
+}
+
+// === Dual Trajectory ===
+
+bool CostateTrajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
+    // For duals, time grid has no t=0. So expect mesh.node_count entries (not +1)
+    return check_time_compatibility(t, {costates_f, costates_g}, mesh, /* include_initial_time */ false);
+}
+
+CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
+    switch (interpolation) {
+        case InterpolationMethod::LINEAR:
+            return interpolate_onto_mesh_linear(mesh, collocation);
+        default:
+            throw std::runtime_error("Unknown interpolation method!");
+    }
+}
+
+CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
+    CostateTrajectory new_dual;
+
+    std::vector<double> new_t;
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            double new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
+            new_t.push_back(new_time);
+        }
+    }
+
+    new_dual.t = new_t;
+    interpolate_linear(t, costates_f, new_t, new_dual.costates_f);
+    interpolate_linear(t, costates_g, new_t, new_dual.costates_g);
+    new_dual.costates_r = costates_r;
+
+    return new_dual;
+}
+
+void CostateTrajectory::print() {
+    print_trajectory(t, {
+        {"costates_f", costates_f},
+        {"costates_g", costates_g}
+    }, "costates_r", costates_r);
+}
+
+int CostateTrajectory::to_csv(const std::string& filename) const {
+    return write_trajectory_csv(filename, t, {
+        {"costates_f", costates_f},
+        {"costates_g", costates_g}
+    }, "costates_r", costates_r);
+}
+
+// === helpers for Dual and standard Trajectory ===
+
+bool check_time_compatibility(
+    const std::vector<double>& t_vec,
+    const std::vector<std::vector<std::vector<double>>>& fields_to_check,
+    const Mesh& mesh,
+    bool include_initial_time // true for Trajectory, false for CostateTrajectory
+) {
+    const double tol = 1e-12;
+
+    int expected_size = mesh.node_count + (include_initial_time ? 1 : 0);
+    if ((int)t_vec.size() != expected_size) {
+        return false;
+    }
+
+    int time_idx = include_initial_time ? 1 : 0;
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            if (std::abs(t_vec[time_idx++] - mesh.t[i][j]) > tol) {
+                return false;
+            }
+        }
+    }
+
+    for (const auto& vect : fields_to_check) {
+        for (const auto& field : vect) {
+            if ((int)field.size() != (int)t_vec.size()) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+void interpolate_linear(
+    const std::vector<double>& t,
+    const std::vector<std::vector<double>>& values,
+    const std::vector<double>& new_t,
+    std::vector<std::vector<double>>& out_values)
+{
+    int fields = int(values.size());
+    out_values.resize(fields);
+    for (int field = 0; field < fields; field++) {
+        out_values[field].resize(new_t.size());
+        for (int i = 0; i < int(new_t.size()); i++) {
+            double t_new = new_t[i];
+            auto it = std::lower_bound(t.begin(), t.end(), t_new);
+
+            if (it == t.begin()) {
+                out_values[field][i] = values[field][0];
+            } else if (it == t.end()) {
+                out_values[field][i] = values[field].back();
+            } else {
+                int idx = std::distance(t.begin(), it);
+                double t1 = t[idx - 1];
+                double t2 = t[idx];
+                double y1 = values[field][idx - 1];
+                double y2 = values[field][idx];
+                out_values[field][i] = y1 + (t_new - t1) * (y2 - y1) / (t2 - t1);
+            }
+        }
+    }
+}
+
+void print_trajectory(
+    const std::vector<f64>& t,
+    const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
+    const std::string& static_name,
+    const std::vector<f64>& static_field)
+{
+    auto print_vector = [](const std::string& name, const std::vector<f64>& vec) {
+        std::cout << name << " = [";
+        for (size_t i = 0; i < vec.size(); ++i) {
+            std::cout << vec[i];
+            if (i + 1 < vec.size()) std::cout << ", ";
+        }
+        std::cout << "]\n";
+    };
+
+    auto print_matrix = [](const std::string& name, const std::vector<std::vector<f64>>& mat) {
+        std::cout << name << " = [\n";
+        for (const auto& row : mat) {
+            std::cout << "  [";
+            for (size_t j = 0; j < row.size(); ++j) {
+                std::cout << row[j];
+                if (j + 1 < row.size()) std::cout << ", ";
+            }
+            std::cout << "],\n";
+        }
+        std::cout << "]\n";
+    };
+
+    print_vector("t", t);
+    for (const auto& [name, mat] : fields) {
+        print_matrix(name, mat);
+    }
+    print_vector(static_name, static_field);
+}
+
+int write_trajectory_csv(
+    const std::string& filename,
+    const std::vector<f64>& t,
+    const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
+    const std::string& static_name,
+    const std::vector<f64>& static_field) // static_field should ideally have only one value or a set of static values
+{
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "[Warning] Failed to open file for writing: " << filename << "\n";
+        return -1;
+    }
+
+    // header
+    file << "time";
+    for (const auto& [name, mat] : fields) {
+        for (size_t i = 0; i < mat.size(); ++i) {
+            file << "," << name << "[" << i << "]";
+        }
+    }
+
+    // static field header(s)
+    for (size_t i = 0; i < static_field.size(); ++i) {
+        file << "," << static_name;
+        if (static_field.size() > 1) {
+            file << "[" << i << "]";
+        }
+    }
+    file << "\n";
+
+    file << std::setprecision(16);
+
+    for (size_t k = 0; k < t.size(); ++k) {
+        file << t[k];
+        for (const auto& [_, mat] : fields) {
+            for (const auto& series : mat) {
+                if (k < series.size()) {
+                    file << "," << series[k];
+                } else {
+                    file << ",";
+                }
+            }
+        }
+
+        for (size_t i = 0; i < static_field.size(); ++i) {
+            file << "," << static_field[i];
+        }
+        file << "\n";
+    }
+
+    file.close();
+    return 0;
 }

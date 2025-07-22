@@ -15,6 +15,17 @@ void GDOP::init() {
     init_hessian();
 }
 
+void GDOP::reinit(Mesh&& new_mesh) {
+    // update mesh from rvalue
+    mesh.move_from(std::move(new_mesh));
+
+    // init the GDOP for with new mesh sizes
+    init();
+
+    // update the callback buffers with the new mesh sizes
+    problem.resize_buffers();
+}
+
 void GDOP::create_acc_offset_xu(int off_x, int off_xu) {
     off_acc_xu = FixedField<int, 2>(mesh.intervals);
     int off = off_x;
@@ -117,35 +128,35 @@ void GDOP::init_bounds() {
 }
 
 void GDOP::set_initial_guess(std::unique_ptr<Trajectory> initial_trajectory) {
-    initial_guess = std::move(initial_trajectory);
+    initial_guess_primals = std::move(initial_trajectory);
 }
 
 void GDOP::init_starting_point() {
-    assert(initial_guess);
+    assert(initial_guess_primals);
 
     // interpolate to mesh if not compatible
-    if (!initial_guess->compatible_with_mesh(mesh, collocation)) {
-        initial_guess = std::make_unique<Trajectory>(initial_guess->interpolate_onto_mesh(mesh, collocation));
+    if (!initial_guess_primals->compatible_with_mesh(mesh, collocation)) {
+        initial_guess_primals = std::make_unique<Trajectory>(initial_guess_primals->interpolate_onto_mesh(mesh, collocation));
     }
 
     for (int x_index = 0; x_index < off_x; x_index++) {
-        init_x[x_index] = initial_guess->x[x_index][0];
+        init_x[x_index] = initial_guess_primals->x[x_index][0];
     }
 
     int index = 1;
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
-                init_x[off_acc_xu[i][j] + x_index] = initial_guess->x[x_index][index];
+                init_x[off_acc_xu[i][j] + x_index] = initial_guess_primals->x[x_index][index];
             }
             for (int u_index = 0; u_index < off_u; u_index++) {
-                init_x[off_acc_xu[i][j] + off_x + u_index] = initial_guess->u[u_index][index];
+                init_x[off_acc_xu[i][j] + off_x + u_index] = initial_guess_primals->u[u_index][index];
             }
             index++;
         }
     }
     for (int p_index = 0; p_index < off_p; p_index++) {
-        init_x[off_xu_total + p_index] = initial_guess->p[p_index];
+        init_x[off_xu_total + p_index] = initial_guess_primals->p[p_index];
     }
 }
 
@@ -869,43 +880,103 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
     }
 }
 
-void GDOP::finalize_solution() {
-    optimal_solution = std::make_unique<Trajectory>();
+void GDOP::finalize_optimal_primals() {
+    optimal_primals = std::make_unique<Trajectory>();
 
-    optimal_solution->t.reserve(mesh.node_count + 1);
-    optimal_solution->x.resize(off_x);
-    optimal_solution->u.resize(off_u);
+    optimal_primals->t.reserve(mesh.node_count + 1);
+    optimal_primals->x.resize(off_x);
+    optimal_primals->u.resize(off_u);
 
     // TODO: add parameters to result trajectory
-    optimal_solution->p.reserve(off_p);
+    optimal_primals->p.reserve(off_p);
 
-    for (auto& v : optimal_solution->x) { v.reserve(mesh.node_count + 1); }
-    for (auto& v : optimal_solution->u) { v.reserve(mesh.node_count + 1); }
+    for (auto& v : optimal_primals->x) { v.reserve(mesh.node_count + 1); }
+    for (auto& v : optimal_primals->u) { v.reserve(mesh.node_count + 1); }
 
     for (int x_index = 0; x_index < off_x; x_index++) {
-        optimal_solution->x[x_index].push_back(curr_x[x_index]);
+        optimal_primals->x[x_index].push_back(curr_x[x_index]);
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
         f64 u0 = collocation.interpolate(mesh.nodes[0], false, &curr_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
-        optimal_solution->u[u_index].push_back(u0);
+        optimal_primals->u[u_index].push_back(u0);
     }
 
-    optimal_solution->t.push_back(0.0);
+    optimal_primals->t.push_back(0.0);
 
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
-                optimal_solution->x[x_index].push_back(curr_x[off_acc_xu[i][j] + x_index]);
+                optimal_primals->x[x_index].push_back(curr_x[off_acc_xu[i][j] + x_index]);
             }
 
             for (int u_index = 0; u_index < off_u; u_index++) {
-                optimal_solution->u[u_index].push_back(curr_x[off_acc_xu[i][j] + off_x + u_index]);
+                optimal_primals->u[u_index].push_back(curr_x[off_acc_xu[i][j] + off_x + u_index]);
             }
 
-            optimal_solution->t.push_back(mesh.t[i][j]);
+            optimal_primals->t.push_back(mesh.t[i][j]);
         }
     }
+}
+
+void GDOP::transform_duals_costates(FixedVector<f64>& lambda, bool to_costate) {
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
+                if (to_costate) {
+                    // NLP dual lambda -> costate lambda
+                    lambda[off_acc_fg[i][j] + f_index] /= -collocation.b[mesh.nodes[i]][j];
+                }
+                else {
+                    // costate lambda -> NLP dual lambda
+                    lambda[off_acc_fg[i][j] + f_index] *= -collocation.b[mesh.nodes[i]][j];
+                }
+            }
+        }
+    }
+}
+
+void GDOP::finalize_optimal_costates() {
+    optimal_costates = std::make_unique<CostateTrajectory>();
+
+    const int f_size = problem.full->f_size;
+    const int g_size = problem.full->g_size;
+
+    // transform curr_lambda from NLP duals -> costates
+    transform_duals_costates(curr_lambda, true);
+
+    optimal_costates->t.reserve(mesh.node_count);
+    optimal_costates->costates_f.resize(f_size);
+    optimal_costates->costates_g.resize(g_size);
+
+    for (auto& v : optimal_costates->costates_f) { v.reserve(mesh.node_count); }
+    for (auto& v : optimal_costates->costates_g) { v.reserve(mesh.node_count); }
+
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            for (int f_index = 0; f_index < f_size; f_index++) {
+                optimal_costates->costates_f[f_index].push_back(curr_lambda[off_acc_fg[i][j] + f_index]);
+            }
+
+            for (int g_index = 0; g_index < g_size; g_index++) {
+                optimal_costates->costates_g[g_index].push_back(curr_lambda[off_acc_fg[i][j] + f_size + g_index]);
+            }
+
+            optimal_costates->t.push_back(mesh.t[i][j]);
+        }
+    }
+
+    optimal_costates->costates_r.reserve(problem.boundary->r_size);
+
+    for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
+        optimal_costates->costates_r[r_index] = curr_lambda[off_fg_total + r_index];
+    }
+}
+
+void GDOP::finalize_solution() {
+    finalize_optimal_primals();
+    finalize_optimal_costates();
+    optimal_costates->to_csv("duals.csv");
 }
 
 } // namespace GDOP

@@ -98,8 +98,9 @@ void IpoptAdapter::finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
                                      const Ipopt::Number* z_U, Ipopt::Index m, const Ipopt::Number* g, const Ipopt::Number* lambda,
                                      Ipopt::Number obj_value, const Ipopt::IpoptData* ip_data, Ipopt::IpoptCalculatedQuantities* ip_cq) {
     // TODO: to implement, maybe add option for warm start with lambda, ..., then return that also or in struct
-    nlp.update_unscale_curr_x(true, x);
-    nlp.unscale_objective(&obj_value);
+    nlp.update_unscale_curr_x(true, x);            // unscaled optimal x
+    nlp.update_unscale_curr_lambda(true, lambda);  // unscaled optimal duals
+    nlp.unscale_objective(&obj_value);             // unscaled optimal objective
     nlp.finalize_solution();
 };
 
