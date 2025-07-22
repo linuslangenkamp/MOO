@@ -80,15 +80,15 @@ public:
     void init_sizes_offsets();
     void init_buffers();
     void init_bounds();
-
-    void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
-    void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
     void init_starting_point();
-
     void init_jacobian();
     void init_jacobian_nonzeros();
     void init_jacobian_sparsity_pattern();
     void init_hessian();
+
+    void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
+    void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
+    void transform_duals_costates_bounds(FixedVector<f64>& z_dual, bool to_costate);
 
     void reinit(Mesh&& mesh);
 
@@ -133,6 +133,7 @@ public:
     void finalize_solution();
     std::unique_ptr<Trajectory> finalize_optimal_primals();
     std::unique_ptr<CostateTrajectory> finalize_optimal_costates();
+    std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> finalize_optimal_bound_duals();
 };
 
 } // namespace GDOP

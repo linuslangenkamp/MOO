@@ -59,6 +59,8 @@ struct Trajectory {
     // compare with other trajectory
     FixedVector<f64> state_errors(const Trajectory& other, Linalg::Norm norm) const;
     FixedVector<f64> state_errors_inf_norm(const Trajectory& other) const;
+    FixedVector<f64> state_errors_2_norm(const Trajectory& other) const;
+    FixedVector<f64> state_errors_1_norm(const Trajectory& other) const;
 
     // dumps
     void print();
@@ -101,36 +103,54 @@ struct CostateTrajectory {
 };
 
 struct PrimalDualTrajectory {
-    std::unique_ptr<Trajectory> primals;
-    std::unique_ptr<CostateTrajectory> costates;
+    std::unique_ptr<Trajectory> primals;          // unscaled primal variables: x
+    std::unique_ptr<CostateTrajectory> costates;  // transformed constraint multipliers / costates: \hat{lambda_g}
+    std::unique_ptr<Trajectory> lower_costates;   // transformed (lb) variable bound multipliers / costates: \hat{x_L}
+    std::unique_ptr<Trajectory> upper_costates;   // transformed (ub) variable bound multipliers / costates: \hat{x_U}
+
+    // full constructor
+    PrimalDualTrajectory(std::unique_ptr<Trajectory> primals_,
+                         std::unique_ptr<CostateTrajectory> costates_,
+                         std::unique_ptr<Trajectory> lower_costates_,
+                         std::unique_ptr<Trajectory> upper_costates_)
+        : primals(std::move(primals_)),
+          costates(std::move(costates_)),
+          lower_costates(std::move(lower_costates_)),
+          upper_costates(std::move(upper_costates_)) {}
 
     // primals + costates constructor
     PrimalDualTrajectory(std::unique_ptr<Trajectory> primals_,
                          std::unique_ptr<CostateTrajectory> costates_)
-        : primals(std::move(primals_)), costates(std::move(costates_)) {}
+        : primals(std::move(primals_)),
+          costates(std::move(costates_)),
+          lower_costates(nullptr),
+          upper_costates(nullptr) {}
 
     // primals only constructor
     PrimalDualTrajectory(std::unique_ptr<Trajectory> primals_)
-        : primals(std::move(primals_)), costates(nullptr) {}
+        : primals(std::move(primals_)),
+          costates(nullptr),
+          lower_costates(nullptr),
+          upper_costates(nullptr) {}
 };
 
 // === shared helpers for Trajectory and CostateTrajectory ===
 
 void interpolate_linear_single(
-    const std::vector<double>& t,
-    const std::vector<double>& values,
-    const std::vector<double>& new_t,
-    std::vector<double>& out_values);
+    const std::vector<f64>& t,
+    const std::vector<f64>& values,
+    const std::vector<f64>& new_t,
+    std::vector<f64>& out_values);
 
 void interpolate_linear_multiple(
-    const std::vector<double>& t,
-    const std::vector<std::vector<double>>& values,
-    const std::vector<double>& new_t,
-    std::vector<std::vector<double>>& out_values);
+    const std::vector<f64>& t,
+    const std::vector<std::vector<f64>>& values,
+    const std::vector<f64>& new_t,
+    std::vector<std::vector<f64>>& out_values);
 
 bool check_time_compatibility(
-    const std::vector<double>& t_vec,
-    const std::vector<std::vector<std::vector<double>>>& fields_to_check,
+    const std::vector<f64>& t_vec,
+    const std::vector<std::vector<std::vector<f64>>>& fields_to_check,
     const Mesh& mesh,
     bool include_initial_time /* true for Trajectory, false for CostateTrajectory */);
 

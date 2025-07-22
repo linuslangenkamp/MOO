@@ -101,6 +101,7 @@ void IpoptAdapter::finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
     nlp.update_unscale_curr_x(true, x);            // unscaled optimal x
     nlp.update_unscale_curr_lambda(true, lambda);  // unscaled optimal duals
     nlp.unscale_objective(&obj_value);             // unscaled optimal objective
+    nlp.update_unscale_dual_bounds(z_L, z_U);      // unscaled optimal dual bound multipliers
     nlp.finalize_solution();
 };
 

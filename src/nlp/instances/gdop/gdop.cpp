@@ -68,6 +68,8 @@ void GDOP::init_buffers() {
     curr_grad   = FixedVector<f64>(number_vars);
     x_lb        = FixedVector<f64>(number_vars);
     x_ub        = FixedVector<f64>(number_vars);
+    z_lb        = FixedVector<f64>(number_vars);
+    z_ub        = FixedVector<f64>(number_vars);
     curr_lambda = FixedVector<f64>(number_constraints);
     curr_g      = FixedVector<f64>(number_constraints);
     g_lb        = FixedVector<f64>(number_constraints);
@@ -987,11 +989,91 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
     return optimal_costates;
 }
 
+// TODO: Why only u_lb, u_ub here? TODO: finish the reinit! => paper stuff
+void GDOP::transform_duals_costates_bounds(FixedVector<f64>& z_dual, bool to_costate) {
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            for (int u_index = 0; u_index < off_u; u_index++) {
+                if (to_costate) {
+                    // NLP dual lambda -> costates lambda
+                    z_dual[off_acc_xu[i][j] + off_x + u_index] /= -collocation.b[mesh.nodes[i]][j];
+                }
+                else {
+                    // costates lambda -> NLP dual lambda
+                    z_dual[off_acc_xu[i][j] + off_x + u_index] *= -collocation.b[mesh.nodes[i]][j];
+                }
+            }
+        }
+    }
+}
+
+std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finalize_optimal_bound_duals() {
+    auto optimal_bound_duals = std::make_pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>>(
+        std::make_unique<Trajectory>(),
+        std::make_unique<Trajectory>()
+    );
+
+    // transform z_lb, z_ub from NLP bound duals -> costates
+    transform_duals_costates_bounds(z_lb, true);
+    transform_duals_costates_bounds(z_ub, true);
+
+    auto& lower_traj = *(optimal_bound_duals.first);
+    auto& upper_traj = *(optimal_bound_duals.second);
+
+    std::vector<Trajectory*> bound_trajs = { &lower_traj, &upper_traj };
+    std::vector<FixedVector<f64>*> bound_vals = { &z_lb, &z_ub };
+
+    for (short bound_idx = 0; bound_idx < 2; bound_idx++) {
+        Trajectory& traj         = *bound_trajs[bound_idx];
+        FixedVector<f64>& z_dual = *bound_vals[bound_idx];
+
+        traj.t.reserve(mesh.node_count + 1);
+        traj.x.resize(off_x);
+        traj.u.resize(off_u);
+        traj.p.reserve(off_p); // TODO: add parameters to result trajectory
+
+        for (auto& v : traj.x) { v.reserve(mesh.node_count + 1); }
+        for (auto& v : traj.u) { v.reserve(mesh.node_count + 1); }
+
+        for (int x_index = 0; x_index < off_x; x_index++) {
+            traj.x[x_index].push_back(z_dual[x_index]);
+        }
+
+        for (int u_index = 0; u_index < off_u; u_index++) {
+            f64 u0 = collocation.interpolate(mesh.nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+            traj.u[u_index].push_back(u0);
+        }
+
+        traj.t.push_back(0.0);
+
+        for (int i = 0; i < mesh.intervals; i++) {
+            for (int j = 0; j < mesh.nodes[i]; j++) {
+                for (int x_index = 0; x_index < off_x; x_index++) {
+                    traj.x[x_index].push_back(z_dual[off_acc_xu[i][j] + x_index]);
+                }
+
+                for (int u_index = 0; u_index < off_u; u_index++) {
+                    traj.u[u_index].push_back(z_dual[off_acc_xu[i][j] + off_x + u_index]);
+                }
+
+                traj.t.push_back(mesh.t[i][j]);
+            }
+        }
+    }
+
+    return optimal_bound_duals;
+}
+
 void GDOP::finalize_solution() {
-    auto optimal_primals  = finalize_optimal_primals();
-    auto optimal_costates = finalize_optimal_costates();
-    optimal_solution = std::make_unique<PrimalDualTrajectory>(std::move(optimal_primals), std::move(optimal_costates));
-    optimal_solution->costates->to_csv("costates.csv");
+    auto optimal_primals     = finalize_optimal_primals();
+    auto optimal_costates    = finalize_optimal_costates();
+    auto optimal_lu_costates = finalize_optimal_bound_duals();
+    optimal_solution         = std::make_unique<PrimalDualTrajectory>(std::move(optimal_primals),
+                                                                      std::move(optimal_costates),
+                                                                      std::move(optimal_lu_costates.first),
+                                                                      std::move(optimal_lu_costates.second));
+    optimal_solution->lower_costates->to_csv("lower_costates.csv");
+    optimal_solution->upper_costates->to_csv("upper_costates.csv");
 }
 
 } // namespace GDOP

@@ -321,20 +321,20 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
 GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     GDOP::Strategies strategies;
 
-    auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
-    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, S_IDA));
-    auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
-    auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(
-                                                  GDOP::SimulationInitialization(const_initialization_strategy, simulation_strategy));
-    auto emitter                            = std::make_shared<MatEmitter>(MatEmitter(info));
-
     // TODO: do proper tolerances here
     FixedVector<f64> verifier_tolerances(info.x_size);
     for (int idx = 0; idx < info.x_size; idx++) { verifier_tolerances[idx] = 1e-4; }
-    auto verifier                           = std::make_shared<GDOP::SimulationVerifier>(
-                                                  GDOP::SimulationVerifier(simulation_strategy, Linalg::Norm::NORM_INF, std::move(verifier_tolerances)));
 
     auto scaling_factory                    = std::make_shared<NominalScalingFactory>(info);
+    auto emitter                            = std::make_shared<MatEmitter>(MatEmitter(info));
+    auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
+    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, solver));
+    auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
+    auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(GDOP::SimulationInitialization(const_initialization_strategy,
+                                                                                                                              simulation_strategy));
+    auto verifier = std::make_shared<GDOP::SimulationVerifier>(GDOP::SimulationVerifier(simulation_strategy,
+                                                                                        Linalg::Norm::NORM_INF,
+                                                                                        std::move(verifier_tolerances)));
 
     strategies.initialization  = simulation_initialization_strategy;
     strategies.simulation      = simulation_strategy;

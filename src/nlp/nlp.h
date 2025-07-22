@@ -42,6 +42,10 @@ public:
     FixedVector<f64> x_lb; // lower bounds on NLP variables
     FixedVector<f64> x_ub; // upper bounds on NLP variables
 
+    // optimal dual multipliers (set after finalize)
+    FixedVector<f64> z_lb; // dual multipliers of lower bounds on NLP variables
+    FixedVector<f64> z_ub; // dual multipliers of upper bounds on NLP variables
+
     // nlp function data
     f64 curr_obj;               // current NLP objective value
     FixedVector<f64> curr_grad; // current NLP gradient of the objective function
@@ -70,6 +74,11 @@ public:
     virtual void eval_jac_g(bool new_x) = 0;                // fill curr_jac
     virtual void eval_hes(bool new_x, bool new_lambda) = 0; // fill curr_hes
     virtual void finalize_solution() = 0;                   // finalize the solution
+
+    inline void update_unscale_dual_bounds(const f64* z_L, const f64* z_U) {
+        scaling->unscale_x(z_L, z_lb.raw(), number_vars);
+        scaling->unscale_x(z_U, z_ub.raw(), number_vars);
+    }
 
     inline void update_unscale_curr_x(bool new_x, const f64* x) {
         if (new_x) scaling->unscale_x(x, curr_x.raw(), number_vars);

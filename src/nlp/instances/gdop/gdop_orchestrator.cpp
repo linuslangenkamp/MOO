@@ -51,6 +51,8 @@ void MeshRefinementOrchestrator::optimize() {
 
     // emit optimal solution, maybe set verify only here
     strategies->emit(*gdop.optimal_solution->primals);
+
+    gdop.optimal_solution->costates->to_csv("costates.csv");
 }
 
 } // namespace GDOP

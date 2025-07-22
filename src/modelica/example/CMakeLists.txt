@@ -27,7 +27,7 @@ target_link_directories(include_test_cmk PRIVATE
 )
 
 target_link_libraries(include_test_cmk PRIVATE
-  optimization
+  MOO
   SimulationRuntimeC
   OpenModelicaRuntimeC
   omcgc

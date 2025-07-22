@@ -80,6 +80,49 @@ FixedVector<f64> Trajectory::state_errors_inf_norm(const Trajectory& other) cons
     return max_abs_errors;
 }
 
+FixedVector<f64> Trajectory::state_errors_2_norm(const Trajectory& other) const {
+    FixedVector<f64> norm_errors(x.size());
+
+    for (size_t x_idx = 0; x_idx < x.size(); x_idx++) {
+        const auto& x_traj_1 = x[x_idx];
+        const auto& x_traj_2 = other.x[x_idx];
+
+        if (x_traj_1.size() != x_traj_2.size()) {
+            throw std::runtime_error("State trajectory length mismatch in Trajectory::state_errors_2_norm.");
+        }
+
+        f64 sum_sq_diff = 0.0;
+        for (size_t t_idx = 0; t_idx < x_traj_1.size(); t_idx++) {
+            f64 diff = x_traj_1[t_idx] - x_traj_2[t_idx];
+            sum_sq_diff += diff * diff;
+        }
+        norm_errors[x_idx] = std::sqrt(sum_sq_diff);
+    }
+
+    return norm_errors;
+}
+
+FixedVector<f64> Trajectory::state_errors_1_norm(const Trajectory& other) const {
+    FixedVector<f64> norm_errors(x.size());
+
+    for (size_t x_idx = 0; x_idx < x.size(); x_idx++) {
+        const auto& x_traj_1 = x[x_idx];
+        const auto& x_traj_2 = other.x[x_idx];
+
+        if (x_traj_1.size() != x_traj_2.size()) {
+            throw std::runtime_error("State trajectory length mismatch in Trajectory::state_errors_2_norm.");
+        }
+
+        f64 sum_abs_diff = 0.0;
+        for (size_t t_idx = 0; t_idx < x_traj_1.size(); t_idx++) {
+            sum_abs_diff += std::abs(x_traj_1[t_idx] - x_traj_2[t_idx]);
+        }
+        norm_errors[x_idx] = sum_abs_diff;
+    }
+
+    return norm_errors;
+}
+
 FixedVector<f64> Trajectory::state_errors(const Trajectory& other, Linalg::Norm norm) const {
     if (this->t.size() != other.t.size()) {
         throw std::runtime_error("Time vector size mismatch in Trajectory::state_errors.");
@@ -88,6 +131,10 @@ FixedVector<f64> Trajectory::state_errors(const Trajectory& other, Linalg::Norm 
     switch (norm) {
         case Linalg::Norm::NORM_INF:
             return state_errors_inf_norm(other);
+        case Linalg::Norm::NORM_2:
+            return state_errors_2_norm(other);
+        case Linalg::Norm::NORM_1:
+            return state_errors_1_norm(other);
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
@@ -243,15 +290,15 @@ bool check_time_compatibility(
 }
 
 void interpolate_linear_single(
-    const std::vector<double>& old_t,
-    const std::vector<double>& values,
-    const std::vector<double>& new_t,
-    std::vector<double>& out_values)
+    const std::vector<f64>& old_t,
+    const std::vector<f64>& values,
+    const std::vector<f64>& new_t,
+    std::vector<f64>& out_values)
 {
     out_values.resize(new_t.size());
 
     for (int i = 0; i < int(new_t.size()); i++) {
-        double t_new = new_t[i];
+        f64 t_new = new_t[i];
         auto it = std::lower_bound(old_t.begin(), old_t.end(), t_new);
 
         if (it == old_t.begin()) {
@@ -260,10 +307,10 @@ void interpolate_linear_single(
             out_values[i] = values.back();
         } else {
             int idx = std::distance(old_t.begin(), it);
-            double t1 = old_t[idx - 1];
-            double t2 = old_t[idx];
-            double y1 = values[idx - 1];
-            double y2 = values[idx];
+            f64 t1 = old_t[idx - 1];
+            f64 t2 = old_t[idx];
+            f64 y1 = values[idx - 1];
+            f64 y2 = values[idx];
             out_values[i] = y1 + (t_new - t1) * (y2 - y1) / (t2 - t1);
         }
     }

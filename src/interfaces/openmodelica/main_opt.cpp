@@ -21,11 +21,11 @@ using namespace OpenModelica;
 
 /* entry point to the optimization runtime from OpenModelica generated code
  * this dir, i.e. interfaces/openmodelica, defines the glue code (Mesh, Problem, Flags, CallSimulation) between the runtime and the simulation code */
-int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
-    LOG_PREFIX('*', "Entry point [OPT] - _main_OptimitationRuntime\n");
+int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
+    LOG_PREFIX('*', "Entry point [OPT] - _main_OptimizationRuntime\n");
 
     // disable omc logs
-    memset(omc_useStream, 0, OMC_SIM_LOG_MAX * sizeof(int));
+    //memset(omc_useStream, 0, OMC_SIM_LOG_MAX * sizeof(int));
 
     /* create info struct <-> same purpose as DATA* in OpenModelica */
     auto info = InfoGDOP(data, threadData, argc, argv);
@@ -37,7 +37,7 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto problem = create_gdop(info, mesh, collocation);
 
     // auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());
-    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_GBODE));
+    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_IDA));
     auto gdop = GDOP::GDOP(problem, collocation, mesh);
 
     IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
@@ -46,9 +46,5 @@ int _main_OptimitationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     orchestrator.optimize();
 
-    /*
-    gdop.mesh = mesh;
-    gdop.problem.resize_buffers();
-    ipopt_solver.optimize();*/
     return 0;
 }

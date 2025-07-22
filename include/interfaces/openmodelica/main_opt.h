@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-int _main_OptimitationRuntime(int argc, char**argv, DATA *data, threadData_t *threadData);
+int _main_OptimizationRuntime(int argc, char**argv, DATA *data, threadData_t *threadData);
 
 #ifdef __cplusplus
 };

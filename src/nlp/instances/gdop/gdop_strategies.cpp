@@ -82,7 +82,7 @@ std::unique_ptr<PrimalDualTrajectory> DefaultConstantInitialization::operator()(
             x_guess[x] = { *xf_opt, *xf_opt };
         } else {
             // nothing fixed: use midpoint of bounds or zero if unbounded
-            double val = 0.0;
+            f64 val = 0.0;
             if (problem.x_bounds[x].has_lower() && problem.x_bounds[x].has_upper()) {
                 val = 0.5 * (problem.x_bounds[x].lb + problem.x_bounds[x].ub);
             }
@@ -92,7 +92,7 @@ std::unique_ptr<PrimalDualTrajectory> DefaultConstantInitialization::operator()(
 
     // fill control guesses: use midpoint of bounds or zero
     for (size_t u = 0; u < u_size; u++) {
-        double val = 0.0;
+        f64 val = 0.0;
         if (problem.u_bounds[u].has_lower() && problem.u_bounds[u].has_upper()) {
             val = 0.5 * (problem.u_bounds[u].lb + problem.u_bounds[u].ub);
         }
@@ -101,7 +101,7 @@ std::unique_ptr<PrimalDualTrajectory> DefaultConstantInitialization::operator()(
 
     // fill parameter guesses: use midpoint of bounds or zero
     for (size_t p = 0; p < p_size; p++) {
-        double val = 0.0;
+        f64 val = 0.0;
         if (problem.p_bounds[p].has_lower() && problem.p_bounds[p].has_upper()) {
             val = 0.5 * (problem.p_bounds[p].lb + problem.p_bounds[p].ub);
         }
@@ -177,13 +177,13 @@ SimulationVerifier::SimulationVerifier(std::shared_ptr<Simulation> simulation,
 
 bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
     auto& trajectory_primal = trajectory.primals;
+
     auto extracted_controls = trajectory_primal->copy_extract_controls();   // extract controls from the trajectory
     auto exctracted_x0      = trajectory_primal->extract_initial_states();  // extract x(t_0) from the trajectory
 
     // perform simulation using the controls, gdop config and a high number of nodes
     int  high_node_count    = 10 * gdop.mesh.node_count;
 
-    // TODO: we must be able to set the mesh / grid ourselves, as we know where to increase resolution? Ask how to achieve that!
     auto simulation_result  = (*simulation)(extracted_controls, high_node_count,
                                             0.0, gdop.mesh.tf, exctracted_x0.raw());
 
@@ -289,7 +289,7 @@ std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
 void L2BoundaryNorm::reinit(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
-    max_phase_one_iterations = 0;
+    max_phase_one_iterations = 3;
     max_phase_two_iterations = 3;
 
     // on-interval
@@ -401,7 +401,7 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
                     f64 ERR_1 = std::abs(p1_i1 - p_boundary_1_last_end) / (1.0 + std::min(std::abs(p1_i1), std::abs(p_boundary_1_last_end)));
                     f64 ERR_2 = std::abs(p2_i1 - p_boundary_2_last_end) / (1.0 + std::min(std::abs(p2_i1), std::abs(p_boundary_2_last_end)));
 
-                    if (ERR_1 > CTOL_1[u_idx] || ERR_2 > CTOL_2[u_idx]) {
+                    if ((i > 0) && (ERR_1 > CTOL_1[u_idx] || ERR_2 > CTOL_2[u_idx])) {
                         terminated = false;
 
                         // insert this / center midpoint + left / previous midpoint
