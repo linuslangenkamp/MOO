@@ -9,6 +9,7 @@
 enum class InterpolationMethod {
     LINEAR = 0
 };
+// TODO: refactor this interpolation garbage with an interpolator that optionally holds a t already -> only copy!
 
 struct ControlTrajectory {
     std::vector<f64> t;                       // time grid, monotonic increasing

@@ -4,8 +4,6 @@
 
 namespace GDOP {
 
-// TODO: make a concept how to and when to init what, how does the reinit work?
-// How does mesh refinement work? How do initial guesses work (including lambda interpolation!)? What is the Orchestrator structure?
 
 void GDOP::init() {
     init_sizes_offsets();
@@ -15,7 +13,7 @@ void GDOP::init() {
     init_hessian();
 }
 
-void GDOP::reinit(Mesh&& new_mesh) {
+void GDOP::update(Mesh&& new_mesh) {
     // update mesh from rvalue
     mesh.move_from(std::move(new_mesh));
 
@@ -1089,7 +1087,6 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
     return optimal_costates;
 }
 
-// TODO: Do we need this? TODO: finish the reinit! => paper stuff
 
 /**
  * @brief Transforms dual multipliers for variable bounds to their continuous-time costate equivalents, or vice-versa.

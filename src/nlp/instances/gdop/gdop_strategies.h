@@ -22,11 +22,11 @@ namespace GDOP {
 
 class GDOP;
 
+
 /**
  * @brief Strategy for initializing the GDOP.
  *
  * This strategy is responsible for creating an initial guess for the variables.
- * It is used by the optimizer before the first iteration to set the initial point.
  *
  * Implementations may use bounds, analytical guesses, or results of simulation.
  *
@@ -38,9 +38,29 @@ public:
     virtual std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP& gdop) = 0; 
 };
 
-
-// reinit:  auto detect(const Mesh& mesh_old, const Mesh& mesh_new, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
-
+/**
+ * @brief Strategy for re-initializing the GDOP.
+ *
+ * This strategy is responsible for creating an initial guess for the variables,
+ * based on an already existing trajectory, that is optimal on old_mesh.
+ *
+ * Implementations may:
+ * - interpolate the provided solution in some clever way onto new_mesh.
+ * - leave lower, upper and standard costates as nullptr, so only the old x is used.
+ *
+ * @param old_mesh Old Mesh of the GDOP
+ * @param new_mesh New Mesh of the GDOP (interpolate onto this)
+ * @param collocation Given Collocation scheme
+ * @param trajectory Optimal trajectory on old_mesh
+ * @return A unique_ptr to a PrimalDualTrajectory object representing the new, interpolated guess.
+ */
+class RefinedInitialization {
+public:
+    virtual std::unique_ptr<PrimalDualTrajectory> operator()(const Mesh& old_mesh,
+                                                             const Mesh& new_mesh,
+                                                             const Collocation& collocation,
+                                                             const PrimalDualTrajectory& trajectory) = 0; 
+};
 
 /**
  * @brief Strategy for simulating the full system over the entire time horizon.
@@ -78,7 +98,7 @@ public:
  */
 class MeshRefinement {
 public:
-    virtual void reinit(const GDOP& gdop) = 0;
+    virtual void reset(const GDOP& gdop) = 0;
     virtual std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh,
                                                    const Collocation& collocation,
                                                    const PrimalDualTrajectory& trajectory) = 0;
@@ -159,7 +179,7 @@ public:
 
 class DefaultNoMeshRefinement : public MeshRefinement {
 public:
-    void reinit(const GDOP& gdop) override;
+    void reset(const GDOP& gdop) override;
     std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
 };
 
@@ -170,6 +190,24 @@ public:
                                 const Collocation& collocation,
                                 const std::vector<f64>& values,
                                 bool contains_zero) override;
+};
+
+class DefaultInterpolationRefinedInitialization : public RefinedInitialization {
+public:
+    std::shared_ptr<Interpolation> interpolation;
+    bool interpolate_primals;
+    bool interpolate_costates_constraints;
+    bool interpolate_costates_bounds;
+
+    DefaultInterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
+                                              bool interpolate_primals_,
+                                              bool interpolate_costates_constraints_,
+                                              bool interpolate_costates_bounds_);
+
+    std::unique_ptr<PrimalDualTrajectory> operator()(const Mesh& old_mesh,
+                                                     const Mesh& new_mesh,
+                                                     const Collocation& collocation,
+                                                     const PrimalDualTrajectory& trajectory) override;
 };
 
 class DefaultNoEmitter : public Emitter {
@@ -233,7 +271,7 @@ public:
     FixedVector<f64> CTOL_1;
     FixedVector<f64> CTOL_2;
 
-    void reinit(const GDOP& gdop) override;
+    void reset(const GDOP& gdop) override;
 
     std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
 };
@@ -274,19 +312,24 @@ public:
  */
 class Strategies {
 public:
-    std::shared_ptr<Initialization> initialization;
-    std::shared_ptr<Simulation>     simulation;
-    std::shared_ptr<SimulationStep> simulation_step;
-    std::shared_ptr<MeshRefinement> mesh_refinement;
-    std::shared_ptr<Interpolation>  interpolation;
-    std::shared_ptr<Emitter>        emitter;
-    std::shared_ptr<Verifier>       verifier;
-    std::shared_ptr<ScalingFactory> scaling_factory;
+    std::shared_ptr<Initialization>        initialization;
+    std::shared_ptr<RefinedInitialization> refined_initialization;
+    std::shared_ptr<Simulation>            simulation;
+    std::shared_ptr<SimulationStep>        simulation_step;
+    std::shared_ptr<MeshRefinement>        mesh_refinement;
+    std::shared_ptr<Interpolation>         interpolation;
+    std::shared_ptr<Emitter>               emitter;
+    std::shared_ptr<Verifier>              verifier;
+    std::shared_ptr<ScalingFactory>        scaling_factory;
 
     static Strategies default_strategies();
 
-    auto initialize(const GDOP& gdop) {
+    auto get_initial_guess(const GDOP& gdop) {
         return (*initialization)(gdop);
+    }
+
+    auto get_refined_initial_guess(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+        return (*refined_initialization)(old_mesh, new_mesh, collocation, trajectory);
     }
 
     auto simulate(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
@@ -317,9 +360,9 @@ public:
         return (*scaling_factory)(gdop);
     }
 
-    void reinit(const GDOP& gdop) {
+    void reset(const GDOP& gdop) {
         // add others if we have an internal state that changes during optimization (e.g. mesh refinement iteration count)
-        mesh_refinement->reinit(gdop);
+        mesh_refinement->reset(gdop);
     }
 };
 

@@ -87,7 +87,7 @@ public:
 
     // interfaces for strategies
     void init();
-    void reinit(Mesh&& mesh);
+    void update(Mesh&& mesh);
     void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
 
     /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */

@@ -336,15 +336,16 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
                                                                                         Linalg::Norm::NORM_INF,
                                                                                         std::move(verifier_tolerances)));
 
-    strategies.initialization  = simulation_initialization_strategy;
-    strategies.simulation      = simulation_strategy;
-    strategies.simulation_step = simulation_step_strategy;
-    strategies.mesh_refinement = std::make_shared<GDOP::L2BoundaryNorm>();
-    strategies.interpolation   = std::make_shared<GDOP::PolynomialInterpolation>();
-    strategies.emitter         = emitter;
-    strategies.verifier        = verifier;
-    strategies.scaling_factory = scaling_factory;
-
+    strategies.initialization          = simulation_initialization_strategy;
+    strategies.simulation              = simulation_strategy;
+    strategies.simulation_step         = simulation_step_strategy;
+    strategies.mesh_refinement         = std::make_shared<GDOP::L2BoundaryNorm>();
+    strategies.interpolation           = std::make_shared<GDOP::PolynomialInterpolation>();
+    strategies.emitter                 = emitter;
+    strategies.verifier                = verifier;
+    strategies.scaling_factory         = scaling_factory;
+    strategies.refined_initialization  = std::make_shared<GDOP::DefaultInterpolationRefinedInitialization>(
+                                            GDOP::DefaultInterpolationRefinedInitialization(strategies.interpolation, true, true, true));
     return strategies;
 };
 

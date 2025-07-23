@@ -78,3 +78,21 @@ void Mesh::move_from(Mesh&& other) {
     acc_nodes = std::move(other.acc_nodes);
     node_count = other.node_count;
 }
+
+std::vector<f64> Mesh::get_flat_t(bool with_zero) const {
+    std::vector<f64> flat_t;
+
+    flat_t.reserve(node_count + (with_zero ? 1 : 0));
+
+    if (with_zero) {
+        flat_t.push_back(0.0);
+    }
+
+    for (int i = 0; i < intervals; i++) {
+        for (int j = 0; j < nodes[i]; j++) {
+            flat_t.push_back(t[i][j]);
+        }
+    }
+
+    return flat_t;
+}

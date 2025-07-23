@@ -1,10 +1,10 @@
-  
+
                                           __  __   ___   ___
                                          |  \/  | / _ \ / _ \   MODELICA
                                          | |\/| || | | | | | |     / OPTIMIZER
                                          | |  | || |_| | |_| |    /
                                          |_|  |_| \___/ \___/   🐄 
-                  
+
                   +-------------------------------------------------------------------------+
                   |          External Modeling Environment, e.g., OpenModelica (OM)         |
                   |               (Generates problem, requests optimization)                |
@@ -19,7 +19,7 @@
                   |   - main_opt.cpp (Entry point for OM-generated code)                    |
                   |   - sim_runtime_ext.* (External OM simulation runtime code)             |
                   |   - strategies.* (Special OM strategies / overrides)                    |
-                  +------------------------+------------------------------------------------+
+                  +-------------------------------------------------------------------------+
                                          |
                                          | (Optimization Request & Problem Details)
                                          v
@@ -29,7 +29,7 @@
                   |   |  gdop_orchestrator.* (The Brain for GDOP)                       |   |
                   |   |  - Decides *how* to solve GDOP (flow control, strategy choice)  |   |
                   |   |  - Manages overall optimization process (e.g., mesh refinement) |   |
-                  |   +----+------------------+------------------+---------------------+    |
+                  |   +-----------------------------------------------------------------+   |
                   |        |                  |                  |                          |
                   |        v                  v                  v                          |
                   |   +-------------------+ +----------------------+ +--------------------+ |
@@ -63,4 +63,4 @@
                   |   - linalg.*, mesh.*, trajectory.* (Core mathematical & numerical ops)  |
                   |   - collocation.*, util.h, log.h (Helper utilities)                     |
                   +-------------------------------------------------------------------------+
-  
+

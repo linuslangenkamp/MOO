@@ -20,7 +20,7 @@ std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const ControlTra
 }
 
 // no mesh refinement available
-void DefaultNoMeshRefinement::reinit(const GDOP& gdop) {}
+void DefaultNoMeshRefinement::reset(const GDOP& gdop) {}
 
 std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
     LOG_WARNING("No MeshRefinement strategy set: returning nullptr.");
@@ -120,32 +120,125 @@ std::vector<f64> DefaultLinearInterpolation::operator()(
     const std::vector<f64>& values,
     bool contains_zero)
 {
-    std::vector<f64> old_t;
-    std::vector<f64> new_t;
-
-    old_t.reserve(old_mesh.node_count + (contains_zero ? 1 : 0));
-    new_t.reserve(new_mesh.node_count + (contains_zero ? 1 : 0));
-
-    if (contains_zero) {
-        old_t.push_back(0.0);
-        new_t.push_back(0.0);
-    }
-
-    for (int i = 0; i < old_mesh.intervals; i++) {
-        for (int j = 0; j < old_mesh.nodes[i]; j++) {
-            old_t.push_back(old_mesh.t[i][j]);
-        }
-    }
-
-    for (int i = 0; i < new_mesh.intervals; i++) {
-        for (int j = 0; j < new_mesh.nodes[i]; j++) {
-            new_t.push_back(new_mesh.t[i][j]);
-        }
-    }
+    std::vector<f64> old_t = old_mesh.get_flat_t(contains_zero);
+    std::vector<f64> new_t = new_mesh.get_flat_t(contains_zero);
 
     std::vector<f64> out;
     interpolate_linear_single(old_t, values, new_t, out);
     return out;
+}
+
+// TODO: reduce overhead in interpolation + copies, etc. if necessary
+DefaultInterpolationRefinedInitialization::DefaultInterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
+                                                                                     bool interpolate_primals_,
+                                                                                     bool interpolate_costates_constraints_,
+                                                                                     bool interpolate_costates_bounds_)
+    : interpolation(interpolation_),
+      interpolate_primals(interpolate_primals_),
+      interpolate_costates_constraints(interpolate_costates_constraints_),
+      interpolate_costates_bounds(interpolate_costates_bounds_) {}
+
+// TODO: refactor this. Can we unify the interpolations even further, now we also need to interpolate controls better at callbacks...
+std::unique_ptr<PrimalDualTrajectory> DefaultInterpolationRefinedInitialization::operator()(const Mesh& old_mesh,
+                                                                                            const Mesh& new_mesh,
+                                                                                            const Collocation& collocation,
+                                                                                            const PrimalDualTrajectory& trajectory)
+        {
+    std::unique_ptr<Trajectory> new_primals              = nullptr;
+    std::unique_ptr<CostateTrajectory> new_costates      = nullptr;
+    std::unique_ptr<Trajectory> new_costate_bounds_lower = nullptr;
+    std::unique_ptr<Trajectory> new_costate_bounds_upper = nullptr;
+
+    // === interpolation of primal variables onto new_mesh ===
+    if (interpolate_primals) {
+        auto const& old_primals = trajectory.primals;
+        new_primals = std::make_unique<Trajectory>();
+
+        // copy time grid
+        new_primals->t = new_mesh.get_flat_t(true);
+
+        // interpolate states
+        new_primals->x.resize(old_primals->x.size());
+        for (size_t x_index = 0; x_index < old_primals->x.size(); x_index++) {
+            new_primals->x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->x[x_index], true);
+        }
+
+        // interpolate controls
+        new_primals->u.resize(old_primals->u.size());
+        for (size_t u_index = 0; u_index < old_primals->u.size(); u_index++) {
+            new_primals->u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->u[u_index], true);
+        }
+
+        // copy parameters
+        new_primals->u.resize(old_primals->u.size());
+        for (size_t p_index = 0; p_index < old_primals->p.size(); p_index++) {
+            new_primals->p[p_index] = old_primals->p[p_index];
+        }
+    }
+
+    // === interpolation of duals / costates onto new_mesh ===
+    if (interpolate_costates_constraints) {
+        auto const& old_costates = trajectory.costates;
+        new_costates = std::make_unique<CostateTrajectory>();
+
+        // copy time grid
+        new_costates->t = new_mesh.get_flat_t(true);
+
+        // interpolate lambda_f
+        new_costates->costates_f.resize(old_costates->costates_f.size());
+        for (size_t f_index = 0; f_index < old_costates->costates_f.size(); f_index++) {
+            new_costates->costates_f[f_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_f[f_index], true);
+        }
+
+        // interpolate lambda_g
+        new_costates->costates_g.resize(old_costates->costates_g.size());
+        for (size_t g_index = 0; g_index < old_costates->costates_g.size(); g_index++) {
+            new_costates->costates_g[g_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_g[g_index], true);
+        }
+
+        // copy lambda_r
+        new_costates->costates_r.resize(old_costates->costates_r.size());
+        for (size_t r_index = 0; r_index < old_costates->costates_r.size(); r_index++) {
+            new_costates->costates_r[r_index] = old_costates->costates_r[r_index];
+        }
+    }
+
+    // === interpolation of primal variables onto new_mesh ===
+    if (interpolate_costates_bounds) {
+        new_costate_bounds_lower = std::make_unique<Trajectory>();
+        new_costate_bounds_upper = std::make_unique<Trajectory>();
+
+        std::vector<const Trajectory*> old_duals = { trajectory.lower_costates.get(), trajectory.upper_costates.get() };
+        std::vector<Trajectory*> new_duals = { new_costate_bounds_lower.get(), new_costate_bounds_upper.get() };
+
+        for (short bound_idx = 0; bound_idx < 2; bound_idx++) {
+            const Trajectory& old_dual = *old_duals[bound_idx];
+            Trajectory& new_dual = *new_duals[bound_idx];
+
+            // copy time grid
+            new_dual.t = new_mesh.get_flat_t(true);
+
+            // interpolate state-bound duals
+            new_dual.x.resize(old_dual.x.size());
+            for (size_t x_index = 0; x_index < old_dual.x.size(); x_index++) {
+                new_dual.x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.x[x_index], true);
+            }
+
+            // interpolate control-bound duals
+            new_dual.u.resize(old_dual.u.size());
+            for (size_t u_index = 0; u_index < old_dual.u.size(); u_index++) {
+                new_dual.u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.u[u_index], true);
+            }
+
+            new_dual.p = old_dual.p;
+        }
+
+    }
+
+    return std::make_unique<PrimalDualTrajectory>(std::move(new_primals),
+                                                  std::move(new_costates),
+                                                  std::move(new_costate_bounds_lower),
+                                                  std::move(new_costate_bounds_upper));
 }
 
 // proper simulation-based initialization strategy
@@ -285,8 +378,8 @@ std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
     return new_values;
 }
 
-// L2BoundaryNorm reinit for next call
-void L2BoundaryNorm::reinit(const GDOP& gdop) {
+// L2BoundaryNorm reset for next call
+void L2BoundaryNorm::reset(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
     max_phase_one_iterations = 3;
@@ -445,16 +538,18 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
 
 // default strategy collection
 Strategies Strategies::default_strategies() {
-    Strategies strategy;
-    strategy.initialization  = std::make_shared<DefaultConstantInitialization>();
-    strategy.simulation      = std::make_shared<DefaultNoSimulation>();
-    strategy.simulation_step = std::make_shared<DefaultNoSimulationStep>();
-    strategy.mesh_refinement = std::make_shared<DefaultNoMeshRefinement>();
-    strategy.interpolation   = std::make_shared<DefaultLinearInterpolation>();
-    strategy.emitter         = std::make_shared<DefaultNoEmitter>();
-    strategy.verifier        = std::make_shared<DefaultNoVerifier>();
-    strategy.scaling_factory = std::make_shared<DefaultNoScalingFactory>();
-    return strategy;
+    Strategies strategies;
+    strategies.initialization          = std::make_shared<DefaultConstantInitialization>();
+    strategies.simulation              = std::make_shared<DefaultNoSimulation>();
+    strategies.simulation_step         = std::make_shared<DefaultNoSimulationStep>();
+    strategies.mesh_refinement         = std::make_shared<DefaultNoMeshRefinement>();
+    strategies.interpolation           = std::make_shared<DefaultLinearInterpolation>();
+    strategies.emitter                 = std::make_shared<DefaultNoEmitter>();
+    strategies.verifier                = std::make_shared<DefaultNoVerifier>();
+    strategies.scaling_factory         = std::make_shared<DefaultNoScalingFactory>();
+    strategies.refined_initialization  = std::make_shared<DefaultInterpolationRefinedInitialization>(
+                                            DefaultInterpolationRefinedInitialization(strategies.interpolation, true, true, true));
+    return strategies;
 };
 
 } // namespace GDOP

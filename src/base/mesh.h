@@ -51,7 +51,9 @@ struct Mesh {
 
   static Mesh create_equidistant_fixed_stages(f64 tf, int intervals, int p, Collocation& collocation);
   Mesh(std::unique_ptr<MeshUpdate> mesh_update, Collocation& collocation);
+
   void move_from(Mesh&& other);
+  std::vector<f64> get_flat_t(bool with_zero) const;
 };
 
 #endif  // OPT_MESH_H
