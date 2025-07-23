@@ -93,6 +93,20 @@ end include_test;
 */
 /*
 model include_test
+  Real y(start=2, fixed=true);
+  input Real u(start=1);
+  output Real cost_l = 0.5 * (y + u^2)  annotation(isLagrange=true);
+  Real FINAL(min=0, max=0) = 1 - y annotation(isFinalConstraint=true);
+equation
+  der(y) = 2 * y + 2 * u * y^0.5;
+  annotation(
+    experiment(StartTime = 0, StopTime = 5, Tolerance = 1e-12, Interval = 0.05),
+    __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
+    __OpenModelica_commandLineOptions = "+g=Optimica");
+end include_test;
+*/
+/*
+model include_test
   Real x(start=1, fixed=true);
   input Real u;
   output Real cost_l = 0.5 * (x^2 + u^2)  annotation(isLagrange=true);
@@ -105,13 +119,14 @@ equation
     __OpenModelica_commandLineOptions = "+g=Optimica");
 end include_test;
 */
-/*
+
 model include_test
   parameter Real NOMINAL = 1; // 1e12
   Real y1(start=NOMINAL, fixed=true, nominal=NOMINAL);
   Real y2(start=0, fixed=true, nominal=1/NOMINAL);
   input Real u(min=0, max=5, start=2);
   output Real cost_m = -x2  annotation(isMayer=true);
+  Real path(max = 0.5) = x1 * x2 * time annotation(isConstraint=true);
 protected
   Real x1, x2;
 equation
@@ -124,7 +139,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica");
 end include_test;
-*/
+
 /*
 model include_test
   Real y1(start=1, fixed=true);
@@ -156,7 +171,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", ipopt_init="CONST",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;*/
-
+/*
 model include_test
 
 
@@ -437,3 +452,4 @@ equation
   );
 
 end include_test;
+*/

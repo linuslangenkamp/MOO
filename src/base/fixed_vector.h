@@ -41,8 +41,12 @@ public:
     explicit FixedVector(std::size_t size) : _size{size}, _data{std::make_unique<T[]>(size)} {}
 
     constexpr FixedVector(const FixedVector &other) : FixedVector(other._size) {
-        for (std::size_t i = 0; i < _size; i++) {
-            (*this)[i] = T(other[i]);
+        if constexpr (std::is_trivially_copyable_v<T>) {
+            memcpy(_data.get(), other._data.get(), _size * sizeof(T));
+        } else {
+            for (std::size_t i = 0; i < _size; i++) {
+                (*this)[i] = T(other[i]);
+            }
         }
     }
 

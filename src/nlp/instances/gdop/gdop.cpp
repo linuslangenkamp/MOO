@@ -892,15 +892,66 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
     }
 }
 
+
+// === Optimal Solution Retrieval and Costate Estimations ===
+
+/**
+ * Dual Transformation in Direct Collocation for Dynamic Optimization
+ *
+ * When solving a dynamic optimization problem using direct collocation with flipped Legendre-Gauss-Radau (fLGR)
+ * quadrature, the optimizer returns Karush-Kuhn-Tucker (KKT) multipliers.
+ * These discrete multipliers represent the sensitivity of the objective function to changes in the
+ * constraints at specific collocation points. To obtain **smooth, continuous-time trajectories**, and also
+ * continuous costate estimates, and other dual variables, these discrete multipliers must be transformed.
+ *
+ * IPOPT returns KKT multipliers for:
+ * - **ODE constraints** ($\lambda_f$): Duals associated with the system dynamics.
+ * - **Path constraints** ($\lambda_g$): Duals for inequality constraints that apply over the trajectory.
+ * - **Boundary constraints** ($\lambda_r$): Duals for inequality constraints at the initial/final time.
+ * - **Bound constraints on x, u, p** ($z_{lb}, z_{ub}$): Multipliers for lower and upper bounds on states, controls, and parameters.
+ *
+ * The transformation from discrete NLP multipliers to continuous-time trajectories for each
+ * collocation point $t_{ij}$ with quadrature weight $b_j$ is as follows:
+ *
+ * $\lambda_f(t_{ij})  = -\lambda_{f\_NLP}(t_{ij}) / b_j$     // Dynamics: Requires a sign flip and scaling by the quadrature weight.
+ * $\lambda_g(t_{ij})  = -\lambda_{g\_NLP}(t_{ij}) / b_j$     // Path constraints: Requires scaling by the quadrature weight; sign convention may vary based on problem formulation.
+ * $\zeta_{xu}(t_{ij}) = -z_{NLP}(t_{ij}) / b_j$              // Bound multipliers ($\zeta$): Requires scaling by the quadrature weight; sign convention may vary based on problem formulation.
+ *
+ * Note: Multipliers for static parameters `p` and boundary constraints `r` are generally not
+ * scaled by quadrature weights as they are static and not distributed across collocation points.
+ *
+ * **Important Considerations:**
+ * - **Sign Conventions:** Be vigilant about sign conventions, as they can differ between optimization solvers and theoretical definitions.
+ *          The negative sign in the transformation for $\lambda_f$ is crucial for obtaining the correct costates.
+ * - **Numerical Noise:** Very small bound multipliers (e.g., below $1 \times 10^{-10}$ after scaling) likely exhibit numerical noise. These often arise
+ *          from the interior-point nature of the solver and loose thresholds for constraint activity. Such values typically do not exhibit the
+ *          expected polynomial structure of collocation and can often be safely ignored or thresholded (e.g., set to fixed eps when below a cutoff).
+ * - **Smoothness of Bound Multipliers:** Bound multipliers $\zeta_x(t)$ and $\zeta_u(t)$ may appear smooth (exhibiting the expected piecewise polynomial structure)
+ *          if the corresponding bound constraint is active over a full collocation interval.
+ */
+
+ /**
+ * @brief Finalizes and returns the optimal primal trajectories (states and controls).
+ *
+ * This function extracts the optimal primal variables (state `x` and control `u`)
+ * from the `curr_x` member, which holds the solution returned by IPOPT, and
+ * organizes them into a `Trajectory` object. It populates the time points,
+ * state trajectories, control trajectories, and static parameters.
+ *
+ * The initial state `x(0)` and control `u(0)` are handled specifically, with `u(0)`
+ * being interpolated if necessary. Subsequent points correspond to the collocation
+ * nodes.
+ *
+ * @note The Trajectories are unscaled, as they are accessible from the NLP and not from the Solver.
+ *
+ * @return A `std::unique_ptr<Trajectory>` containing the time, state, and control trajectories.
+ */
 std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
     auto optimal_primals = std::make_unique<Trajectory>();
 
     optimal_primals->t.reserve(mesh.node_count + 1);
     optimal_primals->x.resize(off_x);
     optimal_primals->u.resize(off_u);
-
-    // TODO: add parameters to result trajectory
-    optimal_primals->p.reserve(off_p);
 
     for (auto& v : optimal_primals->x) { v.reserve(mesh.node_count + 1); }
     for (auto& v : optimal_primals->u) { v.reserve(mesh.node_count + 1); }
@@ -930,26 +981,58 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
         }
     }
 
+    if (off_p > 0) {
+        optimal_primals->p = std::vector(get_curr_x_p(), curr_x.end());
+    }
+
     return optimal_primals;
 }
 
+/**
+ * @brief Transforms dual multipliers (from IPOPT) to continuous-time costates, or vice-versa.
+ *
+ * This function applies the necessary scaling and sign flips to convert NLP KKT multipliers
+ * for ODE constraints ($\lambda_f$) and path constraints ($\lambda_g$) into their
+ * continuous-time costate equivalents, or to convert costates back into NLP duals.
+ * The transformation involves dividing (or multiplying) by the negative of the
+ * collocation quadrature weights ($b_j$).
+ *
+ * The transformation is applied in-place to the provided `lambda` vector.
+ *
+ * @param lambda A `FixedVector<f64>` containing the dual multipliers or costates to be transformed.
+ * @param to_costate A boolean flag. If `true`, transforms NLP duals to costates. If `false`, transforms costates to NLP duals.
+ */
 void GDOP::transform_duals_costates(FixedVector<f64>& lambda, bool to_costate) {
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
+            for (int fg_index = 0; fg_index < problem.full->fg_size; fg_index++) {
                 if (to_costate) {
                     // NLP dual lambda -> costates lambda
-                    lambda[off_acc_fg[i][j] + f_index] /= -collocation.b[mesh.nodes[i]][j];
+                    lambda[off_acc_fg[i][j] + fg_index] /= -collocation.b[mesh.nodes[i]][j];
                 }
                 else {
                     // costates lambda -> NLP dual lambda
-                    lambda[off_acc_fg[i][j] + f_index] *= -collocation.b[mesh.nodes[i]][j];
+                    lambda[off_acc_fg[i][j] + fg_index] *= -collocation.b[mesh.nodes[i]][j];
                 }
             }
         }
     }
 }
 
+/**
+ * @brief Finalizes and returns the optimal costate trajectories.
+ *
+ * This function processes the KKT multipliers for ODE path constraints, and also boundary
+ * constraints (`curr_lambda`) obtained from IPOPT, transforms them into continuous-time
+ * costates using `transform_duals_costates`, and then organizes them into a
+ * `CostateTrajectory` object.
+ *
+ * The costates at $t=0$ are obtained through interpolation. Costates for boundary
+ * constraints ($\lambda_r$) are also included and just given by the KKT multiplier.
+ *
+ * @return A `std::unique_ptr<CostateTrajectory>` containing the time, costates for dynamics,
+ * costates for path constraints, and costates for boundary constraints.
+ */
 std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
     auto optimal_costates = std::make_unique<CostateTrajectory>();
 
@@ -957,23 +1040,40 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
     const int g_size = problem.full->g_size;
 
     // transform curr_lambda from NLP duals -> costates
-    transform_duals_costates(curr_lambda, true);
+    FixedVector<f64> costates(curr_lambda);
+    transform_duals_costates(costates, true);
 
-    optimal_costates->t.reserve(mesh.node_count);
+    optimal_costates->t.reserve(mesh.node_count + 1);
     optimal_costates->costates_f.resize(f_size);
     optimal_costates->costates_g.resize(g_size);
 
-    for (auto& v : optimal_costates->costates_f) { v.reserve(mesh.node_count); }
-    for (auto& v : optimal_costates->costates_g) { v.reserve(mesh.node_count); }
+    for (auto& v : optimal_costates->costates_f) { v.reserve(mesh.node_count + 1); }
+    for (auto& v : optimal_costates->costates_g) { v.reserve(mesh.node_count + 1); }
 
+    // interpolate lambda at t = 0
+    const int inp_stride = f_size + g_size;
+
+    for (int f_index = 0; f_index < f_size; f_index++) {
+        f64 lambda_f_0 = collocation.interpolate(mesh.nodes[0], false, &costates[f_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
+        optimal_costates->costates_f[f_index].push_back(lambda_f_0);
+    }
+
+    for (int g_index = 0; g_index < g_size; g_index++) {
+        f64 lambda_g_0 = collocation.interpolate(mesh.nodes[0], false, &costates[f_size + g_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
+        optimal_costates->costates_g[g_index].push_back(lambda_g_0);
+    }
+
+    optimal_costates->t.push_back(0.0);
+
+    // use exact values for the others
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int f_index = 0; f_index < f_size; f_index++) {
-                optimal_costates->costates_f[f_index].push_back(curr_lambda[off_acc_fg[i][j] + f_index]);
+                optimal_costates->costates_f[f_index].push_back(costates[off_acc_fg[i][j] + f_index]);
             }
 
             for (int g_index = 0; g_index < g_size; g_index++) {
-                optimal_costates->costates_g[g_index].push_back(curr_lambda[off_acc_fg[i][j] + f_size + g_index]);
+                optimal_costates->costates_g[g_index].push_back(costates[off_acc_fg[i][j] + f_size + g_index]);
             }
 
             optimal_costates->t.push_back(mesh.t[i][j]);
@@ -983,30 +1083,64 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
     optimal_costates->costates_r.reserve(problem.boundary->r_size);
 
     for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
-        optimal_costates->costates_r[r_index] = curr_lambda[off_fg_total + r_index];
+        optimal_costates->costates_r[r_index] = costates[off_fg_total + r_index];
     }
 
     return optimal_costates;
 }
 
-// TODO: Why only u_lb, u_ub here? TODO: finish the reinit! => paper stuff
-void GDOP::transform_duals_costates_bounds(FixedVector<f64>& z_dual, bool to_costate) {
+// TODO: Do we need this? TODO: finish the reinit! => paper stuff
+
+/**
+ * @brief Transforms dual multipliers for variable bounds to their continuous-time costate equivalents, or vice-versa.
+ *
+ * This function performs the transformation of IPOPT's KKT multipliers for lower and upper
+ * bounds on states (`x`) and controls (`u`) into their continuous-time dual counterparts
+ * ($\zeta_x(t)$ and $\zeta_u(t)$). The transformation involves dividing (or multiplying)
+ * by the negative of the collocation quadrature weights ($b_j$).
+ *
+ * The transformation is applied in-place to the provided `zeta` vector.
+ *
+ * @param zeta A `FixedVector<f64>` containing the bound multipliers or their transformed costate equivalents.
+ * @param to_costate A boolean flag. If `true`, transforms NLP duals to costates. If `false`, transforms costates to NLP duals.
+ *
+ * @attention The sign convention for non-ODE costates is not clear right now.
+ */
+void GDOP::transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costate) {
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            for (int u_index = 0; u_index < off_u; u_index++) {
+            for (int xu_index = 0; xu_index < off_xu; xu_index++) {
                 if (to_costate) {
                     // NLP dual lambda -> costates lambda
-                    z_dual[off_acc_xu[i][j] + off_x + u_index] /= -collocation.b[mesh.nodes[i]][j];
+                    zeta[off_acc_xu[i][j] + xu_index] /= -collocation.b[mesh.nodes[i]][j];
                 }
                 else {
                     // costates lambda -> NLP dual lambda
-                    z_dual[off_acc_xu[i][j] + off_x + u_index] *= -collocation.b[mesh.nodes[i]][j];
+                    zeta[off_acc_xu[i][j] + xu_index] *= -collocation.b[mesh.nodes[i]][j];
                 }
             }
         }
     }
 }
 
+/**
+ * @brief Finalizes and returns the optimal dual trajectories for lower and upper variable bounds.
+ *
+ * This function takes the KKT multipliers for lower (`z_lb`) and upper (`z_ub`) bounds
+ * on states and controls from IPOPT, transforms them into continuous-time bound duals
+ * using `transform_duals_costates_bounds`, and then organizes them into a pair of
+ * `Trajectory` objects (one for lower bounds, one for upper bounds).
+ *
+ * These bound duals, denoted as $\zeta_x(t)$ and $\zeta_u(t)$, represent the
+ * sensitivity of the optimal cost to changes in the bounds.
+ *
+ * @return A `std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>>`
+ * where the first element is the trajectory of lower bound duals and the
+ * second is the trajectory of upper bound duals.
+ *
+ * @note Very small bound multipliers (e.g., below 1e-10) may be numerical
+ * noise and can often be ignored or thresholded.
+ */
 std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finalize_optimal_bound_duals() {
     auto optimal_bound_duals = std::make_pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>>(
         std::make_unique<Trajectory>(),
@@ -1014,14 +1148,17 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
     );
 
     // transform z_lb, z_ub from NLP bound duals -> costates
-    transform_duals_costates_bounds(z_lb, true);
-    transform_duals_costates_bounds(z_ub, true);
+    FixedVector<f64> costates_z_lb(z_lb);
+    FixedVector<f64> costates_z_ub(z_ub);
+
+    transform_duals_costates_bounds(costates_z_lb, true);
+    transform_duals_costates_bounds(costates_z_ub, true);
 
     auto& lower_traj = *(optimal_bound_duals.first);
     auto& upper_traj = *(optimal_bound_duals.second);
 
     std::vector<Trajectory*> bound_trajs = { &lower_traj, &upper_traj };
-    std::vector<FixedVector<f64>*> bound_vals = { &z_lb, &z_ub };
+    std::vector<FixedVector<f64>*> bound_vals = { &costates_z_lb, &costates_z_ub };
 
     for (short bound_idx = 0; bound_idx < 2; bound_idx++) {
         Trajectory& traj         = *bound_trajs[bound_idx];
@@ -1064,6 +1201,14 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
     return optimal_bound_duals;
 }
 
+/**
+ * @brief Finalizes the complete optimal solution, including primals, costates, and bound duals.
+ *
+ * This function orchestrates the finalization process by calling `finalize_optimal_primals()`,
+ * `finalize_optimal_costates()`, and `finalize_optimal_bound_duals()` to gather all
+ * relevant parts of the optimal solution. The results are then combined into a
+ * `PrimalDualTrajectory` object and stored in the `optimal_solution` member.
+ */
 void GDOP::finalize_solution() {
     auto optimal_primals     = finalize_optimal_primals();
     auto optimal_costates    = finalize_optimal_costates();
@@ -1072,8 +1217,6 @@ void GDOP::finalize_solution() {
                                                                       std::move(optimal_costates),
                                                                       std::move(optimal_lu_costates.first),
                                                                       std::move(optimal_lu_costates.second));
-    optimal_solution->lower_costates->to_csv("lower_costates.csv");
-    optimal_solution->upper_costates->to_csv("upper_costates.csv");
 }
 
 } // namespace GDOP

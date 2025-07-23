@@ -53,6 +53,8 @@ void MeshRefinementOrchestrator::optimize() {
     strategies->emit(*gdop.optimal_solution->primals);
 
     gdop.optimal_solution->costates->to_csv("costates.csv");
+    gdop.optimal_solution->lower_costates->to_csv("lower_costates.csv");
+    gdop.optimal_solution->upper_costates->to_csv("upper_costates.csv");
 }
 
 } // namespace GDOP

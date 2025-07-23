@@ -76,7 +76,6 @@ public:
     void create_acc_offset_fg(int off_fg);
 
     // init nlp and sparsity
-    void init();
     void init_sizes_offsets();
     void init_buffers();
     void init_bounds();
@@ -86,11 +85,10 @@ public:
     void init_jacobian_sparsity_pattern();
     void init_hessian();
 
-    void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
-    void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
-    void transform_duals_costates_bounds(FixedVector<f64>& z_dual, bool to_costate);
-
+    // interfaces for strategies
+    void init();
     void reinit(Mesh&& mesh);
+    void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
 
     /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
     void update_curr_lambda_obj_factors();
@@ -131,6 +129,10 @@ public:
     void eval_jac_g(bool new_x);
     void eval_hes(bool new_x, bool new_lambda);
     void finalize_solution();
+
+    void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
+    void transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costate);
+
     std::unique_ptr<Trajectory> finalize_optimal_primals();
     std::unique_ptr<CostateTrajectory> finalize_optimal_costates();
     std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> finalize_optimal_bound_duals();
