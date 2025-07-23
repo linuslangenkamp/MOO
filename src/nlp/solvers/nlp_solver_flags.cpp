@@ -3,7 +3,7 @@
 namespace NLP {
 
 NLPSolverFlags::NLPSolverFlags(int argc, char** argv) {
-    /* Default settings : add when needed */
+    /* default settings : add when needed */
     solver_settings["Hessian"] = "Exact";
     solver_settings["Tolerance"] = "1e-10";
     solver_settings["Iterations"] = "5000";

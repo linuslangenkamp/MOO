@@ -8,48 +8,48 @@ namespace GDOP {
 // ==================== no-op strategies ====================
 
 // no simulation available
-std::unique_ptr<Trajectory> DefaultNoSimulation::operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
+std::unique_ptr<Trajectory> NoSimulation::operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
     LOG_WARNING("No Simulation strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no simulation step available
-std::unique_ptr<Trajectory> DefaultNoSimulationStep::operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
+std::unique_ptr<Trajectory> NoSimulationStep::operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) {
     LOG_WARNING("No SimulationStep strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no mesh refinement available
-void DefaultNoMeshRefinement::reset(const GDOP& gdop) {}
+void NoMeshRefinement::reset(const GDOP& gdop) {}
 
-std::unique_ptr<MeshUpdate> DefaultNoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+std::unique_ptr<MeshUpdate> NoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
     LOG_WARNING("No MeshRefinement strategy set: returning nullptr.");
     return nullptr;
 }
 
 // no emitter
-int DefaultNoEmitter::operator()(const Trajectory& trajectory) {
+int NoEmitter::operator()(const Trajectory& trajectory) {
     LOG_WARNING("No Emitter strategy set: returning -1.");
     return -1;
 }
 
 // no verifier
-bool DefaultNoVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
+bool NoVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
     LOG_WARNING("No Verifier strategy set: returning false.");
     return false;
 }
 
 // no scaling
-std::shared_ptr<NLP::Scaling> DefaultNoScalingFactory::operator()(const GDOP& gdop) {
-    LOG_WARNING("No ScalingFactory strategy set: fallback to DefaultNoScalingFactory.");
+std::shared_ptr<NLP::Scaling> NoScalingFactory::operator()(const GDOP& gdop) {
+    LOG_WARNING("No ScalingFactory strategy set: fallback to NoScalingFactory.");
     return std::make_shared<NLP::NoScaling>(NLP::NoScaling());
 };
 
 // ==================== non no-op strategies ====================
 
 // default initialization (is not really proper, but an implementation)
-std::unique_ptr<PrimalDualTrajectory> DefaultConstantInitialization::operator()(const GDOP& gdop) {
-    LOG_WARNING("No Initialization strategy set: fallback to DefaultConstantInitialization.");
+std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const GDOP& gdop) {
+    LOG_WARNING("No Initialization strategy set: fallback to ConstantInitialization.");
 
     const auto& problem = gdop.problem;
 
@@ -113,7 +113,7 @@ std::unique_ptr<PrimalDualTrajectory> DefaultConstantInitialization::operator()(
 
 // TODO: make this without aux allocation of new_t and old_t
 // interpolate trajectory to new mesh with simple linear interpolation
-std::vector<f64> DefaultLinearInterpolation::operator()(
+std::vector<f64> LinearInterpolation::operator()(
     const Mesh& old_mesh,
     const Mesh& new_mesh,
     const Collocation&,
@@ -129,7 +129,7 @@ std::vector<f64> DefaultLinearInterpolation::operator()(
 }
 
 // TODO: reduce overhead in interpolation + copies, etc. if necessary
-DefaultInterpolationRefinedInitialization::DefaultInterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
+InterpolationRefinedInitialization::InterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
                                                                                      bool interpolate_primals_,
                                                                                      bool interpolate_costates_constraints_,
                                                                                      bool interpolate_costates_bounds_)
@@ -139,7 +139,7 @@ DefaultInterpolationRefinedInitialization::DefaultInterpolationRefinedInitializa
       interpolate_costates_bounds(interpolate_costates_bounds_) {}
 
 // TODO: refactor this. Can we unify the interpolations even further, now we also need to interpolate controls better at callbacks...
-std::unique_ptr<PrimalDualTrajectory> DefaultInterpolationRefinedInitialization::operator()(const Mesh& old_mesh,
+std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operator()(const Mesh& old_mesh,
                                                                                             const Mesh& new_mesh,
                                                                                             const Collocation& collocation,
                                                                                             const PrimalDualTrajectory& trajectory)
@@ -539,16 +539,16 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
 // default strategy collection
 Strategies Strategies::default_strategies() {
     Strategies strategies;
-    strategies.initialization          = std::make_shared<DefaultConstantInitialization>();
-    strategies.simulation              = std::make_shared<DefaultNoSimulation>();
-    strategies.simulation_step         = std::make_shared<DefaultNoSimulationStep>();
-    strategies.mesh_refinement         = std::make_shared<DefaultNoMeshRefinement>();
-    strategies.interpolation           = std::make_shared<DefaultLinearInterpolation>();
-    strategies.emitter                 = std::make_shared<DefaultNoEmitter>();
-    strategies.verifier                = std::make_shared<DefaultNoVerifier>();
-    strategies.scaling_factory         = std::make_shared<DefaultNoScalingFactory>();
-    strategies.refined_initialization  = std::make_shared<DefaultInterpolationRefinedInitialization>(
-                                            DefaultInterpolationRefinedInitialization(strategies.interpolation, true, true, true));
+    strategies.initialization          = std::make_shared<ConstantInitialization>();
+    strategies.simulation              = std::make_shared<NoSimulation>();
+    strategies.simulation_step         = std::make_shared<NoSimulationStep>();
+    strategies.mesh_refinement         = std::make_shared<NoMeshRefinement>();
+    strategies.interpolation           = std::make_shared<LinearInterpolation>();
+    strategies.emitter                 = std::make_shared<NoEmitter>();
+    strategies.verifier                = std::make_shared<NoVerifier>();
+    strategies.scaling_factory         = std::make_shared<NoScalingFactory>();
+    strategies.refined_initialization  = std::make_shared<InterpolationRefinedInitialization>(
+                                            InterpolationRefinedInitialization(strategies.interpolation, true, true, true));
     return strategies;
 };
 

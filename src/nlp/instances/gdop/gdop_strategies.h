@@ -11,11 +11,6 @@
 // mesh refinement, result emission, and optimality verification in the GDOP optimization process.
 // This file offers simple default and generic advanced strategy implementations that may be used.
 
-// Each strategy can optionally modify the GDOP state when necessary (e.g. interpolation in mesh refinements),
-// otherwise, GDOP is passed as const & to ensure safe, read-only access by default.
-// This modular approach promotes flexibility, allowing strategies to be swapped or combined easily,
-// simplifies testing and maintenance, and supports extensibility for custom behaviors.
-
 // -- Base Strategy interfaces --
 
 namespace GDOP {
@@ -165,25 +160,25 @@ public:
     virtual std::shared_ptr<NLP::Scaling> operator()(const GDOP& gdop) = 0;
 };
 
-// ==================== Default Strategy implementations ====================
+// ====================  Strategy implementations ====================
 
-class DefaultNoSimulation : public Simulation {
+class NoSimulation : public Simulation {
 public:
     std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
-class DefaultNoSimulationStep : public SimulationStep {
+class NoSimulationStep : public SimulationStep {
 public:
     std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) override;
 };
 
-class DefaultNoMeshRefinement : public MeshRefinement {
+class NoMeshRefinement : public MeshRefinement {
 public:
     void reset(const GDOP& gdop) override;
     std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
 };
 
-class DefaultLinearInterpolation : public Interpolation {
+class LinearInterpolation : public Interpolation {
 public:
     std::vector<f64> operator()(const Mesh& old_mesh,
                                 const Mesh& new_mesh,
@@ -192,14 +187,14 @@ public:
                                 bool contains_zero) override;
 };
 
-class DefaultInterpolationRefinedInitialization : public RefinedInitialization {
+class InterpolationRefinedInitialization : public RefinedInitialization {
 public:
     std::shared_ptr<Interpolation> interpolation;
     bool interpolate_primals;
     bool interpolate_costates_constraints;
     bool interpolate_costates_bounds;
 
-    DefaultInterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
+    InterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
                                               bool interpolate_primals_,
                                               bool interpolate_costates_constraints_,
                                               bool interpolate_costates_bounds_);
@@ -210,24 +205,24 @@ public:
                                                      const PrimalDualTrajectory& trajectory) override;
 };
 
-class DefaultNoEmitter : public Emitter {
+class NoEmitter : public Emitter {
 public:
     int operator()(const Trajectory& trajectory) override;
 };
 
-class DefaultNoVerifier : public Verifier {
+class NoVerifier : public Verifier {
 public:
     bool operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) override;
 };
 
 // -- simple default scaling (no scaling) --
-class DefaultNoScalingFactory : public ScalingFactory {
+class NoScalingFactory : public ScalingFactory {
 public:
     std::shared_ptr<NLP::Scaling> operator()(const GDOP& gdop) override;
 };
 
 // -- simple default initialization (checks bounds and chooses initial value depending on that) --
-class DefaultConstantInitialization : public Initialization {
+class ConstantInitialization : public Initialization {
 public:
     std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP& gdop) override;
 };
