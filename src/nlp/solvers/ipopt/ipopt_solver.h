@@ -12,7 +12,7 @@ namespace IpoptSolver {
 
 class IpoptSolver : public NLP::NLPSolver {
 public:
-    IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags);
+    IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings);
 
     virtual ~IpoptSolver() = default;
 
@@ -20,7 +20,7 @@ public:
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
     void optimize() override;
     void init_IpoptApplication();
-    void set_flags();
+    void set_settings();
 };
 
 } // namespace IpoptSolver

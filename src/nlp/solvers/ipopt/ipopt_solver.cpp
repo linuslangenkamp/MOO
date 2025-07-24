@@ -2,8 +2,8 @@
 
 namespace IpoptSolver {
 
-IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags)
-    : NLPSolver(nlp, solver_flags),
+IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings)
+    : NLPSolver(nlp, solver_settings),
       adapter(new IpoptAdapter(nlp)),
       app(IpoptApplicationFactory()) {
     init_IpoptApplication();
@@ -11,7 +11,7 @@ IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags)
 
 // simple wrapper to adapter
 void IpoptSolver::optimize() {
-    set_flags();
+    set_settings();
 
     Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(adapter);
 
@@ -110,34 +110,41 @@ void IpoptSolver::init_IpoptApplication() {
     }
 }
 
-void IpoptSolver::set_flags() {
-    // set all the settings here
+void IpoptSolver::set_settings() {
+    // --- termination ---
+    app->Options()->SetIntegerValue("max_iter", solver_settings.get_or_default<int>(NLP::Option::Iterations));
+    app->Options()->SetNumericValue("max_cpu_time", solver_settings.get_or_default<f64>(NLP::Option::CPUTime));
 
-    // termination fallback
-    app->Options()->SetIntegerValue("max_iter", solver_flags.get_flag_f64_fallback("Iterations", 5000));
-    app->Options()->SetNumericValue("max_cpu_time", solver_flags.get_flag_f64_fallback("CPUTime", 3600));
-
-    // numeric values
-    app->Options()->SetNumericValue("tol", solver_flags.get_flag_f64_fallback("Tolerance", 1e-10));
-    app->Options()->SetNumericValue("acceptable_tol", solver_flags.get_flag_f64_fallback("Tolerance", 1e-10) * 1e3);
+    // --- tolerances, step sizes ---
+    double tol = solver_settings.get_or_default<double>(NLP::Option::Tolerance);
+    app->Options()->SetNumericValue("tol", tol);
+    app->Options()->SetNumericValue("acceptable_tol", tol * 1e3);
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetNumericValue("alpha_red_factor", 0.5);
 
-    // strategies
+    // --- strategy settings ---
     app->Options()->SetStringValue("mu_strategy", "adaptive");
     app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
     app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
     app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
-    // app->Options()->SetStringValue("bound_mult_init_method","constant");
-    // app->Options()->SetStringValue("dependency_detection_with_rhs", "yes");
 
-    // Hessian approximation
-    if (solver_flags.check_flag("Hessian", "LBFGS")) {
-        app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+    // --- hessian options ---
+    NLP::HessianOption hess_opt = solver_settings.get_or_default<NLP::HessianOption>(NLP::Option::Hessian);
+    switch (hess_opt) {
+        case NLP::HessianOption::LBFGS:
+            app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+            break;
+        case NLP::HessianOption::CONST:
+            app->Options()->SetStringValue("hessian_constant", "yes");
+            break;
+        case NLP::HessianOption::Exact:
+            app->Options()->SetStringValue("hessian_approximation", "exact");
+            break;
     }
 
-    if (solver_flags.check_flag("WarmStart", "true")) {
+    // --- warm start ---
+    if (solver_settings.option_is_true(NLP::Option::WarmStart)) {
         app->Options()->SetStringValue("warm_start_init_point", "yes");
         app->Options()->SetStringValue("mu_strategy", "monotone");
         app->Options()->SetNumericValue("mu_init", 1e-14);
@@ -148,32 +155,28 @@ void IpoptSolver::set_flags() {
         app->Options()->SetNumericValue("warm_start_mult_bound_push", 1e-8);
     }
 
-    /*
-        app->Options()->SetStringValue("mu_strategy", "monotone");
-        app->Options()->SetNumericValue("mu_init", 1e-14);
-        app->Options()->SetNumericValue("bound_push", 1e-8);
-        app->Options()->SetNumericValue("bound_frac", 1e-8);
-        app->Options()->SetNumericValue("slack_bound_push", 1e-8);
-        app->Options()->SetNumericValue("slack_bound_frac", 1e-8);
-    */
+    // --- linear solver ---
+    NLP::LinearSolverOption linear_solver = solver_settings.get_or_default<NLP::LinearSolverOption>(NLP::Option::LinearSolver);
+    switch (linear_solver) {
+        case NLP::LinearSolverOption::MUMPS: app->Options()->SetStringValue("linear_solver", "mumps"); break;
+        case NLP::LinearSolverOption::MA27:  app->Options()->SetStringValue("linear_solver", "ma27"); break;
+        case NLP::LinearSolverOption::MA57:  app->Options()->SetStringValue("linear_solver", "ma57"); break;
+        case NLP::LinearSolverOption::MA77:  app->Options()->SetStringValue("linear_solver", "ma77"); break;
+        case NLP::LinearSolverOption::MA86:  app->Options()->SetStringValue("linear_solver", "ma86"); break;
+        case NLP::LinearSolverOption::MA97:  app->Options()->SetStringValue("linear_solver", "ma97"); break;
+    }
 
-    // subproblem
-    app->Options()->SetStringValue("linear_solver", solver_flags.get_flag_string_fallback("LinearSolver", "MUMPS"));
-
-    // constant derivatives
+    // --- constant derivatives (assumed false for now) ---
     app->Options()->SetStringValue("grad_f_constant", "no");
     app->Options()->SetStringValue("jac_c_constant", "no");
     app->Options()->SetStringValue("jac_d_constant", "no");
-    if (solver_flags.check_flag("QP", "true")) {
-        app->Options()->SetStringValue("hessian_constant", "yes");
-    }
 
-    // info
+    // --- info ---
     app->Options()->SetStringValue("timing_statistics", "yes");
     app->Options()->SetIntegerValue("print_level", 5);
 
-    // testing + validation
-    if (solver_flags.check_flag("IpoptDerivativeTest", "true")) {
+    // --- derivative test (optional) ---
+    if (solver_settings.option_is_true(NLP::Option::IpoptDerivativeTest)) {
         app->Options()->SetStringValue("derivative_test", "second-order");
         app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
         app->Options()->SetNumericValue("point_perturbation_radius", 0);

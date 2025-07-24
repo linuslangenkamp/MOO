@@ -114,8 +114,7 @@ public:
     virtual std::vector<f64> operator()(const Mesh& old_mesh,
                                         const Mesh& new_mesh,
                                         const Collocation& collocation,
-                                        const std::vector<f64>& values,
-                                        bool contains_zero) = 0;
+                                        const std::vector<f64>& values) = 0;
 };
 
 /**
@@ -183,8 +182,7 @@ public:
     std::vector<f64> operator()(const Mesh& old_mesh,
                                 const Mesh& new_mesh,
                                 const Collocation& collocation,
-                                const std::vector<f64>& values,
-                                bool contains_zero) override;
+                                const std::vector<f64>& values) override;
 };
 
 class InterpolationRefinedInitialization : public RefinedInitialization {
@@ -235,8 +233,7 @@ public:
     std::vector<f64> operator()(const Mesh& old_mesh,
                                 const Mesh& new_mesh,
                                 const Collocation& collocation,
-                                const std::vector<f64>& values,
-                                bool contains_zero) override;
+                                const std::vector<f64>& values) override;
 };
 
 // -- combined Strategy (simple Initialization, extract Controls, simulate) --
@@ -339,8 +336,8 @@ public:
         return (*mesh_refinement)(mesh, collocation, trajectory);
     }
 
-    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const std::vector<f64>& values, bool contains_zero) {
-        return (*interpolation)(old_mesh, new_mesh, collocation, values, contains_zero);
+    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const std::vector<f64>& values) {
+        return (*interpolation)(old_mesh, new_mesh, collocation, values);
     }
 
     auto emit(const Trajectory& trajectory) {

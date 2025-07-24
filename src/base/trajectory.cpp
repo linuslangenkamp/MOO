@@ -2,7 +2,7 @@
 
 bool Trajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
     // check size of time vector: expect mesh.node_count + 1 (t = 0.0 included)
-    return check_time_compatibility(t, {x, u}, mesh, /* include_initial_time */ true);
+    return check_time_compatibility(t, {x, u}, mesh);
 }
 
 Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
@@ -17,7 +17,7 @@ Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation
 Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
     Trajectory new_traj;
 
-    std::vector<f64> new_t = {0};
+    std::vector<f64> new_t = {0.0};
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             f64 new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
@@ -26,8 +26,22 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Coll
     }
 
     new_traj.t = new_t;
-    interpolate_linear_multiple(t, x, new_t, new_traj.x);
-    interpolate_linear_multiple(t, u, new_t, new_traj.u);
+    new_traj.x = interpolate_linear_multiple(t, x, new_t);
+    new_traj.u = interpolate_linear_multiple(t, u, new_t);
+    new_traj.p = p;
+
+    return new_traj;
+}
+
+Trajectory Trajectory::interpolate_polynomial_from_mesh_onto_grid(const Mesh& mesh,
+                                                                  const Collocation& collocation,
+                                                                  const std::vector<f64>& time_grid)
+{
+    Trajectory new_traj;
+
+    new_traj.t = time_grid;
+    new_traj.x = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, collocation, x, time_grid);
+    new_traj.u = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, collocation, u, time_grid);
     new_traj.p = p;
 
     return new_traj;
@@ -209,7 +223,7 @@ void ControlTrajectory::interpolate_at(f64 t_query, f64* interpolation_values) c
 
 bool CostateTrajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
     // For duals, time grid has no t=0. So expect mesh.node_count entries (not +1)
-    return check_time_compatibility(t, {costates_f, costates_g}, mesh, /* include_initial_time */ false);
+    return check_time_compatibility(t, {costates_f, costates_g}, mesh);
 }
 
 CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
@@ -233,8 +247,8 @@ CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& me
     }
 
     new_dual.t = new_t;
-    interpolate_linear_multiple(t, costates_f, new_t, new_dual.costates_f);
-    interpolate_linear_multiple(t, costates_g, new_t, new_dual.costates_g);
+    new_dual.costates_f = interpolate_linear_multiple(t, costates_f, new_t);
+    new_dual.costates_g = interpolate_linear_multiple(t, costates_g, new_t);
     new_dual.costates_r = costates_r;
 
     return new_dual;
@@ -259,17 +273,16 @@ int CostateTrajectory::to_csv(const std::string& filename) const {
 bool check_time_compatibility(
     const std::vector<f64>& t_vec,
     const std::vector<std::vector<std::vector<f64>>>& fields_to_check,
-    const Mesh& mesh,
-    bool include_initial_time /* true for Trajectory, false for CostateTrajectory */ )
+    const Mesh& mesh)
 {
     const f64 tol = 1e-12;
 
-    int expected_size = mesh.node_count + (include_initial_time ? 1 : 0);
+    int expected_size = mesh.node_count + 1;
     if ((int)t_vec.size() != expected_size) {
         return false;
     }
 
-    int time_idx = include_initial_time ? 1 : 0;
+    int time_idx = 1;
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             if (std::abs(t_vec[time_idx++] - mesh.t[i][j]) > tol) {
@@ -289,13 +302,60 @@ bool check_time_compatibility(
     return true;
 }
 
-void interpolate_linear_single(
+// interpolate trajectory to new mesh with collocation scheme - polynomial interpolation
+std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(const Mesh& mesh,
+                                                                   const Collocation& collocation,
+                                                                   const std::vector<f64>& values,
+                                                                   const std::vector<f64>& time_grid) {
+    std::vector<f64> new_values(time_grid.size());
+    new_values[0] = values[0]; // t = 0
+
+    int offset = 0;
+    int curr_mesh_interval = 0;
+
+    for (size_t k = 0; k < time_grid.size(); k++) {
+        f64 t_query = time_grid[k];
+
+        while (curr_mesh_interval + 1 < mesh.intervals &&
+            mesh.grid[curr_mesh_interval + 1] < t_query) {
+            offset += mesh.nodes[curr_mesh_interval];
+            curr_mesh_interval++;
+        }
+
+        const int stride            = 1;
+        const int mesh_p_order      = mesh.nodes[curr_mesh_interval];
+        const f64* values_i         = values.data() + offset;
+
+        f64 t_start = mesh.grid[curr_mesh_interval];
+        f64 t_end   = mesh.grid[curr_mesh_interval + 1];
+
+        new_values[k] = collocation.interpolate(
+            mesh_p_order, true, values_i, stride,
+            t_start, t_end, t_query
+        );
+    }
+
+    return new_values;
+}
+
+std::vector<std::vector<f64>> interpolate_polynomial_from_mesh_onto_grid_multiple(const Mesh& mesh,
+                                                                                  const Collocation& collocation,
+                                                                                  const std::vector<std::vector<f64>>& values,
+                                                                                  const std::vector<f64>& time_grid)
+{
+    std::vector<std::vector<f64>> out(values.size());
+    for (size_t i = 0; i < values.size(); i++) {
+        out[i] = interpolate_polynomial_from_mesh_onto_grid_single(mesh, collocation, values[i], time_grid);
+    }
+    return out;
+}
+
+std::vector<f64> interpolate_linear_single(
     const std::vector<f64>& old_t,
     const std::vector<f64>& values,
-    const std::vector<f64>& new_t,
-    std::vector<f64>& out_values)
+    const std::vector<f64>& new_t)
 {
-    out_values.resize(new_t.size());
+    std::vector<f64> out_values(new_t.size());
 
     for (int i = 0; i < int(new_t.size()); i++) {
         f64 t_new = new_t[i];
@@ -314,19 +374,21 @@ void interpolate_linear_single(
             out_values[i] = y1 + (t_new - t1) * (y2 - y1) / (t2 - t1);
         }
     }
+
+    return out_values;
 }
 
-void interpolate_linear_multiple(
+std::vector<std::vector<f64>> interpolate_linear_multiple(
     const std::vector<f64>& old_t,
     const std::vector<std::vector<f64>>& values,
-    const std::vector<f64>& new_t,
-    std::vector<std::vector<f64>>& out_values)
+    const std::vector<f64>& new_t)
 {
     int fields = int(values.size());
-    out_values.resize(fields);
+    std::vector<std::vector<f64>> out_values(fields);
     for (int field = 0; field < fields; field++) {
-        interpolate_linear_single(old_t, values[field], new_t, out_values[field]);
+        out_values[field] = interpolate_linear_single(old_t, values[field], new_t);
     }
+    return out_values;
 }
 
 void print_trajectory(

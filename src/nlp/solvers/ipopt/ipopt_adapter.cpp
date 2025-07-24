@@ -34,8 +34,7 @@ bool IpoptAdapter::get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number
     }
     if (init_lambda) {
         assert(nlp.curr_lambda.int_size() == m);
-        nlp.scaling->unscale_g(nlp.curr_lambda.raw(), lambda, nlp.number_constraints);
-        nlp.curr_lambda.write_to(lambda);
+        nlp.unscale_curr_lambda(lambda);
     }
     if (init_z) {
         assert(nlp.z_lb.int_size() == n && nlp.z_ub.int_size() == n);
@@ -99,7 +98,7 @@ bool IpoptAdapter::eval_h(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ip
     else {
         nlp.update_unscale_curr_x(new_x, x);
         nlp.update_unscale_curr_lambda(new_lambda, lambda);
-        nlp.update_unscale_curr_sigma_f(&obj_factor);
+        nlp.unscale_curr_sigma_f(&obj_factor);
         nlp.eval_hes(new_x, new_lambda);
         nlp.scaling->scale_hes(nlp.curr_hes.raw(), values, nlp.i_row_hes.raw(), nlp.j_col_hes.raw(), nlp.nnz_hes);
     }
@@ -112,7 +111,7 @@ void IpoptAdapter::finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n,
     nlp.update_unscale_curr_x(true, x);            // unscaled optimal x
     nlp.update_unscale_curr_lambda(true, lambda);  // unscaled optimal duals
     nlp.unscale_objective(&obj_value);             // unscaled optimal objective
-    nlp.update_unscale_dual_bounds(z_L, z_U);      // unscaled optimal dual bound multipliers
+    nlp.unscale_dual_bounds(z_L, z_U);      // unscaled optimal dual bound multipliers
     nlp.finalize_solution();
 };
 

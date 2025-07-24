@@ -24,7 +24,7 @@ set(SOURCES
     src/nlp/instances/gdop/gdop_strategies.cpp
     src/nlp/instances/gdop/gdop_orchestrator.cpp
 
-    src/nlp/solvers/nlp_solver_flags.cpp
+    src/nlp/solvers/nlp_solver_settings.cpp
     src/nlp/nlp_scaling.cpp
 
     src/nlp/solvers/ipopt/ipopt_adapter.cpp

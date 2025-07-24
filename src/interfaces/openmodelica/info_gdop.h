@@ -9,7 +9,7 @@
 
 #include <base/nlp_structs.h>
 #include <base/fixed_vector.h>
-#include <nlp/solvers/nlp_solver_flags.h>
+#include <nlp/solvers/nlp_solver_settings.h>
 
 #include <memory>
 
@@ -69,8 +69,8 @@ struct InfoGDOP {
 
     InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv);
 
-    void set_omc_flags(NLP::NLPSolverFlags& nlp_solver_flags);
-    void set_time_horizon(int collocation);
+    void set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings);
+    void set_time_horizon(int steps);
 };
 
 /**

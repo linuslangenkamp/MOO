@@ -77,7 +77,7 @@ public:
     virtual void eval_hes(bool new_x, bool new_lambda) = 0; // fill curr_hes
     virtual void finalize_solution() = 0;                   // finalize the solution
 
-    inline void update_unscale_dual_bounds(const f64* z_L, const f64* z_U) {
+    inline void unscale_dual_bounds(const f64* z_L, const f64* z_U) {
         scaling->unscale_x(z_L, z_lb.raw(), number_vars);
         scaling->unscale_x(z_U, z_ub.raw(), number_vars);
     }
@@ -90,7 +90,11 @@ public:
         if (new_lambda) scaling->scale_g(lambda, curr_lambda.raw(), number_constraints);
     }
 
-    inline void update_unscale_curr_sigma_f(const f64* sigma_f) {
+    inline void unscale_curr_lambda(f64* lambda) {
+        scaling->unscale_g(curr_lambda.raw(), lambda, number_constraints);
+    }
+
+    inline void unscale_curr_sigma_f(const f64* sigma_f) {
         scaling->scale_f(sigma_f, &curr_sigma_f);
     }
 

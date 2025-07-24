@@ -117,15 +117,12 @@ std::vector<f64> LinearInterpolation::operator()(
     const Mesh& old_mesh,
     const Mesh& new_mesh,
     const Collocation&,
-    const std::vector<f64>& values,
-    bool contains_zero)
+    const std::vector<f64>& values)
 {
-    std::vector<f64> old_t = old_mesh.get_flat_t(contains_zero);
-    std::vector<f64> new_t = new_mesh.get_flat_t(contains_zero);
+    std::vector<f64> old_t = old_mesh.get_flat_t();
+    std::vector<f64> new_t = new_mesh.get_flat_t();
 
-    std::vector<f64> out;
-    interpolate_linear_single(old_t, values, new_t, out);
-    return out;
+    return interpolate_linear_single(old_t, values, new_t);
 }
 
 // TODO: reduce overhead in interpolation + copies, etc. if necessary
@@ -140,10 +137,10 @@ InterpolationRefinedInitialization::InterpolationRefinedInitialization(std::shar
 
 // TODO: refactor this. Can we unify the interpolations even further, now we also need to interpolate controls better at callbacks...
 std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operator()(const Mesh& old_mesh,
-                                                                                            const Mesh& new_mesh,
-                                                                                            const Collocation& collocation,
-                                                                                            const PrimalDualTrajectory& trajectory)
-        {
+                                                                                     const Mesh& new_mesh,
+                                                                                     const Collocation& collocation,
+                                                                                     const PrimalDualTrajectory& trajectory)
+{
     std::unique_ptr<Trajectory> new_primals              = nullptr;
     std::unique_ptr<CostateTrajectory> new_costates      = nullptr;
     std::unique_ptr<Trajectory> new_costate_bounds_lower = nullptr;
@@ -155,22 +152,22 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
         new_primals = std::make_unique<Trajectory>();
 
         // copy time grid
-        new_primals->t = new_mesh.get_flat_t(true);
+        new_primals->t = new_mesh.get_flat_t();
 
         // interpolate states
         new_primals->x.resize(old_primals->x.size());
         for (size_t x_index = 0; x_index < old_primals->x.size(); x_index++) {
-            new_primals->x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->x[x_index], true);
+            new_primals->x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->x[x_index]);
         }
 
         // interpolate controls
         new_primals->u.resize(old_primals->u.size());
         for (size_t u_index = 0; u_index < old_primals->u.size(); u_index++) {
-            new_primals->u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->u[u_index], true);
+            new_primals->u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->u[u_index]);
         }
 
         // copy parameters
-        new_primals->u.resize(old_primals->u.size());
+        new_primals->p.resize(old_primals->p.size());
         for (size_t p_index = 0; p_index < old_primals->p.size(); p_index++) {
             new_primals->p[p_index] = old_primals->p[p_index];
         }
@@ -182,18 +179,18 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
         new_costates = std::make_unique<CostateTrajectory>();
 
         // copy time grid
-        new_costates->t = new_mesh.get_flat_t(true);
+        new_costates->t = new_mesh.get_flat_t();
 
         // interpolate lambda_f
         new_costates->costates_f.resize(old_costates->costates_f.size());
         for (size_t f_index = 0; f_index < old_costates->costates_f.size(); f_index++) {
-            new_costates->costates_f[f_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_f[f_index], true);
+            new_costates->costates_f[f_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_f[f_index]);
         }
 
         // interpolate lambda_g
         new_costates->costates_g.resize(old_costates->costates_g.size());
         for (size_t g_index = 0; g_index < old_costates->costates_g.size(); g_index++) {
-            new_costates->costates_g[g_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_g[g_index], true);
+            new_costates->costates_g[g_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_g[g_index]);
         }
 
         // copy lambda_r
@@ -216,18 +213,18 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
             Trajectory& new_dual = *new_duals[bound_idx];
 
             // copy time grid
-            new_dual.t = new_mesh.get_flat_t(true);
+            new_dual.t = new_mesh.get_flat_t();
 
             // interpolate state-bound duals
             new_dual.x.resize(old_dual.x.size());
             for (size_t x_index = 0; x_index < old_dual.x.size(); x_index++) {
-                new_dual.x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.x[x_index], true);
+                new_dual.x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.x[x_index]);
             }
 
             // interpolate control-bound duals
             new_dual.u.resize(old_dual.u.size());
             for (size_t u_index = 0; u_index < old_dual.u.size(); u_index++) {
-                new_dual.u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.u[u_index], true);
+                new_dual.u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.u[u_index]);
             }
 
             new_dual.p = old_dual.p;
@@ -252,7 +249,7 @@ std::unique_ptr<PrimalDualTrajectory> SimulationInitialization::operator()(const
     auto extracted_controls   = simple_guess_primal->copy_extract_controls();                        // extract controls from the guess
     auto exctracted_x0        = simple_guess_primal->extract_initial_states();                       // extract x(t_0) from the guess
     auto simulated_guess      = (*simulation)(extracted_controls, gdop.mesh.node_count, 0.0,         // perform simulation using the controls and gdop config
-                                            gdop.mesh.tf, exctracted_x0.raw());
+                                              gdop.mesh.tf, exctracted_x0.raw());
     auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.mesh, gdop.collocation); // interpolate simulation to current mesh + collocation
     return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(interpolated_sim));
 }
@@ -281,10 +278,10 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
                                             0.0, gdop.mesh.tf, exctracted_x0.raw());
 
     // result of high resolution simulation is interpolated onto lower resolution mesh
-    auto interpolated_sim   = simulation_result->interpolate_onto_mesh(gdop.mesh, gdop.collocation);
+    auto interpolated_opt   = trajectory_primal->interpolate_polynomial_from_mesh_onto_grid(gdop.mesh, gdop.collocation, simulation_result->t);
 
     // calculate errors for each state in given norm (between provided and simulated states)
-    auto errors             = trajectory_primal->state_errors(interpolated_sim, norm);
+    auto errors             = interpolated_opt.state_errors(*simulation_result, norm);
 
     bool is_valid = true;
 
@@ -329,18 +326,15 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
 std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
                                                      const Mesh& new_mesh,
                                                      const Collocation& collocation,
-                                                     const std::vector<f64>& values,
-                                                     bool contains_zero) {
-    const int grid_size = new_mesh.node_count + static_cast<int>(contains_zero);
+                                                     const std::vector<f64>& values) {
+    const int grid_size = new_mesh.node_count + 1;
     std::vector<f64> new_values(grid_size);
 
     // === t = 0.0 ===
-    if (contains_zero) {
-        new_values[0] = values[0];
-    }
+    new_values[0] = values[0];
 
     // === t = t_{i,j} ===
-    int global_grid_index = static_cast<int>(contains_zero);
+    int global_grid_index = 1;
     int current_old_interval = 0;
     int offset = 0;
 
@@ -358,14 +352,13 @@ std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
 
             const int stride            = 1;
             const int old_p_order       = old_mesh.nodes[current_old_interval];
-            const bool contains_zero_ij = !(i == 0 && !contains_zero);
             const f64* values_i         = values.data() + offset;
 
             f64 t_start = old_mesh.grid[current_old_interval];
             f64 t_end   = old_mesh.grid[current_old_interval + 1];
 
             new_values[global_grid_index] = collocation.interpolate(
-                old_p_order, contains_zero_ij, values_i, stride,
+                old_p_order, true, values_i, stride,
                 t_start, t_end, t_query
             );
 

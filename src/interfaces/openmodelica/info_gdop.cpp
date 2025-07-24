@@ -5,41 +5,70 @@ namespace OpenModelica {
 InfoGDOP::InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv) :
                    data(data), threadData(threadData), argc(argc), argv(argv) {}
 
-void InfoGDOP::set_time_horizon(int collocation) {
+void InfoGDOP::set_time_horizon(int steps) {
     model_start_time = data->simulationInfo->startTime;
     model_stop_time = data->simulationInfo->stopTime;
     tf = model_stop_time - model_start_time;
     intervals = (int)(round(tf/data->simulationInfo->stepSize));
-    stages = collocation;
+    stages = steps;
 }
 
-void InfoGDOP::set_omc_flags(NLP::NLPSolverFlags& nlp_solver_flags) {
-    // set number of collocation nodes, default 3
+void InfoGDOP::set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings) {
     char* cflags = (char*)omc_flagValue[FLAG_OPTIMIZER_NP];
     set_time_horizon(cflags ? atoi(cflags) : 3);
 
-    std::ostringstream oss;
-    oss << data->simulationInfo->tolerance;
-    nlp_solver_flags.set("Tolerance", oss.str());
+    nlp_solver_settings.set(NLP::Option::Tolerance, data->simulationInfo->tolerance);
 
+    // Linear solver
     cflags = (char*)omc_flagValue[FLAG_LS_IPOPT];
-    if(cflags) nlp_solver_flags.set("LinearSolver", cflags);
+    if (cflags) {
+        std::string opt(cflags);
+        std::string lower;
+        std::transform(opt.begin(), opt.end(), std::back_inserter(lower), ::tolower);
 
+        using LS = NLP::LinearSolverOption;
+        if (lower == "mumps") {
+            nlp_solver_settings.set(NLP::Option::LinearSolver, LS::MUMPS);
+        } else if (lower == "ma27") {
+            nlp_solver_settings.set(NLP::Option::LinearSolver, LS::MA27);
+        } else if (lower == "ma57") {
+            nlp_solver_settings.set(NLP::Option::LinearSolver, LS::MA57);
+        } else if (lower == "ma77") {
+            nlp_solver_settings.set(NLP::Option::LinearSolver, LS::MA77);
+        } else if (lower == "ma86") {
+            nlp_solver_settings.set(NLP::Option::LinearSolver, LS::MA86);
+        } else if (lower == "ma97") {
+            nlp_solver_settings.set(NLP::Option::LinearSolver, LS::MA97);
+        } else {
+            LOG_WARNING("Unsupported linear solver option: %s", cflags);
+        }
+    }
+
+    // Maximum iterations
     cflags = (char*)omc_flagValue[FLAG_IPOPT_MAX_ITER];
-    if(cflags) nlp_solver_flags.set("Iterations", cflags);
+    if (cflags) {
+        try {
+            nlp_solver_settings.set(NLP::Option::Iterations, std::stoi(cflags));
+        } catch (...) {
+            LOG_WARNING("Invalid integer for Iterations: %s", cflags);
+        }
+    }
 
+    // Hessian option
     cflags = (char*)omc_flagValue[FLAG_IPOPT_HESSE];
     if (cflags) {
-        if (!strcasecmp(cflags, "BFGS") || !strcasecmp(cflags, "LBFGS")) {
-            nlp_solver_flags.set("Hessian", "LBFGS");
-        }
-        else if (!strcasecmp(cflags, "CONST") || !strcasecmp(cflags, "QP")) {
-            nlp_solver_flags.set("Hessian", "QP");
-        }
-        else if (!strcasecmp(cflags, "EXACT")) {
-            nlp_solver_flags.set("Hessian", "Exact");
-        }
-        else {
+        std::string opt(cflags);
+        std::string lower;
+        std::transform(opt.begin(), opt.end(), std::back_inserter(lower), ::tolower);
+
+        using H = NLP::HessianOption;
+        if (lower == "bfgs" || lower == "lbfgs") {
+            nlp_solver_settings.set(NLP::Option::Hessian, H::LBFGS);
+        } else if (lower == "const" || lower == "qp") {
+            nlp_solver_settings.set(NLP::Option::Hessian, H::CONST);
+        } else if (lower == "exact") {
+            nlp_solver_settings.set(NLP::Option::Hessian, H::Exact);
+        } else {
             LOG_WARNING("Unsupported Hessian option: %s (use LBFGS, QP, or Exact)", cflags);
         }
     }

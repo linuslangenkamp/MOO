@@ -88,8 +88,8 @@ void Collocation::diff_matrix_multiply_block_strided(const int scheme, const int
  *                       or `c`/`w` (not containing zero) sets of nodes/weights should be used.
  * @param values         A pointer to an array of function values corresponding to the collocation nodes.
  * @param increment      The stride to use when accessing elements in the `values` array.
- * @param interval_start The start of the physical interval.
- * @param interval_end   The end of the physical interval.
+ * @param interval_start The start of the physical interval. (time of values[0])
+ * @param interval_end   The end of the physical interval.   (time of values[-1])
  * @param point          The point at which to interpolate.
  * @return The interpolated value at point.
  */

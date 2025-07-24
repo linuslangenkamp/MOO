@@ -53,6 +53,10 @@ struct Trajectory {
     Trajectory interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const;
     Trajectory interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const;
 
+    Trajectory interpolate_polynomial_from_mesh_onto_grid(const Mesh& mesh,
+                                                          const Collocation& collocation,
+                                                          const std::vector<f64>& time_grid);
+
     // extract + copy information from the trajectory
     ControlTrajectory copy_extract_controls() const;
     FixedVector<f64> extract_initial_states() const; 
@@ -137,23 +141,32 @@ struct PrimalDualTrajectory {
 
 // === shared helpers for Trajectory and CostateTrajectory ===
 
-void interpolate_linear_single(
+std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(
+    const Mesh& mesh,
+    const Collocation& collocation,
+    const std::vector<f64>& values,
+    const std::vector<f64>& time_grid);
+
+std::vector<std::vector<f64>> interpolate_polynomial_from_mesh_onto_grid_multiple(
+    const Mesh& mesh,
+    const Collocation& collocation,
+    const std::vector<std::vector<f64>>& values,
+    const std::vector<f64>& time_grid);
+
+std::vector<f64> interpolate_linear_single(
     const std::vector<f64>& t,
     const std::vector<f64>& values,
-    const std::vector<f64>& new_t,
-    std::vector<f64>& out_values);
+    const std::vector<f64>& new_t);
 
-void interpolate_linear_multiple(
+std::vector<std::vector<f64>> interpolate_linear_multiple(
     const std::vector<f64>& t,
     const std::vector<std::vector<f64>>& values,
-    const std::vector<f64>& new_t,
-    std::vector<std::vector<f64>>& out_values);
+    const std::vector<f64>& new_t);
 
 bool check_time_compatibility(
     const std::vector<f64>& t_vec,
     const std::vector<std::vector<std::vector<f64>>>& fields_to_check,
-    const Mesh& mesh,
-    bool include_initial_time /* true for Trajectory, false for CostateTrajectory */);
+    const Mesh& mesh);
 
 int write_trajectory_csv(
     const std::string& filename,

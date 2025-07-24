@@ -29,9 +29,9 @@ int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     /* create info struct <-> same purpose as DATA* in OpenModelica */
     auto info = InfoGDOP(data, threadData, argc, argv);
-    auto nlp_solver_flags = NLP::NLPSolverFlags(argc, argv);
-    info.set_omc_flags(nlp_solver_flags);
-    nlp_solver_flags.print();
+    auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);
+    info.set_omc_flags(nlp_solver_settings);
+    nlp_solver_settings.print();
     auto collocation = Collocation();
     auto mesh = Mesh::create_equidistant_fixed_stages(info.tf, info.intervals, info.stages, collocation);
     auto problem = create_gdop(info, mesh, collocation);
@@ -40,7 +40,7 @@ int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, S_IDA));
     auto gdop = GDOP::GDOP(problem, collocation, mesh);
 
-    IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_flags);
+    IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_settings);
 
     auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), ipopt_solver);
 

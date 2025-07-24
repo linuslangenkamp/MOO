@@ -121,12 +121,39 @@ end include_test;
 */
 /*
 model include_test
-  parameter Real NOMINAL = 1; // 1e12
+  // State variables
+  Real x(start=0.1, fixed=true);  // Position-like state
+  Real v(start=0.0, fixed=true);  // Velocity-like state
+
+  // Control input
+  input Real u;
+
+  // Cost function: tradeoff between control effort and deviation from target
+  output Real cost_l = 0.1*u^2 + 0.5*(x^2 + v^2) annotation(isLagrange=true);
+
+  // Final constraint: reach near a stable fixed point
+  Real FINAL(min=0, max=0) = x - 1.0 annotation(isFinalConstraint=true);
+
+equation
+  // Second-order nonlinear dynamics
+  der(x) = v;
+  der(v) = -x - 0.5*v + tanh(u);
+
+  annotation(
+    experiment(StartTime = 0, StopTime = 10, Tolerance = 1e-6, Interval = 0.01),
+    __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
+    __OpenModelica_commandLineOptions = "+g=Optimica"
+  );
+end include_test;
+*/
+
+model include_test
+  parameter Real NOMINAL = 1e5; // 1e12
   Real y1(start=NOMINAL, fixed=true, nominal=NOMINAL);
   Real y2(start=0, fixed=true, nominal=1/NOMINAL);
   input Real u(min=0, max=5, start=2);
   output Real cost_m = -x2  annotation(isMayer=true);
-  Real path(max = 0.5) = x1 * x2 * time annotation(isConstraint=true);
+  Real path(max = 0.5, nominal=1) = x1 * x2 * time annotation(isConstraint=true);
 protected
   Real x1, x2;
 equation
@@ -139,12 +166,12 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica");
 end include_test;
-*/
+
 /*
 model include_test
   Real y1(start=1, fixed=true);
   Real y2(start=0, fixed=true);
-  input Real u(min=0, max=5, start=0);
+  input Real u(min=0, max=5, start=1);
   output Real cost_m = -y2  annotation(isMayer=true);
 equation
   der(y1) = -(u+u^2/2)*y1;
@@ -171,7 +198,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", ipopt_init="CONST",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;*/
-
+/*
 model include_test
 
 
@@ -452,3 +479,4 @@ equation
   );
 
 end include_test;
+*/

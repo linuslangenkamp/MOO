@@ -4,24 +4,22 @@
 #include <unordered_map>
 #include <memory>
 
-#include "nlp/solvers/nlp_solver_flags.h"
+#include "nlp/solvers/nlp_solver_settings.h"
 #include "nlp.h"
 
 namespace NLP {
 
 class NLPSolver {
 public:
-    NLPSolver(NLP& nlp, NLPSolverFlags& solver_flags)
-        : nlp(nlp), solver_flags(solver_flags) {}
+    NLPSolver(NLP& nlp, NLPSolverSettings& solver_settings)
+        : nlp(nlp), solver_settings(solver_settings) {}
 
     virtual ~NLPSolver() = default;
 
     NLP& nlp;
-    NLPSolverFlags& solver_flags;
+    NLPSolverSettings& solver_settings;
 
     virtual void optimize() = 0;
-    // virtual void set_default_flags() = 0;
-    // virtual void set_flags(NLPSolverFlags& new_flags) = 0;
 };
 
 }

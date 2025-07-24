@@ -1113,7 +1113,7 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
         }
     }
 
-    optimal_costates->costates_r.reserve(problem.boundary->r_size);
+    optimal_costates->costates_r.resize(problem.boundary->r_size);
 
     for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
         optimal_costates->costates_r[r_index] = costates[off_fg_total + r_index];
