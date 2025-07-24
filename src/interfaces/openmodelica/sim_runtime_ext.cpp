@@ -1,6 +1,6 @@
 #include "sim_runtime_ext.h"
 
-void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac)
+void mooEvalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac)
 {
   size_t color, column, nz_csc;
   const SPARSE_PATTERN* sparse = jacobian->sparsePattern;
@@ -63,7 +63,7 @@ void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JA
  * @param jac [in]  Pointer to a `JACOBIAN` struct (sparsity pattern and coloring).
  * @return    [out] Pointer to newly allocated `HESSIAN_PATTERN` struct.
  */
-HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
+HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac) {
   if (jac == nullptr or jac->sparsePattern == nullptr) { return nullptr; }
 
   int numVars = jac->sizeCols;
@@ -103,7 +103,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   // 4. build color groups :: TODO: implement this in OpenModelica for the JACOBIAN
   std::vector<std::vector<int>> colorCols(numColors);
-  for (int col = 0; col < numVars; ++col) {
+  for (int col = 0; col < numVars; col++) {
     int c = sp->colorCols[col];
     if (c > 0) {
       colorCols[c - 1].push_back(col);
@@ -125,6 +125,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
 
   /* workspace memory */
   hes_pattern->ws_oldX = (modelica_real*)malloc(numVars * sizeof(modelica_real));
+  hes_pattern->ws_h = (modelica_real*)malloc(numVars * sizeof(modelica_real));
   hes_pattern->ws_baseJac = (modelica_real**)malloc(numFuncs * sizeof(modelica_real*));
   for (int row = 0; row < numFuncs; row++) {
     hes_pattern->ws_baseJac[row] = (modelica_real*)calloc(numColors, sizeof(modelica_real));
@@ -222,7 +223,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
         }
       }
 
-      hes_pattern->colorPairs[__getColorPairIndex(c1, c2)] = colorPair;
+      hes_pattern->colorPairs[getColorPairIndex(c1, c2)] = colorPair;
     }
   }
 
@@ -235,7 +236,7 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * Approximates the entries of the Hessian matrix H(x) using first-order directional derivatives.
  * The method uses seed vector coloring for efficient evaluation and exploits sparse Hessian structure.
  * Assumes the current point x has all controls and states set in `data->localData[0]->realVars`.
- * For a more detailed explanation of the algorithm (see __generateHessianPattern).
+ * For a more detailed explanation of the algorithm (see generateHessianPattern).
  * 
  * Runtime: O(#colors * (#colors + 1) / 2 * T_{JVP} + #colors * T_{JVP} + #funcs_{avg} * nnz(augmented Hessian)),
  *          where T_{JVP} is the time of one Jacobian column evaluation and funcs_{avg} is the average
@@ -254,12 +255,13 @@ HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac) {
  * @param[in]  jac_csc      (Optional) Jacobian values in CSC format, used to speed up Hessian calculation. NULL -> compute from scratch.
  * @param[out] hes          Output sparse Hessian values (COO format of hes_pattern, length = hes_pattern->nnz).
  */
-void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
+void evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
                                      int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes) {
   /* 0. retrieve pointers */
   JACOBIAN*       jacobian     = hes_pattern->jac;
   modelica_real** ws_baseJac   = hes_pattern->ws_baseJac;
   modelica_real*  ws_oldX      = hes_pattern->ws_oldX;
+  modelica_real*  ws_h         = hes_pattern->ws_h;
   modelica_real*  seeds        = jacobian->seedVars;
   modelica_real*  jvp          = jacobian->resultVars;
   unsigned int*   jacLeadIndex = jacobian->sparsePattern->leadindex;
@@ -274,7 +276,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
 
     /* 1.b. evaluate all JVPs J(x) * s_{c} of the current point x */
     for (int color = 0; color < hes_pattern->numColors; color++) {
-      __setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 1, seeds);
+      setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 1, seeds);
       jacobian->evalColumn(data, threadData, jacobian, NULL);
 
       for (int colIndex = 0; colIndex < hes_pattern->colorSizes[color]; colIndex++) {
@@ -285,7 +287,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
         }
       }
 
-      __setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 0, seeds);
+      setSeedVector(hes_pattern->colorSizes[color], hes_pattern->colsForColor[color], 0, seeds);
     }
   }
 
@@ -297,8 +299,16 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
       int col = hes_pattern->colsForColor[c1][columnIndex];
       int realVarsIndex = (col < nStates ? col : u_indices[col - nStates]);
       /* remember the current realVars (to be perturbated) and perturbate */
-      ws_oldX[columnIndex] = data->localData[0]->realVars[realVarsIndex];
-      data->localData[0]->realVars[realVarsIndex] += h; /* TODO: incorporate nominals here for perturbation * nom */
+      ws_oldX[col] = data->localData[0]->realVars[realVarsIndex];
+
+      /* create perturbation size based on nominals and current entry */
+      const modelica_real nom = data->modelData->realVarsData[realVarsIndex].attribute.nominal;
+      ws_h[col] = h * (1.0 + fmax(ws_oldX[col], nom));
+      if (ws_oldX[col] + ws_h[col] > data->modelData->realVarsData[realVarsIndex].attribute.max) {
+        ws_h[col] *= -1.0;
+      }
+
+      data->localData[0]->realVars[realVarsIndex] += ws_h[col];
     }
 
     /* evaluate perturbated system (needed for Jacobian columns) */
@@ -307,14 +317,14 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
     /* 5. loop over all colors c2 with index less or equal to c_1 */
     for (int c2 = 0; c2 <= c1; c2++) {
       /* 6. define seed vector s_{c_2} with all cols in c_2 active */
-      __setSeedVector(hes_pattern->colorSizes[c2], hes_pattern->colsForColor[c2], 1, seeds);
+      setSeedVector(hes_pattern->colorSizes[c2], hes_pattern->colsForColor[c2], 1, seeds);
 
       /* 7. evaluate JVP J(x_{c_1}) * s_{c_2}: writes column to jvp = jacobian->resultVars */
       jacobian->evalColumn(data, threadData, jacobian, NULL);
 
       /* 8. retrieve augmented Hessian approximation */
-      ColorPair* colorPair = hes_pattern->colorPairs[__getColorPairIndex(c1, c2)];
-      if (colorPair != nullptr) {
+      ColorPair* colorPair = hes_pattern->colorPairs[getColorPairIndex(c1, c2)];
+      if (colorPair) {
         for (int varPairIdx = 0; varPairIdx < colorPair->size; varPairIdx++) {
           /* nz index in flattened Hessian array (COO format) */
           int nz = colorPair->lnnzIndices[varPairIdx];
@@ -324,7 +334,7 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
           int numContributingRows = colorPair->numContributingRows[varPairIdx];
 
           /* second derivative eval at nz index */
-          modelica_real der = 0;
+          modelica_real der = 0.0;
 
           /* 10. Approximate directional second derivative:
            *     (1/h) ∑_{f ∈ rows} λ[f] · (J(x + h·s_{c₁})[s_{c₂}][f] - J(x)[s_{c₂}][f])
@@ -336,26 +346,26 @@ void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSI
             der += lambda[fnRow] * (jvp[fnRow] - J_fnRow_c2);
           }
 
-          /* store and divide by step size, TODO: make h depend on variable nominal
-           * divide by nominal of hes_pattern->rows or cols variable at nz index */
-          hes[nz] = der / h;
+          /* store and divide by step size, retrieve step size via nz col index / same as for the perturbation (step 4) */
+          int col = hes_pattern->col[nz];
+          hes[nz] = der / ws_h[col];
         }
       }
 
       /* 11. reset s_{c_2} */
-      __setSeedVector(hes_pattern->colorSizes[c2], hes_pattern->colsForColor[c2], 0, seeds);
+      setSeedVector(hes_pattern->colorSizes[c2], hes_pattern->colsForColor[c2], 0.0, seeds);
     }
 
     /* 12. reset perturbated x */
     for (int columnIndex = 0; columnIndex < hes_pattern->colorSizes[c1]; columnIndex++) {
       int col = hes_pattern->colsForColor[c1][columnIndex];
       int realVarsIndex = (col < nStates ? col : u_indices[col - nStates]);
-      data->localData[0]->realVars[realVarsIndex] = ws_oldX[columnIndex];
+      data->localData[0]->realVars[realVarsIndex] = ws_oldX[col];
     }
   }
 }
 
-void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
+void printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
   if (!hes_pattern) {
     printf("Hessian pattern is NULL.\n");
     return;
@@ -383,7 +393,7 @@ void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
   printf("\nColor Pair Entries:\n");
   for (int c1 = 0; c1 < hes_pattern->numColors; c1++) {
     for (int c2 = 0; c2 <= c1; c2++) {  // symmetric lower triangle
-      int idx = __getColorPairIndex(c1, c2);
+      int idx = getColorPairIndex(c1, c2);
       ColorPair* colorPair = hes_pattern->colorPairs[idx];
       if (!colorPair) continue;
 
@@ -431,7 +441,7 @@ void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
   printf("=====================================\n");
 }
 
-void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
+void freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
   if (!hes_pattern) return;
 
   int numColorPairs = hes_pattern->numColors * (hes_pattern->numColors + 1) / 2;
@@ -487,7 +497,7 @@ void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern) {
  * @param[in] maxSteps    Maximum number of extrapolation steps that may be used.
  * @return Pointer to an initialized ExtrapolationData struct.
  */
-ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps) {
+ExtrapolationData* initExtrapolationData(int resultSize, int maxSteps) {
   ExtrapolationData* extrData = (ExtrapolationData*)malloc(sizeof(ExtrapolationData));
   extrData->resultSize = resultSize;
   extrData->maxSteps = maxSteps;
@@ -498,7 +508,7 @@ ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps) {
   return extrData;
 }
 
-void __freeExtrapolationData(ExtrapolationData* extrData) {
+void freeExtrapolationData(ExtrapolationData* extrData) {
   for (int i = 0; i < extrData->maxSteps; i++) {
     free(extrData->ws_results[i]);
   }
@@ -512,7 +522,7 @@ void __freeExtrapolationData(ExtrapolationData* extrData) {
  * Accepts a function of the form `f(args, h, result)`, evaluated at decreasing step sizes.
  * Performs in-place extrapolation to increase accuracy. `steps <= 5` recommended to limit roundoff error.
  *
- * @param[in]  extrData     Workspace from __initExtrapolationData.
+ * @param[in]  extrData     Workspace from initExtrapolationData.
  * @param[in]  fn           Function pointer: computes result := f(args, h).
  * @param[in]  args         User data passed to fn.
  * @param[in]  h0           Initial step size.
@@ -521,7 +531,7 @@ void __freeExtrapolationData(ExtrapolationData* extrData) {
  * @param[in]  methodOrder  Order of the underlying method (e.g. 1 for Forward Differences).
  * @param[out] result       Final extrapolated result.
  */
-void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
+void richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
                               int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result) {
   /* call fn_ptr if no extrapolation is executed */
   if (steps <= 1) {
@@ -529,7 +539,7 @@ void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr f
     return;
   }
   else if (steps > extrData->maxSteps) {
-    fprintf(stderr, "Warning: Requested extrapolation steps '%d' exceed maximum '%d', set in __initExtrapolationData. Using '%d' instead.\n",
+    fprintf(stderr, "Warning: Requested extrapolation steps '%d' exceed maximum '%d', set in initExtrapolationData. Using '%d' instead.\n",
             steps, extrData->maxSteps, extrData->maxSteps);
     steps = extrData->maxSteps;
   }
@@ -552,9 +562,9 @@ void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr f
   }
 }
 
-/* wrapper for __evalHessianForwardDifferences */
-void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result) {
+/* wrapper for evalHessianForwardDifferences */
+void forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result) {
   HessianFiniteDiffArgs* hessianArgs = (HessianFiniteDiffArgs*)args;
-  __evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h,
-                                  hessianArgs->u_indices, hessianArgs->lambda, hessianArgs->jac_csc, result);
+  evalHessianForwardDifferences(hessianArgs->data, hessianArgs->threadData, hessianArgs->hes_pattern, h,
+                                hessianArgs->u_indices, hessianArgs->lambda, hessianArgs->jac_csc, result);
 }

@@ -77,20 +77,20 @@ ExchangeJacobians::ExchangeJacobians(InfoGDOP& info) :
 }
 
 ExchangeHessians::ExchangeHessians(InfoGDOP& info) :
-    A(__generateHessianPattern(info.exc_jac->A)),
-    B(__generateHessianPattern(info.exc_jac->B)),
-    C(__generateHessianPattern(info.exc_jac->C)),
-    D(__generateHessianPattern(info.exc_jac->D)),
+    A(generateHessianPattern(info.exc_jac->A)),
+    B(generateHessianPattern(info.exc_jac->B)),
+    C(generateHessianPattern(info.exc_jac->C)),
+    D(generateHessianPattern(info.exc_jac->D)),
 
     A_exists(info.exc_jac->A_exists),
     B_exists(info.exc_jac->B_exists),
     C_exists(info.exc_jac->C_exists),
     D_exists(info.exc_jac->D_exists),
 
-    A_extr(!A_exists ? nullptr : __initExtrapolationData(A->lnnz, 5)),
-    B_extr(!B_exists ? nullptr : __initExtrapolationData(B->lnnz, 5)),
-    C_extr(!C_exists ? nullptr : __initExtrapolationData(C->lnnz, 5)),
-    D_extr(!D_exists ? nullptr : __initExtrapolationData(D->lnnz, 5)),
+    A_extr(!A_exists ? nullptr : initExtrapolationData(A->lnnz, 5)),
+    B_extr(!B_exists ? nullptr : initExtrapolationData(B->lnnz, 5)),
+    C_extr(!C_exists ? nullptr : initExtrapolationData(C->lnnz, 5)),
+    D_extr(!D_exists ? nullptr : initExtrapolationData(D->lnnz, 5)),
 
     A_buffer(FixedVector<modelica_real>(!A_exists ? 0 : A->lnnz)),
     B_buffer(FixedVector<modelica_real>(!B_exists ? 0 : B->lnnz)),
@@ -107,8 +107,8 @@ ExchangeHessians::ExchangeHessians(InfoGDOP& info) :
     C_args{info.data, info.threadData, C, info.u_indices_real_vars.raw(), C_lambda.raw(), nullptr},
     D_args{info.data, info.threadData, D, info.u_indices_real_vars.raw(), D_lambda.raw(), nullptr} {
     /* attach global, heap allocated C structs to auto free */
-    info.auto_free.attach({A, B, C, D}, __freeHessianPattern);
-    info.auto_free.attach({A_extr, B_extr, C_extr, D_extr}, __freeExtrapolationData);
+    info.auto_free.attach({A, B, C, D}, freeHessianPattern);
+    info.auto_free.attach({A_extr, B_extr, C_extr, D_extr}, freeExtrapolationData);
 }
 
 } // namespace OpenModelica

@@ -36,7 +36,7 @@ typedef struct {
  * Variable pairs are grouped by (color1, color2) inside ColorPair blocks. */
 typedef struct {
   /* this is an array of ptrs to ColorPair, is NULL if (c1, c2) is not contained */
-  ColorPair** colorPairs;        // __getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
+  ColorPair** colorPairs;        // getColorPairIndex(c1, c2) with c1 >= c2 -> variable pairs for color pair
   int* row;                      // flat COO row indices (i)
   int* col;                      // flat COO column indices (j)
   int size;                      // number of variables (Hessian is size × size)
@@ -47,34 +47,35 @@ typedef struct {
   int numColors;                 // number of seed vector colors
   JACOBIAN* jac;                 // input Jacobian with sparsity + coloring
   int** cscJacIndexFromRowColor; // mapping of J[function / row][color] -> index in flat Jacobian CSC buffer
-  modelica_real* ws_oldX;        // workspace array to remember old x values and seed vector for JVPs
+  modelica_real* ws_oldX;        // workspace array to remember old x values and seed vector for JVPs | size = #vars
+  modelica_real* ws_h;           // workspace array to remember perturbation for variables during numerical Hessian eval | size = #vars
   modelica_real** ws_baseJac;    // workspace stores all rows x colors of the base Jacobian J(x)
 } HESSIAN_PATTERN;
 
 /* always use this if accessing HESSIAN_PATTERN.colorPairs
  * returns the index of a colorPair (c1, c2) in the HESSIAN_PATTERN.colorPairs */
-static inline int __getColorPairIndex(int c1, int c2) {
+static inline int getColorPairIndex(int c1, int c2) {
   if (c1 >= c2) return c1 * (c1 + 1) / 2 + c2;
   else return c2 * (c2 + 1) / 2 + c1;
 }
 
-static inline void __setSeedVector(int size, const int* cols, modelica_real value, modelica_real* seeds) {
+static inline void setSeedVector(int size, const int* cols, modelica_real value, modelica_real* seeds) {
   for (int i = 0; i < size; i++) { seeds[cols[i]] = value; }
 }
 
-HESSIAN_PATTERN* __generateHessianPattern(JACOBIAN* jac);
+HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac);
 
-void __printHessianPattern(const HESSIAN_PATTERN* hes_pattern);
+void printHessianPattern(const HESSIAN_PATTERN* hes_pattern);
 
-void __freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
+void freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
 
-/* simple extension to evalJacobian of SimulationRuntime */
-void __evalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
+/* simple extension to evalJacobiaan of SimulationRuntime */
+void mooEvalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
 
-void __evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
+void evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
+                                   int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
 
-void __forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
+void forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
 // ===== EXTRAPOLATION =====
 
@@ -101,11 +102,11 @@ typedef struct {
   modelica_real* jac_csc;       // precomputed Jacobian entries in CSC format (can be NULL)
 } HessianFiniteDiffArgs;
 
-ExtrapolationData* __initExtrapolationData(int resultSize, int maxSteps);
+ExtrapolationData* initExtrapolationData(int resultSize, int maxSteps);
 
-void __freeExtrapolationData(ExtrapolationData* extrData);
+void freeExtrapolationData(ExtrapolationData* extrData);
 
-void __richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
-                              int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result);
+void richardsonExtrapolation(ExtrapolationData* extrData, Computation_fn_ptr fn, void* args, modelica_real h0,
+                             int steps, modelica_real stepDivisor, int methodOrder, modelica_real* result);
 
 #endif // OPT_OM_EXTENSIONS_H

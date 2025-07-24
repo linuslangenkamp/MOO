@@ -39,8 +39,6 @@ void set_inputs(InfoGDOP& info, const f64* u_ij);
 void set_states_inputs(InfoGDOP& info, const f64* xu_ij);
 void set_time(InfoGDOP& info, const f64 t_ij);
 
-/* TODO: is there a better combination e.g. functionODE + someother? */
-/* evaluation at current point */
 inline void eval_current_point(InfoGDOP& info) {
     info.data->callback->functionDAE(info.data, info.threadData);
 }
@@ -52,7 +50,7 @@ void eval_mr_write(InfoGDOP& info, f64* eval_mr_buffer);
 /* call evalJacobian and write to buffer in *CSC* form; just passes the current buffer with offset to OM Jacobian */
 inline void jac_eval_write_as_csc(InfoGDOP& info, JACOBIAN* jacobian, f64* eval_jac_buffer) {
     assert(jacobian != NULL && jacobian->sparsePattern != NULL);
-    __evalJacobian(info.data, info.threadData, jacobian, NULL, eval_jac_buffer);
+    mooEvalJacobian(info.data, info.threadData, jacobian, NULL, eval_jac_buffer);
 }
 
 /* eval full jacobian (full_buffer) but only fill eval_jac_buffer with elements of first, *moved* row in Exchange's COO structure

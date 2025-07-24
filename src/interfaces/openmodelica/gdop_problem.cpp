@@ -1,5 +1,9 @@
 #include "gdop_problem.h"
 
+#define NUM_HES_FD_STEP 1e-6      // base step size for numerical Hessian perturbation
+#define NUM_HES_DF_EXTR_STEPS 1   // number of extrapolation steps
+#define NUM_HES_EXTR_DIV 2        // divisor for new step size in extrapolation
+
 namespace OpenModelica {
 
 FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
@@ -61,8 +65,8 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
             info.exc_hes->B_args.jac_csc = &jac_buffer[jac_size * mesh.acc_nodes[i][j]];
 
             /* call Hessian */
-            __richardsonExtrapolation(info.exc_hes->B_extr, __forwardDiffHessianWrapper, &info.exc_hes->B_args,
-                                      1e-6, 1, 2, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
+            richardsonExtrapolation(info.exc_hes->B_extr, forwardDiffHessianWrapper, &info.exc_hes->B_args,
+                                    NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
         }
     }
 }
@@ -107,8 +111,8 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
     if (has_mayer) {
         int index_mayer = info.x_size + (int)(info.lagrange_exists);
         info.exc_hes->C_lambda[index_mayer] = mayer_factor;
-        __richardsonExtrapolation(info.exc_hes->C_extr, __forwardDiffHessianWrapper, &info.exc_hes->C_args,
-                                  1e-6, 1, 2, 1, info.exc_hes->C_buffer.raw());
+        richardsonExtrapolation(info.exc_hes->C_extr, forwardDiffHessianWrapper, &info.exc_hes->C_args,
+                                NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C_buffer.raw());
         for (auto& [index_C, index_buffer] : info.exc_hes->C_to_Mr_buffer) {
             aug_hes_buffer[index_buffer] += info.exc_hes->C_buffer[index_C];
         }
@@ -119,8 +123,8 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
         info.exc_hes->D_args.lambda = lambda;
         info.exc_hes->D_args.jac_csc = &jac_buffer[info.exc_jac->D_coo.nnz_offset];
 
-        __richardsonExtrapolation(info.exc_hes->D_extr, __forwardDiffHessianWrapper, &info.exc_hes->D_args,
-                                  1e-6, 1, 2, 1, info.exc_hes->D_buffer.raw());
+        richardsonExtrapolation(info.exc_hes->D_extr, forwardDiffHessianWrapper, &info.exc_hes->D_args,
+                                NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->D_buffer.raw());
         for (auto& [index_D, index_buffer] : info.exc_hes->D_to_Mr_buffer) {
             aug_hes_buffer[index_buffer] += info.exc_hes->D_buffer[index_D];
         }
