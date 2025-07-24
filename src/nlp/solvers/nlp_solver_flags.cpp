@@ -11,6 +11,7 @@ NLPSolverFlags::NLPSolverFlags(int argc, char** argv) {
     solver_settings["LinearSolver"] = "MUMPS";
     solver_settings["NLPSolver"] = "Ipopt";
     solver_settings["IpoptDerivativeTest"] = "false";
+    solver_settings["WarmStart"] = "false";
 }
 
 void NLPSolverFlags::print() const {

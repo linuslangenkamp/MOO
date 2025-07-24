@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(MOO)
+project(moo)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -42,9 +42,9 @@ set(SOURCES
     # stashed/steady_state/parameter_test.cpp
 )
 
-add_library(MOO SHARED ${SOURCES})
+add_library(moo SHARED ${SOURCES})
 
-target_include_directories(MOO
+target_include_directories(moo
   PUBLIC ${CMAKE_SOURCE_DIR}/include
   PRIVATE ${CMAKE_SOURCE_DIR}/src
 )
@@ -55,7 +55,7 @@ option(WITH_FMT "Build and link with 'fmt' library" TRUE)
 
 if(WITH_FMT)
   message(STATUS "Library 'fmt' will be built from source and linked (WITH_FMT=TRUE)")
-  target_compile_definitions(MOO PRIVATE WITH_FMT)
+  target_compile_definitions(moo PRIVATE WITH_FMT)
 else()
   message(STATUS "Library 'fmt' is disabled (WITH_FMT=FALSE)")
 endif()
@@ -76,14 +76,14 @@ if(WITH_FMT)
 endif()
 
 if(WITH_FMT)
-  #add_dependencies(MOO fmt-ext)
-  target_include_directories(MOO PRIVATE
+  #add_dependencies(moo fmt-ext)
+  target_include_directories(moo PRIVATE
     ${THIRD_PARTY_INSTALL_PREFIX}/include
   )
-  target_link_directories(MOO PRIVATE
+  target_link_directories(moo PRIVATE
     ${THIRD_PARTY_INSTALL_PREFIX}/lib
   )
-  target_link_libraries(MOO PRIVATE fmt)
+  target_link_libraries(moo PRIVATE fmt)
 endif()
 
 ###### END FMT
@@ -94,7 +94,7 @@ option(DISABLE_LOGGING "Disable logging macros" FALSE)
 
 if(DISABLE_LOGGING)
   message(STATUS "Define DISABLE_LOGGING set to TRUE")
-  target_compile_definitions(MOO PRIVATE DISABLE_LOGGING)
+  target_compile_definitions(moo PRIVATE DISABLE_LOGGING)
 else()
   message(STATUS "Define DISABLE_LOGGING set to FALSE")
 endif()
@@ -109,7 +109,7 @@ option(WITH_MUMPS "Build and link with 'MUMPS' library" TRUE)
 
 if(WITH_MUMPS)
   message(STATUS "Library 'MUMPS' will be built from source and linked (WITH_MUMPS=TRUE)")
-  target_compile_definitions(MOO PRIVATE WITH_MUMPS)
+  target_compile_definitions(moo PRIVATE WITH_MUMPS)
 else()
   message(STATUS "Library 'MUMPS' is disabled (WITH_MUMPS=FALSE)")
 endif()
@@ -130,7 +130,7 @@ option(WITH_IPOPT "Build and link with 'Ipopt' library" TRUE)
 
 if(WITH_IPOPT)
   message(STATUS "Library 'Ipopt' will be built from source and linked (WITH_IPOPT=TRUE)")
-  target_compile_definitions(MOO PRIVATE WITH_IPOPT)
+  target_compile_definitions(moo PRIVATE WITH_IPOPT)
 else()
   message(STATUS "Library 'Ipopt' is disabled (WITH_IPOPT=FALSE)")
 endif()
@@ -146,15 +146,15 @@ ExternalProject_Add(ipopt-ext
     BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libipopt.a
 )
 
-#add_dependencies(MOO ipopt-ext mumps-ext)
+#add_dependencies(moo ipopt-ext mumps-ext)
 
 ##### END MUMPS + Ipopt
 
-target_include_directories(MOO PUBLIC include)
+target_include_directories(moo PUBLIC include)
 
-target_include_directories(MOO PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)
+target_include_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)
 
-target_link_directories(MOO PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
+target_link_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 
 #add_compile_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 #add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
@@ -162,19 +162,19 @@ target_link_directories(MOO PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 # TODO: Make it a clean build with -Wextra
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Configuration: Debug")
-    target_compile_options(MOO PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
+    target_compile_options(moo PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -O0 -g")
 else()
     message(STATUS "Configuration: Release")
-    target_compile_options(MOO PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O3 -march=native -funroll-loops -g)
+    target_compile_options(moo PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -O3 -march=native -funroll-loops -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -O3 -march=native -funroll-loops -g")
 endif()
 
-target_link_libraries(MOO PRIVATE ipopt coinmumps metis)
-target_link_libraries(MOO PRIVATE lapack blas dl gfortran gomp)
+target_link_libraries(moo PRIVATE ipopt coinmumps metis)
+target_link_libraries(moo PRIVATE lapack blas dl gfortran gomp)
 if (COINHSL_FOUND)
     message(STATUS "Coin-HSL found")
-    target_link_libraries(MOO PRIVATE coinhsl)
+    target_link_libraries(moo PRIVATE coinhsl)
 endif ()
 
 add_subdirectory(src/modelica/example)
@@ -182,11 +182,11 @@ add_subdirectory(src/modelica/example)
 
 ##### INCLUDE OM SIMULATION RUNTIME
 
-target_link_directories(MOO PRIVATE
+target_link_directories(moo PRIVATE
   /home/linus/Projects/OpenModelica/build_cmake/install_cmake/lib/x86_64-linux-gnu/omc
 )
 
-target_include_directories(MOO PRIVATE
+target_include_directories(moo PRIVATE
   /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/c
   /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc
   ${OPENMODELICA_ROOT}/OMCompiler
@@ -195,7 +195,7 @@ target_include_directories(MOO PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(MOO PRIVATE 
+target_link_libraries(moo PRIVATE 
     SimulationRuntimeC
     OpenModelicaRuntimeC
     omcgc
@@ -209,7 +209,7 @@ target_link_libraries(MOO PRIVATE
     stdc++
 )
 
-target_compile_definitions(MOO PRIVATE
+target_compile_definitions(moo PRIVATE
   OM_HAVE_PTHREADS
   OMC_DLL_MAIN_DEFINE
   OPENMODELICA_XML_FROM_FILE_AT_RUNTIME

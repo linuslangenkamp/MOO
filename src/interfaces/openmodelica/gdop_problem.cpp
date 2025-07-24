@@ -151,7 +151,7 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
 
     /* new generated function getInputVarIndices, just fills the index list of all optimizable inputs */
     info.u_indices_real_vars = FixedVector<int>(info.u_size);
-    data->callback->getInputVarIndicesInOptimization(data, info.u_indices_real_vars.raw()); // TODO: use these everywhere, maybe we need to add a buffer in OM C-SimRuntime for it
+    data->callback->getInputVarIndicesInOptimization(data, info.u_indices_real_vars.raw());
     for (int u = 0; u < info.u_size; u++) {
         int u_index = info.u_indices_real_vars[u];
         u_bounds[u].lb = data->modelData->realVarsData[u_index].attribute.min;

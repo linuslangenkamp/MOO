@@ -99,6 +99,8 @@ public:
                                                    const PrimalDualTrajectory& trajectory) = 0;
 };
 
+
+// TODO: add State and Control interpolation as combined Strategy
 /**
  * @brief Strategy for interpolating a Trajectory onto a new Mesh
  *
@@ -130,8 +132,6 @@ public:
     virtual int operator()(const Trajectory& trajectory) = 0;
 };
 
-
-// TODO: this should accept GDOP&, Trajectory& (optimal solution), CostateTrajectory& (dual optimum)
 /**
  * @brief Strategy for verifying optimality / quality post-optimization.
  *

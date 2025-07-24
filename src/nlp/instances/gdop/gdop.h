@@ -129,7 +129,8 @@ public:
     void eval_jac_g(bool new_x);
     void eval_hes(bool new_x, bool new_lambda);
     void finalize_solution();
-
+    
+    void flatten_trajectory_to_layout(const Trajectory& Trajectory, FixedVector<f64>& flat_buffer);
     void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
     void transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costate);
 

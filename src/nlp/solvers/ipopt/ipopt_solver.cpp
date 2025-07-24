@@ -11,6 +11,8 @@ IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverFlags& solver_flags)
 
 // simple wrapper to adapter
 void IpoptSolver::optimize() {
+    set_flags();
+
     Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(adapter);
 
     switch (status) {
@@ -106,7 +108,9 @@ void IpoptSolver::init_IpoptApplication() {
         LOG_ERROR("[Ipopt Interface] Error during application initialization!");
         abort();
     }
+}
 
+void IpoptSolver::set_flags() {
     // set all the settings here
 
     // termination fallback
@@ -119,7 +123,6 @@ void IpoptSolver::init_IpoptApplication() {
     app->Options()->SetNumericValue("bound_push", 1e-2);
     app->Options()->SetNumericValue("bound_frac", 1e-2);
     app->Options()->SetNumericValue("alpha_red_factor", 0.5);
-    // app->Options()->SetNumericValue("mu_init", 1e-15);
 
     // strategies
     app->Options()->SetStringValue("mu_strategy", "adaptive");
@@ -133,6 +136,26 @@ void IpoptSolver::init_IpoptApplication() {
     if (solver_flags.check_flag("Hessian", "LBFGS")) {
         app->Options()->SetStringValue("hessian_approximation", "limited-memory");
     }
+
+    if (solver_flags.check_flag("WarmStart", "true")) {
+        app->Options()->SetStringValue("warm_start_init_point", "yes");
+        app->Options()->SetStringValue("mu_strategy", "monotone");
+        app->Options()->SetNumericValue("mu_init", 1e-14);
+        app->Options()->SetNumericValue("warm_start_bound_push", 1e-8);
+        app->Options()->SetNumericValue("warm_start_bound_frac", 1e-8);
+        app->Options()->SetNumericValue("warm_start_slack_bound_push", 1e-8);
+        app->Options()->SetNumericValue("warm_start_slack_bound_frac", 1e-8);
+        app->Options()->SetNumericValue("warm_start_mult_bound_push", 1e-8);
+    }
+
+    /*
+        app->Options()->SetStringValue("mu_strategy", "monotone");
+        app->Options()->SetNumericValue("mu_init", 1e-14);
+        app->Options()->SetNumericValue("bound_push", 1e-8);
+        app->Options()->SetNumericValue("bound_frac", 1e-8);
+        app->Options()->SetNumericValue("slack_bound_push", 1e-8);
+        app->Options()->SetNumericValue("slack_bound_frac", 1e-8);
+    */
 
     // subproblem
     app->Options()->SetStringValue("linear_solver", solver_flags.get_flag_string_fallback("LinearSolver", "MUMPS"));

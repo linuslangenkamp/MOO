@@ -19,6 +19,7 @@ public:
     virtual void inplace_scale_g(f64* g_unscaled) = 0;
 
     virtual void unscale_x(const f64* x_scaled, f64* x_unscaled, int number_vars) = 0;
+    virtual void unscale_g(const f64* g_scaled, f64* g_unscaled, int number_constraints) = 0;
     virtual void unscale_f(const f64* f_scaled, f64* f_unscaled) = 0;
 
     virtual void scale_f(const f64* f_unscaled, f64* f_scaled) = 0;
@@ -40,6 +41,10 @@ public:
 
     void unscale_x(const f64* x_scaled, f64* x_unscaled, int number_vars) override {
         std::memcpy(x_unscaled, x_scaled, number_vars * sizeof(f64));
+    }
+
+    void unscale_g(const f64* g_scaled, f64* g_unscaled, int number_constraints) override {
+        std::memcpy(g_unscaled, g_scaled, number_constraints * sizeof(f64));
     }
 
     void unscale_f(const f64* f_scaled, f64* f_unscaled) override {
@@ -89,6 +94,7 @@ public:
     void inplace_scale_g(f64* g_unscaled) override;
 
     void unscale_x(const f64* x_scaled, f64* x_unscaled, int number_vars) override;
+    void unscale_g(const f64* g_scaled, f64* g_unscaled, int number_constraints) override;
     void unscale_f(const f64* f_scaled, f64* f_unscaled) override;
 
     void scale_f(const f64* f_unscaled, f64* f_scaled) override;

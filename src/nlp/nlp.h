@@ -7,6 +7,9 @@
 
 namespace NLP {
 
+// TODO: maybe design this interface, such that we provide the pointers like in Ipopt, so its clear what needs to be done in which function
+//       will make the generic interface way more modular and sane :: make stuff private
+
 /* generic NLP base class - can be used with the generic NLP_Solver interface
  * allows for a nice abstraction / to use any NLP solver when implementing this NLP
  * 
@@ -32,8 +35,13 @@ public:
     int nnz_jac = 0;            // nnz Jacobian in the NLP
     int nnz_hes = 0;            // nnz Hessian in the NLP
 
-    // current iterates
+    // intialization buffers, TODO: remove them and just use curr_x and curr_lambda?
     FixedVector<f64> init_x;       // initial NLP primal variables
+    FixedVector<f64> init_lambda;  // initial NLP dual variables
+    FixedVector<f64> init_z_lb;    // initial NLP variable lower bound multipliers
+    FixedVector<f64> init_z_ub;    // initial NLP variable upper bound multipliers
+
+    // current iterates
     FixedVector<f64> curr_x;       // current NLP primal variables
     FixedVector<f64> curr_lambda;  // current NLP dual variables
     f64              curr_sigma_f; // current objective weight in hessian

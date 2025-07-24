@@ -27,11 +27,23 @@ bool IpoptAdapter::get_bounds_info(Ipopt::Index n, Ipopt::Number* x_l, Ipopt::Nu
 
 bool IpoptAdapter::get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number* x, bool init_z, Ipopt::Number* z_L,
                                       Ipopt::Number* z_U, Ipopt::Index m, bool init_lambda, Ipopt::Number* lambda) {
-    assert(init_x      == true);
-    assert(init_lambda == false);
-    assert(init_z      == false);
-    nlp.init_x.write_to(x);
-    nlp.scaling->inplace_scale_x(x);
+    if (init_x) {
+        assert(nlp.init_x.int_size() == n);
+        nlp.init_x.write_to(x);
+        nlp.scaling->inplace_scale_x(x);
+    }
+    if (init_lambda) {
+        assert(nlp.init_lambda.int_size() == m);
+        nlp.scaling->unscale_g(nlp.init_lambda.raw(), lambda, nlp.number_constraints);
+        nlp.init_lambda.write_to(lambda);
+    }
+    if (init_z) {
+        assert(nlp.init_z_lb.int_size() == n && nlp.init_z_ub.int_size() == n);
+        nlp.init_z_lb.write_to(z_L);
+        nlp.init_z_ub.write_to(z_U);
+        nlp.scaling->inplace_scale_x(z_L);
+        nlp.scaling->inplace_scale_x(z_U);
+    }
     return true;
 };
 

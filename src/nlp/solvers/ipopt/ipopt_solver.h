@@ -18,9 +18,9 @@ public:
 
     Ipopt::SmartPtr<IpoptAdapter> adapter;
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
-
     void optimize() override;
     void init_IpoptApplication();
+    void set_flags();
 };
 
 } // namespace IpoptSolver

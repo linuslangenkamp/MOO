@@ -16,7 +16,7 @@
 
 using namespace OpenModelica;
 
-// TODO: rename all variables on this OpenModelica side, clearly we use stuff from OPT (choose camelCase or _!)
+// TODO: rename all variables on this OpenModelica side, clearly we use stuff from moo (choose camelCase or _!)
 // TODO: add a simple optional plotting lib (open source)
 
 /* entry point to the optimization runtime from OpenModelica generated code

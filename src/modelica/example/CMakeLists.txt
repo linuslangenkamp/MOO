@@ -20,14 +20,14 @@ target_compile_definitions(include_test_cmk PRIVATE
   OMC_NVAR_STRING=0
 )
 
-target_compile_options(include_test_cmk PRIVATE -O2 -fPIC)
+target_compile_options(include_test_cmk PRIVATE -O2 -fPIC -g)
 
 target_link_directories(include_test_cmk PRIVATE
   /home/linus/Projects/OpenModelica/build_cmake/install_cmake/lib/x86_64-linux-gnu/omc
 )
 
 target_link_libraries(include_test_cmk PRIVATE
-  MOO
+  moo
   SimulationRuntimeC
   OpenModelicaRuntimeC
   omcgc

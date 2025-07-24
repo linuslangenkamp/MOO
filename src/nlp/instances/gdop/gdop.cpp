@@ -61,17 +61,27 @@ void GDOP::init_sizes_offsets() {
 }
 
 void GDOP::init_buffers() {
-    curr_x      = FixedVector<f64>(number_vars);
+    // init only TODO: remove me later
     init_x      = FixedVector<f64>(number_vars);
+    init_z_lb   = FixedVector<f64>(number_vars);
+    init_z_ub   = FixedVector<f64>(number_vars);
+    init_lambda = FixedVector<f64>(number_constraints);
+
+    // current iterates
+    curr_x      = FixedVector<f64>(number_vars);
     curr_grad   = FixedVector<f64>(number_vars);
-    x_lb        = FixedVector<f64>(number_vars);
-    x_ub        = FixedVector<f64>(number_vars);
-    z_lb        = FixedVector<f64>(number_vars);
-    z_ub        = FixedVector<f64>(number_vars);
     curr_lambda = FixedVector<f64>(number_constraints);
     curr_g      = FixedVector<f64>(number_constraints);
+
+    // problem bounds
+    x_lb        = FixedVector<f64>(number_vars);
+    x_ub        = FixedVector<f64>(number_vars);
     g_lb        = FixedVector<f64>(number_constraints);
     g_ub        = FixedVector<f64>(number_constraints);
+
+    // optimal bound multipliers (filled when optimal)
+    z_lb        = FixedVector<f64>(number_vars);
+    z_ub        = FixedVector<f64>(number_vars);
 }
 
 void GDOP::init_bounds() {
@@ -132,41 +142,51 @@ void GDOP::set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_traje
 }
 
 void GDOP::init_starting_point() {
-    auto& initial_guess_primal  = initial_guess->primals;
-    auto& initial_guess_costate = initial_guess->costates;
+    auto& initial_guess_primal         = initial_guess->primals;
+    auto& initial_guess_costate        = initial_guess->costates;
+    auto& initial_guess_lower_costates = initial_guess->lower_costates;
+    auto& initial_guess_upper_costates = initial_guess->upper_costates;
 
     if (initial_guess_primal) {
         // interpolate to mesh if not compatible
         if (!initial_guess_primal->compatible_with_mesh(mesh, collocation)) {
             initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh, collocation));
         }
-
-        for (int x_index = 0; x_index < off_x; x_index++) {
-            init_x[x_index] = initial_guess_primal->x[x_index][0];
-        }
-
-        int index = 1;
-        for (int i = 0; i < mesh.intervals; i++) {
-            for (int j = 0; j < mesh.nodes[i]; j++) {
-                for (int x_index = 0; x_index < off_x; x_index++) {
-                    init_x[off_acc_xu[i][j] + x_index] = initial_guess_primal->x[x_index][index];
-                }
-                for (int u_index = 0; u_index < off_u; u_index++) {
-                    init_x[off_acc_xu[i][j] + off_x + u_index] = initial_guess_primal->u[u_index][index];
-                }
-                index++;
-            }
-        }
-        for (int p_index = 0; p_index < off_p; p_index++) {
-            init_x[off_xu_total + p_index] = initial_guess_primal->p[p_index];
-        }
+        flatten_trajectory_to_layout(*initial_guess_primal, init_x);
     }
     else {
         LOG_ERROR("No primal initial guess supplied in GDOP::init_starting_point().");
     }
 
     if (initial_guess_costate) {
-        // TODO
+        // assume mesh is compatible, we dont do that again, as it should be covered in primal case
+
+        int index = 1; // ignore interpolated costates at t = 0
+        for (int i = 0; i < mesh.intervals; i++) {
+            for (int j = 0; j < mesh.nodes[i]; j++) {
+                for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
+                    init_lambda[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
+                }
+                for (int g_index = 0; g_index < problem.full->g_size; g_index++) {
+                    init_lambda[off_acc_fg[i][j] + problem.full->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
+                }
+                index++;
+            }
+        }
+        for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
+            init_lambda[off_fg_total + r_index] = initial_guess_costate->costates_r[r_index];
+        }
+
+        transform_duals_costates(init_lambda, false);
+    }
+
+    if (initial_guess_lower_costates && initial_guess_upper_costates) {
+        // assume mesh is compatible, we dont do that again, as it should be covered in primal case
+        flatten_trajectory_to_layout(*initial_guess_lower_costates, init_z_lb);
+        flatten_trajectory_to_layout(*initial_guess_upper_costates, init_z_ub);
+
+        transform_duals_costates_bounds(init_z_lb, false);
+        transform_duals_costates_bounds(init_z_ub, false);
     }
 }
 
@@ -927,6 +947,29 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
  * - **Smoothness of Bound Multipliers:** Bound multipliers $\zeta_x(t)$ and $\zeta_u(t)$ may appear smooth (exhibiting the expected piecewise polynomial structure)
  *          if the corresponding bound constraint is active over a full collocation interval.
  */
+
+
+void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVector<f64>& flat_buffer) {
+    for (int x_index = 0; x_index < off_x; x_index++) {
+        flat_buffer[x_index] = trajectory.x[x_index][0];
+    }
+
+    int index = 1;
+    for (int i = 0; i < mesh.intervals; i++) {
+        for (int j = 0; j < mesh.nodes[i]; j++) {
+            for (int x_index = 0; x_index < off_x; x_index++) {
+                flat_buffer[off_acc_xu[i][j] + x_index] = trajectory.x[x_index][index];
+            }
+            for (int u_index = 0; u_index < off_u; u_index++) {
+                flat_buffer[off_acc_xu[i][j] + off_x + u_index] = trajectory.u[u_index][index];
+            }
+            index++;
+        }
+    }
+    for (int p_index = 0; p_index < off_p; p_index++) {
+        flat_buffer[off_xu_total + p_index] = trajectory.p[p_index];
+    }
+}
 
  /**
  * @brief Finalizes and returns the optimal primal trajectories (states and controls).

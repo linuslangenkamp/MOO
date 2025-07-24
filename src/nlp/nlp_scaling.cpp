@@ -49,6 +49,11 @@ void NominalScaling::unscale_x(const f64* x_scaled, f64* x_unscaled, int number_
     Linalg::diagmat_vec(x_scaling.raw(), true, x_scaled, number_vars, x_unscaled);
 }
 
+// g_unscaled := g_nom * g_scaled
+void NominalScaling::unscale_g(const f64* g_scaled, f64* g_unscaled, int number_constraints) {
+    Linalg::diagmat_vec(g_scaling.raw(), true, g_scaled, number_constraints, g_unscaled);
+}
+
 // f_scaled := f_nom * f_unscaled 
 void NominalScaling::unscale_f(const f64* f_scaled, f64* f_unscaled) {
     *f_unscaled = (*f_scaled) / f_scaling;

@@ -9,6 +9,7 @@
 #include "IpSolveStatistics.hpp"
 
 #include <nlp/nlp.h>
+#include <base/log.h>
 
 namespace IpoptSolver {
 
