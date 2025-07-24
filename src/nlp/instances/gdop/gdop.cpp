@@ -61,12 +61,6 @@ void GDOP::init_sizes_offsets() {
 }
 
 void GDOP::init_buffers() {
-    // init only TODO: remove me later
-    init_x      = FixedVector<f64>(number_vars);
-    init_z_lb   = FixedVector<f64>(number_vars);
-    init_z_ub   = FixedVector<f64>(number_vars);
-    init_lambda = FixedVector<f64>(number_constraints);
-
     // current iterates
     curr_x      = FixedVector<f64>(number_vars);
     curr_grad   = FixedVector<f64>(number_vars);
@@ -152,7 +146,7 @@ void GDOP::init_starting_point() {
         if (!initial_guess_primal->compatible_with_mesh(mesh, collocation)) {
             initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh, collocation));
         }
-        flatten_trajectory_to_layout(*initial_guess_primal, init_x);
+        flatten_trajectory_to_layout(*initial_guess_primal, curr_x);
     }
     else {
         LOG_ERROR("No primal initial guess supplied in GDOP::init_starting_point().");
@@ -165,28 +159,28 @@ void GDOP::init_starting_point() {
         for (int i = 0; i < mesh.intervals; i++) {
             for (int j = 0; j < mesh.nodes[i]; j++) {
                 for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
-                    init_lambda[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
+                    curr_lambda[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
                 }
                 for (int g_index = 0; g_index < problem.full->g_size; g_index++) {
-                    init_lambda[off_acc_fg[i][j] + problem.full->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
+                    curr_lambda[off_acc_fg[i][j] + problem.full->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
                 }
                 index++;
             }
         }
         for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
-            init_lambda[off_fg_total + r_index] = initial_guess_costate->costates_r[r_index];
+            curr_lambda[off_fg_total + r_index] = initial_guess_costate->costates_r[r_index];
         }
 
-        transform_duals_costates(init_lambda, false);
+        transform_duals_costates(curr_lambda, false);
     }
 
     if (initial_guess_lower_costates && initial_guess_upper_costates) {
         // assume mesh is compatible, we dont do that again, as it should be covered in primal case
-        flatten_trajectory_to_layout(*initial_guess_lower_costates, init_z_lb);
-        flatten_trajectory_to_layout(*initial_guess_upper_costates, init_z_ub);
+        flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb);
+        flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub);
 
-        transform_duals_costates_bounds(init_z_lb, false);
-        transform_duals_costates_bounds(init_z_ub, false);
+        transform_duals_costates_bounds(z_lb, false);
+        transform_duals_costates_bounds(z_ub, false);
     }
 }
 
@@ -447,10 +441,8 @@ void GDOP::init_hessian() {
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             if (!(i == mesh.intervals - 1 && j == mesh.nodes[mesh.intervals - 1] - 1)) {
-                // TODO: maybe move this to outer loop
                 for (auto [row, col] : B.set) {
                     int xu_hes_index = hes_b.access(row, col, mesh.acc_nodes[i][j]);
-                    off_acc_xu[i][j];
                     i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }

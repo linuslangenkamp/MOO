@@ -28,19 +28,19 @@ bool IpoptAdapter::get_bounds_info(Ipopt::Index n, Ipopt::Number* x_l, Ipopt::Nu
 bool IpoptAdapter::get_starting_point(Ipopt::Index n, bool init_x, Ipopt::Number* x, bool init_z, Ipopt::Number* z_L,
                                       Ipopt::Number* z_U, Ipopt::Index m, bool init_lambda, Ipopt::Number* lambda) {
     if (init_x) {
-        assert(nlp.init_x.int_size() == n);
-        nlp.init_x.write_to(x);
+        assert(nlp.curr_x.int_size() == n);
+        nlp.curr_x.write_to(x);
         nlp.scaling->inplace_scale_x(x);
     }
     if (init_lambda) {
-        assert(nlp.init_lambda.int_size() == m);
-        nlp.scaling->unscale_g(nlp.init_lambda.raw(), lambda, nlp.number_constraints);
-        nlp.init_lambda.write_to(lambda);
+        assert(nlp.curr_lambda.int_size() == m);
+        nlp.scaling->unscale_g(nlp.curr_lambda.raw(), lambda, nlp.number_constraints);
+        nlp.curr_lambda.write_to(lambda);
     }
     if (init_z) {
-        assert(nlp.init_z_lb.int_size() == n && nlp.init_z_ub.int_size() == n);
-        nlp.init_z_lb.write_to(z_L);
-        nlp.init_z_ub.write_to(z_U);
+        assert(nlp.z_lb.int_size() == n && nlp.z_ub.int_size() == n);
+        nlp.z_lb.write_to(z_L);
+        nlp.z_ub.write_to(z_U);
         nlp.scaling->inplace_scale_x(z_L);
         nlp.scaling->inplace_scale_x(z_U);
     }
@@ -109,7 +109,6 @@ bool IpoptAdapter::eval_h(Ipopt::Index n, const Ipopt::Number* x, bool new_x, Ip
 void IpoptAdapter::finalize_solution(Ipopt::SolverReturn status, Ipopt::Index n, const Ipopt::Number* x, const Ipopt::Number* z_L,
                                      const Ipopt::Number* z_U, Ipopt::Index m, const Ipopt::Number* g, const Ipopt::Number* lambda,
                                      Ipopt::Number obj_value, const Ipopt::IpoptData* ip_data, Ipopt::IpoptCalculatedQuantities* ip_cq) {
-    // TODO: to implement, maybe add option for warm start with lambda, ..., then return that also or in struct
     nlp.update_unscale_curr_x(true, x);            // unscaled optimal x
     nlp.update_unscale_curr_lambda(true, lambda);  // unscaled optimal duals
     nlp.unscale_objective(&obj_value);             // unscaled optimal objective

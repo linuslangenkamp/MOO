@@ -35,12 +35,6 @@ public:
     int nnz_jac = 0;            // nnz Jacobian in the NLP
     int nnz_hes = 0;            // nnz Hessian in the NLP
 
-    // intialization buffers, TODO: remove them and just use curr_x and curr_lambda?
-    FixedVector<f64> init_x;       // initial NLP primal variables
-    FixedVector<f64> init_lambda;  // initial NLP dual variables
-    FixedVector<f64> init_z_lb;    // initial NLP variable lower bound multipliers
-    FixedVector<f64> init_z_ub;    // initial NLP variable upper bound multipliers
-
     // current iterates
     FixedVector<f64> curr_x;       // current NLP primal variables
     FixedVector<f64> curr_lambda;  // current NLP dual variables
