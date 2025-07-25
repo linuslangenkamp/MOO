@@ -87,7 +87,7 @@ public:
     FixedVector<f64> jac_buffer;
     FixedVector<f64> aug_hes_buffer;
 
-    /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
+    /* TODO: PARAMETERS add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
     FixedVector<f64> aug_pp_hes_buffer; // make it like list<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
     void resize_buffers() {
@@ -298,7 +298,7 @@ public:
         return full->aug_hes_buffer[entry + full->aug_hes_size * mesh.acc_nodes[interval_i][node_j]];
     }
 
-    /* TODO: add and make threaded */
+    /* TODO: PARAMETERS add and make threaded */
     inline f64 lfg_aug_pp_hes(int entry) {
         return full->aug_pp_hes_buffer[entry];
     }

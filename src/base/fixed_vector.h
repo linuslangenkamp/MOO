@@ -37,7 +37,7 @@ public:
 
     constexpr FixedVector() noexcept : _size{0}, _data{} {}
 
-    /* TODO: try using T[] instead of ptr<T[]> */
+    // TODO: try using T[] instead of ptr<T[]>
     explicit FixedVector(std::size_t size) : _size{size}, _data{std::make_unique<T[]>(size)} {}
 
     constexpr FixedVector(const FixedVector &other) : FixedVector(other._size) {

@@ -141,7 +141,7 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
     info.x_size = data->modelData->nStates;
     info.u_size = data->modelData->nInputVars;
     info.xu_size = info.x_size + info.u_size;
-    info.p_size = 0; // TODO: add this feature
+    info.p_size = 0; // TODO: PARAMETERS
 
     /* variable bounds */
     FixedVector<Bounds> x_bounds(info.x_size);

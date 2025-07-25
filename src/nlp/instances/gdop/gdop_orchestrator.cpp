@@ -12,7 +12,7 @@ void MeshRefinementOrchestrator::optimize() {
     // create initial guess
     auto initial_guess = strategies->get_initial_guess(gdop);
 
-    // TODO: fix simulation-based verify / update, probably interpolation error
+    // TODO: fix simulation-based verify / update, probably interpolation error of controls
 
     for(;;) {
         gdop.set_initial_guess(std::move(initial_guess));
@@ -40,11 +40,9 @@ void MeshRefinementOrchestrator::optimize() {
         initial_guess = strategies->get_refined_initial_guess(gdop.mesh, refined_mesh, gdop.collocation, *gdop.optimal_solution);
         solver.solver_settings.set(NLP::Option::WarmStart, true);
 
-
         initial_guess->costates->to_csv("costates_interp.csv");
         initial_guess->lower_costates->to_csv("lower_costates_interp.csv");
         initial_guess->upper_costates->to_csv("upper_costates_interp.csv");
-
 
         // 4. update gdop with new mesh
         gdop.update(std::move(refined_mesh));

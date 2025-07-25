@@ -69,7 +69,7 @@ static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threa
 
 static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
-    // TODO: parameters
+    // TODO: PARAMETERS
     AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage;
     InfoGDOP& info = aux->info;
     Trajectory& trajectory = aux->trajectory;
@@ -152,7 +152,7 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
         u_guess.push_back({data->modelData->realVarsData[u].attribute.start, data->modelData->realVarsData[u].attribute.start});
     }
 
-    // TODO: add p
+    // TODO: PARAMETERS add p
 
     return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(t, x_guess, u_guess, p, interpolation));
 }

@@ -116,7 +116,7 @@ void IpoptSolver::set_settings() {
     app->Options()->SetNumericValue("max_cpu_time", solver_settings.get_or_default<f64>(NLP::Option::CPUTime));
 
     // --- tolerances, step sizes ---
-    double tol = solver_settings.get_or_default<double>(NLP::Option::Tolerance);
+    f64 tol = solver_settings.get_or_default<f64>(NLP::Option::Tolerance);
     app->Options()->SetNumericValue("tol", tol);
     app->Options()->SetNumericValue("acceptable_tol", tol * 1e3);
     app->Options()->SetNumericValue("bound_push", 1e-2);

@@ -735,7 +735,7 @@ void GDOP::eval_jac_g_internal() {
                 // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
                 nnz_index += j + 1;
 
-                // TODO: maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
+                // TODO: MAYBE maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
                 int df_dx_counter = 0;
                 std::vector<JacobianSparsity>& df_dx = problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
 
@@ -1199,7 +1199,7 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
         traj.t.reserve(mesh.node_count + 1);
         traj.x.resize(off_x);
         traj.u.resize(off_u);
-        traj.p.reserve(off_p); // TODO: add parameters to result trajectory
+        traj.p.reserve(off_p); // TODO: PARAMETERS add parameters to result trajectory
 
         for (auto& v : traj.x) { v.reserve(mesh.node_count + 1); }
         for (auto& v : traj.u) { v.reserve(mesh.node_count + 1); }

@@ -91,7 +91,7 @@ void init_hes(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
 
 void init_hes_lfg(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
                   AugmentedParameterHessian& aug_hes_lfg_pp) {
-    /* TODO: include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
+    /* TODO: PARAMETERS include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
 
     HESSIAN_PATTERN* hes_b = info.exc_hes->B;
 
@@ -198,7 +198,7 @@ void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<Fun
     }
 }
 
-/* TODO: add me */
+/* TODO: PARAMETERS add me */
 void set_parameters(InfoGDOP& info, const f64* p) {
     return;
 }

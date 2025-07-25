@@ -15,7 +15,7 @@ void mooEvalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, J
   /* evaluate Jacobian */
   for (color = 0; color < sparse->maxColors; color++) {
     /* activate seed variable for the corresponding color */
-    for (column = 0; column < jacobian->sizeCols; column++) /* TODO: maybe refactor (in SimRuntime) colors as int** of dim (#colors, #size_color_j) of col indices? */
+    for (column = 0; column < jacobian->sizeCols; column++) /* TODO: maybe refactor (in SimRuntime) colors as flat int* of dim (#colors, #size_color_j) of col indices? */
       if (sparse->colorCols[column] - 1 == color)
         jacobian->seedVars[column] = 1.0;
 

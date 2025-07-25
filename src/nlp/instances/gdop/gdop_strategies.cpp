@@ -62,7 +62,7 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
 
     std::vector<std::vector<f64>> x_guess(x_size);
     std::vector<std::vector<f64>> u_guess(u_size);
-    std::vector<f64>              p_guess(p_size, 0.0);  // TODO: implement
+    std::vector<f64>              p_guess(p_size, 0.0);  // TODO: PARAMETERS implement
 
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
@@ -111,8 +111,6 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
     return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(t, x_guess, u_guess, p_guess, interpolation));
 }
 
-// TODO: make this without aux allocation of new_t and old_t
-// interpolate trajectory to new mesh with simple linear interpolation
 std::vector<f64> LinearInterpolation::operator()(
     const Mesh& old_mesh,
     const Mesh& new_mesh,
@@ -125,7 +123,8 @@ std::vector<f64> LinearInterpolation::operator()(
     return interpolate_linear_single(old_t, values, new_t);
 }
 
-// TODO: reduce overhead in interpolation + copies, etc. if necessary
+// TODO: reduce overhead in interpolation + copies, etc. if necessary, make this without aux allocation of new_t and old_t
+// interpolate trajectory to new mesh with simple linear interpolation
 InterpolationRefinedInitialization::InterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
                                                                                      bool interpolate_primals_,
                                                                                      bool interpolate_costates_constraints_,
@@ -136,6 +135,7 @@ InterpolationRefinedInitialization::InterpolationRefinedInitialization(std::shar
       interpolate_costates_bounds(interpolate_costates_bounds_) {}
 
 // TODO: refactor this. Can we unify the interpolations even further, now we also need to interpolate controls better at callbacks...
+// maybe we should do just 1 grant linear interpolator, and 1 polynomial interpolator class, which implement all the cases? think about this
 std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operator()(const Mesh& old_mesh,
                                                                                      const Mesh& new_mesh,
                                                                                      const Collocation& collocation,

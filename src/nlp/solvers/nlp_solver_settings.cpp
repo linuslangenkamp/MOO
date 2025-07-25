@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <cstdlib>
 
+// TODO: refactor this into big struct or what is best if the size expands?
+
 namespace NLP {
 
 // === Default values ===
@@ -58,11 +60,11 @@ std::optional<Option> option_from_string(const std::string& name) {
 // === Option Class ===
 
 NLPSolverSettings::NLPSolverSettings(int argc, char** argv) {
-    // Start with defaults
+    // start with defaults
     settings = default_settings;
 
-    // Parse CLI arguments of form: --Key=Value
-    for (int i = 1; i < argc; ++i) {
+    // parse CLI arguments of form: --Key=Value
+    for (int i = 1; i < argc; i++) {
         std::string arg(argv[i]);
         if (arg.rfind("--", 0) == 0) {
             size_t eq = arg.find('=');
