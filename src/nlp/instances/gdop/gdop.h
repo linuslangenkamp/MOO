@@ -106,12 +106,12 @@ public:
 
     // inline methods for getting and providing current variable / dual addresses in callback
     // x0 => x(t0), xu => xu(t_01), xuf => xu(t_f), p => p, lamb_fg => fg(t_01), lamb_r => r
-    inline f64* get_curr_x_x0()    { return off_x        != 0 ? curr_x.raw()          : nullptr; }
-    inline f64* get_curr_x_xu()    { return off_xu       != 0 ? &curr_x[off_x]        : nullptr; }
-    inline f64* get_curr_x_xuf()   { return off_xu       != 0 ? &curr_x[off_last_xu]  : nullptr; }
-    inline f64* get_curr_x_p()     { return off_p        != 0 ? &curr_x[off_xu_total] : nullptr; }
-    inline f64* get_curr_lamb_fg() { return off_fg_total != 0 ? curr_lambda.raw()     : nullptr; }
-    inline f64* get_curr_lamb_r()  { return problem.boundary->r_size != 0 ? &curr_lambda[off_fg_total] : nullptr; }
+    inline f64* get_curr_x_x0(FixedVector<f64>& curr_x)         { return off_x        != 0 ? curr_x.raw()          : nullptr; }
+    inline f64* get_curr_x_xu(FixedVector<f64>& curr_x)         { return off_xu       != 0 ? &curr_x[off_x]        : nullptr; }
+    inline f64* get_curr_x_xuf(FixedVector<f64>& curr_x)        { return off_xu       != 0 ? &curr_x[off_last_xu]  : nullptr; }
+    inline f64* get_curr_x_p(FixedVector<f64>& curr_x)          { return off_p        != 0 ? &curr_x[off_xu_total] : nullptr; }
+    inline f64* get_curr_lamb_fg(FixedVector<f64>& curr_lambda) { return off_fg_total != 0 ? curr_lambda.raw()     : nullptr; }
+    inline f64* get_curr_lamb_r(FixedVector<f64>& curr_lambda)  { return problem.boundary->r_size != 0 ? &curr_lambda[off_fg_total] : nullptr; }
 
     // nlp solver calls
     void check_new_x(bool new_x);

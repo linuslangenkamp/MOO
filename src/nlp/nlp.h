@@ -7,9 +7,6 @@
 
 namespace NLP {
 
-// TODO: maybe design this interface, such that we provide the pointers like in Ipopt, so its clear what needs to be done in which function
-//       will make the generic interface way more modular and sane :: make stuff private
-
 /* generic NLP base class - can be used with the generic NLP_Solver interface
  * allows for a nice abstraction / to use any NLP solver when implementing this NLP
  * 
@@ -29,7 +26,131 @@ class NLP {
 public:
     NLP() = default;
 
-    // NLP stuff itself
+    // ============ Solver API ============
+
+    void solver_get_info(
+        int& solver_number_vars,
+        int& solver_number_constraints,
+        int& solver_nnz_jac,
+        int& solver_nnz_hes
+    );
+
+    void solver_get_bounds(
+        f64* solver_x_lb,
+        f64* solver_x_ub,
+        f64* solver_g_lb,
+        f64* solver_g_ub);
+
+    void solver_get_initial_guess(
+        bool init_x,
+        f64* solver_x_init,
+        bool init_lambda,
+        f64* solver_lambda_init,
+        bool init_z,
+        f64* solver_z_lb_init,
+        f64* solver_z_ub_init);
+
+    void solver_get_jac_sparsity(
+        int* solver_i_row_jac,
+        int* solver_j_col_jac
+    );
+
+    void solver_get_hes_sparsity(
+        int* solver_i_row_hes,
+        int* solver_j_col_hes
+    );
+
+    void solver_eval_f(
+        bool new_x,
+        const f64* solver_x,
+        f64& solver_obj_value);
+
+    void solver_eval_grad_f(
+        bool new_x,
+        const f64* solver_x,
+        f64* solver_grad_f);
+
+    void solver_eval_g(
+        bool new_x,
+        const f64* solver_x,
+        f64* solver_g);
+
+    void solver_eval_jac(
+        bool new_x,
+        const f64* solver_x,
+        f64* solver_jac);
+
+    void solver_eval_hes(
+        bool new_x,
+        const f64* solver_x,
+        bool new_lambda,
+        const f64* solver_lambda,
+        const f64 solver_obj_factor,
+        f64* solver_hes);
+
+    void solver_finalize_solution(
+        const f64  solver_obj_value,
+        const f64* solver_x,
+        const f64* solver_lambda,
+        const f64* solver_z_L,
+        const f64* solver_z_U
+    );
+
+    // ============ User API ============
+
+    // overload if needed: used to reset, update stuff in the NLP (called at the very start of every optimization in solver_get_info)
+    void update() {};
+
+    void set_scaling(std::shared_ptr<Scaling> new_scaling) { scaling = new_scaling; }
+
+    // ============ User Callbacks ============
+
+    virtual void get_sizes(
+        int& number_vars,
+        int& number_constraints
+    ) = 0;
+
+    virtual void get_bounds(
+        FixedVector<f64>& x_lb,
+        FixedVector<f64>& x_ub,
+        FixedVector<f64>& g_lb,
+        FixedVector<f64>& g_ub) = 0;
+
+    virtual void get_nnz(
+        int& nnz_jac,
+        int& nnz_hes
+    ) = 0;
+
+    virtual void get_initial_guess(
+        bool init_x,
+        FixedVector<f64>& x_init,
+        bool init_lambda,
+        FixedVector<f64>& lambda_init,
+        bool init_z,
+        FixedVector<f64>& z_lb_init,
+        FixedVector<f64>& z_ub_init) = 0;
+
+    virtual void get_jac_sparsity(
+        FixedVector<int> i_row_jac,
+        FixedVector<int> j_col_jac
+    ) = 0;
+
+    virtual void get_hes_sparsity(
+        FixedVector<int> i_row_hes,
+        FixedVector<int> j_col_hes
+    ) = 0;
+
+    virtual void eval_f(bool new_x) = 0;                    // fill curr_obj
+    virtual void eval_g(bool new_x) = 0;                    // fill curr_g
+    virtual void eval_grad_f(bool new_x) = 0;               // fill curr_grad
+    virtual void eval_jac_g(bool new_x) = 0;                // fill curr_jac
+    virtual void eval_hes(bool new_x, bool new_lambda) = 0; // fill curr_hes
+    virtual void finalize_solution() = 0;                   // finalize the solution
+
+private:
+
+    // ============ NLP Structures and Info ============
+
     int number_vars = 0;        // total number of variables in the NLP
     int number_constraints = 0; // total number of constraints in the NLP
     int nnz_jac = 0;            // nnz Jacobian in the NLP
@@ -65,17 +186,17 @@ public:
     FixedVector<int> i_row_hes; // row COO of the Hessian
     FixedVector<int> j_col_hes; // column COO of the Hessian
 
+    // generic scaling routine
+    std::shared_ptr<Scaling> scaling = std::make_shared<NoScaling>();
+
     // TODO: add a generic block BFGS routine, which can calculate blocks of the Lagrangian Hessian $\nabla_{xx} \mathcal{L}_{AA -> BB}$
 
-    std::shared_ptr<Scaling> scaling = std::make_shared<NoScaling>();                 // generic scaling routine
-    void set_scaling(std::shared_ptr<Scaling> new_scaling) { scaling = new_scaling; } // set the generic scaling routine
+    // ============ Internal Methods ============
 
-    virtual void eval_f(bool new_x) = 0;                    // fill curr_obj
-    virtual void eval_g(bool new_x) = 0;                    // fill curr_g
-    virtual void eval_grad_f(bool new_x) = 0;               // fill curr_grad
-    virtual void eval_jac_g(bool new_x) = 0;                // fill curr_jac
-    virtual void eval_hes(bool new_x, bool new_lambda) = 0; // fill curr_hes
-    virtual void finalize_solution() = 0;                   // finalize the solution
+    void allocate_buffers();
+    void allocate_sparsity_buffers();
+
+    // ============ Helpers for Scaling ============
 
     inline void unscale_dual_bounds(const f64* z_L, const f64* z_U) {
         scaling->unscale_x(z_L, z_lb.raw(), number_vars);

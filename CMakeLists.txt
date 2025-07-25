@@ -26,6 +26,7 @@ set(SOURCES
 
     src/nlp/solvers/nlp_solver_settings.cpp
     src/nlp/nlp_scaling.cpp
+    src/nlp/nlp.cpp
 
     src/nlp/solvers/ipopt/ipopt_adapter.cpp
     src/nlp/solvers/ipopt/ipopt_solver.cpp
