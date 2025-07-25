@@ -27,9 +27,83 @@ public:
         mesh(mesh),
         problem(problem),
         collocation(collocation) {}
-  // TODO: what can be made private, also make layout (args) nice like in Ipopt
 
-  // structures
+  // === API + external calls ===
+
+  void update(Mesh&& new_mesh);
+
+  void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
+
+  // === Virtuals in NLP ===
+
+  void get_sizes(
+    int& number_vars,
+    int& number_constraints) override;
+
+  void get_bounds(
+    FixedVector<f64>& x_lb,
+    FixedVector<f64>& x_ub,
+    FixedVector<f64>& g_lb,
+    FixedVector<f64>& g_ub) override;
+
+  void get_initial_guess(
+    bool init_x,
+    FixedVector<f64>& x_init,
+    bool init_lambda,
+    FixedVector<f64>& lambda_init,
+    bool init_z,
+    FixedVector<f64>& z_lb_init,
+    FixedVector<f64>& z_ub_init) override;
+
+  void get_nnz(
+    int& nnz_jac,
+    int& nnz_hes) override;
+
+  void get_jac_sparsity(
+      FixedVector<int> i_row_jac,
+      FixedVector<int> j_col_jac) override;
+
+  void get_hes_sparsity(
+      FixedVector<int> i_row_hes,
+      FixedVector<int> j_col_hes) override;
+
+  void eval_f(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    f64& curr_obj) override;
+
+  void eval_g(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    FixedVector<f64>& curr_g) override;
+
+  void eval_grad_f(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    FixedVector<f64>& curr_grad_f) override;
+
+  void eval_jac_g(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    const FixedVector<int>& i_row_jac,
+    const FixedVector<int>& j_col_jac,
+    FixedVector<f64>& curr_jac) override;
+
+  void eval_hes(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    bool new_lambda,
+    FixedVector<f64>& curr_lambda,
+    f64& curr_obj_factor,
+    const FixedVector<int>& i_row_hes,
+    const FixedVector<int>& j_col_hes,
+    FixedVector<f64>& curr_hes) override;
+
+  void finalize_solution() override;
+
+private:
+  // === private structures ===
+
   Mesh& mesh;                 // grid / mesh
   Problem& problem;           // continuous GDOP
   Collocation& collocation;   // collocation data
@@ -66,78 +140,8 @@ public:
   BlockSparsity hes_a, hes_b, hes_c, hes_d, hes_e, hes_f, hes_g, hes_h;
   OrderedIndexSet A, B, C, D, E, F, G, H; // rename
 
-  void update(Mesh&& new_mesh);
+  // === private / internal methods ===
 
-  void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
-
-  // virtuals in NLP
-  void get_sizes(
-    int& number_vars,
-    int& number_constraints) override;
-
-  void get_bounds(
-    FixedVector<f64>& x_lb,
-    FixedVector<f64>& x_ub,
-    FixedVector<f64>& g_lb,
-    FixedVector<f64>& g_ub) override;
-
-  void get_initial_guess(
-    bool init_x,
-    FixedVector<f64>& x_init,
-    bool init_lambda,
-    FixedVector<f64>& lambda_init,
-    bool init_z,
-    FixedVector<f64>& z_lb_init,
-    FixedVector<f64>& z_ub_init) override;
-
-  void GDOP::get_nnz(
-    int& nnz_jac,
-    int& nnz_hes) override;
-
-  void GDOP::get_jac_sparsity(
-      FixedVector<int> i_row_jac,
-      FixedVector<int> j_col_jac);
-
-  void GDOP::get_hes_sparsity(
-      FixedVector<int> i_row_hes,
-      FixedVector<int> j_col_hes);
-
-  void eval_f(
-    bool new_x,
-    const FixedVector<f64>& curr_x,
-    f64& curr_obj) override;
-
-  void eval_g(
-    bool new_x,
-    const FixedVector<f64>& curr_x,
-    FixedVector<f64>& curr_g) override;
-
-  void eval_grad_f(
-    bool new_x,
-    const FixedVector<f64>& curr_x,
-    FixedVector<f64>& curr_grad_f) override;
-
-  void eval_jac_g(
-    bool new_x,
-    const FixedVector<f64>& curr_x,
-    const FixedVector<int>& i_row_jac,
-    const FixedVector<int>& j_col_jac,
-    FixedVector<f64>& curr_jac) override;
-
-  void eval_hes(
-    bool new_x,
-    const FixedVector<f64>& curr_x,
-    bool new_lambda,
-    FixedVector<f64>& curr_lambda,
-    f64& curr_obj_factor,
-    const FixedVector<int>& i_row_hes,
-    const FixedVector<int>& j_col_hes,
-    FixedVector<f64>& curr_hes) override;
-
-  void finalize_solution() override;
-
-
-private:
   // inline methods for getting and providing current variable / dual addresses in callback
   // x0 => x(t0), xu => xu(t_01), xuf => xu(t_f), p => p, lamb_fg => fg(t_01), lamb_r => r
   inline const f64* get_curr_x_x0(const FixedVector<f64>& curr_x)         { return off_x        != 0 ? curr_x.raw()          : nullptr; }
@@ -164,12 +168,14 @@ private:
   void update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_hes, FixedVector<f64>& curr_hes); // sum of all weighted Hessian(Lfg)_pp
   void update_augmented_hessian_mr(const AugmentedHessianMR& hes, FixedVector<f64>& curr_hes);
 
-  // get callback data
+  // === callbacks to continuous problem (fill problem buffers) ===
+
   void callback_evaluation(const FixedVector<f64>& curr_x);
   void callback_jacobian(const FixedVector<f64>& curr_x);
   void callback_hessian(const FixedVector<f64> x, FixedVector<f64>& curr_lambda, f64 curr_sigma_f);
 
-  // internal evaluations
+  // === internal evaluations ===
+
   void check_new_x(bool new_x);
   void check_new_lambda(bool new_lambda);
   void eval_f_internal(f64& curr_obj);
@@ -178,6 +184,7 @@ private:
   void eval_jac_g_internal(FixedVector<f64>& curr_jac);
   void eval_hes_internal(FixedVector<f64>& curr_hes);
 
+  // === results + finalize + transform costates ===
 
   void flatten_trajectory_to_layout(const Trajectory& Trajectory, FixedVector<f64>& flat_buffer);
   void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
