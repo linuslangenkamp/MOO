@@ -1,0 +1,197 @@
+#include "nlp.h"
+
+namespace NLP {
+
+void NLP::solver_get_info(
+    int& solver_number_vars,
+    int& solver_number_constraints,
+    int& solver_nnz_jac,
+    int& solver_nnz_hes)
+{
+    // user queries
+    get_sizes(number_vars, number_constraints);
+    get_nnz(nnz_jac, nnz_hes);
+
+    // allocate NLP buffers
+    allocate_buffers();
+    allocate_sparsity_buffers();
+
+    // set solver data
+    solver_number_vars        = number_vars;
+    solver_number_constraints = number_constraints;
+    solver_nnz_jac            = nnz_jac;
+    solver_nnz_hes            = nnz_hes;
+}
+
+void NLP::allocate_buffers()
+{
+    // current iterates
+    curr_x      = FixedVector<f64>(number_vars);
+    curr_grad   = FixedVector<f64>(number_vars);
+    curr_lambda = FixedVector<f64>(number_constraints);
+    curr_g      = FixedVector<f64>(number_constraints);
+
+    // problem bounds
+    x_lb        = FixedVector<f64>(number_vars);
+    x_ub        = FixedVector<f64>(number_vars);
+    g_lb        = FixedVector<f64>(number_constraints);
+    g_ub        = FixedVector<f64>(number_constraints);
+
+    // bound multipliers (filled when optimal)
+    z_lb        = FixedVector<f64>(number_vars);
+    z_ub        = FixedVector<f64>(number_vars);
+}
+
+void NLP::allocate_sparsity_buffers()
+{
+    // COO sparsity patterns
+    i_row_jac = FixedVector<int>(nnz_jac); // row COO of the Jacobian
+    j_col_jac = FixedVector<int>(nnz_jac); // column COO of the Jacobian
+    i_row_hes = FixedVector<int>(nnz_hes); // row COO of the Hessian
+    j_col_hes = FixedVector<int>(nnz_hes); // column COO of the Hessian
+
+    // values of sparse matrices
+    curr_jac  = FixedVector<f64>(nnz_jac); // current NLP jacobian of the constraints
+    curr_hes  = FixedVector<f64>(nnz_hes); // current NLP hessian of the lagrangian
+}
+
+void NLP::solver_get_bounds(
+    f64* solver_x_lb,
+    f64* solver_x_ub,
+    f64* solver_g_lb,
+    f64* solver_g_ub)
+{
+    // user query
+    get_bounds(x_lb, x_ub, g_lb, g_ub);
+
+    // copy
+    x_lb.write_to(solver_x_lb);
+    x_ub.write_to(solver_x_ub);
+    g_lb.write_to(solver_g_lb);
+    g_ub.write_to(solver_g_ub);
+
+    // scale
+    scaling->inplace_scale_x(solver_x_lb);
+    scaling->inplace_scale_x(solver_x_ub);
+    scaling->inplace_scale_g(solver_g_lb);
+    scaling->inplace_scale_g(solver_g_ub);
+}
+
+void NLP::solver_get_initial_guess(
+    bool init_x,
+    f64* solver_x_init,
+    bool init_lambda,
+    f64* solver_lambda_init,
+    bool init_z,
+    f64* solver_z_lb_init,
+    f64* solver_z_ub_init)
+{
+    // user query
+    get_initial_guess(init_x, curr_x, init_lambda, curr_lambda, init_z, z_lb, z_ub);
+
+    // scale + write to solver buffer
+    if (init_x) {
+        curr_x.write_to(solver_x_init);
+        scaling->inplace_scale_x(solver_x_init);
+    }
+    if (init_lambda) {
+        unscale_curr_lambda(solver_lambda_init);
+    }
+    if (init_z) {
+        z_lb.write_to(solver_z_lb_init);
+        z_ub.write_to(solver_z_ub_init);
+        scaling->inplace_scale_x(solver_z_lb_init);
+        scaling->inplace_scale_x(solver_z_ub_init);
+    }
+}
+
+void NLP::solver_get_jac_sparsity(
+    int* solver_i_row_jac,
+    int* solver_j_col_jac)
+{
+    get_jac_sparsity(i_row_jac, j_col_jac);
+    i_row_jac.write_to(solver_i_row_jac);
+    j_col_jac.write_to(solver_j_col_jac);
+}
+
+void NLP::solver_get_hes_sparsity(
+    int* solver_i_row_hes,
+    int* solver_j_col_hes)
+{
+    get_hes_sparsity(i_row_hes, j_col_hes);
+    i_row_hes.write_to(solver_i_row_hes);
+    j_col_hes.write_to(solver_j_col_hes);
+}
+
+void NLP::solver_eval_f(
+    bool new_x,
+    const f64* solver_x,
+    f64& solver_obj_value)
+{
+    update_unscale_curr_x(new_x, solver_x);
+    eval_f(new_x, curr_x, curr_obj);
+    scaling->scale_f(&curr_obj, &solver_obj_value);
+}
+
+void NLP::solver_eval_grad_f(
+    bool new_x,
+    const f64* solver_x,
+    f64* solver_grad_f)
+{
+    update_unscale_curr_x(new_x, solver_x);
+    eval_grad_f(new_x, curr_x, curr_grad);
+    scaling->scale_grad_f(curr_grad.raw(), solver_grad_f, number_vars);
+}
+
+void NLP::solver_eval_g(
+    bool new_x,
+    const f64* solver_x,
+    f64* solver_g)
+{
+    update_unscale_curr_x(new_x, solver_x);
+    eval_g(new_x, curr_x, curr_g);
+    scaling->scale_g(curr_g.raw(), solver_g, number_constraints);
+}
+
+void NLP::solver_eval_jac(
+    bool new_x,
+    const f64* solver_x,
+    f64* solver_jac)
+{
+    update_unscale_curr_x(new_x, solver_x);
+    eval_jac_g(new_x, curr_x, i_row_jac, j_col_jac, curr_jac);
+    scaling->scale_jac(curr_jac.raw(), solver_jac, i_row_jac.raw(), j_col_jac.raw(), nnz_jac);
+}
+
+void NLP::solver_eval_hes(
+    bool new_x,
+    const f64* solver_x,
+    bool new_lambda,
+    const f64* solver_lambda,
+    const f64 solver_obj_factor,
+    f64* solver_hes)
+{
+    update_unscale_curr_x(new_x, solver_x);
+    update_unscale_curr_lambda(new_lambda, solver_lambda);
+    unscale_curr_sigma_f(&solver_obj_factor);
+    eval_hes(new_x, curr_x, new_lambda, curr_lambda, curr_sigma_f, i_row_hes, j_col_hes, curr_hes);
+    scaling->scale_hes(curr_hes.raw(), solver_hes, i_row_hes.raw(), j_col_hes.raw(), nnz_hes);
+}
+
+void NLP::solver_finalize_solution(
+    const f64  solver_obj_value,
+    const f64* solver_x,
+    const f64* solver_lambda,
+    const f64* solver_z_L,
+    const f64* solver_z_U)
+{
+    unscale_objective(&solver_obj_value);             // unscaled optimal objective
+    update_unscale_curr_x(true, solver_x);            // unscaled optimal x
+    update_unscale_curr_lambda(true, solver_lambda);  // unscaled optimal duals
+    unscale_dual_bounds(solver_z_L, solver_z_U);      // unscaled optimal dual bound multipliers
+
+    // user query to extract info
+    finalize_solution();
+}
+
+} // namespace NLP

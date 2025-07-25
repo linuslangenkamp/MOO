@@ -151,6 +151,10 @@ struct OrderedIndexSet {
     inline int size() const {
         return set.size();
     }
+
+    void clear() {
+        set.clear();
+    }
 };
 
 #endif // OPT_BLOCK_SPARSITY_H

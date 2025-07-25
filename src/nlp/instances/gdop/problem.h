@@ -247,6 +247,8 @@ public:
       x_size(this->full->x_size), u_size(this->full->u_size), p_size(this->full->p_size) {
     };
 
+    virtual ~Problem() = default;
+
     std::unique_ptr<FullSweep> full;
     std::unique_ptr<BoundarySweep> boundary;
 

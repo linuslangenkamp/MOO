@@ -4,21 +4,9 @@
 
 namespace GDOP {
 
-
-void GDOP::init() {
-    init_sizes_offsets();
-    init_buffers();
-    init_bounds();
-    init_jacobian();
-    init_hessian();
-}
-
 void GDOP::update(Mesh&& new_mesh) {
     // update mesh from rvalue
     mesh.move_from(std::move(new_mesh));
-
-    // init the GDOP for with new mesh sizes
-    init();
 
     // update the callback buffers with the new mesh sizes
     problem.resize_buffers();
@@ -46,7 +34,10 @@ void GDOP::create_acc_offset_fg(int off_fg) {
     }
 }
 
-void GDOP::init_sizes_offsets() {
+void GDOP::get_sizes(
+    int& number_vars,
+    int& number_constraints)
+{
     off_x = problem.x_size;
     off_u = problem.u_size;
     off_p = problem.p_size;
@@ -60,25 +51,12 @@ void GDOP::init_sizes_offsets() {
     number_constraints = problem.boundary->r_size + off_fg_total;
 }
 
-void GDOP::init_buffers() {
-    // current iterates
-    curr_x      = FixedVector<f64>(number_vars);
-    curr_grad   = FixedVector<f64>(number_vars);
-    curr_lambda = FixedVector<f64>(number_constraints);
-    curr_g      = FixedVector<f64>(number_constraints);
-
-    // problem bounds
-    x_lb        = FixedVector<f64>(number_vars);
-    x_ub        = FixedVector<f64>(number_vars);
-    g_lb        = FixedVector<f64>(number_constraints);
-    g_ub        = FixedVector<f64>(number_constraints);
-
-    // optimal bound multipliers (filled when optimal)
-    z_lb        = FixedVector<f64>(number_vars);
-    z_ub        = FixedVector<f64>(number_vars);
-}
-
-void GDOP::init_bounds() {
+void GDOP::get_bounds(
+    FixedVector<f64>& x_lb,
+    FixedVector<f64>& x_ub,
+    FixedVector<f64>& g_lb,
+    FixedVector<f64>& g_ub)
+{
     // standard bounds, but checking for x0_fixed or xf_fixed
     for (int x_index = 0; x_index < off_x; x_index++) {
         x_lb[x_index] = problem.x0_fixed[x_index] ? *problem.x0_fixed[x_index] : problem.x_bounds[x_index].lb;
@@ -135,7 +113,15 @@ void GDOP::set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_traje
     initial_guess = std::move(initial_trajectory);
 }
 
-void GDOP::init_starting_point() {
+void GDOP::get_initial_guess(
+      bool init_x,
+      FixedVector<f64>& x_init,
+      bool init_lambda,
+      FixedVector<f64>& lambda_init,
+      bool init_z,
+      FixedVector<f64>& z_lb_init,
+      FixedVector<f64>& z_ub_init)
+{
     auto& initial_guess_primal         = initial_guess->primals;
     auto& initial_guess_costate        = initial_guess->costates;
     auto& initial_guess_lower_costates = initial_guess->lower_costates;
@@ -146,7 +132,7 @@ void GDOP::init_starting_point() {
         if (!initial_guess_primal->compatible_with_mesh(mesh, collocation)) {
             initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh, collocation));
         }
-        flatten_trajectory_to_layout(*initial_guess_primal, curr_x);
+        flatten_trajectory_to_layout(*initial_guess_primal, x_init);
     }
     else {
         LOG_ERROR("No primal initial guess supplied in GDOP::init_starting_point().");
@@ -159,37 +145,33 @@ void GDOP::init_starting_point() {
         for (int i = 0; i < mesh.intervals; i++) {
             for (int j = 0; j < mesh.nodes[i]; j++) {
                 for (int f_index = 0; f_index < problem.full->f_size; f_index++) {
-                    curr_lambda[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
+                    lambda_init[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
                 }
                 for (int g_index = 0; g_index < problem.full->g_size; g_index++) {
-                    curr_lambda[off_acc_fg[i][j] + problem.full->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
+                    lambda_init[off_acc_fg[i][j] + problem.full->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
                 }
                 index++;
             }
         }
         for (int r_index = 0; r_index < problem.boundary->r_size; r_index++) {
-            curr_lambda[off_fg_total + r_index] = initial_guess_costate->costates_r[r_index];
+            lambda_init[off_fg_total + r_index] = initial_guess_costate->costates_r[r_index];
         }
 
-        transform_duals_costates(curr_lambda, false);
+        transform_duals_costates(lambda_init, false);
     }
 
     if (initial_guess_lower_costates && initial_guess_upper_costates) {
         // assume mesh is compatible, we dont do that again, as it should be covered in primal case
-        flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb);
-        flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub);
+        flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb_init);
+        flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub_init);
 
-        transform_duals_costates_bounds(z_lb, false);
-        transform_duals_costates_bounds(z_ub, false);
+        transform_duals_costates_bounds(z_lb_init, false);
+        transform_duals_costates_bounds(z_ub_init, false);
     }
 }
 
-void GDOP::init_jacobian() {
-    init_jacobian_nonzeros();
-    init_jacobian_sparsity_pattern();
-}
 
-void GDOP::init_jacobian_nonzeros() {
+void GDOP::init_jacobian_nonzeros(int& nnz_jac) {
     // stage 1: calculate nnz of blocks and number of collisions, where df_k / dx_k != 0. these are contained by default because of the D-Matrix
     int nnz_f = 0;
     int nnz_g = 0;
@@ -219,15 +201,69 @@ void GDOP::init_jacobian_nonzeros() {
 
     nnz_jac = off_acc_jac_fg.back() + nnz_r;
 
-    // allocate memory
-    curr_jac  = FixedVector<f64>(nnz_jac);
+    // allocate memory for constant part
     const_der_jac = FixedVector<f64>(nnz_jac);
-    i_row_jac = FixedVector<int>(nnz_jac);
-    j_col_jac = FixedVector<int>(nnz_jac);
 }
 
-void GDOP::init_jacobian_sparsity_pattern() {
-    // stage 2: calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
+void GDOP::init_hessian_nonzeros(int& nnz_hes) {
+    // takes O(nnz(A) + nnz(B) + ...+ nnz(H)) for creation of ** Maps and O(nnz(Hessian)) for creation of Hessian sparsity pattern
+
+    // reset block sparsities
+    hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
+    hes_b = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Offset);
+    hes_c = BlockSparsity::create_rectangular(problem.x_size + problem.u_size, problem.x_size, BlockType::Exact);
+    hes_d = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Exact);
+    hes_e = BlockSparsity::create_rectangular(problem.p_size, problem.x_size, BlockType::Exact);
+    hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
+    hes_g = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::Exact);
+    hes_h = BlockSparsity::create_lower_triangular(problem.p_size, BlockType::Exact);
+
+    // TODO: remove me later, and reuse the sets for following iters
+    // clear previous content before reuse
+    A.clear(); B.clear(); C.clear(); D.clear();
+    E.clear(); F.clear(); G.clear(); H.clear();
+
+    // calculate IndexSet and nnz
+    A.insert_sparsity(problem.boundary->aug_hes->dx0_dx0,     0,     0);
+    C.insert_sparsity(problem.boundary->aug_hes->dxf_dx0,     0,     0);
+    C.insert_sparsity(problem.boundary->aug_hes->duf_dx0, off_x,     0);
+    D.insert_sparsity(problem.boundary->aug_hes->dxf_dxf,     0,     0);
+    D.insert_sparsity(problem.boundary->aug_hes->duf_dxf, off_x,     0);
+    D.insert_sparsity(problem.boundary->aug_hes->duf_duf, off_x, off_x);
+    E.insert_sparsity(problem.boundary->aug_hes->dp_dx0,      0,     0);
+    G.insert_sparsity(problem.boundary->aug_hes->dp_dxf,      0,     0);
+    G.insert_sparsity(problem.boundary->aug_hes->dp_duf,      0, off_x);
+    H.insert_sparsity(problem.boundary->aug_hes->dp_dp,       0,     0);
+
+    B.insert_sparsity(problem.full->aug_hes->dx_dx,           0,     0);
+    B.insert_sparsity(problem.full->aug_hes->du_dx,       off_x,     0);
+    B.insert_sparsity(problem.full->aug_hes->du_du,       off_x, off_x);
+    D.insert_sparsity(problem.full->aug_hes->dx_dx,           0,     0);
+    D.insert_sparsity(problem.full->aug_hes->du_dx,       off_x,     0);
+    D.insert_sparsity(problem.full->aug_hes->du_du,       off_x, off_x);
+    F.insert_sparsity(problem.full->aug_hes->dp_dx,           0,     0);
+    F.insert_sparsity(problem.full->aug_hes->dp_du,           0, off_x);
+    G.insert_sparsity(problem.full->aug_hes->dp_dx,           0,     0);
+    G.insert_sparsity(problem.full->aug_hes->dp_du,           0, off_x);
+    H.insert_sparsity(problem.full->aug_pp_hes->dp_dp,        0,     0);
+
+    // calculate nnz from block sparsity
+    nnz_hes = (B.size() + F.size()) * (mesh.node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
+}
+
+void GDOP::get_nnz(
+    int& nnz_jac,
+    int& nnz_hes)
+{
+    init_jacobian_nonzeros(nnz_jac);
+    init_hessian_nonzeros(nnz_hes);
+}
+
+void GDOP::get_jac_sparsity(
+    FixedVector<int> i_row_jac,
+    FixedVector<int> j_col_jac)
+{
+    // calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
     for (int i = 0; i < mesh.intervals; i++) {
         int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
         for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -364,52 +400,10 @@ void GDOP::init_jacobian_sparsity_pattern() {
     assert(nnz_index == nnz_jac);
 }
 
-void GDOP::init_hessian() {
-    // takes O(nnz(A) + nnz(B) + ...+ nnz(H)) for creation of ** Maps and O(nnz(Hessian)) for creation of Hessian sparsity pattern
-
-    // stage 0: reset block sparsities
-    hes_a = BlockSparsity::create_lower_triangular(problem.x_size, BlockType::Exact);
-    hes_b = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Offset);
-    hes_c = BlockSparsity::create_rectangular(problem.x_size + problem.u_size, problem.x_size, BlockType::Exact);
-    hes_d = BlockSparsity::create_lower_triangular(problem.x_size + problem.u_size, BlockType::Exact);
-    hes_e = BlockSparsity::create_rectangular(problem.p_size, problem.x_size, BlockType::Exact);
-    hes_f = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::RowOffset);
-    hes_g = BlockSparsity::create_rectangular(problem.p_size, problem.x_size + problem.u_size, BlockType::Exact);
-    hes_h = BlockSparsity::create_lower_triangular(problem.p_size, BlockType::Exact);
-
-    // stage 1: calculate IndexSet and nnz
-    OrderedIndexSet A, B, C, D, E, F, G, H;
-    A.insert_sparsity(problem.boundary->aug_hes->dx0_dx0,     0,     0);
-    C.insert_sparsity(problem.boundary->aug_hes->dxf_dx0,     0,     0);
-    C.insert_sparsity(problem.boundary->aug_hes->duf_dx0, off_x,     0);
-    D.insert_sparsity(problem.boundary->aug_hes->dxf_dxf,     0,     0);
-    D.insert_sparsity(problem.boundary->aug_hes->duf_dxf, off_x,     0);
-    D.insert_sparsity(problem.boundary->aug_hes->duf_duf, off_x, off_x);
-    E.insert_sparsity(problem.boundary->aug_hes->dp_dx0,      0,     0);
-    G.insert_sparsity(problem.boundary->aug_hes->dp_dxf,      0,     0);
-    G.insert_sparsity(problem.boundary->aug_hes->dp_duf,      0, off_x);
-    H.insert_sparsity(problem.boundary->aug_hes->dp_dp,       0,     0);
-
-    B.insert_sparsity(problem.full->aug_hes->dx_dx,           0,     0);
-    B.insert_sparsity(problem.full->aug_hes->du_dx,       off_x,     0);
-    B.insert_sparsity(problem.full->aug_hes->du_du,       off_x, off_x);
-    D.insert_sparsity(problem.full->aug_hes->dx_dx,           0,     0);
-    D.insert_sparsity(problem.full->aug_hes->du_dx,       off_x,     0);
-    D.insert_sparsity(problem.full->aug_hes->du_du,       off_x, off_x);
-    F.insert_sparsity(problem.full->aug_hes->dp_dx,           0,     0);
-    F.insert_sparsity(problem.full->aug_hes->dp_du,           0, off_x);
-    G.insert_sparsity(problem.full->aug_hes->dp_dx,           0,     0);
-    G.insert_sparsity(problem.full->aug_hes->dp_du,           0, off_x);
-    H.insert_sparsity(problem.full->aug_pp_hes->dp_dp,        0,     0);
-
-    // calculate nnz from block sparsity
-    nnz_hes = (B.size() + F.size()) * (mesh.node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
-
-    // get memory for hessian structures
-    i_row_hes = FixedVector<int>(nnz_hes);
-    j_col_hes = FixedVector<int>(nnz_hes);
-    curr_hes  = FixedVector<f64>(nnz_hes);
-
+void GDOP::get_hes_sparsity(
+    FixedVector<int> i_row_hes,
+    FixedVector<int> j_col_hes)
+{
     // get memory for Lagrange object factors
     if (problem.full->has_lagrange) {
         lagrange_obj_factors = FixedField<f64, 2>(mesh.intervals);
@@ -418,7 +412,7 @@ void GDOP::init_hessian() {
         }
     }
 
-    // stage 2: build int** (row, col) -> int index for all block structures
+    // build int** (row, col) -> int index for all block structures
     // can be exact (no offset needed) or non exact (offset for full block or even rowwise needed)
     // also init sparsity pattern (i_row_hes, j_col_hes) for all exact blocks
     int hes_nnz_counter = 0;
@@ -554,83 +548,115 @@ void GDOP::init_hessian() {
  *            | `eval_hes`    | +       | +            | `callback_hessian()`    | +              |
  */
 
-// check if a new x was received; if so, reset evaluation state and update current x.
-void GDOP::check_new_x(bool new_x) {
-    evaluation_state.check_reset_x(new_x);
-}
-
-// similar check for lambda (dual variables).
-void GDOP::check_new_lambda(const bool new_lambda) {
-    evaluation_state.check_reset_lambda(new_lambda);
-}
+// ========= virtuals in NLP =========
 
 // evaluate objective function
-void GDOP::eval_f(bool new_x) {
+void GDOP::eval_f(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    f64& curr_obj)
+{
     check_new_x(new_x);
     if (!evaluation_state.eval_f) {
-        callback_evaluation();
+        callback_evaluation(curr_x);
     }
-    eval_f_internal();
+    eval_f_internal(curr_obj);
 }
 
 // evaluate constraints
-void GDOP::eval_g(bool new_x) {
+void GDOP::eval_g(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    FixedVector<f64>& curr_g)
+{
     check_new_x(new_x);
     if (!evaluation_state.eval_g) {
-        callback_evaluation();
+        callback_evaluation(curr_x);
     }
-    eval_g_internal();
+    eval_g_internal(curr_x, curr_g);
 }
 
 // evaluate gradient of objective
-void GDOP::eval_grad_f(bool new_x) {
+void GDOP::eval_grad_f(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    FixedVector<f64>& curr_grad_f)
+{
     check_new_x(new_x);
     if (!evaluation_state.grad_f) {
-        callback_jacobian();
+        callback_jacobian(curr_x);
     }
-    eval_grad_f_internal();
+    eval_grad_f_internal(curr_grad_f);
 }
 
 // evaluate Jacobian of constraints
-void GDOP::eval_jac_g(bool new_x) {
+void GDOP::eval_jac_g(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    const FixedVector<int>& i_row_jac,
+    const FixedVector<int>& j_col_jac,
+    FixedVector<f64>& curr_jac)
+{
     check_new_x(new_x);
     if (!evaluation_state.jac_g) {
-        callback_jacobian();
+        callback_jacobian(curr_x);
     }
-    eval_jac_g_internal();
+    eval_jac_g_internal(curr_jac);
 }
 
-// Evaluate Hessian of the Lagrangian
-void GDOP::eval_hes(bool new_x, bool new_lambda) {
+// evaluate Hessian of the Lagrangian
+void GDOP::eval_hes(
+    bool new_x,
+    const FixedVector<f64>& curr_x,
+    bool new_lambda,
+    FixedVector<f64>& curr_lambda,
+    f64& curr_obj_factor,
+    const FixedVector<int>& i_row_hes,
+    const FixedVector<int>& j_col_hes,
+    FixedVector<f64>& curr_hes)
+{
     check_new_x(new_x);
     check_new_lambda(new_lambda);
 
     if (!evaluation_state.hes_lag) {
         // ensure Jacobian is available (required for numerical Hessian)
         if (!evaluation_state.jac_g) {
-            callback_jacobian();
+            callback_jacobian(curr_x);
         }
-        callback_hessian();
+        callback_hessian(curr_x, curr_lambda, curr_obj_factor);
     }
-    eval_hes_internal();
+    eval_hes_internal(curr_hes);
 }
 
-void GDOP::callback_evaluation() {
-    problem.full->callback_eval(get_curr_x_xu(), get_curr_x_p());
-    problem.boundary->callback_eval(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
+// ========= callbacks and internal evaluation =========
+
+// check if a new x was received; if so, reset evaluation state and update current x.
+void GDOP::check_new_x(bool new_x) {
+    evaluation_state.check_reset_x(new_x);
+}
+
+// similar check for lambda (dual variables).
+void GDOP::check_new_lambda(bool new_lambda) {
+    evaluation_state.check_reset_lambda(new_lambda);
+}
+
+
+void GDOP::callback_evaluation(const FixedVector<f64>& curr_x) {
+    problem.full->callback_eval(get_curr_x_xu(curr_x), get_curr_x_p(curr_x));
+    problem.boundary->callback_eval(get_curr_x_x0(curr_x), get_curr_x_xuf(curr_x), get_curr_x_p(curr_x));
     evaluation_state.eval_f = true;
     evaluation_state.eval_g = true;
 }
 
-void GDOP::callback_jacobian() {
-    problem.full->callback_jac(get_curr_x_xu(), get_curr_x_p());
-    problem.boundary->callback_jac(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p());
+void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
+    problem.full->callback_jac(get_curr_x_xu(curr_x), get_curr_x_p(curr_x));
+    problem.boundary->callback_jac(get_curr_x_x0(curr_x), get_curr_x_xuf(curr_x), get_curr_x_p(curr_x));
     evaluation_state.grad_f = true;
     evaluation_state.jac_g = true;
 }
 
 /* perform update of dual variables, such that callback can use the exact multiplier */
-void GDOP::update_curr_lambda_obj_factors() {
+void GDOP::update_curr_lambda_obj_factors(FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
     for (int i = 0; i < mesh.intervals; i++) {
         f64 delta_t = mesh.delta_t[i];
         for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -644,15 +670,15 @@ void GDOP::update_curr_lambda_obj_factors() {
     }
 }
 
-void GDOP::callback_hessian() {
-    update_curr_lambda_obj_factors();
+void GDOP::callback_hessian(const FixedVector<f64> x, FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
+    update_curr_lambda_obj_factors(curr_lambda, curr_sigma_f);
 
-    problem.full->callback_aug_hes(get_curr_x_xu(), get_curr_x_p(), lagrange_obj_factors, get_curr_lamb_fg());
-    problem.boundary->callback_aug_hes(get_curr_x_x0(), get_curr_x_xuf(), get_curr_x_p(), curr_sigma_f, get_curr_lamb_r());
+    problem.full->callback_aug_hes(get_curr_x_xu(x), get_curr_x_p(x), lagrange_obj_factors, get_curr_lamb_fg(curr_lambda));
+    problem.boundary->callback_aug_hes(get_curr_x_x0(x), get_curr_x_xuf(x), get_curr_x_p(x), curr_sigma_f, get_curr_lamb_r(curr_lambda));
     evaluation_state.hes_lag = true;
 }
 
-void GDOP::eval_f_internal() {
+void GDOP::eval_f_internal(f64& curr_obj) {
     f64 mayer = 0;
     if (problem.boundary->has_mayer) {
         mayer = problem.mr_eval_M();
@@ -670,7 +696,7 @@ void GDOP::eval_f_internal() {
     curr_obj = mayer + lagrange;
 }
 
-void GDOP::eval_grad_f_internal() {
+void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
     curr_grad.fill_zero();
     if (problem.full->has_lagrange) {
         for (int i = 0; i < mesh.intervals; i++) {
@@ -703,7 +729,7 @@ void GDOP::eval_grad_f_internal() {
     }
 };
 
-void GDOP::eval_g_internal() {
+void GDOP::eval_g_internal(const FixedVector<f64>& curr_x, FixedVector<f64>& curr_g) {
     curr_g.fill_zero();
     for (int i = 0; i < mesh.intervals; i++) {
         collocation.diff_matrix_multiply_block_strided(mesh.nodes[i], off_x, off_xu, problem.full->fg_size,
@@ -724,7 +750,7 @@ void GDOP::eval_g_internal() {
     }
 }
 
-void GDOP::eval_jac_g_internal() {
+void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
     // copy constant part into curr_jac
     curr_jac = const_der_jac;
 
@@ -735,7 +761,7 @@ void GDOP::eval_jac_g_internal() {
                 // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
                 nnz_index += j + 1;
 
-                // TODO: MAYBE maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
+                // TODO:  maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
                 int df_dx_counter = 0;
                 std::vector<JacobianSparsity>& df_dx = problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
 
@@ -818,7 +844,7 @@ void GDOP::eval_jac_g_internal() {
     assert(nnz_index == nnz_jac);
 };
 
-void GDOP::eval_hes_internal() {
+void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
     curr_hes.fill_zero();
 
     for (int i = 0; i < mesh.intervals; i++) {
@@ -836,15 +862,16 @@ void GDOP::eval_hes_internal() {
                 ptr_map_xu_xu = &hes_d;
                 ptr_map_p_xu  = &hes_g;
             }
-            update_augmented_hessian_lfg(*problem.full->aug_hes, i, j, ptr_map_xu_xu, ptr_map_p_xu);
+            update_augmented_hessian_lfg(*problem.full->aug_hes, i, j, ptr_map_xu_xu, ptr_map_p_xu, curr_hes);
         }
     }
-    update_augmented_parameter_hessian_lfg(*problem.full->aug_pp_hes);
-    update_augmented_hessian_mr(*problem.boundary->aug_hes);
+    update_augmented_parameter_hessian_lfg(*problem.full->aug_pp_hes, curr_hes);
+    update_augmented_hessian_mr(*problem.boundary->aug_hes, curr_hes);
 }
 
 void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
-                                        const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu) {
+                                        const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu,
+                                        FixedVector<f64>& curr_hes) {
     const int block_count = mesh.acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
         curr_hes[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += problem.lfg_aug_hes(dx_dx.buf_index, i, j);
@@ -863,13 +890,13 @@ void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const in
     }
 }
 
-void GDOP::update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_p_hes) {
+void GDOP::update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_p_hes, FixedVector<f64>& curr_hes) {
     for (const auto& dp_dp : aug_p_hes.dp_dp) {
         curr_hes[hes_h.access(dp_dp.row, dp_dp.col)] += problem.lfg_aug_pp_hes(dp_dp.buf_index);
     }
 }
 
-void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes) {
+void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes, FixedVector<f64>& curr_hes) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
         curr_hes[hes_a.access(dx0_dx0.row, dx0_dx0.col)] += problem.mr_aug_hes(dx0_dx0.buf_index);
     }
@@ -1015,7 +1042,7 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
     }
 
     if (off_p > 0) {
-        optimal_primals->p = std::vector(get_curr_x_p(), curr_x.end());
+        optimal_primals->p = std::vector(get_curr_x_p(curr_x), curr_x.end());
     }
 
     return optimal_primals;

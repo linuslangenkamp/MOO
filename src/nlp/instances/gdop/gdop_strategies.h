@@ -7,6 +7,8 @@
 #include <src/nlp/nlp.h>
 #include <src/base/log.h>
 
+// TODO: add deconstructors + virtual deconstructors everywhere!
+
 // Strategies define interchangeable behaviors for key stages such as initialization, simulation,
 // mesh refinement, result emission, and optimality verification in the GDOP optimization process.
 // This file offers simple default and generic advanced strategy implementations that may be used.
@@ -314,6 +316,7 @@ public:
     std::shared_ptr<Verifier>              verifier;
     std::shared_ptr<ScalingFactory>        scaling_factory;
 
+    virtual ~Strategies() = default;
     static Strategies default_strategies();
 
     auto get_initial_guess(const GDOP& gdop) {

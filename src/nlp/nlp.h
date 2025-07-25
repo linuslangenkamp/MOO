@@ -26,6 +26,83 @@ class NLP {
 public:
     NLP() = default;
 
+    virtual ~NLP() = default;
+
+    // ============ User API ============
+
+    void set_scaling(std::shared_ptr<Scaling> new_scaling) { scaling = new_scaling; }
+
+    // ============ User Callbacks ============
+
+    virtual void get_sizes(
+        int& number_vars,
+        int& number_constraints
+    ) = 0;
+
+    virtual void get_bounds(
+        FixedVector<f64>& x_lb,
+        FixedVector<f64>& x_ub,
+        FixedVector<f64>& g_lb,
+        FixedVector<f64>& g_ub) = 0;
+
+    virtual void get_initial_guess(
+        bool init_x,
+        FixedVector<f64>& x_init,
+        bool init_lambda,
+        FixedVector<f64>& lambda_init,
+        bool init_z,
+        FixedVector<f64>& z_lb_init,
+        FixedVector<f64>& z_ub_init) = 0;
+
+    virtual void get_nnz(
+        int& nnz_jac,
+        int& nnz_hes
+    ) = 0;
+
+    virtual void get_jac_sparsity(
+        FixedVector<int> i_row_jac,
+        FixedVector<int> j_col_jac
+    ) = 0;
+
+    virtual void get_hes_sparsity(
+        FixedVector<int> i_row_hes,
+        FixedVector<int> j_col_hes
+    ) = 0;
+
+    virtual void eval_f(
+        bool new_x,
+        const FixedVector<f64>& curr_x,
+        f64& curr_obj) = 0;
+
+    virtual void eval_g(
+        bool new_x,
+        const FixedVector<f64>& curr_x,
+        FixedVector<f64>& curr_g) = 0;
+
+    virtual void eval_grad_f(
+        bool new_x,
+        const FixedVector<f64>& curr_x,
+        FixedVector<f64>& curr_grad_f) = 0;
+
+    virtual void eval_jac_g(
+        bool new_x,
+        const FixedVector<f64>& curr_x,
+        const FixedVector<int>& i_row_jac,
+        const FixedVector<int>& j_col_jac,
+        FixedVector<f64>& curr_jac) = 0;
+
+    virtual void eval_hes(
+        bool new_x,
+        const FixedVector<f64>& curr_x,
+        bool new_lambda,
+        FixedVector<f64>& curr_lambda,
+        f64& curr_obj_factor,
+        const FixedVector<int>& i_row_hes,
+        const FixedVector<int>& j_col_hes,
+        FixedVector<f64>& curr_hes) = 0;
+
+    virtual void finalize_solution() = 0;
+
     // ============ Solver API ============
 
     void solver_get_info(
@@ -95,57 +172,6 @@ public:
         const f64* solver_z_L,
         const f64* solver_z_U
     );
-
-    // ============ User API ============
-
-    // overload if needed: used to reset, update stuff in the NLP (called at the very start of every optimization in solver_get_info)
-    void update() {};
-
-    void set_scaling(std::shared_ptr<Scaling> new_scaling) { scaling = new_scaling; }
-
-    // ============ User Callbacks ============
-
-    virtual void get_sizes(
-        int& number_vars,
-        int& number_constraints
-    ) = 0;
-
-    virtual void get_bounds(
-        FixedVector<f64>& x_lb,
-        FixedVector<f64>& x_ub,
-        FixedVector<f64>& g_lb,
-        FixedVector<f64>& g_ub) = 0;
-
-    virtual void get_nnz(
-        int& nnz_jac,
-        int& nnz_hes
-    ) = 0;
-
-    virtual void get_initial_guess(
-        bool init_x,
-        FixedVector<f64>& x_init,
-        bool init_lambda,
-        FixedVector<f64>& lambda_init,
-        bool init_z,
-        FixedVector<f64>& z_lb_init,
-        FixedVector<f64>& z_ub_init) = 0;
-
-    virtual void get_jac_sparsity(
-        FixedVector<int> i_row_jac,
-        FixedVector<int> j_col_jac
-    ) = 0;
-
-    virtual void get_hes_sparsity(
-        FixedVector<int> i_row_hes,
-        FixedVector<int> j_col_hes
-    ) = 0;
-
-    virtual void eval_f(bool new_x) = 0;                    // fill curr_obj
-    virtual void eval_g(bool new_x) = 0;                    // fill curr_g
-    virtual void eval_grad_f(bool new_x) = 0;               // fill curr_grad
-    virtual void eval_jac_g(bool new_x) = 0;                // fill curr_jac
-    virtual void eval_hes(bool new_x, bool new_lambda) = 0; // fill curr_hes
-    virtual void finalize_solution() = 0;                   // finalize the solution
 
 private:
 
