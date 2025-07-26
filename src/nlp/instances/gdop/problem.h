@@ -305,11 +305,6 @@ public:
         return full->aug_pp_hes_buffer[entry];
     }
 
-    /* note entry != index in mr, but rather boundary->mr[*].buf_index */
-    inline f64 mr_eval(int entry) {
-        return full->eval_buffer[entry];
-    }
-
     inline f64 mr_eval_M() {
         assert(boundary->has_mayer);
         return boundary->eval_buffer[boundary->mr[0].buf_index];
