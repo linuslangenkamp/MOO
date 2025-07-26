@@ -18,6 +18,8 @@
 
 namespace GDOP {
 
+using NLP::Scaling;
+
 class GDOP : public NLP::NLP {
 public:
   GDOP(Problem& problem,
@@ -28,17 +30,44 @@ public:
         problem(problem),
         collocation(collocation) {}
 
+
   // === API + external calls ===
 
   void update(Mesh&& new_mesh);
 
   void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
 
+  void set_scaling_factory(std::shared_ptr<ScalingFactory> factory);
+
+  // === Constant Reference Getters for Private Members ===
+
+  // main objects
+  inline const Mesh&               get_mesh()           const { return mesh; }
+  inline const Collocation&        get_collocation()    const { return collocation; }
+  inline const Problem&            get_problem()        const { return problem; }
+
+  // offsets and sizes
+  inline int                       get_off_x()          const { return off_x; }
+  inline int                       get_off_u()          const { return off_u; }
+  inline int                       get_off_p()          const { return off_p; }
+  inline int                       get_off_xu()         const { return off_xu; }
+  inline int                       get_off_last_xu()    const { return off_last_xu; }
+  inline int                       get_off_xu_total()   const { return off_xu_total; }
+  inline int                       get_off_fg_total()   const { return off_fg_total; }
+  inline const FixedField<int, 2>& get_off_acc_xu()     const { return off_acc_xu; }
+  inline const FixedField<int, 2>& get_off_acc_fg()     const { return off_acc_fg; }
+  inline const FixedVector<int>&   get_off_acc_jac_fg() const { return off_acc_jac_fg; }
+
+  // optimal solution
+  inline const PrimalDualTrajectory* get_optimal_solution() const { return optimal_solution.get(); }
+
   // === Virtuals in NLP ===
 
   void get_sizes(
     int& number_vars,
     int& number_constraints) override;
+
+  std::shared_ptr<Scaling> get_scaling() override;
 
   void get_bounds(
     FixedVector<f64>& x_lb,
@@ -60,12 +89,12 @@ public:
     int& nnz_hes) override;
 
   void get_jac_sparsity(
-      FixedVector<int> i_row_jac,
-      FixedVector<int> j_col_jac) override;
+      FixedVector<int>& i_row_jac,
+      FixedVector<int>& j_col_jac) override;
 
   void get_hes_sparsity(
-      FixedVector<int> i_row_hes,
-      FixedVector<int> j_col_hes) override;
+      FixedVector<int>& i_row_hes,
+      FixedVector<int>& j_col_hes) override;
 
   void eval_f(
     bool new_x,
@@ -99,7 +128,12 @@ public:
     const FixedVector<int>& j_col_hes,
     FixedVector<f64>& curr_hes) override;
 
-  void finalize_solution() override;
+  void finalize_solution(
+    f64 opt_obj,
+    const FixedVector<f64>& opt_x,
+    const FixedVector<f64>& opt_lambda,
+    const FixedVector<f64>& opt_z_lb,
+    const FixedVector<f64>& opt_z_ub) override;
 
 private:
   // === private structures ===
@@ -108,6 +142,9 @@ private:
   Problem& problem;           // continuous GDOP
   Collocation& collocation;   // collocation data
   NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
+
+  // scaling
+  std::shared_ptr<ScalingFactory> scaling_factory;
 
   // initial guess
   std::unique_ptr<PrimalDualTrajectory> initial_guess; // set by initialization strategy
@@ -186,13 +223,25 @@ private:
 
   // === results + finalize + transform costates ===
 
-  void flatten_trajectory_to_layout(const Trajectory& Trajectory, FixedVector<f64>& flat_buffer);
-  void transform_duals_costates(FixedVector<f64>& lambda, bool to_costate);
-  void transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costate);
+  void flatten_trajectory_to_layout(
+    const Trajectory& Trajectory,
+    FixedVector<f64>& flat_buffer);
 
-  std::unique_ptr<Trajectory> finalize_optimal_primals();
-  std::unique_ptr<CostateTrajectory> finalize_optimal_costates();
-  std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> finalize_optimal_bound_duals();
+  void transform_duals_costates(
+    FixedVector<f64>& lambda,
+    bool to_costate);
+
+  void transform_duals_costates_bounds(
+    FixedVector<f64>& zeta,
+    bool to_costate);
+
+  std::unique_ptr<Trajectory> finalize_optimal_primals(const FixedVector<f64>& opt_x);
+
+  std::unique_ptr<CostateTrajectory> finalize_optimal_costates(const FixedVector<f64>& opt_lambda);
+
+  std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> finalize_optimal_bound_duals(
+    const FixedVector<f64>& opt_z_lb,
+    const FixedVector<f64>& opt_z_ub);
 };
 
 } // namespace GDOP

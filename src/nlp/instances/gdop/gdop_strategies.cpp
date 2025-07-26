@@ -51,14 +51,14 @@ std::shared_ptr<NLP::Scaling> NoScalingFactory::operator()(const GDOP& gdop) {
 std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const GDOP& gdop) {
     LOG_WARNING("No Initialization strategy set: fallback to ConstantInitialization.");
 
-    const auto& problem = gdop.problem;
+    const auto& problem = gdop.get_problem();
 
     const size_t x_size = problem.x_bounds.size();
     const size_t u_size = problem.u_bounds.size();
     const size_t p_size = problem.p_bounds.size();
 
     // time vector with start and end times
-    std::vector<f64> t = { 0.0, gdop.mesh.tf };
+    std::vector<f64> t = { 0.0, gdop.get_mesh().tf };
 
     std::vector<std::vector<f64>> x_guess(x_size);
     std::vector<std::vector<f64>> u_guess(u_size);
@@ -248,9 +248,9 @@ std::unique_ptr<PrimalDualTrajectory> SimulationInitialization::operator()(const
     auto& simple_guess_primal = simple_guess->primals;
     auto extracted_controls   = simple_guess_primal->copy_extract_controls();                        // extract controls from the guess
     auto exctracted_x0        = simple_guess_primal->extract_initial_states();                       // extract x(t_0) from the guess
-    auto simulated_guess      = (*simulation)(extracted_controls, gdop.mesh.node_count, 0.0,         // perform simulation using the controls and gdop config
-                                              gdop.mesh.tf, exctracted_x0.raw());
-    auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.mesh, gdop.collocation); // interpolate simulation to current mesh + collocation
+    auto simulated_guess      = (*simulation)(extracted_controls, gdop.get_mesh().node_count, 0.0,         // perform simulation using the controls and gdop config
+                                              gdop.get_mesh().tf, exctracted_x0.raw());
+    auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.get_mesh(), gdop.get_collocation()); // interpolate simulation to current mesh + collocation
     return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(interpolated_sim));
 }
 
@@ -272,13 +272,13 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
     auto exctracted_x0      = trajectory_primal->extract_initial_states();  // extract x(t_0) from the trajectory
 
     // perform simulation using the controls, gdop config and a high number of nodes
-    int  high_node_count    = 10 * gdop.mesh.node_count;
+    int  high_node_count    = 10 * gdop.get_mesh().node_count;
 
     auto simulation_result  = (*simulation)(extracted_controls, high_node_count,
-                                            0.0, gdop.mesh.tf, exctracted_x0.raw());
+                                            0.0, gdop.get_mesh().tf, exctracted_x0.raw());
 
     // result of high resolution simulation is interpolated onto lower resolution mesh
-    auto interpolated_opt   = trajectory_primal->interpolate_polynomial_from_mesh_onto_grid(gdop.mesh, gdop.collocation, simulation_result->t);
+    auto interpolated_opt   = trajectory_primal->interpolate_polynomial_from_mesh_onto_grid(gdop.get_mesh(), gdop.get_collocation(), simulation_result->t);
 
     // calculate errors for each state in given norm (between provided and simulated states)
     auto errors             = interpolated_opt.state_errors(*simulation_result, norm);
@@ -380,11 +380,11 @@ void L2BoundaryNorm::reset(const GDOP& gdop) {
 
     // on-interval
     mesh_lambda    = 0.0;
-    mesh_size_zero = gdop.mesh.intervals;
+    mesh_size_zero = gdop.get_mesh().intervals;
 
     // corner
-    CTOL_1 = FixedVector<f64>(gdop.off_u);
-    CTOL_2 = FixedVector<f64>(gdop.off_u);
+    CTOL_1 = FixedVector<f64>(gdop.get_problem().u_size);
+    CTOL_2 = FixedVector<f64>(gdop.get_problem().u_size);
     for (size_t i = 0; i < CTOL_1.size(); i++) { CTOL_1[i] = 0.1; }
     for (size_t i = 0; i < CTOL_2.size(); i++) { CTOL_2[i] = 0.1; }
 }

@@ -254,8 +254,8 @@ std::unique_ptr<Trajectory> SimulationStep::operator()(const ControlTrajectory& 
 
 std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP& gdop) {
     // x, g, f of the NLP { min f(x) s.t. g_l <= g(x) <= g_l }
-    auto x_nominal = FixedVector<f64>(gdop.number_vars);
-    auto g_nominal = FixedVector<f64>(gdop.number_constraints);
+    auto x_nominal = FixedVector<f64>(gdop.get_number_vars());
+    auto g_nominal = FixedVector<f64>(gdop.get_number_constraints());
     f64  f_nominal = 1;
 
     // get problem sizes
@@ -269,8 +269,8 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
 
     auto real_vars_data = info.data->modelData->realVarsData;
 
-    auto has_mayer = gdop.problem.boundary->has_mayer;
-    auto has_lagrange = gdop.problem.full->has_lagrange;
+    auto has_mayer = gdop.get_problem().boundary->has_mayer;
+    auto has_lagrange = gdop.get_problem().full->has_lagrange;
 
     if (has_mayer && has_lagrange) {
         f_nominal = (real_vars_data[info.index_mayer_real_vars].attribute.nominal +
@@ -289,7 +289,7 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
     }
 
     // (x, u)_(t_node)
-    for (int node = 0; node < gdop.mesh.node_count; node++) {
+    for (int node = 0; node < gdop.get_mesh().node_count; node++) {
         for (int x = 0; x < x_size; x++) {
             x_nominal[x_size + node * xu_size + x] = real_vars_data[x].attribute.nominal;
         }
@@ -300,7 +300,7 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
         }
     }
 
-    for (int node = 0; node < gdop.mesh.node_count; node++) {
+    for (int node = 0; node < gdop.get_mesh().node_count; node++) {
         for (int f = 0; f < f_size; f++) {
             g_nominal[node * fg_size + f] = x_nominal[f]; // reuse x nominal for dynamic for now!
         }
@@ -311,7 +311,7 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
     }
 
     for (int r = 0; r < r_size; r++) {
-        g_nominal[gdop.off_fg_total + r] = real_vars_data[info.index_r_real_vars + r].attribute.nominal;
+        g_nominal[gdop.get_off_fg_total() + r] = real_vars_data[info.index_r_real_vars + r].attribute.nominal;
     }
 
     return std::make_shared<NLP::NominalScaling>(std::move(x_nominal), std::move(g_nominal), f_nominal);

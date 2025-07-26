@@ -21,6 +21,22 @@ void NLP::solver_get_info(
     solver_number_constraints = number_constraints;
     solver_nnz_jac            = nnz_jac;
     solver_nnz_hes            = nnz_hes;
+
+    // user query
+    auto user_scaling = get_scaling();
+
+    // create scaling
+    if (user_scaling) {
+        scaling = user_scaling;
+    } else {
+        LOG_WARNING("Overloaded method .get_scaling() returned nullptr - defaulting to NoScaling.");
+        scaling = std::make_shared<NoScaling>();
+    }
+}
+
+std::shared_ptr<Scaling> NLP::get_scaling()
+{
+    return std::make_shared<NoScaling>();
 }
 
 void NLP::allocate_buffers()
@@ -83,8 +99,8 @@ void NLP::solver_get_initial_guess(
     bool init_lambda,
     f64* solver_lambda_init,
     bool init_z,
-    f64* solver_z_lb_init,
-    f64* solver_z_ub_init)
+    f64* solver_z_lbb_init,
+    f64* solver_z_ubb_init)
 {
     // user query
     get_initial_guess(init_x, curr_x, init_lambda, curr_lambda, init_z, z_lb, z_ub);
@@ -98,10 +114,10 @@ void NLP::solver_get_initial_guess(
         unscale_curr_lambda(solver_lambda_init);
     }
     if (init_z) {
-        z_lb.write_to(solver_z_lb_init);
-        z_ub.write_to(solver_z_ub_init);
-        scaling->inplace_scale_x(solver_z_lb_init);
-        scaling->inplace_scale_x(solver_z_ub_init);
+        z_lb.write_to(solver_z_lbb_init);
+        z_ub.write_to(solver_z_ubb_init);
+        scaling->inplace_scale_x(solver_z_lbb_init);
+        scaling->inplace_scale_x(solver_z_ubb_init);
     }
 }
 
@@ -109,7 +125,9 @@ void NLP::solver_get_jac_sparsity(
     int* solver_i_row_jac,
     int* solver_j_col_jac)
 {
+    // user query
     get_jac_sparsity(i_row_jac, j_col_jac);
+
     i_row_jac.write_to(solver_i_row_jac);
     j_col_jac.write_to(solver_j_col_jac);
 }
@@ -118,7 +136,9 @@ void NLP::solver_get_hes_sparsity(
     int* solver_i_row_hes,
     int* solver_j_col_hes)
 {
+    // user query
     get_hes_sparsity(i_row_hes, j_col_hes);
+
     i_row_hes.write_to(solver_i_row_hes);
     j_col_hes.write_to(solver_j_col_hes);
 }
@@ -129,7 +149,10 @@ void NLP::solver_eval_f(
     f64& solver_obj_value)
 {
     update_unscale_curr_x(new_x, solver_x);
+
+    // user query
     eval_f(new_x, curr_x, curr_obj);
+
     scaling->scale_f(&curr_obj, &solver_obj_value);
 }
 
@@ -139,7 +162,10 @@ void NLP::solver_eval_grad_f(
     f64* solver_grad_f)
 {
     update_unscale_curr_x(new_x, solver_x);
+
+    // user query
     eval_grad_f(new_x, curr_x, curr_grad);
+
     scaling->scale_grad_f(curr_grad.raw(), solver_grad_f, number_vars);
 }
 
@@ -149,7 +175,10 @@ void NLP::solver_eval_g(
     f64* solver_g)
 {
     update_unscale_curr_x(new_x, solver_x);
+
+    // user query
     eval_g(new_x, curr_x, curr_g);
+
     scaling->scale_g(curr_g.raw(), solver_g, number_constraints);
 }
 
@@ -159,7 +188,10 @@ void NLP::solver_eval_jac(
     f64* solver_jac)
 {
     update_unscale_curr_x(new_x, solver_x);
+
+    // user query
     eval_jac_g(new_x, curr_x, i_row_jac, j_col_jac, curr_jac);
+
     scaling->scale_jac(curr_jac.raw(), solver_jac, i_row_jac.raw(), j_col_jac.raw(), nnz_jac);
 }
 
@@ -174,7 +206,10 @@ void NLP::solver_eval_hes(
     update_unscale_curr_x(new_x, solver_x);
     update_unscale_curr_lambda(new_lambda, solver_lambda);
     unscale_curr_sigma_f(&solver_obj_factor);
+
+    // user query
     eval_hes(new_x, curr_x, new_lambda, curr_lambda, curr_sigma_f, i_row_hes, j_col_hes, curr_hes);
+
     scaling->scale_hes(curr_hes.raw(), solver_hes, i_row_hes.raw(), j_col_hes.raw(), nnz_hes);
 }
 
@@ -182,16 +217,16 @@ void NLP::solver_finalize_solution(
     const f64  solver_obj_value,
     const f64* solver_x,
     const f64* solver_lambda,
-    const f64* solver_z_L,
-    const f64* solver_z_U)
+    const f64* solver_z_lb,
+    const f64* solver_z_ub)
 {
     unscale_objective(&solver_obj_value);             // unscaled optimal objective
     update_unscale_curr_x(true, solver_x);            // unscaled optimal x
     update_unscale_curr_lambda(true, solver_lambda);  // unscaled optimal duals
-    unscale_dual_bounds(solver_z_L, solver_z_U);      // unscaled optimal dual bound multipliers
+    unscale_dual_bounds(solver_z_lb, solver_z_ub);      // unscaled optimal dual bound multipliers
 
-    // user query to extract info
-    finalize_solution();
+    // user defined callback to extract info
+    finalize_solution(curr_obj, curr_x, curr_lambda, z_lb, z_ub);
 }
 
 } // namespace NLP

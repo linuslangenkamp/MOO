@@ -3,41 +3,36 @@
 namespace GDOP {
 
 void MeshRefinementOrchestrator::optimize() {
-    // initialize GDOP (creates sparsity, bounds, ...)
-    gdop.init();
-
     // reset strategies
     strategies->reset(gdop);
 
     // create initial guess
     auto initial_guess = strategies->get_initial_guess(gdop);
 
+    // set scaling
+    gdop.set_scaling_factory(strategies->scaling_factory);
+
     // TODO: fix simulation-based verify / update, probably interpolation error of controls
 
     for(;;) {
+        // set initial guess initially or after refinement
         gdop.set_initial_guess(std::move(initial_guess));
-        gdop.init_starting_point();
-
-        // set scaling
-        auto scaling = strategies->create_scaling(gdop);
-        gdop.set_scaling(scaling);
 
         // optimizer loop
         solver.optimize();
 
-        // mesh refinement
+        // === mesh refinement ===
 
         // 1. detect intervals and degrees (new vectors)
-        auto mesh_update = strategies->detect(gdop.mesh, gdop.collocation, *gdop.optimal_solution);
+        auto mesh_update = strategies->detect(gdop.get_mesh(), gdop.get_collocation(), *gdop.get_optimal_solution());
 
         if (!mesh_update) { break; }
 
         // 2. create refined Mesh
-        auto refined_mesh = Mesh(std::move(mesh_update), gdop.collocation);
-        //gdop.optimal_solution->costates->to_csv("costates.csv");
+        auto refined_mesh = Mesh(std::move(mesh_update), gdop.get_collocation());
 
         // 3. interpolate (x*, lambda*, z*) to new mesh -> new initial guess
-        initial_guess = strategies->get_refined_initial_guess(gdop.mesh, refined_mesh, gdop.collocation, *gdop.optimal_solution);
+        initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), refined_mesh, gdop.get_collocation(), *gdop.get_optimal_solution());
         solver.solver_settings.set(NLP::Option::WarmStart, true);
 
         initial_guess->costates->to_csv("costates_interp.csv");
@@ -49,14 +44,14 @@ void MeshRefinementOrchestrator::optimize() {
     }
 
     // verify by simulation
-    strategies->verify(gdop, *gdop.optimal_solution);
+    strategies->verify(gdop, *gdop.get_optimal_solution());
 
     // emit optimal solution, maybe set verify only here
-    strategies->emit(*gdop.optimal_solution->primals);
+    strategies->emit(*gdop.get_optimal_solution()->primals);
 
-    gdop.optimal_solution->costates->to_csv("costates_final.csv");
-    gdop.optimal_solution->lower_costates->to_csv("lower_costates_final.csv");
-    gdop.optimal_solution->upper_costates->to_csv("upper_costates_final.csv");
+    gdop.get_optimal_solution()->costates->to_csv("costates_final.csv");
+    gdop.get_optimal_solution()->lower_costates->to_csv("lower_costates_final.csv");
+    gdop.get_optimal_solution()->upper_costates->to_csv("upper_costates_final.csv");
 
 }
 

@@ -139,7 +139,7 @@ endif()
 ExternalProject_Add(ipopt-ext
     GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
     GIT_TAG releases/3.14.16
-    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-debug --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
     BUILD_COMMAND make -j${N}
     BUILD_IN_SOURCE true
     DEPENDS mumps-ext

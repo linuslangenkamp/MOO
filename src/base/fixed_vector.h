@@ -68,7 +68,7 @@ public:
 
     // access vector at index 0 <= index < vec.size()
     constexpr T& operator[](std::size_t index) {
-        assert(index < _size);
+        assert(index < _size); // this assert interacts very badly with the debugger (disable it when observing questionable behavior)
 
         return _data[index];
     }

@@ -34,6 +34,7 @@ void GDOP::create_acc_offset_fg(int off_fg) {
     }
 }
 
+// === overload ===
 void GDOP::get_sizes(
     int& number_vars,
     int& number_constraints)
@@ -51,6 +52,20 @@ void GDOP::get_sizes(
     number_constraints = problem.boundary->r_size + off_fg_total;
 }
 
+void GDOP::set_scaling_factory(std::shared_ptr<ScalingFactory> factory) {
+    scaling_factory = factory;
+}
+
+// === overload ===
+std::shared_ptr<Scaling> GDOP::get_scaling() {
+    if (scaling_factory) {
+        return (*scaling_factory)(*this);
+    } else {
+        return nullptr;
+    }
+}
+
+// === overload ===
 void GDOP::get_bounds(
     FixedVector<f64>& x_lb,
     FixedVector<f64>& x_ub,
@@ -113,6 +128,7 @@ void GDOP::set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_traje
     initial_guess = std::move(initial_trajectory);
 }
 
+// === overload ===
 void GDOP::get_initial_guess(
       bool init_x,
       FixedVector<f64>& x_init,
@@ -251,6 +267,7 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     nnz_hes = (B.size() + F.size()) * (mesh.node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
 }
 
+// === overload ===
 void GDOP::get_nnz(
     int& nnz_jac,
     int& nnz_hes)
@@ -259,9 +276,10 @@ void GDOP::get_nnz(
     init_hessian_nonzeros(nnz_hes);
 }
 
+// === overload ===
 void GDOP::get_jac_sparsity(
-    FixedVector<int> i_row_jac,
-    FixedVector<int> j_col_jac)
+    FixedVector<int>& i_row_jac,
+    FixedVector<int>& j_col_jac)
 {
     // calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
     for (int i = 0; i < mesh.intervals; i++) {
@@ -362,7 +380,7 @@ void GDOP::get_jac_sparsity(
                 }
             }
         }
-        assert(nnz_index == off_acc_jac_fg[i + 1]);
+        assert(nnz_index == get_off_acc_jac_fg()[i + 1]);
     }
 
     int nnz_index = off_acc_jac_fg.back();
@@ -397,12 +415,13 @@ void GDOP::get_jac_sparsity(
             nnz_index++;
         }
     }
-    assert(nnz_index == nnz_jac);
+    assert(nnz_index == get_nnz_jac());
 }
 
+// === overload ===
 void GDOP::get_hes_sparsity(
-    FixedVector<int> i_row_hes,
-    FixedVector<int> j_col_hes)
+    FixedVector<int>& i_row_hes,
+    FixedVector<int>& j_col_hes)
 {
     // get memory for Lagrange object factors
     if (problem.full->has_lagrange) {
@@ -550,6 +569,7 @@ void GDOP::get_hes_sparsity(
 
 // ========= virtuals in NLP =========
 
+// === overload ===
 // evaluate objective function
 void GDOP::eval_f(
     bool new_x,
@@ -563,6 +583,7 @@ void GDOP::eval_f(
     eval_f_internal(curr_obj);
 }
 
+// === overload ===
 // evaluate constraints
 void GDOP::eval_g(
     bool new_x,
@@ -576,6 +597,7 @@ void GDOP::eval_g(
     eval_g_internal(curr_x, curr_g);
 }
 
+// === overload ===
 // evaluate gradient of objective
 void GDOP::eval_grad_f(
     bool new_x,
@@ -589,6 +611,7 @@ void GDOP::eval_grad_f(
     eval_grad_f_internal(curr_grad_f);
 }
 
+// === overload ===
 // evaluate Jacobian of constraints
 void GDOP::eval_jac_g(
     bool new_x,
@@ -604,6 +627,7 @@ void GDOP::eval_jac_g(
     eval_jac_g_internal(curr_jac);
 }
 
+// === overload ===
 // evaluate Hessian of the Lagrangian
 void GDOP::eval_hes(
     bool new_x,
@@ -640,7 +664,6 @@ void GDOP::check_new_lambda(bool new_lambda) {
     evaluation_state.check_reset_lambda(new_lambda);
 }
 
-
 void GDOP::callback_evaluation(const FixedVector<f64>& curr_x) {
     problem.full->callback_eval(get_curr_x_xu(curr_x), get_curr_x_p(curr_x));
     problem.boundary->callback_eval(get_curr_x_x0(curr_x), get_curr_x_xuf(curr_x), get_curr_x_p(curr_x));
@@ -655,7 +678,7 @@ void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
     evaluation_state.jac_g = true;
 }
 
-/* perform update of dual variables, such that callback can use the exact multiplier */
+// perform update of dual variables, such that callback can use the exact multiplier
 void GDOP::update_curr_lambda_obj_factors(FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
     for (int i = 0; i < mesh.intervals; i++) {
         f64 delta_t = mesh.delta_t[i];
@@ -761,7 +784,6 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
                 // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
                 nnz_index += j + 1;
 
-                // TODO:  maybe optimize this and for sparsity creation, cause we are iterating over all off_x and not only the nnz + the collision
                 int df_dx_counter = 0;
                 std::vector<JacobianSparsity>& df_dx = problem.full->lfg[problem.full->f_index_start + f_index].jac.dx;
 
@@ -841,7 +863,7 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
             curr_jac[nnz_index++] = problem.mr_jac(dr_dp.buf_index);
         }
     }
-    assert(nnz_index == nnz_jac);
+    assert(nnz_index == get_nnz_jac());
 };
 
 void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
@@ -967,7 +989,6 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes, FixedVecto
  *          if the corresponding bound constraint is active over a full collocation interval.
  */
 
-
 void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVector<f64>& flat_buffer) {
     for (int x_index = 0; x_index < off_x; x_index++) {
         flat_buffer[x_index] = trajectory.x[x_index][0];
@@ -1006,7 +1027,7 @@ void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVecto
  *
  * @return A `std::unique_ptr<Trajectory>` containing the time, state, and control trajectories.
  */
-std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
+std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64>& opt_x) {
     auto optimal_primals = std::make_unique<Trajectory>();
 
     optimal_primals->t.reserve(mesh.node_count + 1);
@@ -1017,11 +1038,11 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
     for (auto& v : optimal_primals->u) { v.reserve(mesh.node_count + 1); }
 
     for (int x_index = 0; x_index < off_x; x_index++) {
-        optimal_primals->x[x_index].push_back(curr_x[x_index]);
+        optimal_primals->x[x_index].push_back(opt_x[x_index]);
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        f64 u0 = collocation.interpolate(mesh.nodes[0], false, &curr_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 u0 = collocation.interpolate(mesh.nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
         optimal_primals->u[u_index].push_back(u0);
     }
 
@@ -1030,11 +1051,11 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
-                optimal_primals->x[x_index].push_back(curr_x[off_acc_xu[i][j] + x_index]);
+                optimal_primals->x[x_index].push_back(opt_x[off_acc_xu[i][j] + x_index]);
             }
 
             for (int u_index = 0; u_index < off_u; u_index++) {
-                optimal_primals->u[u_index].push_back(curr_x[off_acc_xu[i][j] + off_x + u_index]);
+                optimal_primals->u[u_index].push_back(opt_x[off_acc_xu[i][j] + off_x + u_index]);
             }
 
             optimal_primals->t.push_back(mesh.t[i][j]);
@@ -1042,7 +1063,7 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals() {
     }
 
     if (off_p > 0) {
-        optimal_primals->p = std::vector(get_curr_x_p(curr_x), curr_x.end());
+        optimal_primals->p = std::vector(get_curr_x_p(opt_x), opt_x.end());
     }
 
     return optimal_primals;
@@ -1093,14 +1114,14 @@ void GDOP::transform_duals_costates(FixedVector<f64>& lambda, bool to_costate) {
  * @return A `std::unique_ptr<CostateTrajectory>` containing the time, costates for dynamics,
  * costates for path constraints, and costates for boundary constraints.
  */
-std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates() {
+std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVector<f64>& opt_lambda) {
     auto optimal_costates = std::make_unique<CostateTrajectory>();
 
     const int f_size = problem.full->f_size;
     const int g_size = problem.full->g_size;
 
     // transform curr_lambda from NLP duals -> costates
-    FixedVector<f64> costates(curr_lambda);
+    FixedVector<f64> costates(opt_lambda);
     transform_duals_costates(costates, true);
 
     optimal_costates->t.reserve(mesh.node_count + 1);
@@ -1200,15 +1221,18 @@ void GDOP::transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costa
  * @note Very small bound multipliers (e.g., below 1e-10) may be numerical
  * noise and can often be ignored or thresholded.
  */
-std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finalize_optimal_bound_duals() {
+std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finalize_optimal_bound_duals(
+    const FixedVector<f64>& opt_z_lb,
+    const FixedVector<f64>& opt_z_ub)
+{
     auto optimal_bound_duals = std::make_pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>>(
         std::make_unique<Trajectory>(),
         std::make_unique<Trajectory>()
     );
 
     // transform z_lb, z_ub from NLP bound duals -> costates
-    FixedVector<f64> costates_z_lb(z_lb);
-    FixedVector<f64> costates_z_ub(z_ub);
+    FixedVector<f64> costates_z_lb(opt_z_lb);
+    FixedVector<f64> costates_z_ub(opt_z_ub);
 
     transform_duals_costates_bounds(costates_z_lb, true);
     transform_duals_costates_bounds(costates_z_ub, true);
@@ -1268,10 +1292,16 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
  * relevant parts of the optimal solution. The results are then combined into a
  * `PrimalDualTrajectory` object and stored in the `optimal_solution` member.
  */
-void GDOP::finalize_solution() {
-    auto optimal_primals     = finalize_optimal_primals();
-    auto optimal_costates    = finalize_optimal_costates();
-    auto optimal_lu_costates = finalize_optimal_bound_duals();
+void GDOP::finalize_solution(
+    f64 opt_obj,
+    const FixedVector<f64>& opt_x,
+    const FixedVector<f64>& opt_lambda,
+    const FixedVector<f64>& opt_z_lb,
+    const FixedVector<f64>& opt_z_ub)
+{
+    auto optimal_primals     = finalize_optimal_primals(opt_x);
+    auto optimal_costates    = finalize_optimal_costates(opt_lambda);
+    auto optimal_lu_costates = finalize_optimal_bound_duals(opt_z_lb, opt_z_ub);
     optimal_solution         = std::make_unique<PrimalDualTrajectory>(std::move(optimal_primals),
                                                                       std::move(optimal_costates),
                                                                       std::move(optimal_lu_costates.first),
