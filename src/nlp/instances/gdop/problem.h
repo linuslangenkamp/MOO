@@ -10,7 +10,15 @@
 
 namespace GDOP {
 
-// TODO: add good explanation of the interface
+// TODO: Refactor FunctionLFG/FunctionMR containers:
+//       - Split the single lfg/mr vector into:
+//           * FunctionLFG lagrange (scalar)
+//           * std::vector<FunctionLFG> dynamics (f)
+//           * std::vector<FunctionLFG> path (g)
+//           * FunctionMR mayer (scalar)
+//           * std::vector<FunctionMR> boundary (r)
+//       - Keep buf_index mapping into the same flat buffers.
+//       - Adapt callback loops (eval/jac/hes) to iterate over the separate groups.
 
 struct ProblemConstants {
     // sizes
@@ -108,7 +116,7 @@ struct FullSweepBuffers {
     FixedVector<f64> aug_hes;
 
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
-    FixedVector<f64> aug_pp_hes; // make it like list<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
+    FixedVector<f64> aug_pp_hes; // make it like array<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
     FullSweepBuffers(FixedVector<FunctionLFG>& lfg,
                      AugmentedHessianLFG& aug_hes,
@@ -227,13 +235,15 @@ public:
     // buffers to write to in callbacks
     BoundarySweepBuffers buffers;
 
-    virtual void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
+    virtual void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) = 0;
 
-    virtual void callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) = 0;
+    virtual void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) = 0;
 
    /* lambdas are exact multipliers (no transform needed) to [r]
     * mayer_factor is eact multiplier (no transform needed) of M */
-    virtual void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) = 0;
+    virtual void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) = 0;
+
+    // TODO: create inline getters for the buffer offsets
 
     void print_jacobian_sparsity_pattern();
 };

@@ -350,9 +350,9 @@ std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
                 current_old_interval++;
             }
 
-            const int stride            = 1;
-            const int old_p_order       = old_mesh.nodes[current_old_interval];
-            const f64* values_i         = values.data() + offset;
+            const int stride      = 1;
+            const int old_p_order = old_mesh.nodes[current_old_interval];
+            const f64* values_i   = values.data() + offset;
 
             f64 t_start = old_mesh.grid[current_old_interval];
             f64 t_end   = old_mesh.grid[current_old_interval + 1];
@@ -496,7 +496,7 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
                     }
                 }
 
-                // Save last p_k for next round (last = end of this interval)
+                // save last p_k for next round (last = end of this interval)
                 p_boundary_1_last_end = p_boundary_1_this_end;
                 p_boundary_2_last_end = p_boundary_2_this_end;
                 has_last_boundary = true;

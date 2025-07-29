@@ -39,9 +39,9 @@ public:
                   const GDOP::ProblemConstants& pc,
                   InfoGDOP& info);
 
-    void callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
-    void callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) override;
-    void callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) override;
+    void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
+    void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
+    void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) override;
 };
 
 GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation);

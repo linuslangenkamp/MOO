@@ -73,6 +73,8 @@ struct InfoGDOP {
     void set_time_horizon(int steps);
 };
 
+// TODO: Refactor Jacobian and Hessians in A, B, C, D structures
+
 /**
  * @brief Constructs and initializes OpenModelica Jacobians and their COO mappings for optimization.
  *

@@ -91,17 +91,17 @@ BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr,
                   InfoGDOP& info)
     : BoundarySweep(std::move(mr), std::move(aug_hes), pc), info(info) {}
 
-void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
+void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     set_parameters(info, p);
-    set_states(info, xf_nlp);
+    set_states_inputs(info, xuf_nlp);
     set_time(info, pc.mesh.tf);
     eval_current_point(info);
     eval_mr_write(info, buffers.eval.raw());
 }
 
-void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
+void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     set_parameters(info, p);
-    set_states(info, xf_nlp);
+    set_states_inputs(info, xuf_nlp);
     set_time(info, pc.mesh.tf);
     eval_current_point(info);
     /* TODO: check if C matrix does hold additional ders */
@@ -117,15 +117,18 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const 
     }
 }
 
-void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) {
+void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) {
     set_parameters(info, p);
-    set_states(info, xf_nlp);
+    set_states_inputs(info, xuf_nlp);
     set_time(info, pc.mesh.tf);
     buffers.aug_hes.fill_zero();
 
     if (pc.has_mayer) {
+        // set all lambdas to 0, except mayer lambda
         int index_mayer = pc.x_size + (int)(info.lagrange_exists);
         info.exc_hes->C_lambda[index_mayer] = mayer_factor;
+        info.exc_hes->C_args.lambda = info.exc_hes->C_lambda.raw();
+
         richardsonExtrapolation(info.exc_hes->C_extr, forwardDiffHessianWrapper, &info.exc_hes->C_args,
                                 NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C_buffer.raw());
         for (auto& [index_C, index_buffer] : info.exc_hes->C_to_Mr_buffer) {

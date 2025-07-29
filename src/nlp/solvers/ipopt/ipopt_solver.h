@@ -19,7 +19,7 @@ public:
     Ipopt::SmartPtr<IpoptAdapter> adapter;
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
     void optimize() override;
-    void init_IpoptApplication();
+    void init_application();
     void set_settings();
 };
 

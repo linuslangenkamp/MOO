@@ -6,7 +6,7 @@ IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings)
     : NLPSolver(nlp, solver_settings),
       adapter(new IpoptAdapter(nlp)),
       app(IpoptApplicationFactory()) {
-    init_IpoptApplication();
+    init_application();
 }
 
 // simple wrapper to adapter
@@ -25,7 +25,7 @@ void IpoptSolver::optimize() {
             break;
 
         case Ipopt::Infeasible_Problem_Detected:
-            LOG_WARNING("[Ipopt Interface] Infeasible problem detected.");
+            LOG_ERROR("[Ipopt Interface] Infeasible problem detected.");
             break;
 
         case Ipopt::Search_Direction_Becomes_Too_Small:
@@ -33,7 +33,7 @@ void IpoptSolver::optimize() {
             break;
 
         case Ipopt::Diverging_Iterates:
-            LOG_WARNING("[Ipopt Interface] Diverging iterates.");
+            LOG_ERROR("[Ipopt Interface] Diverging iterates.");
             break;
 
         case Ipopt::User_Requested_Stop:
@@ -41,7 +41,7 @@ void IpoptSolver::optimize() {
             break;
 
         case Ipopt::Feasible_Point_Found:
-            LOG_WARNING("[Ipopt Interface] Feasible point found.");
+            LOG_ERROR("[Ipopt Interface] Feasible point found.");
             break;
 
         case Ipopt::Maximum_Iterations_Exceeded:
@@ -102,7 +102,7 @@ void IpoptSolver::optimize() {
     }
 }
 
-void IpoptSolver::init_IpoptApplication() {
+void IpoptSolver::init_application() {
     Ipopt::ApplicationReturnStatus status = app->Initialize();
     if (status != Ipopt::Solve_Succeeded) {
         LOG_ERROR("[Ipopt Interface] Error during application initialization!");
