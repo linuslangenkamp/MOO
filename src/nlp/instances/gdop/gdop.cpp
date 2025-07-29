@@ -9,7 +9,7 @@ void GDOP::update(Mesh&& new_mesh) {
     mesh.move_from(std::move(new_mesh));
 
     // update the callback buffers with the new mesh sizes
-    problem.resize_buffers();
+    problem.full->buffers.resize(mesh);
 }
 
 void GDOP::create_acc_offset_xu(int off_x, int off_xu) {

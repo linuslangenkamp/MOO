@@ -96,7 +96,7 @@ void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const
     set_states(info, xf_nlp);
     set_time(info, pc.mesh.tf);
     eval_current_point(info);
-    eval_mr_write(info, eval_buffer.raw());
+    eval_mr_write(info, buffers.eval.raw());
 }
 
 void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
@@ -108,12 +108,12 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const 
     /* derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1] */
     if (pc.has_mayer) {
         jac_eval_write_first_row_as_csc(info, info.exc_jac->C, info.exc_jac->C_buffer.raw(),
-                                        jac_buffer.raw(), info.exc_jac->C_coo);
+                                        buffers.jac.raw(), info.exc_jac->C_coo);
     }
 
     if (info.exc_jac->D_exists) {
         /* TODO: check if D matrix does hold additional ders */
-        jac_eval_write_as_csc(info, info.exc_jac->D, &jac_buffer[info.exc_jac->D_coo.nnz_offset]);
+        jac_eval_write_as_csc(info, info.exc_jac->D, &buffers.jac[info.exc_jac->D_coo.nnz_offset]);
     }
 }
 
@@ -121,7 +121,7 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
     set_parameters(info, p);
     set_states(info, xf_nlp);
     set_time(info, pc.mesh.tf);
-    aug_hes_buffer.fill_zero();
+    buffers.aug_hes.fill_zero();
 
     if (pc.has_mayer) {
         int index_mayer = pc.x_size + (int)(info.lagrange_exists);
@@ -129,19 +129,19 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
         richardsonExtrapolation(info.exc_hes->C_extr, forwardDiffHessianWrapper, &info.exc_hes->C_args,
                                 NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C_buffer.raw());
         for (auto& [index_C, index_buffer] : info.exc_hes->C_to_Mr_buffer) {
-            aug_hes_buffer[index_buffer] += info.exc_hes->C_buffer[index_C];
+            buffers.aug_hes[index_buffer] += info.exc_hes->C_buffer[index_C];
         }
     }
 
     if (pc.r_size != 0) {
         /* set duals and precomputed Jacobian D */
         info.exc_hes->D_args.lambda = lambda;
-        info.exc_hes->D_args.jac_csc = &jac_buffer[info.exc_jac->D_coo.nnz_offset];
+        info.exc_hes->D_args.jac_csc = &buffers.jac[info.exc_jac->D_coo.nnz_offset];
 
         richardsonExtrapolation(info.exc_hes->D_extr, forwardDiffHessianWrapper, &info.exc_hes->D_args,
                                 NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->D_buffer.raw());
         for (auto& [index_D, index_buffer] : info.exc_hes->D_to_Mr_buffer) {
-            aug_hes_buffer[index_buffer] += info.exc_hes->D_buffer[index_D];
+            buffers.aug_hes[index_buffer] += info.exc_hes->D_buffer[index_D];
         }
     }
 }

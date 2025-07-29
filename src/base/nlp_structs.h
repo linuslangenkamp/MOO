@@ -113,6 +113,15 @@ struct FunctionMR {
     JacobianMR jac;
 };
 
+
+inline int compute_jac_nnz_vec_fn_mr(FixedVector<FunctionMR>& mr_vec) {
+    int sum = 0;
+    for (auto const& fn : mr_vec) {
+        sum += fn.jac.nnz();
+    }
+    return sum;
+}
+
 // simple state to check which actions are / have to be performed for an iteration
 struct NLP_State {
     bool eval_f         = false;
