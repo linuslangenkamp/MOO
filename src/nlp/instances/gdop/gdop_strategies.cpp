@@ -438,7 +438,7 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
             f64 TOL_2 = TOL_1 / 2;
 
             for (int i = 0; i < mesh.grid.int_size() - 1; i++) {
-                int start_index = mesh.acc_nodes[i][0] + (int)(i != 0); // u(t_{i}), offset stems from 0 not contained in the mesh
+                int start_index = mesh.acc_nodes[i][0];
 
                 // apply D to the controls on interval i
                 collocation.diff_matrix_multiply(mesh.nodes[i], &u_vec[start_index], p_1.raw());   // p'  = D^(1) * u_hat
