@@ -186,7 +186,7 @@ private:
   inline const f64* get_curr_x_xuf(const FixedVector<f64>& curr_x)        { return off_xu       != 0 ? &curr_x[off_last_xu]  : nullptr; }
   inline const f64* get_curr_x_p(const FixedVector<f64>& curr_x)          { return off_p        != 0 ? &curr_x[off_xu_total] : nullptr; }
   inline f64* get_curr_lamb_fg(FixedVector<f64>& curr_lambda) { return off_fg_total != 0 ? curr_lambda.raw()     : nullptr; }
-  inline f64* get_curr_lamb_r(FixedVector<f64>& curr_lambda)  { return problem.boundary->r_size != 0 ? &curr_lambda[off_fg_total] : nullptr; }
+  inline f64* get_curr_lamb_r(FixedVector<f64>& curr_lambda)  { return problem.pc->r_size != 0 ? &curr_lambda[off_fg_total] : nullptr; }
 
   // helpers for initialize offsets 
   void create_acc_offset_xu(int off_x, int off_xu);

@@ -21,6 +21,7 @@ set(SOURCES
     src/base/linalg.cpp
 
     src/nlp/instances/gdop/gdop.cpp
+    src/nlp/instances/gdop/problem.cpp
     src/nlp/instances/gdop/gdop_strategies.cpp
     src/nlp/instances/gdop/gdop_orchestrator.cpp
 

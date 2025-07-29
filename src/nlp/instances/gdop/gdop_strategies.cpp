@@ -53,9 +53,9 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
 
     const auto& problem = gdop.get_problem();
 
-    const size_t x_size = problem.x_bounds.size();
-    const size_t u_size = problem.u_bounds.size();
-    const size_t p_size = problem.p_bounds.size();
+    const int x_size = problem.pc->x_size;
+    const int u_size = problem.pc->u_size;
+    const int p_size = problem.pc->p_size;
 
     // time vector with start and end times
     std::vector<f64> t = { 0.0, gdop.get_mesh().tf };
@@ -67,9 +67,9 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     // fill state guesses
-    for (size_t x = 0; x < x_size; x++) {
-        auto x0_opt = problem.x0_fixed[x];
-        auto xf_opt = problem.xf_fixed[x];
+    for (int x = 0; x < x_size; x++) {
+        auto x0_opt = problem.pc->x0_fixed[x];
+        auto xf_opt = problem.pc->xf_fixed[x];
 
         if (x0_opt && xf_opt) {
             // initial and final fixed: linear interpolation
@@ -83,27 +83,27 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
         } else {
             // nothing fixed: use midpoint of bounds or zero if unbounded
             f64 val = 0.0;
-            if (problem.x_bounds[x].has_lower() && problem.x_bounds[x].has_upper()) {
-                val = 0.5 * (problem.x_bounds[x].lb + problem.x_bounds[x].ub);
+            if (problem.pc->x_bounds[x].has_lower() && problem.pc->x_bounds[x].has_upper()) {
+                val = 0.5 * (problem.pc->x_bounds[x].lb + problem.pc->x_bounds[x].ub);
             }
             x_guess[x] = { val, val };
         }
     }
 
     // fill control guesses: use midpoint of bounds or zero
-    for (size_t u = 0; u < u_size; u++) {
+    for (int u = 0; u < u_size; u++) {
         f64 val = 0.0;
-        if (problem.u_bounds[u].has_lower() && problem.u_bounds[u].has_upper()) {
-            val = 0.5 * (problem.u_bounds[u].lb + problem.u_bounds[u].ub);
+        if (problem.pc->u_bounds[u].has_lower() && problem.pc->u_bounds[u].has_upper()) {
+            val = 0.5 * (problem.pc->u_bounds[u].lb + problem.pc->u_bounds[u].ub);
         }
         u_guess[u] = { val, val };
     }
 
     // fill parameter guesses: use midpoint of bounds or zero
-    for (size_t p = 0; p < p_size; p++) {
+    for (int p = 0; p < p_size; p++) {
         f64 val = 0.0;
-        if (problem.p_bounds[p].has_lower() && problem.p_bounds[p].has_upper()) {
-            val = 0.5 * (problem.p_bounds[p].lb + problem.p_bounds[p].ub);
+        if (problem.pc->p_bounds[p].has_lower() && problem.pc->p_bounds[p].has_upper()) {
+            val = 0.5 * (problem.pc->p_bounds[p].lb + problem.pc->p_bounds[p].ub);
         }
         p_guess[p] = val;
     }
@@ -383,8 +383,8 @@ void L2BoundaryNorm::reset(const GDOP& gdop) {
     mesh_size_zero = gdop.get_mesh().intervals;
 
     // corner
-    CTOL_1 = FixedVector<f64>(gdop.get_problem().u_size);
-    CTOL_2 = FixedVector<f64>(gdop.get_problem().u_size);
+    CTOL_1 = FixedVector<f64>(gdop.get_problem().pc->u_size);
+    CTOL_2 = FixedVector<f64>(gdop.get_problem().pc->u_size);
     for (size_t i = 0; i < CTOL_1.size(); i++) { CTOL_1[i] = 0.1; }
     for (size_t i = 0; i < CTOL_2.size(); i++) { CTOL_2[i] = 0.1; }
 }

@@ -66,6 +66,14 @@ struct FunctionLFG {
     JacobianLFG jac;
 };
 
+inline int compute_jac_nnz_vec_fn_lfg(FixedVector<FunctionLFG>& lfg_vec) {
+    int sum = 0;
+    for (auto const& fn : lfg_vec) {
+        sum += fn.jac.nnz();
+    }
+    return sum;
+}
+
 // MR semi-generic boundary function r(x(t0), x(tf), u(tf), p)
 // used for Mayer term (M), boundary constraints (R) in GDOP
 

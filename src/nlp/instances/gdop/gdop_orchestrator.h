@@ -19,6 +19,8 @@ public:
       strategies(std::move(strategies)),
       solver(solver) {}
 
+    virtual ~Orchestrator() = default;
+
     virtual void optimize() = 0;
 };
 

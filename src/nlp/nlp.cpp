@@ -99,8 +99,8 @@ void NLP::solver_get_initial_guess(
     bool init_lambda,
     f64* solver_lambda_init,
     bool init_z,
-    f64* solver_z_lbb_init,
-    f64* solver_z_ubb_init)
+    f64* solver_z_lb_init,
+    f64* solver_z_ub_init)
 {
     // user query
     get_initial_guess(init_x, curr_x, init_lambda, curr_lambda, init_z, z_lb, z_ub);
@@ -114,10 +114,10 @@ void NLP::solver_get_initial_guess(
         unscale_curr_lambda(solver_lambda_init);
     }
     if (init_z) {
-        z_lb.write_to(solver_z_lbb_init);
-        z_ub.write_to(solver_z_ubb_init);
-        scaling->inplace_scale_x(solver_z_lbb_init);
-        scaling->inplace_scale_x(solver_z_ubb_init);
+        z_lb.write_to(solver_z_lb_init);
+        z_ub.write_to(solver_z_ub_init);
+        scaling->inplace_scale_x(solver_z_lb_init);
+        scaling->inplace_scale_x(solver_z_ub_init);
     }
 }
 

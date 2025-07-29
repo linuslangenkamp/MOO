@@ -14,6 +14,7 @@ namespace OpenModelica {
 
 // TODO: try to not call functionDAE that often. Maybe create a workspace buffer where we memcpy the realVars after evaluation
 //       main advantage: no need to solve NLS several times!!
+// => maybe allocate an additional buffer for the realVars + parameters and memcpy them inside the evaluation again
 
 /* init evaluations */
 void init_eval(InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr);

@@ -317,6 +317,7 @@ public:
     std::shared_ptr<ScalingFactory>        scaling_factory;
 
     virtual ~Strategies() = default;
+
     static Strategies default_strategies();
 
     auto get_initial_guess(const GDOP& gdop) {

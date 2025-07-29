@@ -6,80 +6,95 @@
 
 namespace OpenModelica {
 
-FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg, std::unique_ptr<AugmentedHessianLFG> aug_hes, std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
-        Collocation& collocation, Mesh& mesh, FixedVector<Bounds>&& g_bounds, InfoGDOP& info)
-    : FullSweep(std::move(lfg), std::move(aug_hes), std::move(aug_pp_hes), collocation, mesh, std::move(g_bounds), info.lagrange_exists, info.f_size,
-                info.g_size, info.x_size, info.u_size, info.p_size), info(info) {
+FullSweep_OM::FullSweep_OM(FixedVector<FunctionLFG>&& lfg,
+              std::unique_ptr<AugmentedHessianLFG> aug_hes,
+              std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
+              const GDOP::ProblemConstants& pc,
+              InfoGDOP& info)
+    : FullSweep(std::move(lfg), std::move(aug_hes), std::move(aug_pp_hes), pc), info(info) {
 }
 void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            set_states_inputs(info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
-            set_time(info, mesh.t[i][j]);
+    for (int i = 0; i < pc.mesh.intervals; i++) {
+        for (int j = 0; j < pc.mesh.nodes[i]; j++) {
+            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
+            f64* eval_buf_ij = get_eval_buffer(i, j);
+
+            set_states_inputs(info, xu_ij);
+            set_time(info, pc.mesh.t[i][j]);
             eval_current_point(info);
-            eval_lfg_write(info, &eval_buffer[eval_size * mesh.acc_nodes[i][j]]);
+            eval_lfg_write(info, eval_buf_ij);
         }
     }
 }
 
 void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            set_states_inputs(info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
-            set_time(info, mesh.t[i][j]);
+    for (int i = 0; i < pc.mesh.intervals; i++) {
+        for (int j = 0; j < pc.mesh.nodes[i]; j++) {
+            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
+            f64* jac_buf_ij  = get_jac_buffer(i, j);
+
+            set_states_inputs(info, xu_ij);
+            set_time(info, pc.mesh.t[i][j]);
             eval_current_point(info);
             /* TODO: check if B matrix does hold additional ders */
-            jac_eval_write_as_csc(info, info.exc_jac->B, &jac_buffer[jac_size * mesh.acc_nodes[i][j]]);
+            jac_eval_write_as_csc(info, info.exc_jac->B, jac_buf_ij);
         }
     }
 }
 
 void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) {
     set_parameters(info, p);
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            set_states_inputs(info, &xu_nlp[info.xu_size * mesh.acc_nodes[i][j]]);
-            set_time(info, mesh.t[i][j]);
+    for (int i = 0; i < pc.mesh.intervals; i++) {
+        for (int j = 0; j < pc.mesh.nodes[i]; j++) {
+            const f64* xu_ij     = get_xu_ij(xu_nlp, i, j);
+            f64* lambda_ij       = get_lambda_ij(lambda, i, j);
+            f64* jac_buf_ij      = get_jac_buffer(i, j);
+            f64* aug_hes_buf_ij  = get_aug_hes_buffer(i, j);
+
+            set_states_inputs(info, xu_ij);
+            set_time(info, pc.mesh.t[i][j]);
+
             /* TODO: check if B matrix does hold additional ders */
-            if (has_lagrange) {
+            if (pc.has_lagrange) {
                 /* OpenModelica sorts the Functions as fLg, we have to swap the order for lambda
                  * thus, use the workspace buffer from info.exc_hes */
-                info.exc_hes->B_lambda[x_size] = lagrange_factors[i][j];
-                for (int f = 0; f < f_size; f++) {
-                    info.exc_hes->B_lambda[f] = lambda[fg_size * mesh.acc_nodes[i][j] + f];
+                info.exc_hes->B_lambda[pc.x_size] = lagrange_factors[i][j];
+                for (int f = 0; f < pc.f_size; f++) {
+                    info.exc_hes->B_lambda[f] = lambda_ij[f];
                 }
-                for (int g = 0; g < g_size; g++) {
+                for (int g = 0; g < pc.g_size; g++) {
                     /* Lagrange offset */
-                    info.exc_hes->B_lambda[f_size + 1 + g] = lambda[fg_size * mesh.acc_nodes[i][j] + f_size + g];
+                    info.exc_hes->B_lambda[pc.f_size + 1 + g] = lambda_ij[pc.f_size + g];
                 }
                 /* set wrapper lambda */
                 info.exc_hes->B_args.lambda = info.exc_hes->B_lambda.raw();
             }
             else {
-                /* set wrapper lambda */
-                info.exc_hes->B_args.lambda = &lambda[fg_size * mesh.acc_nodes[i][j]];
+                /* set wrapper lambda as Lagrange term isnt set and OM and MOOsortings are the same*/
+                info.exc_hes->B_args.lambda = lambda_ij;
             }
             /* set previous Jacobian *CSC* OpenModelica buffer */
-            info.exc_hes->B_args.jac_csc = &jac_buffer[jac_size * mesh.acc_nodes[i][j]];
+            info.exc_hes->B_args.jac_csc = jac_buf_ij;
 
             /* call Hessian */
             richardsonExtrapolation(info.exc_hes->B_extr, forwardDiffHessianWrapper, &info.exc_hes->B_args,
-                                    NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, &aug_hes_buffer[aug_hes_size * mesh.acc_nodes[i][j]]);
+                                    NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, aug_hes_buf_ij);
         }
     }
 }
 
-BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr, std::unique_ptr<AugmentedHessianMR> aug_hes, Mesh& mesh,
-                                   FixedVector<Bounds>&& r_bounds, InfoGDOP& info)
-    : BoundarySweep(std::move(mr), std::move(aug_hes), mesh, std::move(r_bounds), info.mayer_exists,
-                    info.r_size, info.x_size, info.p_size), info(info) {}
+BoundarySweep_OM::BoundarySweep_OM(FixedVector<FunctionMR>&& mr,
+                  std::unique_ptr<AugmentedHessianMR> aug_hes,
+                  const GDOP::ProblemConstants& pc,
+                  InfoGDOP& info)
+    : BoundarySweep(std::move(mr), std::move(aug_hes), pc), info(info) {}
 
 void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     set_parameters(info, p);
     set_states(info, xf_nlp);
-    set_time(info, mesh.tf);
+    set_time(info, pc.mesh.tf);
     eval_current_point(info);
     eval_mr_write(info, eval_buffer.raw());
 }
@@ -87,11 +102,11 @@ void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xf_nlp, const
 void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const f64* p) {
     set_parameters(info, p);
     set_states(info, xf_nlp);
-    set_time(info, mesh.tf);
+    set_time(info, pc.mesh.tf);
     eval_current_point(info);
     /* TODO: check if C matrix does hold additional ders */
     /* derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1] */
-    if (has_mayer) {
+    if (pc.has_mayer) {
         jac_eval_write_first_row_as_csc(info, info.exc_jac->C, info.exc_jac->C_buffer.raw(),
                                         jac_buffer.raw(), info.exc_jac->C_coo);
     }
@@ -105,11 +120,11 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xf_nlp, const 
 void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) {
     set_parameters(info, p);
     set_states(info, xf_nlp);
-    set_time(info, mesh.tf);
+    set_time(info, pc.mesh.tf);
     aug_hes_buffer.fill_zero();
 
-    if (has_mayer) {
-        int index_mayer = info.x_size + (int)(info.lagrange_exists);
+    if (pc.has_mayer) {
+        int index_mayer = pc.x_size + (int)(info.lagrange_exists);
         info.exc_hes->C_lambda[index_mayer] = mayer_factor;
         richardsonExtrapolation(info.exc_hes->C_extr, forwardDiffHessianWrapper, &info.exc_hes->C_args,
                                 NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C_buffer.raw());
@@ -118,7 +133,7 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xf_nlp, co
         }
     }
 
-    if (r_size != 0) {
+    if (pc.r_size != 0) {
         /* set duals and precomputed Jacobian D */
         info.exc_hes->D_args.lambda = lambda;
         info.exc_hes->D_args.jac_csc = &jac_buffer[info.exc_jac->D_coo.nnz_offset];
@@ -224,21 +239,32 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
     auto aug_hes_lfg_pp = std::make_unique<AugmentedParameterHessian>();
     auto aug_hes_mr = std::make_unique<AugmentedHessianMR>();
 
-    /* init (OPT) */
+    /* init MOO sparsity */
     init_eval(info, lfg, mr);
     init_jac(info, lfg, mr);
     init_hes(info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
 
-    return GDOP::Problem(
-        std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), collocation, mesh, std::move(g_bounds), info),
-        std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), mesh, std::move(r_bounds), info),
-        mesh,
+    auto pc = std::make_unique<GDOP::ProblemConstants>(
+        info.x_size,
+        info.u_size,
+        info.p_size,
+        info.mayer_exists,
+        info.lagrange_exists,
         std::move(x_bounds),
         std::move(u_bounds),
         std::move(p_bounds),
         std::move(x0_fixed),
-        std::move(xf_fixed)
+        std::move(xf_fixed),
+        std::move(r_bounds),
+        std::move(g_bounds),
+        mesh,
+        collocation
     );
+
+    auto fs = std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), *pc, info);
+    auto bs = std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), *pc, info);
+
+    return GDOP::Problem(std::move(fs),std::move(bs),std::move(pc));
 }
 
 } // namespace OpenModelica

@@ -269,8 +269,8 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
 
     auto real_vars_data = info.data->modelData->realVarsData;
 
-    auto has_mayer = gdop.get_problem().boundary->has_mayer;
-    auto has_lagrange = gdop.get_problem().full->has_lagrange;
+    auto has_mayer = gdop.get_problem().pc->has_mayer;
+    auto has_lagrange = gdop.get_problem().pc->has_lagrange;
 
     if (has_mayer && has_lagrange) {
         f_nominal = (real_vars_data[info.index_mayer_real_vars].attribute.nominal +
