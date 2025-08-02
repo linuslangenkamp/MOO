@@ -1,5 +1,8 @@
 # **MOO: Modelica / Model Optimizer - A Generic Framework for Dynamic Optimization**
 
+TODO: refactor this and remove major errors
+TODO: add installation?!
+
 **MOO: Modelica / Model Optimizer** is a flexible and extensible framework for solving complex optimization problems. It is distributed under the **OSMC Public License (OSMC-PL) Version 1.2** and the **GNU Lesser General Public License (LGPL) Version 3**.
 
 **MOO** provides a generic Nonlinear Programming (NLP) layer with built-in scaling support and a solver-agnostic interface. While primarily designed for dynamic optimization in the Modelica ecosystem (General Dynamic Optimization Problems (GDOPs), training of Physics-enhanced Neural ODEs (PeN-ODEs)), it is equally applicable to other domains, e.g. model predictive control (MPC).

@@ -2,12 +2,44 @@
 
 namespace GDOP {
 
+int BlockLFG::compute_jac_nnz() {
+    int sum = 0;
+
+    if (L) sum += L->jac.nnz();
+
+    for (auto const& fn : f) {
+        sum += fn.jac.nnz();
+    }
+
+    for (auto const& fn : g) {
+        sum += fn.jac.nnz();
+    }
+
+    return sum;
+}
+
+int BlockMR::compute_jac_nnz() {
+    int sum = 0;
+
+    if (M) sum += M->jac.nnz();
+
+    for (auto const& fn : r) {
+        sum += fn.jac.nnz();
+    }
+
+    return sum;
+}
+
 void FullSweepBuffers::resize(const Mesh& mesh) {
     eval = FixedVector<f64>(mesh.node_count * eval_size);
     jac = FixedVector<f64>(mesh.node_count * jac_size);
     aug_hes = FixedVector<f64>(mesh.node_count * aug_hes_size);
 }
 
+// TODO: replace all c-style casts
+
+// TODO: fix these
+/*
 void FullSweep::print_jacobian_sparsity_pattern() {
     std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
     for (size_t i = 0; i < lfg.size(); ++i) {
@@ -38,8 +70,8 @@ void FullSweep::print_jacobian_sparsity_pattern() {
         std::cout << "-----------------------------\n";
     }
     std::cout << "================================\n";
-}
-
+}*/
+/*
 void BoundarySweep::print_jacobian_sparsity_pattern() {
     std::cout << "\n=== MR Jacobian Sparsity ===\n================================\n";
     for (size_t i = 0; i < mr.size(); ++i) {
@@ -70,5 +102,5 @@ void BoundarySweep::print_jacobian_sparsity_pattern() {
     }
     std::cout << "================================\n";
 }
-
+*/
 } // namespace GDOP

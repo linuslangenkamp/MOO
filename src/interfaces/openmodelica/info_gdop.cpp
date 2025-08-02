@@ -9,7 +9,7 @@ void InfoGDOP::set_time_horizon(int steps) {
     model_start_time = data->simulationInfo->startTime;
     model_stop_time = data->simulationInfo->stopTime;
     tf = model_stop_time - model_start_time;
-    intervals = (int)(round(tf/data->simulationInfo->stepSize));
+    intervals = static_cast<int>(round(tf/data->simulationInfo->stepSize));
     stages = steps;
 }
 
@@ -86,17 +86,16 @@ ExchangeJacobians::ExchangeJacobians(InfoGDOP& info) :
     D_exists((bool)(info.data->callback->initialAnalyticJacobianD(info.data, info.threadData, D) == 0)),
 
     /* create COO sparsity and CSC(OM) <-> COO(OPT, reordered) mappings */
-    A_coo(Exchange_COO_CSC::from_csc((int*)A->sparsePattern->leadindex, (int*)A->sparsePattern->index,
-                                     (int)A->sizeCols, (int)A->sparsePattern->numberOfNonZeros)),
-    B_coo(Exchange_COO_CSC::from_csc((int*)B->sparsePattern->leadindex, (int*)B->sparsePattern->index,
-                                     (int)B->sizeCols, (int)B->sparsePattern->numberOfNonZeros,
-                                     info.lagrange_exists ? info.x_size : -1)),
-    C_coo(Exchange_COO_CSC::from_csc((int*)C->sparsePattern->leadindex, (int*)C->sparsePattern->index,
-                                     (int)C->sizeCols, (int)C->sparsePattern->numberOfNonZeros,
-                                     info.mayer_exists ? info.x_size + (int)(info.lagrange_exists) : -1)),
-    D_coo(info.r_size != 0 ? Exchange_COO_CSC::from_csc((int*)D->sparsePattern->leadindex, (int*)D->sparsePattern->index,
-                                     (int)D->sizeCols, (int)D->sparsePattern->numberOfNonZeros,
-                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0) : Exchange_COO_CSC()),
+    A_coo(CscToCoo::from_csc(reinterpret_cast<int*>(A->sparsePattern->leadindex), reinterpret_cast<int*>(A->sparsePattern->index),
+                                     static_cast<int>(A->sizeCols), static_cast<int>(A->sparsePattern->numberOfNonZeros))),
+    B_coo(CscToCoo::from_csc(reinterpret_cast<int*>(B->sparsePattern->leadindex), reinterpret_cast<int*>(B->sparsePattern->index),
+                                     static_cast<int>(B->sizeCols), static_cast<int>(B->sparsePattern->numberOfNonZeros))),
+    C_coo(CscToCoo::from_csc(reinterpret_cast<int*>(C->sparsePattern->leadindex), reinterpret_cast<int*>(C->sparsePattern->index),
+                                     static_cast<int>(C->sizeCols), static_cast<int>(C->sparsePattern->numberOfNonZeros),
+                                     info.mayer_exists ? info.x_size + static_cast<int>(info.lagrange_exists) : -1)),
+    D_coo(info.r_size != 0 ? CscToCoo::from_csc(reinterpret_cast<int*>(D->sparsePattern->leadindex), reinterpret_cast<int*>(D->sparsePattern->index),
+                                     static_cast<int>(D->sizeCols), static_cast<int>(D->sparsePattern->numberOfNonZeros),
+                                     -1, info.mayer_exists ? C_coo.row_nnz(0) : 0) : CscToCoo()),
 
     /* create optional buffers, use when in-place buffers are no option */
     A_buffer(FixedVector<modelica_real>(A_coo.nnz)),

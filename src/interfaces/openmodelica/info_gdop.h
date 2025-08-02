@@ -78,44 +78,40 @@ struct InfoGDOP {
 /**
  * @brief Constructs and initializes OpenModelica Jacobians and their COO mappings for optimization.
  *
- * This constructor sets up Jacobian matrices (A, B, C, D) using OpenModelica's internal structures
- * and converts them from CSC (Compressed Sparse Column) format to COO (Coordinate) format.
- * The COO format is required by the optimization, which expects different symbolic block
- * orderings and row arrangements than OpenModelica provides.
+ * This constructor sets up the Jacobian matrices (A, B, C, D) using OpenModelica's internal
+ * CSC (Compressed Sparse Column) structures and transforms them into COO (Coordinate) format
+ * as required by the optimization backend.
  *
- * The OM matrices represent the following derivatives in CSC:
+ * OpenModelica provides the following Jacobians in CSC format:
  *   - A = (f_{xu})^T
  *   - B = (f_{xu}, L_{xu}, g_{xu})^T
  *   - C = (f_{xu}, L_{xu}, M_{xu}, g_{xu})^T
  *   - D = (r_{xu})^T
  *
- * However, OPT expects the COO format with:
- *   1. [L, f, g] — i.e. Lagrange terms first in the row ordering of B
- *   2. [M, r]    — i.e. Mayer terms followed by boundary constraints in D
+ * ### LFG Block (B matrix)
+ * - The B matrix includes rows for f, L, and g in that order (`fLg`).
+ * - It is converted directly from CSC to COO without reordering.
+ * - Although the sparsity structure is stored in COO format, the numerical values remain in CSC order.
+ * - This allows the original CSC evaluation buffer to be passed directly to the optimizer callbacks,
+ *   since the buffer indices (`buf_index`) in the sparsity structure correctly point to CSC entries.
  *
- * Because of this mismatch between OpenModelica's CSC block structure and OPT's COO expectations,
- * the following transformation steps are performed:
+ * ### MR Block (C and D matrices)
+ * - **Mayer term (M)** is embedded in the C matrix:
+ *   - C has row order: f, L, M, g.
+ *   - It is converted to COO format, and the M row is moved to the top to match the optimizer's expected order.
+ *   - During evaluation, the full C matrix is evaluated in CSC format into a temporary buffer.
+ *   - Using the `coo_to_csc` mapping, only the entries of the M row (now first in COO) are extracted
+ *     into the final buffer passed to the optimizer.
  *
- * 1. **Initialize OpenModelica Jacobian objects** using their dedicated function pointers:
- *    These include A, B, C, and D — each initialized via `initialAnalyticJacobianX(...)`.
+ * - **Boundary constraints (r)** are represented in the D matrix:
+ *   - D contains only `r_{xu}` and is converted directly to COO.
+ *   - Since the optimizer expects `[M, r]` ordering in the MR block, a row offset is applied
+ *     during evaluation to place `r` entries after the Mayer entries in the final buffer.
  *
- * 2. **Convert each Jacobian from CSC to COO** using `Exchange_COO_CSC::from_csc(...)`:
- *    - **A_coo**: a direct conversion from CSC to COO.
- *    - **B_coo**: optionally reorders the Lagrange row (`L_{xu}`) to appear first if `lagrange_exists`.
- *    - **C_coo**: optionally reorders the Mayer row (`M_{xu}`) to appear first if `mayer_exists`.
- *
- * 3. `D_coo` contains only `r_{xu}`, but OPT expects Mayer terms (`M_{xu}`) first.
- *    If `mayer_exists`, we set nnz_offset of D_coo to `C_coo.row_nnz(0)` to ensure `[M, r]` order.
- *    See `nnz_offset` in `Exchange_COO_CSC` for further info.
- *
- * 4. Optional Jacobian buffer with size nnz(Matrix) are also included and can be used if no in-place
- *    buffer is applicable
- * 
- * The permutation arrays `csc_to_coo` and `coo_to_csc` constructed during each step allow consistent
- * mapping of values between the original CSC (OpenModelica) and the reordered COO (optimizer) forms.
- * 
- * Hopefully, we soon get block D = (r_{xu}, M_{xu})^T or (M_{xu}, r_{xu})^T, making less involved!
+ * Throughout this process, the `csc_to_coo` and `coo_to_csc` permutation arrays maintain consistent
+ * mapping between OpenModelica’s CSC structures and the COO format expected by the optimization routines.
  */
+
 struct ExchangeJacobians {
     JACOBIAN* A;
     JACOBIAN* B;
@@ -127,10 +123,10 @@ struct ExchangeJacobians {
     bool C_exists;
     bool D_exists;
 
-    Exchange_COO_CSC A_coo;
-    Exchange_COO_CSC B_coo;
-    Exchange_COO_CSC C_coo;
-    Exchange_COO_CSC D_coo;
+    CscToCoo A_coo;
+    CscToCoo B_coo;
+    CscToCoo C_coo;
+    CscToCoo D_coo;
 
     FixedVector<modelica_real> A_buffer;
     FixedVector<modelica_real> B_buffer;

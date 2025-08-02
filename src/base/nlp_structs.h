@@ -66,14 +66,6 @@ struct FunctionLFG {
     JacobianLFG jac;
 };
 
-inline int compute_jac_nnz_vec_fn_lfg(FixedVector<FunctionLFG>& lfg_vec) {
-    int sum = 0;
-    for (auto const& fn : lfg_vec) {
-        sum += fn.jac.nnz();
-    }
-    return sum;
-}
-
 // MR semi-generic boundary function r(x(t0), x(tf), u(tf), p)
 // used for Mayer term (M), boundary constraints (R) in GDOP
 
@@ -113,17 +105,8 @@ struct FunctionMR {
     JacobianMR jac;
 };
 
-
-inline int compute_jac_nnz_vec_fn_mr(FixedVector<FunctionMR>& mr_vec) {
-    int sum = 0;
-    for (auto const& fn : mr_vec) {
-        sum += fn.jac.nnz();
-    }
-    return sum;
-}
-
 // simple state to check which actions are / have to be performed for an iteration
-struct NLP_State {
+struct NLPState {
     bool eval_f         = false;
     bool eval_g         = false;
     bool grad_f         = false;
@@ -147,8 +130,8 @@ struct NLP_State {
     };
 };
 
-/* exchange form from CSC -> COO and back */
-struct Exchange_COO_CSC {
+/* exchange form from CSC <-> COO and back */
+struct CscToCoo {
 public:
     FixedVector<int> row;
     FixedVector<int> col;
@@ -162,9 +145,9 @@ public:
     /* size of the row, that was possibly moved to front */
     int nnz_moved_row = 0;
 
-    Exchange_COO_CSC() = default;
+    CscToCoo() = default;
 
-    Exchange_COO_CSC(int nnz) 
+    CscToCoo(int nnz) 
         : row(FixedVector<int>(nnz)),
           col(FixedVector<int>(nnz)),
           __coo_to_csc(FixedVector<int>(nnz)),
@@ -182,15 +165,6 @@ public:
         return __coo_to_csc[local_index];
     }
 
-    /* embedded/global access (for offset blocks, e.g., [*, B](COO)) */
-    inline int csc_to_coo_get_global(int index) {
-        return __csc_to_coo[index] + nnz_offset;
-    }
-
-    inline int coo_to_csc_from_global(int global_index) {
-        return __coo_to_csc[global_index - nnz_offset];
-    }
-
     int row_nnz(int row_index) {
         int count = 0;
         for (int nz = 0; nz < row.int_size(); nz++) {
@@ -205,7 +179,7 @@ public:
     }
 
     void print() {
-        std::cout << "Exchange_COO_CSC:" << std::endl;
+        std::cout << "CscToCoo:" << std::endl;
         std::cout << "  nnz         = " << nnz << std::endl;
         std::cout << "  nnz_offset  = " << nnz_offset << std::endl;
 
@@ -247,12 +221,17 @@ public:
      *       The mappings `coo_to_csc` and `csc_to_coo` store **local (block-wise)** indices.
      *       Use the `*_global()` methods to map to/from global COO indices when embedded in a larger sparsity structure.
      */
-    static Exchange_COO_CSC from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0) {
-        return Exchange_COO_CSC(lead_col, row_csc, number_cols, nnz, move_to_first_row, nnz_offset);
+    static CscToCoo from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0) {
+        return CscToCoo(lead_col, row_csc, number_cols, nnz, move_to_first_row, nnz_offset);
     }
 
 private:
-    Exchange_COO_CSC(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0)
+    CscToCoo(const int* lead_col,
+             const int* row_csc,
+             int number_cols,
+             int nnz,
+             int move_to_first_row = -1,
+             int nnz_offset = 0)
         : row(nnz), col(nnz), __coo_to_csc(nnz), __csc_to_coo(nnz), nnz(nnz), nnz_offset(nnz_offset) {
         int nz = 0;
         for (int curr_col = 0; curr_col < number_cols; ++curr_col) {

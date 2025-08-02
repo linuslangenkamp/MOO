@@ -89,12 +89,12 @@ public:
     int& nnz_hes) override;
 
   void get_jac_sparsity(
-      FixedVector<int>& i_row_jac,
-      FixedVector<int>& j_col_jac) override;
+    FixedVector<int>& i_row_jac,
+    FixedVector<int>& j_col_jac) override;
 
   void get_hes_sparsity(
-      FixedVector<int>& i_row_hes,
-      FixedVector<int>& j_col_hes) override;
+    FixedVector<int>& i_row_hes,
+    FixedVector<int>& j_col_hes) override;
 
   void eval_f(
     bool new_x,
@@ -141,7 +141,7 @@ private:
   Mesh& mesh;                 // grid / mesh
   Problem& problem;           // continuous GDOP
   Collocation& collocation;   // collocation data
-  NLP_State evaluation_state; // simple state to check which callbacks are performed for an iteration
+  NLPState evaluation_state;  // simple state to check which callbacks are performed for an iteration
 
   // scaling
   std::shared_ptr<ScalingFactory> scaling_factory;

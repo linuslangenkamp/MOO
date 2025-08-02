@@ -2,64 +2,101 @@
 
 namespace OpenModelica {
 
-/* just enumerate them from 0 ... #lfg - 1 abd 0 ... #mr - 1, the correct placement will be handled in eval */
-void init_eval(InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
+void init_eval(InfoGDOP& info, GDOP::BlockLFG& lfg, GDOP::BlockMR& mr) {
     init_eval_lfg(info, lfg);
     init_eval_mr(info, mr);
 }
 
-void init_eval_lfg(InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
-    for (int i = 0; i < lfg.int_size(); i++) {
-        lfg[i].buf_index = i;
+/* just enumerate them in order: L -> f -> g. The correct placement will be handled in eval */
+void init_eval_lfg(InfoGDOP& info, GDOP::BlockLFG& lfg) {
+    int buf_index = 0;
+
+    if (lfg.L) {
+        lfg.L->buf_index = buf_index++;
+    }
+
+    for (auto& f : lfg.f) {
+        f.buf_index = buf_index++;
+    }
+
+    for (auto& g : lfg.g) {
+        g.buf_index = buf_index++;
     }
 }
 
-void init_eval_mr(InfoGDOP& info, FixedVector<FunctionMR>& mr) {
-    for (int i = 0; i < mr.int_size(); i++) {
-        mr[i].buf_index = i;
+/* just enumerate them in order: M -> r. The correct placement will be handled in eval */
+void init_eval_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
+    int buf_index = 0;
+
+    if (mr.M) {
+        mr.M->buf_index = buf_index++;
+    }
+
+    for (auto& r : mr.r) {
+        r.buf_index = buf_index++;
     }
 }
 
-/* since its no problem and conversion from COO <-> CSC has been carried out, we just use the CSC ordering in the Jacobians
- * thus no use of memcpy at all, since we can pass out buffer! */
-void init_jac(InfoGDOP& info, FixedVector<FunctionLFG>& lfg, FixedVector<FunctionMR>& mr) {
+void init_jac(InfoGDOP& info, GDOP::BlockLFG& lfg, GDOP::BlockMR& mr) {
     init_jac_lfg(info, lfg);
     init_jac_mr(info, mr);
 }
 
-void init_jac_lfg(InfoGDOP& info, FixedVector<FunctionLFG>& lfg) {
+// return reference to FunctionLFG
+// OpenModelica orders its B Jacobian as [f1, ..., f_n, ?maybe L?, g_1, ..., g_m]
+// so we return the specific function based on which row is given from the OpenModelica format
+FunctionLFG& access_fLg_from_row(GDOP::BlockLFG& lfg, int row) {
+    int f_size = lfg.f.int_size();
+    int L_size = lfg.L ? 1 : 0;
+
+    if (row < f_size) {
+        return lfg.f[row];
+    }
+    else if (lfg.L && row == f_size) {
+        return *lfg.L;
+    }
+    else {
+        return lfg.g[row - f_size - L_size];
+    }
+}
+
+// rows are sorted as fLg (as in OpenModelica)
+void init_jac_lfg(InfoGDOP& info, GDOP::BlockLFG& lfg) {
     /* full B Jacobian */
     for (int nz = 0; nz < info.exc_jac->B_coo.nnz; nz++) {
-        int row = info.exc_jac->B_coo.row[nz];
-        int col = info.exc_jac->B_coo.col[nz];
-        int csc_buffer_entry_B = info.exc_jac->B_coo.coo_to_csc(nz); // jac_buffer == OpenModelica B CSC buffer!
+        int row = info.exc_jac->B_coo.row[nz];                       // OpenModelica B matrix row
+        int col = info.exc_jac->B_coo.col[nz];                       // OpenModelica B matrix col
+        int csc_buffer_entry_B = info.exc_jac->B_coo.coo_to_csc(nz); // OpenModelica B matrix CSC buffer index
+        FunctionLFG& fn = access_fLg_from_row(lfg, row);             // get function corresponding to the OM row
         if (col < info.x_size) {
-            lfg[row].jac.dx.push_back(JacobianSparsity{col, csc_buffer_entry_B});
+            fn.jac.dx.push_back(JacobianSparsity{col, csc_buffer_entry_B});
         }
         else if (col < info.xu_size) {
-            lfg[row].jac.du.push_back(JacobianSparsity{col - info.x_size, csc_buffer_entry_B});
+            fn.jac.du.push_back(JacobianSparsity{col - info.x_size, csc_buffer_entry_B});
         }
         else {
-            lfg[row].jac.dp.push_back(JacobianSparsity{col - info.xu_size, csc_buffer_entry_B});
+            fn.jac.dp.push_back(JacobianSparsity{col - info.xu_size, csc_buffer_entry_B});
         }
     }
 }
 
-void init_jac_mr(InfoGDOP& info, FixedVector<FunctionMR>& mr) {
+void init_jac_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
     /* M (first row) in C(COO) Jacobian */
     int nz_C = 0;
     if (info.mayer_exists) {
+        assert(mr.M);
+
         while (info.exc_jac->C_coo.row[nz_C] == 0) {
             int col = info.exc_jac->C_coo.col[nz_C];
 
             /* for now only final states: xf! no parameters, no dx0 */
             if (col < info.x_size) {
                 /* just point to nz_C, since for 1 row, CSC == COO */
-                mr[0].jac.dxf.push_back(JacobianSparsity{col, nz_C});
+                mr.M->jac.dxf.push_back(JacobianSparsity{col, nz_C});
             }
             else if (col < info.xu_size) {
                 /* just point to nz_C, since for 1 row, CSC == COO */
-                mr[0].jac.duf.push_back(JacobianSparsity{col - info.x_size, nz_C});
+                mr.M->jac.duf.push_back(JacobianSparsity{col - info.x_size, nz_C});
             }
 
             nz_C++;
@@ -67,24 +104,24 @@ void init_jac_mr(InfoGDOP& info, FixedVector<FunctionMR>& mr) {
     }
 
     /* r in D Jacobian */
-    int r_start = (int)info.mayer_exists;
     for (int nz_D = 0; nz_D < info.exc_jac->D_coo.nnz; nz_D++) {
         int row = info.exc_jac->D_coo.row[nz_D];
         int col = info.exc_jac->D_coo.col[nz_D];
         int csc_buffer_entry_D = info.exc_jac->D_coo.coo_to_csc(nz_D); // jac_buffer == OpenModelica D CSC buffer!
+        auto boundary_fn = mr.r[row];
         if (col < info.x_size) {
             /* add the Mayer offset, since the values f64* is [M, r] */
             // Attention: this offset only works if D contains just r!!
-            mr[r_start + row].jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D}); 
+            boundary_fn.jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D}); 
         }
         else if (col < info.xu_size) {
-            mr[r_start + row].jac.duf.push_back(JacobianSparsity{col - info.x_size, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
+            boundary_fn.jac.duf.push_back(JacobianSparsity{col - info.x_size, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
         }
     }
 }
 
-void init_hes(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
-              AugmentedParameterHessian& aug_hes_lfg_pp, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
+void init_hes(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg, AugmentedParameterHessian& aug_hes_lfg_pp,
+              AugmentedHessianMR& aug_hes_mr, GDOP::BlockMR& mr) {
     init_hes_lfg(info, aug_hes_lfg, aug_hes_lfg_pp);
     init_hes_mr(info, aug_hes_mr, mr);
 }
@@ -111,7 +148,7 @@ void init_hes_lfg(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
     }
 }
 
-void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<FunctionMR>& mr) {
+void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, GDOP::BlockMR& mr) {
     HESSIAN_PATTERN* hes_c = info.exc_hes->C;
     HESSIAN_PATTERN* hes_d = info.exc_hes->D;
 
@@ -119,9 +156,13 @@ void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<Fun
     std::vector<HessianSparsity> M_sparsities;
     std::vector<int> M_cols;
     if (info.mayer_exists) {
+        assert(mr.M);
+
+        auto& mayer_term = *mr.M;
+
         // ignore x0 and p for now
-        for (auto& M_dxf : mr[0].jac.dxf) M_cols.push_back(M_dxf.col);
-        for (auto& M_duf : mr[0].jac.duf) M_cols.push_back(info.x_size + M_duf.col);
+        for (auto& M_dxf : mayer_term.jac.dxf) M_cols.push_back(M_dxf.col);
+        for (auto& M_duf : mayer_term.jac.duf) M_cols.push_back(info.x_size + M_duf.col);
 
         // estimate lower triangle sparsity pattern
         for (size_t i = 0; i < M_cols.size(); i++) {
@@ -161,7 +202,7 @@ void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, FixedVector<Fun
     int c_index = 0;
     info.exc_hes->C_to_Mr_buffer = FixedVector<std::pair<int, int>>(info.mayer_exists ? M_sparsities.size() : 0);
 
-    if (hes_c != nullptr) {
+    if (hes_c) {
         int hes_c_index = 0;
         for (const auto& mayer_hess : M_sparsities) {
             while (hes_c_index < hes_c->lnnz && 
@@ -258,7 +299,7 @@ void eval_mr_write(InfoGDOP& info, f64* eval_mr_buffer) {
 }
 
 void jac_eval_write_first_row_as_csc(InfoGDOP& info, JACOBIAN* jacobian, f64* full_buffer,
-                                     f64* eval_jac_buffer, Exchange_COO_CSC& exc) {
+                                     f64* eval_jac_buffer, CscToCoo& exc) {
     assert(jacobian && jacobian->sparsePattern);
     mooEvalJacobian(info.data, info.threadData, jacobian, NULL, full_buffer);
 

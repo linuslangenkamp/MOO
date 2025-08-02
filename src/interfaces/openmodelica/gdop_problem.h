@@ -19,7 +19,7 @@ class FullSweep_OM : public GDOP::FullSweep {
 public:
     InfoGDOP& info;
 
-    FullSweep_OM(FixedVector<FunctionLFG>&& lfg_in,
+    FullSweep_OM(GDOP::BlockLFG&& lfg_in,
               std::unique_ptr<AugmentedHessianLFG> aug_hes,
               std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
               const GDOP::ProblemConstants& pc,
@@ -34,7 +34,7 @@ class BoundarySweep_OM : public GDOP::BoundarySweep {
 public:
     InfoGDOP& info;
 
-    BoundarySweep_OM(FixedVector<FunctionMR>&& mr_in,
+    BoundarySweep_OM(GDOP::BlockMR&& mr_in,
                   std::unique_ptr<AugmentedHessianMR> aug_hes,
                   const GDOP::ProblemConstants& pc,
                   InfoGDOP& info);
