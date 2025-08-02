@@ -15,6 +15,8 @@ namespace NLP {
  */
 class Scaling {
 public:
+    virtual ~Scaling() = default;
+
     virtual void inplace_scale_x(f64* x_unscaled) = 0;
     virtual void inplace_scale_g(f64* g_unscaled) = 0;
 

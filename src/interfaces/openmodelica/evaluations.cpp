@@ -108,14 +108,14 @@ void init_jac_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
         int row = info.exc_jac->D_coo.row[nz_D];
         int col = info.exc_jac->D_coo.col[nz_D];
         int csc_buffer_entry_D = info.exc_jac->D_coo.coo_to_csc(nz_D); // jac_buffer == OpenModelica D CSC buffer!
-        auto boundary_fn = mr.r[row];
+        auto& fn = mr.r[row];
         if (col < info.x_size) {
             /* add the Mayer offset, since the values f64* is [M, r] */
             // Attention: this offset only works if D contains just r!!
-            boundary_fn.jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D}); 
+            fn.jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D}); 
         }
         else if (col < info.xu_size) {
-            boundary_fn.jac.duf.push_back(JacobianSparsity{col - info.x_size, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
+            fn.jac.duf.push_back(JacobianSparsity{col - info.x_size, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
         }
     }
 }

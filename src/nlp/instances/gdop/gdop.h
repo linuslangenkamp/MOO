@@ -122,8 +122,8 @@ public:
     bool new_x,
     const FixedVector<f64>& curr_x,
     bool new_lambda,
-    FixedVector<f64>& curr_lambda,
-    f64& curr_obj_factor,
+    const FixedVector<f64>& curr_lambda,
+    f64 curr_obj_factor,
     const FixedVector<int>& i_row_hes,
     const FixedVector<int>& j_col_hes,
     FixedVector<f64>& curr_hes) override;
@@ -136,6 +136,7 @@ public:
     const FixedVector<f64>& opt_z_ub) override;
 
 private:
+
   // === private structures ===
 
   Mesh& mesh;                 // grid / mesh
@@ -169,8 +170,17 @@ private:
   FixedField<int, 2>   off_acc_fg; // offset to NLP_G first index of (f, g)(t_ij), i.e. NLP_G[off_acc_fg[i][j]] = f[i][j], g[i][j]
   FixedVector<int> off_acc_jac_fg; // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
-  /* scaling factors for lagrange terms in augmented Hessian callback */
-  FixedField<f64, 2> lagrange_obj_factors; // = sigma_f * collocation.b[mesh.intervals[i]][mesh.nodes[j]] mesh.delta_t[i]
+  /* transforming dual variables (sigma_f and lambda) passed to the callbacks
+   * as callback is an augemented Hessian we must do this ourselves before the callback
+   * callback should already produce:
+   *    ∑_{ij} sigma_f * deltaT[i] * b[i][j] * L[i][j] + λ^T ∑_{ij} [-deltaT[i] * f_ij, g_ij] */
+
+  /* scaling factors for lagrange terms in augmented Hessian callback -
+   * absorb "b[i][j] * delta_t[i]" in Lagrange term */
+  FixedField<f64, 2> lagrange_obj_factors; // = sigma_f * collocation.b[mesh.intervals[i]][mesh.nodes[j]] * mesh.delta_t[i]
+
+  /* transformed dual variables passed to the callbacks - absorb "-deltaT[i]" in dynamics only */
+  FixedVector<f64> transformed_lambda; // = lambda_NLP[i][j] * (- mesh.deltaT[i])
 
   // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
   // for further info see hessian layout at the bottom
@@ -181,12 +191,12 @@ private:
 
   // inline methods for getting and providing current variable / dual addresses in callback
   // x0 => x(t0), xu => xu(t_01), xuf => xu(t_f), p => p, lamb_fg => fg(t_01), lamb_r => r
-  inline const f64* get_curr_x_x0(const FixedVector<f64>& curr_x)         { return off_x        != 0 ? curr_x.raw()          : nullptr; }
-  inline const f64* get_curr_x_xu(const FixedVector<f64>& curr_x)         { return off_xu       != 0 ? &curr_x[off_x]        : nullptr; }
-  inline const f64* get_curr_x_xuf(const FixedVector<f64>& curr_x)        { return off_xu       != 0 ? &curr_x[off_last_xu]  : nullptr; }
-  inline const f64* get_curr_x_p(const FixedVector<f64>& curr_x)          { return off_p        != 0 ? &curr_x[off_xu_total] : nullptr; }
-  inline f64* get_curr_lamb_fg(FixedVector<f64>& curr_lambda) { return off_fg_total != 0 ? curr_lambda.raw()     : nullptr; }
-  inline f64* get_curr_lamb_r(FixedVector<f64>& curr_lambda)  { return problem.pc->r_size != 0 ? &curr_lambda[off_fg_total] : nullptr; }
+  inline const f64* get_x_x0(const FixedVector<f64>& x)  { return off_x        != 0 ? x.raw()          : nullptr; }
+  inline const f64* get_x_xu(const FixedVector<f64>& x)  { return off_xu       != 0 ? &x[off_x]        : nullptr; }
+  inline const f64* get_x_xuf(const FixedVector<f64>& x) { return off_xu       != 0 ? &x[off_last_xu]  : nullptr; }
+  inline const f64* get_x_p(const FixedVector<f64>& x)   { return off_p        != 0 ? &x[off_xu_total] : nullptr; }
+  inline f64* get_lmbd_fg(FixedVector<f64>& lambda)      { return off_fg_total != 0 ? lambda.raw()     : nullptr; }
+  inline f64* get_lmbd_r(FixedVector<f64>& lambda) { return problem.pc->r_size != 0 ? &lambda[off_fg_total] : nullptr; }
 
   // helpers for initialize offsets 
   void create_acc_offset_xu(int off_x, int off_xu);
@@ -197,7 +207,7 @@ private:
   void init_hessian_nonzeros(int& nnz_hes);
 
   /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
-  void update_curr_lambda_obj_factors(FixedVector<f64>& curr_lambda, f64 curr_sigma_f);
+  void update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_sigma_f);
 
   /* augmented hessian updates */
   void update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
@@ -209,7 +219,7 @@ private:
 
   void callback_evaluation(const FixedVector<f64>& curr_x);
   void callback_jacobian(const FixedVector<f64>& curr_x);
-  void callback_hessian(const FixedVector<f64> x, FixedVector<f64>& curr_lambda, f64 curr_sigma_f);
+  void callback_hessian(const FixedVector<f64> x, const FixedVector<f64>& curr_lambda, f64 curr_sigma_f);
 
   // === internal evaluations ===
 

@@ -36,7 +36,7 @@ void FullSweepBuffers::resize(const Mesh& mesh) {
     aug_hes = FixedVector<f64>(mesh.node_count * aug_hes_size);
 }
 
-// TODO: replace all c-style casts
+// TODO: replace all c-style marked by -Wold-style-cast
 
 // TODO: fix these
 /*

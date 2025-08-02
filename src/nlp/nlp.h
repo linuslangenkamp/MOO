@@ -11,7 +11,7 @@ namespace NLP {
 /**
  * @brief Generic NLP base class for optimization problems.
  *
- * This class provides a generic interface for Non-Linear Programming (NLP) problems,
+ * This class provides a generic interface for Nonlinear Programming (NLP),
  * allowing for abstraction and interoperability with various NLP solvers.
  *
  * The NLP problem is formulated as:
@@ -245,8 +245,8 @@ public:
         bool new_x,
         const FixedVector<f64>& curr_x,
         bool new_lambda,
-        FixedVector<f64>& curr_lambda,
-        f64& curr_obj_factor,
+        const FixedVector<f64>& curr_lambda,
+        f64 curr_obj_factor,
         const FixedVector<int>& i_row_hes,
         const FixedVector<int>& j_col_hes,
         FixedVector<f64>& curr_hes) = 0;
@@ -329,8 +329,8 @@ public:
      * @param[in] init_lambda A boolean flag indicating if the solver requires an initial guess for \f$\lambda\f$.
      * @param[out] solver_lambda_init Pointer to an array where the unscaled initial guess for dual variables \f$\lambda\f$ will be written.
      * @param[in] init_z A boolean flag indicating if the solver requires an initial guess for \f$z\f$.
-     * @param[out] solver_z_lbb_init Pointer to an array where the scaled initial guess for dual multipliers of lower variable bounds \f$z_{LB}\f$ will be written.
-     * @param[out] solver_z_ubb_init Pointer to an array where the scaled initial guess for dual multipliers of upper variable bounds \f$z_{UB}\f$ will be written.
+     * @param[out] solver_z_lb_init Pointer to an array where the scaled initial guess for dual multipliers of lower variable bounds \f$z_{LB}\f$ will be written.
+     * @param[out] solver_z_ub_init Pointer to an array where the scaled initial guess for dual multipliers of upper variable bounds \f$z_{UB}\f$ will be written.
      */
     void solver_get_initial_guess(
         bool init_x,
@@ -338,8 +338,8 @@ public:
         bool init_lambda,
         f64* solver_lambda_init,
         bool init_z,
-        f64* solver_z_lbb_init,
-        f64* solver_z_ubb_init);
+        f64* solver_z_lb_init,
+        f64* solver_z_ub_init);
 
     /**
      * @brief Retrieves the sparsity pattern of the Jacobian matrix for the solver.

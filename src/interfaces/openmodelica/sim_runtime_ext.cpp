@@ -64,7 +64,7 @@ void mooEvalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, J
  * @return    [out] Pointer to newly allocated `HESSIAN_PATTERN` struct.
  */
 HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac) {
-  if (jac == nullptr or jac->sparsePattern == nullptr) { return nullptr; }
+  if (jac == nullptr || jac->sparsePattern == nullptr) { return nullptr; }
 
   int numVars = jac->sizeCols;
   int numFuncs = jac->sizeRows;
@@ -256,7 +256,7 @@ HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac) {
  * @param[out] hes          Output sparse Hessian values (COO format of hes_pattern, length = hes_pattern->nnz).
  */
 void evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                     int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes) {
+                                     int* u_indices, const modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes) {
   /* 0. retrieve pointers */
   JACOBIAN*       jacobian     = hes_pattern->jac;
   modelica_real** ws_baseJac   = hes_pattern->ws_baseJac;

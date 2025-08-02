@@ -7,8 +7,6 @@
 #include <src/nlp/nlp.h>
 #include <src/base/log.h>
 
-// TODO: add deconstructors + virtual deconstructors everywhere!
-
 // Strategies define interchangeable behaviors for key stages such as initialization, simulation,
 // mesh refinement, result emission, and optimality verification in the GDOP optimization process.
 // This file offers simple default and generic advanced strategy implementations that may be used.
@@ -33,6 +31,7 @@ class GDOP;
 class Initialization {
 public:
     virtual std::unique_ptr<PrimalDualTrajectory> operator()(const GDOP& gdop) = 0; 
+    virtual ~Initialization() = default;
 };
 
 /**
@@ -57,6 +56,7 @@ public:
                                                              const Mesh& new_mesh,
                                                              const Collocation& collocation,
                                                              const PrimalDualTrajectory& trajectory) = 0; 
+    virtual ~RefinedInitialization() = default;
 };
 
 /**
@@ -72,6 +72,7 @@ public:
 class Simulation {
 public:
     virtual std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) = 0;
+    virtual ~Simulation() = default;
 };
 
 /**
@@ -88,6 +89,7 @@ public:
 class SimulationStep {
 public:
     virtual std::unique_ptr<Trajectory> operator()(const ControlTrajectory& controls, f64 start_time, f64 stop_time, f64* x_start_values) = 0;
+    virtual ~SimulationStep() = default;
 };
 
 /**
@@ -99,6 +101,7 @@ public:
     virtual std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh,
                                                    const Collocation& collocation,
                                                    const PrimalDualTrajectory& trajectory) = 0;
+    virtual ~MeshRefinement() = default;
 };
 
 
@@ -117,6 +120,7 @@ public:
                                         const Mesh& new_mesh,
                                         const Collocation& collocation,
                                         const std::vector<f64>& values) = 0;
+    virtual ~Interpolation() = default;
 };
 
 /**
@@ -131,6 +135,7 @@ public:
 class Emitter {
 public:
     virtual int operator()(const Trajectory& trajectory) = 0;
+    virtual ~Emitter() = default;
 };
 
 /**
@@ -143,6 +148,7 @@ public:
 class Verifier {
 public:
     virtual bool operator()(const GDOP& gdop, const PrimalDualTrajectory& trajectory) = 0;
+    virtual ~Verifier() = default;
 };
 
 /**
@@ -159,6 +165,7 @@ public:
 class ScalingFactory {
 public:
     virtual std::shared_ptr<NLP::Scaling> operator()(const GDOP& gdop) = 0;
+    virtual ~ScalingFactory() = default;
 };
 
 // ====================  Strategy implementations ====================

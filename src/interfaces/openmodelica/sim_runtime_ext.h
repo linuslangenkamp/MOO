@@ -73,7 +73,7 @@ void freeHessianPattern(HESSIAN_PATTERN* hes_pattern);
 void mooEvalJacobian(DATA* data, threadData_t* threadData, JACOBIAN* jacobian, JACOBIAN* parentJacobian, modelica_real* jac);
 
 void evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN_PATTERN* hes_pattern, modelica_real h,
-                                   int* u_indices, modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
+                                   int* u_indices, const modelica_real* lambda, modelica_real* jac_csc, modelica_real* hes);
 
 void forwardDiffHessianWrapper(void* args, modelica_real h, modelica_real* result);
 
@@ -98,7 +98,7 @@ typedef struct {
   threadData_t* threadData;
   HESSIAN_PATTERN* hes_pattern; // Hessian structure
   int* u_indices;               // indices of the inputs in realVars (REMOVE ME!)
-  modelica_real* lambda;        // dual variables for each function
+  const modelica_real* lambda;  // dual variables for each function
   modelica_real* jac_csc;       // precomputed Jacobian entries in CSC format (can be NULL)
 } HessianFiniteDiffArgs;
 

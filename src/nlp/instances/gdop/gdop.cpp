@@ -423,13 +423,19 @@ void GDOP::get_hes_sparsity(
     FixedVector<int>& i_row_hes,
     FixedVector<int>& j_col_hes)
 {
-    // get memory for Lagrange object factors
+    // allocate buffers for dual transformations
+
+    // 1. get memory for Lagrange object factors
     if (problem.pc->has_lagrange) {
         lagrange_obj_factors = FixedField<f64, 2>(mesh.intervals);
         for (int i = 0; i < mesh.intervals; i++) {
             lagrange_obj_factors[i] = FixedVector<f64>(mesh.nodes[i]);
         }
     }
+
+    // 2. get memory for transformed lambda
+    transformed_lambda = FixedVector<f64>(get_number_constraints());
+
 
     // build int** (row, col) -> int index for all block structures
     // can be exact (no offset needed) or non exact (offset for full block or even rowwise needed)
@@ -633,8 +639,8 @@ void GDOP::eval_hes(
     bool new_x,
     const FixedVector<f64>& curr_x,
     bool new_lambda,
-    FixedVector<f64>& curr_lambda,
-    f64& curr_obj_factor,
+    const FixedVector<f64>& curr_lambda,
+    f64 curr_obj_factor,
     const FixedVector<int>& i_row_hes,
     const FixedVector<int>& j_col_hes,
     FixedVector<f64>& curr_hes)
@@ -665,21 +671,23 @@ void GDOP::check_new_lambda(bool new_lambda) {
 }
 
 void GDOP::callback_evaluation(const FixedVector<f64>& curr_x) {
-    problem.full->callback_eval(get_curr_x_xu(curr_x), get_curr_x_p(curr_x));
-    problem.boundary->callback_eval(get_curr_x_x0(curr_x), get_curr_x_xuf(curr_x), get_curr_x_p(curr_x));
+    problem.full->callback_eval(get_x_xu(curr_x), get_x_p(curr_x));
+    problem.boundary->callback_eval(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x));
     evaluation_state.eval_f = true;
     evaluation_state.eval_g = true;
 }
 
 void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
-    problem.full->callback_jac(get_curr_x_xu(curr_x), get_curr_x_p(curr_x));
-    problem.boundary->callback_jac(get_curr_x_x0(curr_x), get_curr_x_xuf(curr_x), get_curr_x_p(curr_x));
+    problem.full->callback_jac(get_x_xu(curr_x), get_x_p(curr_x));
+    problem.boundary->callback_jac(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x));
     evaluation_state.grad_f = true;
     evaluation_state.jac_g = true;
 }
 
 // perform update of dual variables, such that callback can use the exact multiplier
-void GDOP::update_curr_lambda_obj_factors(FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
+void GDOP::update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
+    transformed_lambda = curr_lambda; // copy curr_lambda
+
     for (int i = 0; i < mesh.intervals; i++) {
         f64 delta_t = mesh.delta_t[i];
         for (int j = 0; j < mesh.nodes[i]; j++) {
@@ -687,17 +695,17 @@ void GDOP::update_curr_lambda_obj_factors(FixedVector<f64>& curr_lambda, f64 cur
                 lagrange_obj_factors[i][j] = curr_sigma_f * collocation.b[mesh.nodes[i]][j] * delta_t;
             }
             for (int f = 0; f < problem.pc->f_size; f++) {
-                curr_lambda[off_acc_fg[i][j] + f] *= -delta_t;
+                transformed_lambda[off_acc_fg[i][j] + f] *= -delta_t;
             }
         }
     }
 }
 
-void GDOP::callback_hessian(const FixedVector<f64> x, FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
+void GDOP::callback_hessian(const FixedVector<f64> x, const FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
     update_curr_lambda_obj_factors(curr_lambda, curr_sigma_f);
 
-    problem.full->callback_aug_hes(get_curr_x_xu(x), get_curr_x_p(x), lagrange_obj_factors, get_curr_lamb_fg(curr_lambda));
-    problem.boundary->callback_aug_hes(get_curr_x_x0(x), get_curr_x_xuf(x), get_curr_x_p(x), curr_sigma_f, get_curr_lamb_r(curr_lambda));
+    problem.full->callback_aug_hes(get_x_xu(x), get_x_p(x), lagrange_obj_factors, get_lmbd_fg(transformed_lambda));
+    problem.boundary->callback_aug_hes(get_x_x0(x), get_x_xuf(x), get_x_p(x), curr_sigma_f, get_lmbd_r(transformed_lambda));
     evaluation_state.hes_lag = true;
 }
 
@@ -1063,7 +1071,7 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
     }
 
     if (off_p > 0) {
-        optimal_primals->p = std::vector(get_curr_x_p(opt_x), opt_x.end());
+        optimal_primals->p = std::vector(get_x_p(opt_x), opt_x.end());
     }
 
     return optimal_primals;

@@ -47,12 +47,12 @@ void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
     }
 }
 
-void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) {
+void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
     set_parameters(info, p);
     for (int i = 0; i < pc.mesh.intervals; i++) {
         for (int j = 0; j < pc.mesh.nodes[i]; j++) {
             const f64* xu_ij     = get_xu_ij(xu_nlp, i, j);
-            f64* lambda_ij       = get_lambda_ij(lambda, i, j);
+            const f64* lambda_ij = get_lambda_ij(lambda, i, j);
             f64* jac_buf_ij      = get_jac_buffer(i, j);
             f64* aug_hes_buf_ij  = get_aug_hes_buffer(i, j);
 
@@ -126,7 +126,7 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const
     }
 }
 
-void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) {
+void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
     set_time(info, pc.mesh.tf);
