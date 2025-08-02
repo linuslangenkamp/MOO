@@ -97,7 +97,7 @@ void IpoptSolver::optimize() {
             break;
 
         default:
-            LOG_ERROR("[Ipopt Interface] Unknown return status: {}", (int)status);
+            LOG_ERROR("[Ipopt Interface] Unknown return status: {}", static_cast<int>(status));
             break;
     }
 }
@@ -159,11 +159,11 @@ void IpoptSolver::set_settings() {
     NLP::LinearSolverOption linear_solver = solver_settings.get_or_default<NLP::LinearSolverOption>(NLP::Option::LinearSolver);
     switch (linear_solver) {
         case NLP::LinearSolverOption::MUMPS: app->Options()->SetStringValue("linear_solver", "mumps"); break;
-        case NLP::LinearSolverOption::MA27:  app->Options()->SetStringValue("linear_solver", "ma27"); break;
-        case NLP::LinearSolverOption::MA57:  app->Options()->SetStringValue("linear_solver", "ma57"); break;
-        case NLP::LinearSolverOption::MA77:  app->Options()->SetStringValue("linear_solver", "ma77"); break;
-        case NLP::LinearSolverOption::MA86:  app->Options()->SetStringValue("linear_solver", "ma86"); break;
-        case NLP::LinearSolverOption::MA97:  app->Options()->SetStringValue("linear_solver", "ma97"); break;
+        case NLP::LinearSolverOption::MA27:  app->Options()->SetStringValue("linear_solver", "ma27");  break;
+        case NLP::LinearSolverOption::MA57:  app->Options()->SetStringValue("linear_solver", "ma57");  break;
+        case NLP::LinearSolverOption::MA77:  app->Options()->SetStringValue("linear_solver", "ma77");  break;
+        case NLP::LinearSolverOption::MA86:  app->Options()->SetStringValue("linear_solver", "ma86");  break;
+        case NLP::LinearSolverOption::MA97:  app->Options()->SetStringValue("linear_solver", "ma97");  break;
     }
 
     // --- constant derivatives (assumed false for now) ---

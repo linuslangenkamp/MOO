@@ -35,7 +35,7 @@ public:
     template <typename T>
     void attach(T* ptr, void (*free_fn)(T*)) {
         if (ptr != nullptr)
-            _to_free.emplace_back(ptr, [free_fn](void* p) { free_fn((T*)(p)); });
+            _to_free.emplace_back(ptr, [free_fn](void* p) { free_fn(static_cast<T*>(p)); });
     }
 
     template <typename T>

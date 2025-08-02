@@ -278,7 +278,7 @@ bool check_time_compatibility(
     const f64 tol = 1e-12;
 
     int expected_size = mesh.node_count + 1;
-    if ((int)t_vec.size() != expected_size) {
+    if (static_cast<int>(t_vec.size()) != expected_size) {
         return false;
     }
 
@@ -293,7 +293,7 @@ bool check_time_compatibility(
 
     for (const auto& vect : fields_to_check) {
         for (const auto& field : vect) {
-            if ((int)field.size() != (int)t_vec.size()) {
+            if (static_cast<int>(field.size()) != static_cast<int>(t_vec.size())) {
                 return false;
             }
         }

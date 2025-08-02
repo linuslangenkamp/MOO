@@ -74,7 +74,7 @@ HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac) {
   // 1. build adjacency list: which variables affect which functions
   std::vector<std::vector<int>> adj(numFuncs);
   for (int col = 0; col < numVars; col++) {
-    for (int nz = (int)sp->leadindex[col]; nz < (int)sp->leadindex[col + 1]; nz++) {
+    for (unsigned int nz = sp->leadindex[col]; nz < sp->leadindex[col + 1]; nz++) {
       int row = sp->index[nz];
       adj[row].push_back(col);
     }
@@ -356,7 +356,7 @@ void evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN
       setSeedVector(hes_pattern->colorSizes[c2], hes_pattern->colsForColor[c2], 0.0, seeds);
     }
 
-    /* 12. reset perturbated x */
+    /* 12. reset perturbation in x */
     for (int columnIndex = 0; columnIndex < hes_pattern->colorSizes[c1]; columnIndex++) {
       int col = hes_pattern->colsForColor[c1][columnIndex];
       int realVarsIndex = (col < nStates ? col : u_indices[col - nStates]);
@@ -419,23 +419,20 @@ void printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
     printf("%d", j);
   printf("\n");
 
-  char** sparsity = (char**)calloc(n, sizeof(char*));
-  for (int i = 0; i < n; ++i)
-    sparsity[i] = (char*)calloc(n, sizeof(char));
+  char* sparsity = (char*)calloc(n * n, sizeof(char*));
 
-  for (int k = 0; k < hes_pattern->lnnz; ++k) {
-    int i = hes_pattern->row[k];
-    int j = hes_pattern->col[k];
-    sparsity[i][j] = 1;
-    sparsity[j][i] = 1;  // symmetric for display
+  for (int lnz = 0; lnz < hes_pattern->lnnz; lnz++) {
+    int i = hes_pattern->row[lnz];
+    int j = hes_pattern->col[lnz];
+    sparsity[i + n * j] = 1;
+    sparsity[j + n * i] = 1;  // symmetric for display
   }
 
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; i++) {
     printf("%2d: ", i);
-    for (int j = 0; j < n; ++j)
-      printf("%c", sparsity[i][j] ? '*' : ' ');
+    for (int j = 0; j < n; j++)
+      printf("%c", sparsity[i + n * j] ? '*' : ' ');
     printf("\n");
-    free(sparsity[i]);
   }
   free(sparsity);
   printf("=====================================\n");

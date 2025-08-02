@@ -112,7 +112,7 @@ void init_jac_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
         if (col < info.x_size) {
             /* add the Mayer offset, since the values f64* is [M, r] */
             // Attention: this offset only works if D contains just r!!
-            fn.jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D}); 
+            fn.jac.dxf.push_back(JacobianSparsity{col, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
         }
         else if (col < info.xu_size) {
             fn.jac.duf.push_back(JacobianSparsity{col - info.x_size, info.exc_jac->D_coo.nnz_offset + csc_buffer_entry_D});
@@ -245,29 +245,29 @@ void set_parameters(InfoGDOP& info, const f64* p) {
 
 void set_states(InfoGDOP& info, const f64* x_ij) {
     for (int x = 0; x < info.x_size; x++) {
-        info.data->localData[0]->realVars[info.index_x_real_vars + x] = (modelica_real) x_ij[x];
+        info.data->localData[0]->realVars[info.index_x_real_vars + x] = x_ij[x];
     }
 }
 
 void set_inputs(InfoGDOP& info, const f64* u_ij) {
     for (int u = 0; u < info.u_size; u++) {
-        info.data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) u_ij[u];
+        info.data->localData[0]->realVars[info.u_indices_real_vars[u]] = u_ij[u];
     }
 }
 
 void set_states_inputs(InfoGDOP& info, const f64* xu_ij) {
     for (int x = 0; x < info.x_size; x++) {
-        info.data->localData[0]->realVars[info.index_x_real_vars + x] = (modelica_real) xu_ij[x];
+        info.data->localData[0]->realVars[info.index_x_real_vars + x] = xu_ij[x];
     }
 
     for (int u = 0; u < info.u_size; u++) {
-        info.data->localData[0]->realVars[info.u_indices_real_vars[u]] = (modelica_real) xu_ij[info.x_size + u];
+        info.data->localData[0]->realVars[info.u_indices_real_vars[u]] = xu_ij[info.x_size + u];
     }
 }
 
 void set_time(InfoGDOP& info, const f64 t_ij) {
     /* move time horizon to Modelica model time */
-    info.data->localData[0]->timeValue = (modelica_real) t_ij + info.model_start_time;
+    info.data->localData[0]->timeValue =t_ij + info.model_start_time;
 }
 
 void eval_lfg_write(InfoGDOP& info, f64* eval_lfg_buffer) {

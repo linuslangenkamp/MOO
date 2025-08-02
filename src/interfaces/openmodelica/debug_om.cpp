@@ -21,13 +21,13 @@ void print_real_var_names_values(DATA* data) {
     printf("Time :: %.17g\n", data->localData[0]->timeValue);
     printf("--------------------------------------------------\n");
 
-    printf("%-8s :: %-*s :: %s\n", "Index", (int)maxNameLen, "Name", "Value");
+    printf("%-8s :: %-*s :: %s\n", "Index", static_cast<int>(maxNameLen), "Name", "Value");
     printf("--------------------------------------------------\n");
 
     for (long idx = 0; idx < data->modelData->nVariablesReal; idx++) {
         printf("%-8ld :: %-*s :: %+.17e\n", 
                idx, 
-               (int)maxNameLen, data->modelData->realVarsData[idx].info.name, 
+               static_cast<int>(maxNameLen), data->modelData->realVarsData[idx].info.name, 
                data->localData[0]->realVars[idx]);
     }
 }
@@ -39,8 +39,8 @@ void print_jacobian_sparsity(const JACOBIAN* jac, bool print_pattern, const char
     }
 
     const SPARSE_PATTERN* sp = jac->sparsePattern;
-    const unsigned int nRows = (unsigned int)jac->sizeRows;
-    const unsigned int nCols = (unsigned int)jac->sizeCols;
+    const unsigned int nRows = jac->sizeRows;
+    const unsigned int nCols = jac->sizeCols;
 
     printf("\n=== JACOBIAN SPARSITY INFO ===\n");
     if (name) {

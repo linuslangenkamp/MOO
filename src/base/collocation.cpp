@@ -50,9 +50,9 @@ void Collocation::diff_matrix_multiply(const int scheme, const f64* in, f64* out
  * @param scheme     Degree of the collocation scheme (number of collocation points in the interval).
  * @param x_size     Number of state variables (size of each x vector).
  * @param x_stride   Stride between consecutive vectors in `x_new` (i.e. size of x + u).
- * @param out_stride Stride between output rows (i.e. size of one full constraint block).
- * @param x_prev     Pointer to the previous node's state/control values (at t_i == t_{i-1, p_{i-1}}).
- * @param x_new      Pointer to strided new values at collocation points (from t_{i, 0} to t_{i, p_{i}}),
+ * @param out_stride Stride between output rows (i.e. size of one full constraint block, size of f + g).
+ * @param x_prev     Pointer to the previous node's state/control values (at t_i == t_{i-1, m_{i-1}}).
+ * @param x_new      Pointer to strided new values at collocation points (from t_{i, 0} to t_{i, m_{i}}),
  * @param out        Pointer to the output buffer where results are accumulated (has stride out_stride).
  */
 void Collocation::diff_matrix_multiply_block_strided(const int scheme, const int x_size, const int x_stride, const int out_stride,

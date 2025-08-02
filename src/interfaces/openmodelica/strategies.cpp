@@ -28,7 +28,7 @@ void clear_global_reference_data() {
 }
 
 static int control_trajectory_input_function(DATA* data, threadData_t* threadData) {
-    AuxiliaryControls* aux_controls = (AuxiliaryControls*)get_global_reference_data();
+    AuxiliaryControls* aux_controls = static_cast<AuxiliaryControls*>(get_global_reference_data());
 
     const ControlTrajectory& controls = aux_controls->controls;
     InfoGDOP& info = aux_controls->info;
@@ -50,7 +50,7 @@ static int control_trajectory_input_function(DATA* data, threadData_t* threadDat
 
 static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
-    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage; // exploit void* field
+    AuxiliaryTrajectory* aux = static_cast<AuxiliaryTrajectory*>(sim_result->storage); // exploit void* field
     InfoGDOP& info = aux->info;
     Trajectory& trajectory = aux->trajectory;
     SOLVER_INFO* solver_info = aux->solver_info;
@@ -70,7 +70,7 @@ static void trajectory_xut_emit(simulation_result* sim_result, DATA* data, threa
 static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadData_t *threadData)
 {
     // TODO: PARAMETERS
-    AuxiliaryTrajectory* aux = (AuxiliaryTrajectory*)sim_result->storage;
+    AuxiliaryTrajectory* aux = static_cast<AuxiliaryTrajectory*>(sim_result->storage);
     InfoGDOP& info = aux->info;
     Trajectory& trajectory = aux->trajectory;
 
@@ -173,7 +173,7 @@ std::unique_ptr<Trajectory> Simulation::operator()(const ControlTrajectory& cont
     simInfo->numSteps  = num_steps;
     simInfo->startTime = start_time + info.model_start_time; // shift by model start time
     simInfo->stopTime  = stop_time  + info.model_start_time; // shift by model start time
-    simInfo->stepSize  = (stop_time - start_time) / (f64)num_steps;
+    simInfo->stepSize  = (stop_time - start_time) / static_cast<f64>(num_steps);
     simInfo->useStopTime = 1;
 
     // allocate and reserve trajectory vectors

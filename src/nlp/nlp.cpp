@@ -223,7 +223,7 @@ void NLP::solver_finalize_solution(
     unscale_objective(&solver_obj_value);             // unscaled optimal objective
     update_unscale_curr_x(true, solver_x);            // unscaled optimal x
     update_unscale_curr_lambda(true, solver_lambda);  // unscaled optimal duals
-    unscale_dual_bounds(solver_z_lb, solver_z_ub);      // unscaled optimal dual bound multipliers
+    unscale_dual_bounds(solver_z_lb, solver_z_ub);    // unscaled optimal dual bound multipliers
 
     // user defined callback to extract info
     finalize_solution(curr_obj, curr_x, curr_lambda, z_lb, z_ub);

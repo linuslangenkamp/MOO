@@ -166,6 +166,7 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Configuration: Debug")
     target_compile_options(moo PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O0 -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O0 -g")
+    # -Wold-style-cast
 else()
     message(STATUS "Configuration: Release")
     target_compile_options(moo PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O3 -march=native -funroll-loops -g)

@@ -205,12 +205,12 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
     /* this is really ugly IMO, fix this when ready for master! */
     info.mayer_exists = (data->callback->mayer(data, &info.address_mayer_real_vars, &der_index_mayer_realVars) >= 0);
     if (info.mayer_exists) {
-        info.index_mayer_real_vars = (int)(info.address_mayer_real_vars - data->localData[0]->realVars);
+        info.index_mayer_real_vars = static_cast<int>(info.address_mayer_real_vars - data->localData[0]->realVars);
     }
 
     info.lagrange_exists = (data->callback->lagrange(data, &info.address_lagrange_real_vars, &der_indices_lagrange_realVars[0], &der_indices_lagrange_realVars[1]) >= 0);
     if (info.lagrange_exists) {
-        info.index_lagrange_real_vars = (int)(info.address_lagrange_real_vars - data->localData[0]->realVars);
+        info.index_lagrange_real_vars = static_cast<int>(info.address_lagrange_real_vars - data->localData[0]->realVars);
     }
 
     /* constraint bounds */

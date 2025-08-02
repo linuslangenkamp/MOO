@@ -14,13 +14,13 @@ void InfoGDOP::set_time_horizon(int steps) {
 }
 
 void InfoGDOP::set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings) {
-    char* cflags = (char*)omc_flagValue[FLAG_OPTIMIZER_NP];
+    const char* cflags = omc_flagValue[FLAG_OPTIMIZER_NP];
     set_time_horizon(cflags ? atoi(cflags) : 3);
 
     nlp_solver_settings.set(NLP::Option::Tolerance, data->simulationInfo->tolerance);
 
     // Linear solver
-    cflags = (char*)omc_flagValue[FLAG_LS_IPOPT];
+    cflags = omc_flagValue[FLAG_LS_IPOPT];
     if (cflags) {
         std::string opt(cflags);
         std::string lower;
@@ -45,7 +45,7 @@ void InfoGDOP::set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings) {
     }
 
     // Maximum iterations
-    cflags = (char*)omc_flagValue[FLAG_IPOPT_MAX_ITER];
+    cflags = omc_flagValue[FLAG_IPOPT_MAX_ITER];
     if (cflags) {
         try {
             nlp_solver_settings.set(NLP::Option::Iterations, std::stoi(cflags));
@@ -55,7 +55,7 @@ void InfoGDOP::set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings) {
     }
 
     // Hessian option
-    cflags = (char*)omc_flagValue[FLAG_IPOPT_HESSE];
+    cflags = omc_flagValue[FLAG_IPOPT_HESSE];
     if (cflags) {
         std::string opt(cflags);
         std::string lower;
@@ -80,19 +80,21 @@ ExchangeJacobians::ExchangeJacobians(InfoGDOP& info) :
     B(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_B])),
     C(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_C])),
     D(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_D])),
-    A_exists((bool)(info.data->callback->initialAnalyticJacobianA(info.data, info.threadData, A) == 0)),
-    B_exists((bool)(info.data->callback->initialAnalyticJacobianB(info.data, info.threadData, B) == 0)),
-    C_exists((bool)(info.data->callback->initialAnalyticJacobianC(info.data, info.threadData, C) == 0)),
-    D_exists((bool)(info.data->callback->initialAnalyticJacobianD(info.data, info.threadData, D) == 0)),
 
+    A_exists(static_cast<bool>(info.data->callback->initialAnalyticJacobianA(info.data, info.threadData, A) == 0)),
+    B_exists(static_cast<bool>(info.data->callback->initialAnalyticJacobianB(info.data, info.threadData, B) == 0)),
+    C_exists(static_cast<bool>(info.data->callback->initialAnalyticJacobianC(info.data, info.threadData, C) == 0)),
+    D_exists(static_cast<bool>(info.data->callback->initialAnalyticJacobianD(info.data, info.threadData, D) == 0)),
+
+    // reinterpret_cast<int*> seems a bit like UB
     /* create COO sparsity and CSC(OM) <-> COO(OPT, reordered) mappings */
     A_coo(CscToCoo::from_csc(reinterpret_cast<int*>(A->sparsePattern->leadindex), reinterpret_cast<int*>(A->sparsePattern->index),
-                                     static_cast<int>(A->sizeCols), static_cast<int>(A->sparsePattern->numberOfNonZeros))),
+                             static_cast<int>(A->sizeCols), static_cast<int>(A->sparsePattern->numberOfNonZeros))),
     B_coo(CscToCoo::from_csc(reinterpret_cast<int*>(B->sparsePattern->leadindex), reinterpret_cast<int*>(B->sparsePattern->index),
-                                     static_cast<int>(B->sizeCols), static_cast<int>(B->sparsePattern->numberOfNonZeros))),
+                             static_cast<int>(B->sizeCols), static_cast<int>(B->sparsePattern->numberOfNonZeros))),
     C_coo(CscToCoo::from_csc(reinterpret_cast<int*>(C->sparsePattern->leadindex), reinterpret_cast<int*>(C->sparsePattern->index),
-                                     static_cast<int>(C->sizeCols), static_cast<int>(C->sparsePattern->numberOfNonZeros),
-                                     info.mayer_exists ? info.x_size + static_cast<int>(info.lagrange_exists) : -1)),
+                             static_cast<int>(C->sizeCols), static_cast<int>(C->sparsePattern->numberOfNonZeros),
+                             info.mayer_exists ? info.x_size + static_cast<int>(info.lagrange_exists) : -1)),
     D_coo(info.r_size != 0 ? CscToCoo::from_csc(reinterpret_cast<int*>(D->sparsePattern->leadindex), reinterpret_cast<int*>(D->sparsePattern->index),
                                      static_cast<int>(D->sizeCols), static_cast<int>(D->sparsePattern->numberOfNonZeros),
                                      -1, info.mayer_exists ? C_coo.row_nnz(0) : 0) : CscToCoo()),
