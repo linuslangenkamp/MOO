@@ -304,17 +304,17 @@ public:
         return full->buffers.eval[full->lfg.g[g_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline f64 lfg_jac(int entry, int interval_i, int node_j) {
-        return full->buffers.jac[entry + full->buffers.jac_size * pc->mesh.acc_nodes[interval_i][node_j]];
+    inline f64 lfg_jac(int jac_buf_base_index, int interval_i, int node_j) {
+        return full->buffers.jac[jac_buf_base_index + full->buffers.jac_size * pc->mesh.acc_nodes[interval_i][node_j]];
     }
 
-    inline f64 lfg_aug_hes(int entry, int interval_i, int node_j) {
-        return full->buffers.aug_hes[entry + full->buffers.aug_hes_size * pc->mesh.acc_nodes[interval_i][node_j]];
+    inline f64 lfg_aug_hes(int hes_buf_base_index, int interval_i, int node_j) {
+        return full->buffers.aug_hes[hes_buf_base_index + full->buffers.aug_hes_size * pc->mesh.acc_nodes[interval_i][node_j]];
     }
 
     /* TODO: add and make threaded */
-    inline f64 lfg_aug_pp_hes(int entry) {
-        return full->buffers.aug_pp_hes[entry];
+    inline f64 lfg_aug_pp_hes(int hes_buf_base_index) {
+        return full->buffers.aug_pp_hes[hes_buf_base_index];
     }
 
     inline f64 mr_eval_M() {
@@ -326,12 +326,12 @@ public:
         return boundary->buffers.eval[boundary->mr.r[r_index].buf_index];
     }
 
-    inline f64 mr_jac(int entry) {
-        return boundary->buffers.jac[entry];
+    inline f64 mr_jac(int jac_buf_base_index) {
+        return boundary->buffers.jac[jac_buf_base_index];
     }
 
-    inline f64 mr_aug_hes(int entry) {
-        return boundary->buffers.aug_hes[entry];
+    inline f64 mr_aug_hes(int hes_buf_base_index) {
+        return boundary->buffers.aug_hes[hes_buf_base_index];
     }
 
     inline void resize_buffers(const Mesh& mesh) {
