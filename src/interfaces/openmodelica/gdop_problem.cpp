@@ -9,12 +9,10 @@
 
 namespace OpenModelica {
 
-FullSweep_OM::FullSweep_OM(GDOP::BlockLFG&& lfg,
-              std::unique_ptr<AugmentedHessianLFG> aug_hes,
-              std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
-              const GDOP::ProblemConstants& pc,
-              InfoGDOP& info)
-    : FullSweep(std::move(lfg), std::move(aug_hes), std::move(aug_pp_hes), pc), info(info) {
+FullSweep_OM::FullSweep_OM(GDOP::FullSweepLayout&& lfg,
+                           const GDOP::ProblemConstants& pc,
+                           InfoGDOP& info)
+    : FullSweep(std::move(lfg), pc), info(info) {
 }
 void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
@@ -92,11 +90,10 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
     }
 }
 
-BoundarySweep_OM::BoundarySweep_OM(GDOP::BlockMR&& mr,
-                  std::unique_ptr<AugmentedHessianMR> aug_hes,
-                  const GDOP::ProblemConstants& pc,
-                  InfoGDOP& info)
-    : BoundarySweep(std::move(mr), std::move(aug_hes), pc), info(info) {}
+BoundarySweep_OM::BoundarySweep_OM(GDOP::BoundarySweepLayout&& mr,
+                                   const GDOP::ProblemConstants& pc,
+                                   InfoGDOP& info)
+    : BoundarySweep(std::move(mr), pc), info(info) {}
 
 void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     set_parameters(info, p);
@@ -241,23 +238,20 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
         x0_fixed[x] = data->modelData->realVarsData[x].attribute.start;
     }
 
-    /* create functions and bounds */
-    GDOP::BlockMR mr(info.mayer_exists, info.r_size);
-    GDOP::BlockLFG lfg(info.lagrange_exists, info.f_size, info.g_size);
-
     /* create CSC <-> COO exchange, init jacobians */
     info.exc_jac = std::make_unique<ExchangeJacobians>(info);
 
     /* create HESSIAN_PATTERNs and allocate buffers for extrapolation / evaluation */
     info.exc_hes = std::make_unique<ExchangeHessians>(info);
-    auto aug_hes_lfg = std::make_unique<AugmentedHessianLFG>();
-    auto aug_hes_lfg_pp = std::make_unique<AugmentedParameterHessian>();
-    auto aug_hes_mr = std::make_unique<AugmentedHessianMR>();
 
-    /* init MOO sparsity */
+    /* create blocks (contains sparse patterns and mapping to buffer indices) */
+    GDOP::BoundarySweepLayout mr(info.mayer_exists, info.r_size);
+    GDOP::FullSweepLayout lfg(info.lagrange_exists, info.f_size, info.g_size);
+
+    /* fill lfg and mr objects with COO sparsity patterns */
     init_eval(info, lfg, mr);
     init_jac(info, lfg, mr);
-    init_hes(info, *aug_hes_lfg, *aug_hes_lfg_pp, *aug_hes_mr, mr);
+    init_hes(info, lfg, mr);
 
     auto pc = std::make_unique<GDOP::ProblemConstants>(
         info.mayer_exists,
@@ -273,10 +267,10 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
         collocation
     );
 
-    auto fs = std::make_unique<FullSweep_OM>(std::move(lfg), std::move(aug_hes_lfg), std::move(aug_hes_lfg_pp), *pc, info);
-    auto bs = std::make_unique<BoundarySweep_OM>(std::move(mr), std::move(aug_hes_mr), *pc, info);
+    auto fs = std::make_unique<FullSweep_OM>(std::move(lfg), *pc, info);
+    auto bs = std::make_unique<BoundarySweep_OM>(std::move(mr), *pc, info);
 
-    return GDOP::Problem(std::move(fs),std::move(bs),std::move(pc));
+    return GDOP::Problem(std::move(fs), std::move(bs),std::move(pc));
 }
 
 } // namespace OpenModelica

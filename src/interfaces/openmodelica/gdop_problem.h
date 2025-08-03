@@ -19,11 +19,9 @@ class FullSweep_OM : public GDOP::FullSweep {
 public:
     InfoGDOP& info;
 
-    FullSweep_OM(GDOP::BlockLFG&& lfg_in,
-              std::unique_ptr<AugmentedHessianLFG> aug_hes,
-              std::unique_ptr<AugmentedParameterHessian> aug_pp_hes,
-              const GDOP::ProblemConstants& pc,
-              InfoGDOP& info);
+    FullSweep_OM(GDOP::FullSweepLayout&& lfg_in,
+                 const GDOP::ProblemConstants& pc,
+                 InfoGDOP& info);
 
     void callback_eval(const f64* xu_nlp, const f64* p) override;
     void callback_jac(const f64* xu_nlp, const f64* p) override;
@@ -34,10 +32,9 @@ class BoundarySweep_OM : public GDOP::BoundarySweep {
 public:
     InfoGDOP& info;
 
-    BoundarySweep_OM(GDOP::BlockMR&& mr_in,
-                  std::unique_ptr<AugmentedHessianMR> aug_hes,
-                  const GDOP::ProblemConstants& pc,
-                  InfoGDOP& info);
+    BoundarySweep_OM(GDOP::BoundarySweepLayout&& mr_in,
+                     const GDOP::ProblemConstants& pc,
+                     InfoGDOP& info);
 
     void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
     void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;

@@ -2,13 +2,13 @@
 
 namespace OpenModelica {
 
-void init_eval(InfoGDOP& info, GDOP::BlockLFG& lfg, GDOP::BlockMR& mr) {
+void init_eval(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr) {
     init_eval_lfg(info, lfg);
     init_eval_mr(info, mr);
 }
 
 /* just enumerate them in order: L -> f -> g. The correct placement will be handled in eval */
-void init_eval_lfg(InfoGDOP& info, GDOP::BlockLFG& lfg) {
+void init_eval_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
     int buf_index = 0;
 
     if (lfg.L) {
@@ -25,7 +25,7 @@ void init_eval_lfg(InfoGDOP& info, GDOP::BlockLFG& lfg) {
 }
 
 /* just enumerate them in order: M -> r. The correct placement will be handled in eval */
-void init_eval_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
+void init_eval_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
     int buf_index = 0;
 
     if (mr.M) {
@@ -37,7 +37,7 @@ void init_eval_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
     }
 }
 
-void init_jac(InfoGDOP& info, GDOP::BlockLFG& lfg, GDOP::BlockMR& mr) {
+void init_jac(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr) {
     init_jac_lfg(info, lfg);
     init_jac_mr(info, mr);
 }
@@ -45,7 +45,7 @@ void init_jac(InfoGDOP& info, GDOP::BlockLFG& lfg, GDOP::BlockMR& mr) {
 // return reference to FunctionLFG
 // OpenModelica orders its B Jacobian as [f1, ..., f_n, ?maybe L?, g_1, ..., g_m]
 // so we return the specific function based on which row is given from the OpenModelica format
-FunctionLFG& access_fLg_from_row(GDOP::BlockLFG& lfg, int row) {
+FunctionLFG& access_fLg_from_row(GDOP::FullSweepLayout& lfg, int row) {
     int f_size = lfg.f.int_size();
     int L_size = lfg.L ? 1 : 0;
 
@@ -61,7 +61,7 @@ FunctionLFG& access_fLg_from_row(GDOP::BlockLFG& lfg, int row) {
 }
 
 // rows are sorted as fLg (as in OpenModelica)
-void init_jac_lfg(InfoGDOP& info, GDOP::BlockLFG& lfg) {
+void init_jac_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
     /* full B Jacobian */
     for (int nz = 0; nz < info.exc_jac->B_coo.nnz; nz++) {
         int row = info.exc_jac->B_coo.row[nz];                       // OpenModelica B matrix row
@@ -80,7 +80,7 @@ void init_jac_lfg(InfoGDOP& info, GDOP::BlockLFG& lfg) {
     }
 }
 
-void init_jac_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
+void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
     /* M (first row) in C(COO) Jacobian */
     int nz_C = 0;
     if (info.mayer_exists) {
@@ -120,15 +120,14 @@ void init_jac_mr(InfoGDOP& info, GDOP::BlockMR& mr) {
     }
 }
 
-void init_hes(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg, AugmentedParameterHessian& aug_hes_lfg_pp,
-              AugmentedHessianMR& aug_hes_mr, GDOP::BlockMR& mr) {
-    init_hes_lfg(info, aug_hes_lfg, aug_hes_lfg_pp);
-    init_hes_mr(info, aug_hes_mr, mr);
+void init_hes(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr) {
+    init_hes_lfg(info, lfg);
+    init_hes_mr(info, mr);
 }
 
-void init_hes_lfg(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
-                  AugmentedParameterHessian& aug_hes_lfg_pp) {
+void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
     /* TODO: PARAMETERS include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
+    auto& aug_hes = lfg.aug_hes;
 
     HESSIAN_PATTERN* hes_b = info.exc_hes->B;
 
@@ -137,18 +136,20 @@ void init_hes_lfg(InfoGDOP& info, AugmentedHessianLFG& aug_hes_lfg,
         int col = hes_b->col[lnz];
 
         if (row < info.x_size && col < info.x_size) {
-            aug_hes_lfg.dx_dx.push_back({row, col, lnz});
+            aug_hes.dx_dx.push_back({row, col, lnz});
         }
         else if (row >= info.x_size && col < info.x_size) {
-            aug_hes_lfg.du_dx.push_back({row - info.x_size, col, lnz});
+            aug_hes.du_dx.push_back({row - info.x_size, col, lnz});
         }
         else {
-            aug_hes_lfg.du_du.push_back({row - info.x_size, col - info.x_size, lnz});
+            aug_hes.du_du.push_back({row - info.x_size, col - info.x_size, lnz});
         }
     }
 }
 
-void init_hes_mr(InfoGDOP& info, AugmentedHessianMR& aug_hes_mr, GDOP::BlockMR& mr) {
+void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
+    auto& aug_hes_mr = mr.aug_hes;
+
     HESSIAN_PATTERN* hes_c = info.exc_hes->C;
     HESSIAN_PATTERN* hes_d = info.exc_hes->D;
 

@@ -2,7 +2,7 @@
 
 namespace GDOP {
 
-int BlockLFG::compute_jac_nnz() {
+int FullSweepLayout::compute_jac_nnz() {
     int sum = 0;
 
     if (L) sum += L->jac.nnz();
@@ -18,7 +18,7 @@ int BlockLFG::compute_jac_nnz() {
     return sum;
 }
 
-int BlockMR::compute_jac_nnz() {
+int BoundarySweepLayout::compute_jac_nnz() {
     int sum = 0;
 
     if (M) sum += M->jac.nnz();

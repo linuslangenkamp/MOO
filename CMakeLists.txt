@@ -119,7 +119,7 @@ endif()
 # CONFIGURE_COMMAND ./configure CFLAGS=-Ofast FCFLAGS=-Ofast\ -fopenmp --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
 ExternalProject_Add(mumps-ext
     GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
-    GIT_TAG releases/3.0.7
+    GIT_TAG releases/3.0.10
     PATCH_COMMAND ${CMAKE_BINARY_DIR}/mumps-ext-prefix/src/mumps-ext/get.Mumps
     CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
     BUILD_COMMAND make -j${N}
@@ -139,7 +139,7 @@ endif()
 
 ExternalProject_Add(ipopt-ext
     GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
-    GIT_TAG releases/3.14.16
+    GIT_TAG releases/3.14.19
     CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-debug --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
     BUILD_COMMAND make -j${N}
     BUILD_IN_SOURCE true

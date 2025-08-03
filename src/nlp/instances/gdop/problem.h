@@ -80,17 +80,23 @@ struct ProblemConstants {
 
 // ================== Continuous, Dynamic - Lfg Block ==================
 
-struct BlockLFG {
+struct FullSweepLayout {
     std::unique_ptr<FunctionLFG> L; // Lagrange Term
     FixedVector<FunctionLFG> f;     // Dynamic Equations
     FixedVector<FunctionLFG> g;     // Path Constraints
 
-    BlockLFG(bool lagrange_exists,
-             int size_f,
-             int size_g)
+    // augmented Hessian structures (excluding parameters / parameters only)
+    AugmentedHessianLFG aug_hes;
+    AugmentedParameterHessian aug_pp_hes;
+
+    FullSweepLayout(bool lagrange_exists,
+                    int size_f,
+                    int size_g)
     : L(lagrange_exists ? std::make_unique<FunctionLFG>() : nullptr),
       f(FixedVector<FunctionLFG>(size_f)),
-      g(FixedVector<FunctionLFG>(size_g)) {}
+      g(FixedVector<FunctionLFG>(size_g)),
+      aug_hes(AugmentedHessianLFG()),
+      aug_pp_hes(AugmentedParameterHessian()) {}
 
 
     inline int size() {
@@ -113,7 +119,7 @@ struct FullSweepBuffers {
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
     FixedVector<f64> aug_pp_hes; // make it like array<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
-    FullSweepBuffers(BlockLFG& lfg,
+    FullSweepBuffers(FullSweepLayout& lfg,
                      AugmentedHessianLFG& aug_hes,
                      const ProblemConstants& pc) :
         eval_size(lfg.size()),
@@ -130,24 +136,16 @@ class FullSweep {
     friend class Problem;
 
 public:
-    FullSweep(BlockLFG&& lfg_in,
-              std::unique_ptr<AugmentedHessianLFG> aug_hes_in,
-              std::unique_ptr<AugmentedParameterHessian> aug_pp_hes_in,
+    FullSweep(FullSweepLayout&& lfg_in,
               const ProblemConstants& pc_in)
     : lfg(std::move(lfg_in)),
-      aug_hes(std::move(aug_hes_in)),
-      aug_pp_hes(std::move(aug_pp_hes_in)),
       pc(pc_in),
-      buffers(lfg, *aug_hes, pc) {}
+      buffers(lfg, lfg.aug_hes, pc) {}
 
     virtual ~FullSweep() = default;
 
     // eval + jacobian structure (includes sparsity + mapping to buffer indices - location to write to)
-    BlockLFG lfg;
-
-    // augmented Hessian structures (excluding parameters / parameters only)
-    std::unique_ptr<AugmentedHessianLFG> aug_hes;
-    std::unique_ptr<AugmentedParameterHessian> aug_pp_hes;
+    FullSweepLayout lfg;
 
     // stores all the relevant constants such as dimensions, bounds, offsets, mesh and collocation
     const ProblemConstants& pc;
@@ -194,19 +192,21 @@ private:
 
 // ================== Boundary - Mr Block ==================
 
-struct BlockMR {
+struct BoundarySweepLayout {
+    // hold eval and Jacobian
     std::unique_ptr<FunctionMR> M; // Mayer Term
     FixedVector<FunctionMR> r;     // Boundary Constraints
 
-    BlockMR(bool mayer_exists,
-            int size_r)
+    // holds augmented Hessian
+    AugmentedHessianMR aug_hes;    // augmented Hessian structure
+
+    BoundarySweepLayout(bool mayer_exists,
+                        int size_r)
     : M(mayer_exists ? std::make_unique<FunctionMR>() : nullptr),
-      r(FixedVector<FunctionMR>(size_r)) {}
+      r(FixedVector<FunctionMR>(size_r)),
+      aug_hes(AugmentedHessianMR()) {}
 
-    inline int size() {
-        return (M ? 1 : 0) + r.int_size();
-    };
-
+    inline int size() { return (M ? 1 : 0) + r.int_size(); };
     int compute_jac_nnz();
 };
 
@@ -215,7 +215,7 @@ struct BoundarySweepBuffers {
     FixedVector<f64> jac;
     FixedVector<f64> aug_hes;
 
-    BoundarySweepBuffers(BlockMR& mr,
+    BoundarySweepBuffers(BoundarySweepLayout& mr,
                          AugmentedHessianMR& aug_hes,
                          const ProblemConstants& pc)
     : eval(FixedVector<f64>(mr.size())),
@@ -227,21 +227,16 @@ class BoundarySweep {
     friend class Problem;
 
 public:
-    BoundarySweep(BlockMR&& mr_in,
-                  std::unique_ptr<AugmentedHessianMR> aug_hes_in,
+    BoundarySweep(BoundarySweepLayout&& mr_in,
                   const ProblemConstants& pc_in)
     : mr(std::move(mr_in)),
-      aug_hes(std::move(aug_hes_in)),
       pc(pc_in),
-      buffers(mr, *aug_hes, pc) {}
+      buffers(mr, mr.aug_hes, pc) {}
 
     virtual ~BoundarySweep() = default;
 
-    // eval + jacobian structure (includes sparsity + mapping to buffer indices - location to write to)
-    BlockMR mr;
-
-     // augmented Hessian structure
-    std::unique_ptr<AugmentedHessianMR> aug_hes;
+    // eval + Jacobian + augmented Hessian (includes sparsity + mapping to buffer indices - location to write to)
+    BoundarySweepLayout mr;
 
     // stores all the relevant constants such as dimensions, bounds, offsets, mesh and collocation
     const ProblemConstants& pc;

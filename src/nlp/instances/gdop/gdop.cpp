@@ -239,29 +239,33 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     A.clear(); B.clear(); C.clear(); D.clear();
     E.clear(); F.clear(); G.clear(); H.clear();
 
-    // calculate IndexSet and nnz
-    A.insert_sparsity(problem.boundary->aug_hes->dx0_dx0,     0,     0);
-    C.insert_sparsity(problem.boundary->aug_hes->dxf_dx0,     0,     0);
-    C.insert_sparsity(problem.boundary->aug_hes->duf_dx0, off_x,     0);
-    D.insert_sparsity(problem.boundary->aug_hes->dxf_dxf,     0,     0);
-    D.insert_sparsity(problem.boundary->aug_hes->duf_dxf, off_x,     0);
-    D.insert_sparsity(problem.boundary->aug_hes->duf_duf, off_x, off_x);
-    E.insert_sparsity(problem.boundary->aug_hes->dp_dx0,      0,     0);
-    G.insert_sparsity(problem.boundary->aug_hes->dp_dxf,      0,     0);
-    G.insert_sparsity(problem.boundary->aug_hes->dp_duf,      0, off_x);
-    H.insert_sparsity(problem.boundary->aug_hes->dp_dp,       0,     0);
+    auto& boundary_aug_hes = problem.boundary->mr.aug_hes;
+    auto& full_aug_hes     = problem.full->lfg.aug_hes;
+    auto& full_aug_pp_hes  = problem.full->lfg.aug_pp_hes;
 
-    B.insert_sparsity(problem.full->aug_hes->dx_dx,           0,     0);
-    B.insert_sparsity(problem.full->aug_hes->du_dx,       off_x,     0);
-    B.insert_sparsity(problem.full->aug_hes->du_du,       off_x, off_x);
-    D.insert_sparsity(problem.full->aug_hes->dx_dx,           0,     0);
-    D.insert_sparsity(problem.full->aug_hes->du_dx,       off_x,     0);
-    D.insert_sparsity(problem.full->aug_hes->du_du,       off_x, off_x);
-    F.insert_sparsity(problem.full->aug_hes->dp_dx,           0,     0);
-    F.insert_sparsity(problem.full->aug_hes->dp_du,           0, off_x);
-    G.insert_sparsity(problem.full->aug_hes->dp_dx,           0,     0);
-    G.insert_sparsity(problem.full->aug_hes->dp_du,           0, off_x);
-    H.insert_sparsity(problem.full->aug_pp_hes->dp_dp,        0,     0);
+    // calculate IndexSet and nnz
+    A.insert_sparsity(boundary_aug_hes.dx0_dx0,     0,     0);
+    C.insert_sparsity(boundary_aug_hes.dxf_dx0,     0,     0);
+    C.insert_sparsity(boundary_aug_hes.duf_dx0, off_x,     0);
+    D.insert_sparsity(boundary_aug_hes.dxf_dxf,     0,     0);
+    D.insert_sparsity(boundary_aug_hes.duf_dxf, off_x,     0);
+    D.insert_sparsity(boundary_aug_hes.duf_duf, off_x, off_x);
+    E.insert_sparsity(boundary_aug_hes.dp_dx0,      0,     0);
+    G.insert_sparsity(boundary_aug_hes.dp_dxf,      0,     0);
+    G.insert_sparsity(boundary_aug_hes.dp_duf,      0, off_x);
+    H.insert_sparsity(boundary_aug_hes.dp_dp,       0,     0);
+
+    B.insert_sparsity(full_aug_hes.dx_dx,           0,     0);
+    B.insert_sparsity(full_aug_hes.du_dx,       off_x,     0);
+    B.insert_sparsity(full_aug_hes.du_du,       off_x, off_x);
+    D.insert_sparsity(full_aug_hes.dx_dx,           0,     0);
+    D.insert_sparsity(full_aug_hes.du_dx,       off_x,     0);
+    D.insert_sparsity(full_aug_hes.du_du,       off_x, off_x);
+    F.insert_sparsity(full_aug_hes.dp_dx,           0,     0);
+    F.insert_sparsity(full_aug_hes.dp_du,           0, off_x);
+    G.insert_sparsity(full_aug_hes.dp_dx,           0,     0);
+    G.insert_sparsity(full_aug_hes.dp_du,           0, off_x);
+    H.insert_sparsity(full_aug_pp_hes.dp_dp,        0,     0);
 
     // calculate nnz from block sparsity
     nnz_hes = (B.size() + F.size()) * (mesh.node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
@@ -764,9 +768,9 @@ void GDOP::eval_g_internal(const FixedVector<f64>& curr_x, FixedVector<f64>& cur
     curr_g.fill_zero();
     for (int i = 0; i < mesh.intervals; i++) {
         collocation.diff_matrix_multiply_block_strided(mesh.nodes[i], off_x, off_xu, problem.pc->fg_size,
-                                         &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
-                                         &curr_x[off_acc_xu[i][0]],                                       // collocation point states
-                                         &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
+                                                       &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
+                                                       &curr_x[off_acc_xu[i][0]],                                       // collocation point states
+                                                       &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
         for (int j = 0; j < mesh.nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
                 curr_g[off_acc_fg[i][j] + f_index] -= mesh.delta_t[i] * problem.lfg_eval_f(f_index, i, j);
@@ -892,11 +896,11 @@ void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
                 ptr_map_xu_xu = &hes_d;
                 ptr_map_p_xu  = &hes_g;
             }
-            update_augmented_hessian_lfg(*problem.full->aug_hes, i, j, ptr_map_xu_xu, ptr_map_p_xu, curr_hes);
+            update_augmented_hessian_lfg(problem.full->lfg.aug_hes, i, j, ptr_map_xu_xu, ptr_map_p_xu, curr_hes);
         }
     }
-    update_augmented_parameter_hessian_lfg(*problem.full->aug_pp_hes, curr_hes);
-    update_augmented_hessian_mr(*problem.boundary->aug_hes, curr_hes);
+    update_augmented_parameter_hessian_lfg(problem.full->lfg.aug_pp_hes, curr_hes);
+    update_augmented_hessian_mr(problem.boundary->mr.aug_hes, curr_hes);
 }
 
 void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
