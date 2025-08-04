@@ -1,17 +1,12 @@
 #include "trajectory.h"
 
-// TODO: we need like a partner setup, if a Trajectory / ControlTrajectory has been created on a Mesh, then add it as partner
-// e.g. optional or ptr
-
-bool Trajectory::compatible_with_mesh(const Mesh& mesh) const {
-    // check size of time vector: expect mesh.node_count + 1 (t = 0.0 included)
-    return check_time_compatibility(t, {x, u}, mesh);
-}
 
 Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
             return interpolate_onto_mesh_linear(mesh);
+        case InterpolationMethod::POLYNOMIAL:
+            return interpolate_onto_mesh_polynomial(mesh);
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
@@ -20,31 +15,32 @@ Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh) const {
 Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh) const {
     Trajectory new_traj;
 
-    std::vector<f64> new_t = {0.0};
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * fLGR::get_c(mesh.nodes[i], j);
-            new_t.push_back(new_time);
-        }
-    }
+    std::vector<f64> new_t = mesh.get_flat_t();
 
     new_traj.t = new_t;
     new_traj.x = interpolate_linear_multiple(t, x, new_t);
     new_traj.u = interpolate_linear_multiple(t, u, new_t);
     new_traj.p = p;
+    new_traj.inducing_mesh = &mesh;
 
     return new_traj;
 }
 
-Trajectory Trajectory::interpolate_polynomial_from_mesh_onto_grid(const Mesh& mesh,
-                                                                  const std::vector<f64>& time_grid)
-{
-    Trajectory new_traj;
+Trajectory Trajectory::interpolate_onto_mesh_polynomial(const Mesh& mesh) const {
+    std::vector<f64> mesh_grid = mesh.get_flat_t();
+    auto new_traj = interpolate_polynomial_onto_grid(mesh_grid);
+    new_traj.inducing_mesh = &mesh;
 
+    return new_traj;
+}
+
+Trajectory Trajectory::interpolate_polynomial_onto_grid(const std::vector<f64>& time_grid) const {
+    Trajectory new_traj;
     new_traj.t = time_grid;
-    new_traj.x = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, x, time_grid);
-    new_traj.u = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, u, time_grid);
+    new_traj.x = interpolate_polynomial_onto_grid_multiple(*inducing_mesh, x, time_grid);
+    new_traj.u = interpolate_polynomial_onto_grid_multiple(*inducing_mesh, u, time_grid);
     new_traj.p = p;
+    new_traj.inducing_mesh = nullptr;
 
     return new_traj;
 }
@@ -163,10 +159,12 @@ FixedVector<f64> Trajectory::state_errors(const Trajectory& other, Linalg::Norm 
 
 ControlTrajectory Trajectory::copy_extract_controls() const {
     ControlTrajectory controls_copy;
-    controls_copy.t = t;                         // copies t from Trajectory
-    controls_copy.u = u;                         // copies u from Trajectory
-    controls_copy.interpolation = interpolation; // copy interpolation
-    controls_copy.last_t_index = 0;                // initialize last_t_index as 0
+    controls_copy.t = t;
+    controls_copy.u = u;
+    controls_copy.interpolation = interpolation;
+    controls_copy.last_t_index = 0;
+    controls_copy.last_mesh_interval = 0;
+    controls_copy.inducing_mesh = inducing_mesh;
 
     return controls_copy;
 }
@@ -227,25 +225,24 @@ void ControlTrajectory::interpolate_at_polynomial(f64 t_query, f64* interpolatio
         for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
             interpolation_values[u_idx] = u[u_idx].back();
         }
-        last_mesh_interval = friend_mesh->intervals - 1;
+        last_mesh_interval = inducing_mesh->intervals - 1;
         return;
     }
 
     // search for the correct mesh interval using the last_mesh_interval
     int i = last_mesh_interval;
-    while (i + 1 < friend_mesh->intervals && t_query > friend_mesh->grid[i + 1]) {
+    while (i + 1 < inducing_mesh->intervals && t_query > inducing_mesh->grid[i + 1]) {
         i++;
     }
-    while (i > 0 && t_query < friend_mesh->grid[i]) {
+    while (i > 0 && t_query < inducing_mesh->grid[i]) {
         i--;
     }
 
-    const int mesh_p_order = friend_mesh->nodes[i];
-    const f64 t_start      = friend_mesh->grid[i];
-    const f64 t_end        = friend_mesh->grid[i + 1];
-    const int offset       = friend_mesh->acc_nodes[i][0];
+    const int mesh_p_order = inducing_mesh->nodes[i];
+    const f64 t_start      = inducing_mesh->grid[i];
+    const f64 t_end        = inducing_mesh->grid[i + 1];
+    const int offset       = inducing_mesh->acc_nodes[i][0];
 
-    // --- 3. Polynomial interpolation for each control ---
     for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
         const f64* values_i = u[u_idx].data() + offset;
         interpolation_values[u_idx] = fLGR::interpolate(
@@ -263,11 +260,12 @@ void ControlTrajectory::interpolate_at(f64 t_query, f64* interpolation_values) c
             interpolate_at_linear(t_query, interpolation_values);
             return;
         case InterpolationMethod::POLYNOMIAL:
-            if (!friend_mesh) {
-                LOG_ERROR("Friend friend_mesh is required for polynomial interpolation in ControlTrajectory::interpolate_at().");
-                return;
+            if (!inducing_mesh) {
+                LOG_WARNING("ControlTrajectory in interpolate_at() not induced from a Mesh. Can't perform polynomial interpolation: fallback to interpolate_at_linear().");
+                interpolate_at_linear(t_query, interpolation_values);
+            } else {
+                interpolate_at_polynomial(t_query, interpolation_values);
             }
-            interpolate_at_polynomial(t_query, interpolation_values);
             return;
         default:
             throw std::runtime_error("Unknown interpolation method!");
@@ -276,15 +274,17 @@ void ControlTrajectory::interpolate_at(f64 t_query, f64* interpolation_values) c
 
 // === Dual Trajectory ===
 
-bool CostateTrajectory::compatible_with_mesh(const Mesh& mesh) const {
-    // For duals, time grid has no t=0. So expect mesh.node_count entries (not +1)
-    return check_time_compatibility(t, {costates_f, costates_g}, mesh);
-}
-
 CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
             return interpolate_onto_mesh_linear(mesh);
+        case InterpolationMethod::POLYNOMIAL:
+            if (!inducing_mesh) {
+                LOG_WARNING("CostateTrajectory in interpolate_onto_mesh() not induced from a Mesh. Can't perform polynomial interpolation: fallback to interpolate_onto_mesh_linear().");
+                return interpolate_onto_mesh_linear(mesh);
+            } else {
+                return interpolate_onto_mesh_polynomial(mesh);
+            }
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
@@ -292,21 +292,35 @@ CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh) con
 
 CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& mesh) const {
     CostateTrajectory new_dual;
-
-    std::vector<f64> new_t;
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * fLGR::get_c(mesh.nodes[i], j);
-            new_t.push_back(new_time);
-        }
-    }
+    std::vector<f64> new_t = mesh.get_flat_t();
 
     new_dual.t = new_t;
     new_dual.costates_f = interpolate_linear_multiple(t, costates_f, new_t);
     new_dual.costates_g = interpolate_linear_multiple(t, costates_g, new_t);
     new_dual.costates_r = costates_r;
+    new_dual.inducing_mesh = &mesh;
 
     return new_dual;
+}
+
+CostateTrajectory CostateTrajectory::interpolate_onto_mesh_polynomial(const Mesh& mesh) const {
+    std::vector<f64> new_t = mesh.get_flat_t();
+
+    auto new_dual = interpolate_polynomial_onto_grid(new_t);
+    new_dual.inducing_mesh = &mesh;
+
+    return new_dual;
+}
+
+CostateTrajectory CostateTrajectory::interpolate_polynomial_onto_grid(const std::vector<f64>& time_grid) const {
+    CostateTrajectory new_traj;
+    new_traj.t = time_grid;
+    new_traj.costates_f = interpolate_polynomial_onto_grid_multiple(*inducing_mesh, costates_f, time_grid);
+    new_traj.costates_g = interpolate_polynomial_onto_grid_multiple(*inducing_mesh, costates_g, time_grid);
+    new_traj.costates_r = costates_r;
+    new_traj.inducing_mesh = nullptr;
+
+    return new_traj;
 }
 
 void CostateTrajectory::print() {
@@ -360,10 +374,12 @@ bool check_time_compatibility(
     return true;
 }
 
+// === default vector + time_grid interpolations ===
+
 // interpolate trajectory to new mesh with collocation scheme - polynomial interpolation
-std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(const Mesh& mesh,
-                                                                   const std::vector<f64>& values,
-                                                                   const std::vector<f64>& time_grid) {
+std::vector<f64> interpolate_polynomial_onto_grid_single(const Mesh& mesh,
+                                                         const std::vector<f64>& values,
+                                                         const std::vector<f64>& time_grid) {
     std::vector<f64> new_values(time_grid.size());
     new_values[0] = values[0]; // t = 0
 
@@ -395,13 +411,13 @@ std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(const Mesh& m
     return new_values;
 }
 
-std::vector<std::vector<f64>> interpolate_polynomial_from_mesh_onto_grid_multiple(const Mesh& mesh,
-                                                                                  const std::vector<std::vector<f64>>& values,
-                                                                                  const std::vector<f64>& time_grid)
+std::vector<std::vector<f64>> interpolate_polynomial_onto_grid_multiple(const Mesh& mesh,
+                                                                        const std::vector<std::vector<f64>>& values,
+                                                                        const std::vector<f64>& time_grid)
 {
     std::vector<std::vector<f64>> out(values.size());
     for (size_t i = 0; i < values.size(); i++) {
-        out[i] = interpolate_polynomial_from_mesh_onto_grid_single(mesh, values[i], time_grid);
+        out[i] = interpolate_polynomial_onto_grid_single(mesh, values[i], time_grid);
     }
     return out;
 }
@@ -446,6 +462,8 @@ std::vector<std::vector<f64>> interpolate_linear_multiple(
     }
     return out_values;
 }
+
+// === prints ===
 
 void print_trajectory(
     const std::vector<f64>& t,

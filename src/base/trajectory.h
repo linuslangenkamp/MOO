@@ -5,20 +5,20 @@
 #include "mesh.h"
 #include "linalg.h"
 #include "fLGR.h"
+#include "observer.h"
 
 enum class InterpolationMethod {
     LINEAR = 0,
     POLYNOMIAL = 1
 };
-// TODO: refactor this interpolation garbage somehow
 
 struct ControlTrajectory {
     std::vector<f64> t;                       // time grid, monotonic increasing
     std::vector<std::vector<f64>> u;          // u[k][j] = value of k-th control at t[j]
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
-    // optional mesh friend (nullptr if not set)
-    const Mesh* friend_mesh = nullptr;
+    // optional mesh observer (nullptr if not set)
+    Observer<Mesh> inducing_mesh = nullptr;
 
     // for repeated interpolation, cache last index in this->t or last mesh interval
     mutable size_t last_t_index = 0;
@@ -38,29 +38,30 @@ struct Trajectory {
     std::vector<f64> p;
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
+    // optional mesh observer (nullptr if not set)
+    Observer<Mesh> inducing_mesh = nullptr;
+
     Trajectory() = default;
 
     Trajectory(std::vector<f64> t, std::vector<std::vector<f64>> x, std::vector<std::vector<f64>> u,
-               std::vector<f64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
-        : t(t), x(x), u(u), p(p), interpolation(interpolation) {
-    }
+               std::vector<f64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR,
+               const Mesh* inducing_mesh = nullptr)
+        : t(t), x(x), u(u), p(p), interpolation(interpolation), inducing_mesh(inducing_mesh) {}
 
     Trajectory(const Trajectory& other)
         : t(other.t),
           x(other.x),
           u(other.u),
           p(other.p),
-          interpolation(other.interpolation) {}
-
-    // checks if a trajectory has the same nodes as a mesh + collocation (valid Trajectory + fLGR)
-    bool compatible_with_mesh(const Mesh& mesh) const;
+          interpolation(other.interpolation),
+          inducing_mesh(other.inducing_mesh) {}
 
     // create new trajectories based on mesh & collocation
     Trajectory interpolate_onto_mesh(const Mesh& mesh) const;
     Trajectory interpolate_onto_mesh_linear(const Mesh& mesh) const;
+    Trajectory interpolate_onto_mesh_polynomial(const Mesh& mesh) const;
 
-    Trajectory interpolate_polynomial_from_mesh_onto_grid(const Mesh& mesh,
-                                                          const std::vector<f64>& time_grid);
+    Trajectory interpolate_polynomial_onto_grid(const std::vector<f64>& time_grid) const;
 
     // extract + copy information from the trajectory
     ControlTrajectory copy_extract_controls() const;
@@ -86,26 +87,35 @@ struct CostateTrajectory {
     std::vector<f64> costates_r;
     InterpolationMethod interpolation;
 
+    // optional mesh observer (nullptr if not set)
+    Observer<Mesh> inducing_mesh = nullptr;
+
     CostateTrajectory() = default;
 
     CostateTrajectory(std::vector<f64> t, std::vector<std::vector<f64>> costates_f, std::vector<std::vector<f64>> costates_g,
-                   std::vector<f64> costates_r, InterpolationMethod interpolation = InterpolationMethod::LINEAR)
-        : t(t), costates_f(costates_f), costates_g(costates_g), costates_r(costates_r), interpolation(interpolation) {
-    }
+                      std::vector<f64> costates_r, InterpolationMethod interpolation = InterpolationMethod::LINEAR,
+                      const Mesh* inducing_mesh = nullptr)
+        : t(t),
+          costates_f(costates_f),
+          costates_g(costates_g),
+          costates_r(costates_r),
+          interpolation(interpolation),
+          inducing_mesh(inducing_mesh) {}
 
     CostateTrajectory(const CostateTrajectory& other)
         : t(other.t),
           costates_f(other.costates_f),
           costates_g(other.costates_g),
           costates_r(other.costates_r),
-          interpolation(other.interpolation) {}
-
-    // checks if a dual trajectory has the same nodes as a mesh + collocation (valid CostateTrajectory + fLGR)
-    bool compatible_with_mesh(const Mesh& mesh) const;
+          interpolation(other.interpolation),
+          inducing_mesh(other.inducing_mesh) {}
 
     // create new trajectories based on mesh & collocation
     CostateTrajectory interpolate_onto_mesh(const Mesh& mesh) const;
     CostateTrajectory interpolate_onto_mesh_linear(const Mesh& mesh) const;
+    CostateTrajectory interpolate_onto_mesh_polynomial(const Mesh& mesh) const;
+
+    CostateTrajectory interpolate_polynomial_onto_grid(const std::vector<f64>& time_grid) const;
 
     // dumps
     void print();
@@ -146,12 +156,12 @@ struct PrimalDualTrajectory {
 
 // === shared helpers for Trajectory and CostateTrajectory ===
 
-std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(
+std::vector<f64> interpolate_polynomial_onto_grid_single(
     const Mesh& mesh,
     const std::vector<f64>& values,
     const std::vector<f64>& time_grid);
 
-std::vector<std::vector<f64>> interpolate_polynomial_from_mesh_onto_grid_multiple(
+std::vector<std::vector<f64>> interpolate_polynomial_onto_grid_multiple(
     const Mesh& mesh,
     const std::vector<std::vector<f64>>& values,
     const std::vector<f64>& time_grid);
@@ -166,6 +176,7 @@ std::vector<std::vector<f64>> interpolate_linear_multiple(
     const std::vector<std::vector<f64>>& values,
     const std::vector<f64>& new_t);
 
+// @deprecated not in use anymore by "Observer<Mesh> inducing_mesh" members
 bool check_time_compatibility(
     const std::vector<f64>& t_vec,
     const std::vector<std::vector<std::vector<f64>>>& fields_to_check,

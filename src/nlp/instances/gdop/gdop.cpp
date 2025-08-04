@@ -145,7 +145,7 @@ void GDOP::get_initial_guess(
 
     if (initial_guess_primal) {
         // interpolate to mesh if not compatible
-        if (!initial_guess_primal->compatible_with_mesh(mesh)) {
+        if (initial_guess_primal->inducing_mesh.get() != &mesh) {
             initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh));
         }
         flatten_trajectory_to_layout(*initial_guess_primal, x_init);
@@ -1045,6 +1045,7 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
     optimal_primals->t.reserve(mesh.node_count + 1);
     optimal_primals->x.resize(off_x);
     optimal_primals->u.resize(off_u);
+    optimal_primals->inducing_mesh = &mesh;
 
     for (auto& v : optimal_primals->x) { v.reserve(mesh.node_count + 1); }
     for (auto& v : optimal_primals->u) { v.reserve(mesh.node_count + 1); }
@@ -1139,6 +1140,7 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
     optimal_costates->t.reserve(mesh.node_count + 1);
     optimal_costates->costates_f.resize(f_size);
     optimal_costates->costates_g.resize(g_size);
+    optimal_costates->inducing_mesh = &mesh;
 
     for (auto& v : optimal_costates->costates_f) { v.reserve(mesh.node_count + 1); }
     for (auto& v : optimal_costates->costates_g) { v.reserve(mesh.node_count + 1); }
@@ -1263,6 +1265,7 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
         traj.x.resize(off_x);
         traj.u.resize(off_u);
         traj.p.reserve(off_p); // TODO: PARAMETERS add parameters to result trajectory
+        traj.inducing_mesh = &mesh;
 
         for (auto& v : traj.x) { v.reserve(mesh.node_count + 1); }
         for (auto& v : traj.u) { v.reserve(mesh.node_count + 1); }
