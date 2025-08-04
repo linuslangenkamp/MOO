@@ -321,9 +321,9 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
 GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     GDOP::Strategies strategies;
 
-    // TODO: do proper tolerances here
+    // TODO: do add simulation_tolerance factor here?
     FixedVector<f64> verifier_tolerances(info.x_size);
-    for (int idx = 0; idx < info.x_size; idx++) { verifier_tolerances[idx] = 1e-4; }
+    for (int x = 0; x < info.x_size; x++) { verifier_tolerances[x] = 1e-4 * info.data->modelData->realVarsData[x].attribute.nominal; }
 
     auto scaling_factory                    = std::make_shared<NominalScalingFactory>(info);
     auto emitter                            = std::make_shared<MatEmitter>(MatEmitter(info));

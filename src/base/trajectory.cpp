@@ -1,5 +1,8 @@
 #include "trajectory.h"
 
+// TODO: we need like a partner setup, if a Trajectory / ControlTrajectory has been created on a Mesh, then add it as partner
+// e.g. optional or ptr
+
 bool Trajectory::compatible_with_mesh(const Mesh& mesh) const {
     // check size of time vector: expect mesh.node_count + 1 (t = 0.0 included)
     return check_time_compatibility(t, {x, u}, mesh);
@@ -78,7 +81,8 @@ FixedVector<f64> Trajectory::state_errors_inf_norm(const Trajectory& other) cons
         const auto& x_traj_2 = other.x[x_idx];
 
         if (x_traj_1.size() != x_traj_2.size()) {
-            throw std::runtime_error("State trajectory length mismatch in Trajectory::state_errors_inf_norm.");
+            LOG_ERROR("State trajectory length mismatch in Trajectory::state_errors_inf_norm.");
+            return max_abs_errors;
         }
 
         f64* max_err = &max_abs_errors[x_idx];
@@ -101,7 +105,8 @@ FixedVector<f64> Trajectory::state_errors_2_norm(const Trajectory& other) const 
         const auto& x_traj_2 = other.x[x_idx];
 
         if (x_traj_1.size() != x_traj_2.size()) {
-            throw std::runtime_error("State trajectory length mismatch in Trajectory::state_errors_2_norm.");
+            LOG_ERROR("State trajectory length mismatch in Trajectory::state_errors_2_norm.");
+            return norm_errors;
         }
 
         f64 sum_sq_diff = 0.0;
@@ -123,7 +128,8 @@ FixedVector<f64> Trajectory::state_errors_1_norm(const Trajectory& other) const 
         const auto& x_traj_2 = other.x[x_idx];
 
         if (x_traj_1.size() != x_traj_2.size()) {
-            throw std::runtime_error("State trajectory length mismatch in Trajectory::state_errors_2_norm.");
+            LOG_ERROR("State trajectory length mismatch in Trajectory::state_errors_1_norm.");
+            return norm_errors;
         }
 
         f64 sum_abs_diff = 0.0;
@@ -160,7 +166,7 @@ ControlTrajectory Trajectory::copy_extract_controls() const {
     controls_copy.t = t;                         // copies t from Trajectory
     controls_copy.u = u;                         // copies u from Trajectory
     controls_copy.interpolation = interpolation; // copy interpolation
-    controls_copy.last_index = 0;                // initialize last_index as 0
+    controls_copy.last_t_index = 0;                // initialize last_t_index as 0
 
     return controls_copy;
 }
@@ -170,27 +176,27 @@ void ControlTrajectory::interpolate_at_linear(f64 t_query, f64* interpolation_va
 
     // out of bounds cases
     if (t_query <= t.front()) {
-        for (size_t k = 0; k < u.size(); ++k) {
-            interpolation_values[k] = u[k][0];
+        for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
+            interpolation_values[u_idx] = u[u_idx][0];
         }
-        last_index = 0;
+        last_t_index = 0;
         return;
     }
     if (t_query >= t.back()) {
-        for (size_t k = 0; k < u.size(); ++k) {
-            interpolation_values[k] = u[k].back();
+        for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
+            interpolation_values[u_idx] = u[u_idx].back();
         }
-        last_index = t_len - 2; // safe last segment
+        last_t_index = t_len - 2; // safe last segment
         return;
     }
 
-    // search for the correct interval using the last_index
-    size_t i = last_index;
+    // search for the correct interval using the last_t_index
+    size_t i = last_t_index;
     while (i + 1 < t_len && t_query > t[i + 1]) {
-        ++i;
+        i++;
     }
     while (i > 0 && t_query < t[i]) {
-        --i;
+        i--;
     }
 
     // interval [t[i], t[i+1]]
@@ -204,14 +210,64 @@ void ControlTrajectory::interpolate_at_linear(f64 t_query, f64* interpolation_va
         interpolation_values[k] = u1 + alpha * (u2 - u1);
     }
 
-    last_index = i; // keep last_index for next call
+    last_t_index = i; // keep last_index for next call
     return;
+}
+
+void ControlTrajectory::interpolate_at_polynomial(f64 t_query, f64* interpolation_values) const {
+    // out-of-bounds cases
+    if (t_query <= t.front()) {
+        for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
+            interpolation_values[u_idx] = u[u_idx][0];
+        }
+        last_mesh_interval = 0;
+        return;
+    }
+    if (t_query >= t.back()) {
+        for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
+            interpolation_values[u_idx] = u[u_idx].back();
+        }
+        last_mesh_interval = friend_mesh->intervals - 1;
+        return;
+    }
+
+    // search for the correct mesh interval using the last_mesh_interval
+    int i = last_mesh_interval;
+    while (i + 1 < friend_mesh->intervals && t_query > friend_mesh->grid[i + 1]) {
+        i++;
+    }
+    while (i > 0 && t_query < friend_mesh->grid[i]) {
+        i--;
+    }
+
+    const int mesh_p_order = friend_mesh->nodes[i];
+    const f64 t_start      = friend_mesh->grid[i];
+    const f64 t_end        = friend_mesh->grid[i + 1];
+    const int offset       = friend_mesh->acc_nodes[i][0];
+
+    // --- 3. Polynomial interpolation for each control ---
+    for (size_t u_idx = 0; u_idx < u.size(); u_idx++) {
+        const f64* values_i = u[u_idx].data() + offset;
+        interpolation_values[u_idx] = fLGR::interpolate(
+            mesh_p_order, true, values_i, 1,
+            t_start, t_end, t_query
+        );
+    }
+
+    last_mesh_interval = i;
 }
 
 void ControlTrajectory::interpolate_at(f64 t_query, f64* interpolation_values) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
             interpolate_at_linear(t_query, interpolation_values);
+            return;
+        case InterpolationMethod::POLYNOMIAL:
+            if (!friend_mesh) {
+                LOG_ERROR("Friend friend_mesh is required for polynomial interpolation in ControlTrajectory::interpolate_at().");
+                return;
+            }
+            interpolate_at_polynomial(t_query, interpolation_values);
             return;
         default:
             throw std::runtime_error("Unknown interpolation method!");
@@ -278,6 +334,7 @@ bool check_time_compatibility(
 
     int expected_size = mesh.node_count + 1;
     if (static_cast<int>(t_vec.size()) != expected_size) {
+        LOG_WARNING("Time array is not compatible with given Mesh.");
         return false;
     }
 
@@ -285,6 +342,7 @@ bool check_time_compatibility(
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
             if (std::abs(t_vec[time_idx++] - mesh.t[i][j]) > tol) {
+                LOG_WARNING("Time array is not compatible with given Mesh.");
                 return false;
             }
         }
@@ -293,6 +351,7 @@ bool check_time_compatibility(
     for (const auto& vect : fields_to_check) {
         for (const auto& field : vect) {
             if (static_cast<int>(field.size()) != static_cast<int>(t_vec.size())) {
+                LOG_WARNING("Time array is not compatible with given Mesh.");
                 return false;
             }
         }

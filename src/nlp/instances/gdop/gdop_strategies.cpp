@@ -267,10 +267,12 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
     auto& trajectory_primal = trajectory.primals;
 
     auto extracted_controls = trajectory_primal->copy_extract_controls();   // extract controls from the trajectory
+    extracted_controls.friend_mesh = &gdop.get_mesh();                      // TODO: make trajectory hold a mesh friend (a compatible mesh)
+    extracted_controls.interpolation = InterpolationMethod::POLYNOMIAL;
     auto exctracted_x0      = trajectory_primal->extract_initial_states();  // extract x(t_0) from the trajectory
 
     // perform simulation using the controls, gdop config and a high number of nodes
-    int  high_node_count    = 10 * gdop.get_mesh().node_count;
+    int  high_node_count    = 1 * gdop.get_mesh().node_count;
 
     auto simulation_result  = (*simulation)(extracted_controls, high_node_count,
                                             0.0, gdop.get_mesh().tf, exctracted_x0.raw());
@@ -373,7 +375,7 @@ void L2BoundaryNorm::reset(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
     max_phase_one_iterations = 3;
-    max_phase_two_iterations = 3;
+    max_phase_two_iterations = 15;
 
     // on-interval
     mesh_lambda    = 0.0;

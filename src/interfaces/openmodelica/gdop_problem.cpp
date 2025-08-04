@@ -269,9 +269,6 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh) {
     auto fs = std::make_unique<FullSweep_OM>(std::move(layout_lfg), *pc, info);
     auto bs = std::make_unique<BoundarySweep_OM>(std::move(layout_mr), *pc, info);
 
-    fs->print_jacobian_sparsity_pattern();
-    bs->print_jacobian_sparsity_pattern();
-
     return GDOP::Problem(std::move(fs), std::move(bs),std::move(pc));
 }
 

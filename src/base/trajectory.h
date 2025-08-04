@@ -7,20 +7,26 @@
 #include "fLGR.h"
 
 enum class InterpolationMethod {
-    LINEAR = 0
+    LINEAR = 0,
+    POLYNOMIAL = 1
 };
-// TODO: refactor this interpolation garbage with an interpolator that optionally holds a t already -> only copy!
+// TODO: refactor this interpolation garbage somehow
 
 struct ControlTrajectory {
     std::vector<f64> t;                       // time grid, monotonic increasing
     std::vector<std::vector<f64>> u;          // u[k][j] = value of k-th control at t[j]
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
-    // for repeated interpolation, cache last index
-    mutable size_t last_index = 0;
+    // optional mesh friend (nullptr if not set)
+    const Mesh* friend_mesh = nullptr;
+
+    // for repeated interpolation, cache last index in this->t or last mesh interval
+    mutable size_t last_t_index = 0;
+    mutable int last_mesh_interval = 0;
 
     void interpolate_at(f64 t_query, f64* interpolation_values) const;
     void interpolate_at_linear(f64 t_query, f64* interpolation_values) const;
+    void interpolate_at_polynomial(f64 t_query, f64* interpolation_values) const;
 };
 
 // given some data trajectories t, x(t), u(t), p
