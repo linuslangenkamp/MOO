@@ -145,8 +145,8 @@ void GDOP::get_initial_guess(
 
     if (initial_guess_primal) {
         // interpolate to mesh if not compatible
-        if (!initial_guess_primal->compatible_with_mesh(mesh, collocation)) {
-            initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh, collocation));
+        if (!initial_guess_primal->compatible_with_mesh(mesh)) {
+            initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh));
         }
         flatten_trajectory_to_layout(*initial_guess_primal, x_init);
     }
@@ -293,17 +293,17 @@ void GDOP::get_jac_sparsity(
                 int eqn_index = off_acc_fg[i][j] + f_index;
 
                 // dColl / dx for x_{i-1, m_{i-1}} base point states (k = -1, prev state)
-                i_row_jac[nnz_index] = eqn_index;
-                j_col_jac[nnz_index] = (i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]) + f_index;
-                const_der_jac[nnz_index] = collocation.D[mesh.nodes[i]][j + 1][0];
+                i_row_jac[nnz_index]     = eqn_index;
+                j_col_jac[nnz_index]     = (i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]) + f_index;
+                const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, 0);
                 nnz_index++;
 
                 // dColl / dx for x_{i, j} collocation point states up to the collision
                 // this means the derivative matrix linear combinations x_ik have k < j
                 for (int k = 0; k < j; k++) {
-                    i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_acc_xu[i][k] + f_index;
-                    const_der_jac[nnz_index] = collocation.D[mesh.nodes[i]][j + 1][k + 1];
+                    i_row_jac[nnz_index]     = eqn_index;
+                    j_col_jac[nnz_index]     = off_acc_xu[i][k] + f_index;
+                    const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, k + 1);
                     nnz_index++;
                 }
 
@@ -314,9 +314,9 @@ void GDOP::get_jac_sparsity(
                 for (int x_elem = 0; x_elem < off_x; x_elem++) {
                     if (x_elem == f_index) {
                         // case for collocation block
-                        i_row_jac[nnz_index] = eqn_index;
-                        j_col_jac[nnz_index] = off_acc_xu[i][j] + f_index; // here df_dx and f_index collide!! (could also be written with dx_dx = f_index), which is nz element of the derivaitve matrix part
-                        const_der_jac[nnz_index] = collocation.D[mesh.nodes[i]][j + 1][j + 1];
+                        i_row_jac[nnz_index]     = eqn_index;
+                        j_col_jac[nnz_index]     = off_acc_xu[i][j] + f_index; // here df_dx and f_index collide!! (could also be written with dx_dx = f_index), which is nz element of the derivaitve matrix part
+                        const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, j + 1);
 
                         // handle the diagonal collision of the diagonal jacobian block
                         // this means the derivative matrix linear combinations x_ik have k == j and df_k / dx_k != 0
@@ -345,9 +345,9 @@ void GDOP::get_jac_sparsity(
                 // dColl / dx for x_{i, j} collocation point states after the collision / diagonal block in block jacobian
                 // this means the derivative matrix linear combinations x_ik have k > j
                 for (int k = j + 1; k < mesh.nodes[i]; k++) {
-                    i_row_jac[nnz_index] = eqn_index;
-                    j_col_jac[nnz_index] = off_acc_xu[i][k] + f_index;
-                    const_der_jac[nnz_index]   = collocation.D[mesh.nodes[i]][j + 1][k + 1];
+                    i_row_jac[nnz_index]     = eqn_index;
+                    j_col_jac[nnz_index]     = off_acc_xu[i][k] + f_index;
+                    const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, k + 1);
                     nnz_index++;
                 }
 
@@ -696,7 +696,7 @@ void GDOP::update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f
         f64 delta_t = mesh.delta_t[i];
         for (int j = 0; j < mesh.nodes[i]; j++) {
             if (problem.pc->has_lagrange) {
-                lagrange_obj_factors[i][j] = curr_sigma_f * collocation.b[mesh.nodes[i]][j] * delta_t;
+                lagrange_obj_factors[i][j] = curr_sigma_f * fLGR::get_b(mesh.nodes[i], j) * delta_t;
             }
             for (int f = 0; f < problem.pc->f_size; f++) {
                 transformed_lambda[off_acc_fg[i][j] + f] *= -delta_t;
@@ -723,7 +723,7 @@ void GDOP::eval_f_internal(f64& curr_obj) {
     if (problem.pc->has_lagrange) {
         for (int i = 0; i < mesh.intervals; i++) {
             for (int j = 0; j < mesh.nodes[i]; j++) {
-                lagrange += mesh.delta_t[i] * collocation.b[mesh.nodes[i]][j] * problem.lfg_eval_L(i, j);
+                lagrange += mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_eval_L(i, j);
             }
         }
     }
@@ -737,13 +737,13 @@ void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
         for (int i = 0; i < mesh.intervals; i++) {
             for (int j = 0; j < mesh.nodes[i]; j++) {
                 for (auto& dL_dx : problem.full->layout.L->jac.dx) {
-                    curr_grad[off_acc_xu[i][j] + dL_dx.col] = mesh.delta_t[i] * collocation.b[mesh.nodes[i]][j] * problem.lfg_jac(dL_dx.buf_index, i, j);
+                    curr_grad[off_acc_xu[i][j] + dL_dx.col] = mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_jac(dL_dx.buf_index, i, j);
                 }
                 for (auto& dL_du : problem.full->layout.L->jac.du) {
-                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.col] = mesh.delta_t[i] * collocation.b[mesh.nodes[i]][j] * problem.lfg_jac(dL_du.buf_index, i, j);
+                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.col] = mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_jac(dL_du.buf_index, i, j);
                 }
                 for (auto& dL_dp : problem.full->layout.L->jac.dp) {
-                    curr_grad[off_xu_total + dL_dp.col] += mesh.delta_t[i] * collocation.b[mesh.nodes[i]][j] * problem.lfg_jac(dL_dp.buf_index, i, j);
+                    curr_grad[off_xu_total + dL_dp.col] += mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_jac(dL_dp.buf_index, i, j);
                 }
             }
         }
@@ -767,7 +767,7 @@ void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
 void GDOP::eval_g_internal(const FixedVector<f64>& curr_x, FixedVector<f64>& curr_g) {
     curr_g.fill_zero();
     for (int i = 0; i < mesh.intervals; i++) {
-        collocation.diff_matrix_multiply_block_strided(mesh.nodes[i], off_x, off_xu, problem.pc->fg_size,
+        fLGR::diff_matrix_multiply_block_strided(mesh.nodes[i], off_x, off_xu, problem.pc->fg_size,
                                                        &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
                                                        &curr_x[off_acc_xu[i][0]],                                       // collocation point states
                                                        &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
@@ -967,7 +967,7 @@ void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes, FixedVecto
 // === Optimal Solution Retrieval and Costate Estimations ===
 
 /**
- * Dual Transformation in Direct Collocation for Dynamic Optimization
+ * Dual Transformation in Direct fLGR for Dynamic Optimization
  *
  * When solving a dynamic optimization problem using direct collocation with flipped Legendre-Gauss-Radau (fLGR)
  * quadrature, the optimizer returns Karush-Kuhn-Tucker (KKT) multipliers.
@@ -1054,7 +1054,7 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        f64 u0 = collocation.interpolate(mesh.nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 u0 = fLGR::interpolate(mesh.nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
         optimal_primals->u[u_index].push_back(u0);
     }
 
@@ -1101,11 +1101,11 @@ void GDOP::transform_duals_costates(FixedVector<f64>& lambda, bool to_costate) {
             for (int fg_index = 0; fg_index < problem.pc->fg_size; fg_index++) {
                 if (to_costate) {
                     // NLP dual lambda -> costates lambda
-                    lambda[off_acc_fg[i][j] + fg_index] /= -collocation.b[mesh.nodes[i]][j];
+                    lambda[off_acc_fg[i][j] + fg_index] /= -fLGR::get_b(mesh.nodes[i], j);
                 }
                 else {
                     // costates lambda -> NLP dual lambda
-                    lambda[off_acc_fg[i][j] + fg_index] *= -collocation.b[mesh.nodes[i]][j];
+                    lambda[off_acc_fg[i][j] + fg_index] *= -fLGR::get_b(mesh.nodes[i], j);
                 }
             }
         }
@@ -1147,12 +1147,12 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
     const int inp_stride = f_size + g_size;
 
     for (int f_index = 0; f_index < f_size; f_index++) {
-        f64 lambda_f_0 = collocation.interpolate(mesh.nodes[0], false, &costates[f_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 lambda_f_0 = fLGR::interpolate(mesh.nodes[0], false, &costates[f_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
         optimal_costates->costates_f[f_index].push_back(lambda_f_0);
     }
 
     for (int g_index = 0; g_index < g_size; g_index++) {
-        f64 lambda_g_0 = collocation.interpolate(mesh.nodes[0], false, &costates[f_size + g_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 lambda_g_0 = fLGR::interpolate(mesh.nodes[0], false, &costates[f_size + g_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
         optimal_costates->costates_g[g_index].push_back(lambda_g_0);
     }
 
@@ -1204,11 +1204,11 @@ void GDOP::transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costa
             for (int xu_index = 0; xu_index < off_xu; xu_index++) {
                 if (to_costate) {
                     // NLP dual lambda -> costates lambda
-                    zeta[off_acc_xu[i][j] + xu_index] /= -collocation.b[mesh.nodes[i]][j];
+                    zeta[off_acc_xu[i][j] + xu_index] /= -fLGR::get_b(mesh.nodes[i], j);
                 }
                 else {
                     // costates lambda -> NLP dual lambda
-                    zeta[off_acc_xu[i][j] + xu_index] *= -collocation.b[mesh.nodes[i]][j];
+                    zeta[off_acc_xu[i][j] + xu_index] *= -fLGR::get_b(mesh.nodes[i], j);
                 }
             }
         }
@@ -1272,7 +1272,7 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
         }
 
         for (int u_index = 0; u_index < off_u; u_index++) {
-            f64 u0 = collocation.interpolate(mesh.nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+            f64 u0 = fLGR::interpolate(mesh.nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
             traj.u[u_index].push_back(u0);
         }
 

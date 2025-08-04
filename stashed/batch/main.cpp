@@ -1,7 +1,7 @@
 
 #include <iostream>
 
-#include "base/collocation.h"
+#include "base/fLGR.h"
 #include "impl/gdop/gdop.h"
 #include "impl/gdop/problem.h"
 #include "interfaces/ipopt_solver.h"
@@ -9,10 +9,10 @@
 #include "impl/gdop/test_problem_impl.h"
 
 int main() {
-    auto radau = Collocation();
+    auto radau = fLGR();
     auto mesh = std::make_shared<Mesh>(Mesh::create_equidistant_fixed_stages(1, 15000, 5, radau));
 
-    std::unique_ptr<Collocation> p_radau = std::make_unique<Collocation>(radau);
+    std::unique_ptr<fLGR> p_radau = std::make_unique<fLGR>(radau);
 
     // M(x) = x2
     FixedVector<FunctionMR> mr(1);

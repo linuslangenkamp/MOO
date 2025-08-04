@@ -41,9 +41,8 @@ struct ProblemConstants {
     const FixedVector<Bounds> r_bounds;
     const FixedVector<Bounds> g_bounds;
 
-    // Mesh and Collocation references
+    // Mesh reference
     const Mesh& mesh;
-    const Collocation& collocation;
 
     ProblemConstants(
         bool has_mayer,
@@ -55,8 +54,7 @@ struct ProblemConstants {
         FixedVector<std::optional<f64>> xf_fixed,
         FixedVector<Bounds>&& r_bounds,
         FixedVector<Bounds>&& g_bounds,
-        const Mesh& mesh,
-        const Collocation& collocation)
+        const Mesh& mesh)
     : x_size(static_cast<int>(x_bounds.size())),
       u_size(static_cast<int>(u_bounds.size())),
       p_size(static_cast<int>(p_bounds.size())),
@@ -74,9 +72,7 @@ struct ProblemConstants {
       xf_fixed(std::move(xf_fixed)),
       r_bounds(std::move(r_bounds)),
       g_bounds(std::move(g_bounds)),
-      mesh(mesh),
-      collocation(collocation)
-    {}
+      mesh(mesh) {}
 };
 
 // ================== Continuous, Dynamic - Lfg Layout ==================
@@ -147,7 +143,7 @@ public:
     // eval + jacobian structure (includes sparsity + mapping to buffer indices - location to write to)
     FullSweepLayout layout;
 
-    // stores all the relevant constants such as dimensions, bounds, offsets, mesh and collocation
+    // stores all the relevant constants such as dimensions, bounds, offsets and mesh
     const ProblemConstants& pc;
 
     // fill eval_buffer accoring to sparsity structure
@@ -238,7 +234,7 @@ public:
     // eval + Jacobian + augmented Hessian (includes sparsity + mapping to buffer indices - location to write to)
     BoundarySweepLayout layout;
 
-    // stores all the relevant constants such as dimensions, bounds, offsets, mesh and collocation
+    // stores all the relevant constants such as dimensions, bounds, offsets and mesh
     const ProblemConstants& pc;
 
     virtual void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) = 0;

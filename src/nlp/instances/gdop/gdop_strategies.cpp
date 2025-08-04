@@ -22,7 +22,7 @@ std::unique_ptr<Trajectory> NoSimulationStep::operator()(const ControlTrajectory
 // no mesh refinement available
 void NoMeshRefinement::reset(const GDOP& gdop) {}
 
-std::unique_ptr<MeshUpdate> NoMeshRefinement::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+std::unique_ptr<MeshUpdate> NoMeshRefinement::operator()(const Mesh& mesh, const PrimalDualTrajectory& trajectory) {
     LOG_WARNING("No MeshRefinement strategy set: returning nullptr.");
     return nullptr;
 }
@@ -114,7 +114,6 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
 std::vector<f64> LinearInterpolation::operator()(
     const Mesh& old_mesh,
     const Mesh& new_mesh,
-    const Collocation&,
     const std::vector<f64>& values)
 {
     std::vector<f64> old_t = old_mesh.get_flat_t();
@@ -138,7 +137,6 @@ InterpolationRefinedInitialization::InterpolationRefinedInitialization(std::shar
 // maybe we should do just 1 grant linear interpolator, and 1 polynomial interpolator class, which implement all the cases? think about this
 std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operator()(const Mesh& old_mesh,
                                                                                      const Mesh& new_mesh,
-                                                                                     const Collocation& collocation,
                                                                                      const PrimalDualTrajectory& trajectory)
 {
     std::unique_ptr<Trajectory> new_primals              = nullptr;
@@ -157,13 +155,13 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
         // interpolate states
         new_primals->x.resize(old_primals->x.size());
         for (size_t x_index = 0; x_index < old_primals->x.size(); x_index++) {
-            new_primals->x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->x[x_index]);
+            new_primals->x[x_index] = (*interpolation)(old_mesh, new_mesh, old_primals->x[x_index]);
         }
 
         // interpolate controls
         new_primals->u.resize(old_primals->u.size());
         for (size_t u_index = 0; u_index < old_primals->u.size(); u_index++) {
-            new_primals->u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_primals->u[u_index]);
+            new_primals->u[u_index] = (*interpolation)(old_mesh, new_mesh, old_primals->u[u_index]);
         }
 
         // copy parameters
@@ -184,13 +182,13 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
         // interpolate lambda_f
         new_costates->costates_f.resize(old_costates->costates_f.size());
         for (size_t f_index = 0; f_index < old_costates->costates_f.size(); f_index++) {
-            new_costates->costates_f[f_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_f[f_index]);
+            new_costates->costates_f[f_index] = (*interpolation)(old_mesh, new_mesh, old_costates->costates_f[f_index]);
         }
 
         // interpolate lambda_g
         new_costates->costates_g.resize(old_costates->costates_g.size());
         for (size_t g_index = 0; g_index < old_costates->costates_g.size(); g_index++) {
-            new_costates->costates_g[g_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_costates->costates_g[g_index]);
+            new_costates->costates_g[g_index] = (*interpolation)(old_mesh, new_mesh, old_costates->costates_g[g_index]);
         }
 
         // copy lambda_r
@@ -218,13 +216,13 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
             // interpolate state-bound duals
             new_dual.x.resize(old_dual.x.size());
             for (size_t x_index = 0; x_index < old_dual.x.size(); x_index++) {
-                new_dual.x[x_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.x[x_index]);
+                new_dual.x[x_index] = (*interpolation)(old_mesh, new_mesh, old_dual.x[x_index]);
             }
 
             // interpolate control-bound duals
             new_dual.u.resize(old_dual.u.size());
             for (size_t u_index = 0; u_index < old_dual.u.size(); u_index++) {
-                new_dual.u[u_index] = (*interpolation)(old_mesh, new_mesh, collocation, old_dual.u[u_index]);
+                new_dual.u[u_index] = (*interpolation)(old_mesh, new_mesh, old_dual.u[u_index]);
             }
 
             new_dual.p = old_dual.p;
@@ -250,7 +248,7 @@ std::unique_ptr<PrimalDualTrajectory> SimulationInitialization::operator()(const
     auto exctracted_x0        = simple_guess_primal->extract_initial_states();                       // extract x(t_0) from the guess
     auto simulated_guess      = (*simulation)(extracted_controls, gdop.get_mesh().node_count, 0.0,         // perform simulation using the controls and gdop config
                                               gdop.get_mesh().tf, exctracted_x0.raw());
-    auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.get_mesh(), gdop.get_collocation()); // interpolate simulation to current mesh + collocation
+    auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.get_mesh()); // interpolate simulation to current mesh + collocation
     return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(interpolated_sim));
 }
 
@@ -278,7 +276,7 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
                                             0.0, gdop.get_mesh().tf, exctracted_x0.raw());
 
     // result of high resolution simulation is interpolated onto lower resolution mesh
-    auto interpolated_opt   = trajectory_primal->interpolate_polynomial_from_mesh_onto_grid(gdop.get_mesh(), gdop.get_collocation(), simulation_result->t);
+    auto interpolated_opt   = trajectory_primal->interpolate_polynomial_from_mesh_onto_grid(gdop.get_mesh(), simulation_result->t);
 
     // calculate errors for each state in given norm (between provided and simulated states)
     auto errors             = interpolated_opt.state_errors(*simulation_result, norm);
@@ -325,7 +323,6 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
 // interpolate trajectory to new mesh with collocation scheme - polynomial interpolation
 std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
                                                      const Mesh& new_mesh,
-                                                     const Collocation& collocation,
                                                      const std::vector<f64>& values) {
     const int grid_size = new_mesh.node_count + 1;
     std::vector<f64> new_values(grid_size);
@@ -357,7 +354,7 @@ std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
             f64 t_start = old_mesh.grid[current_old_interval];
             f64 t_end   = old_mesh.grid[current_old_interval + 1];
 
-            new_values[global_grid_index] = collocation.interpolate(
+            new_values[global_grid_index] = fLGR::interpolate(
                 old_p_order, true, values_i, stride,
                 t_start, t_end, t_query
             );
@@ -390,7 +387,7 @@ void L2BoundaryNorm::reset(const GDOP& gdop) {
 }
 
 // L2BoundaryNorm mesh refinement algorithm
-std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
+std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const PrimalDualTrajectory& trajectory) {
     auto& trajectory_primal = trajectory.primals;
 
     // constant degree for all intervals
@@ -415,9 +412,9 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
         // phase II - non-smoothness detection
         std::set<f64> set_new_grid;
 
-        // p', p'' in `Enhancing Collocation-Based Dynamic Optimization through Adaptive Mesh Refinement` (Algorithm 3.2)
-        FixedVector<f64> p_1(collocation.get_max_scheme() + 1);
-        FixedVector<f64> p_2(collocation.get_max_scheme() + 1);
+        // p', p'' in `Enhancing fLGR-Based Dynamic Optimization through Adaptive Mesh Refinement` (Algorithm 3.2)
+        FixedVector<f64> p_1(fLGR::get_max_scheme() + 1);
+        FixedVector<f64> p_2(fLGR::get_max_scheme() + 1);
 
         // p'_i(t_{i+1}) and p''_i(t_{i+1}) for boundary condition
         bool has_last_boundary = false;
@@ -441,8 +438,8 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
                 int start_index = mesh.acc_nodes[i][0];
 
                 // apply D to the controls on interval i
-                collocation.diff_matrix_multiply(mesh.nodes[i], &u_vec[start_index], p_1.raw());   // p'  = D^(1) * u_hat
-                collocation.diff_matrix_multiply(mesh.nodes[i], p_1.raw(), p_2.raw());             // p'' = D^(2) * u_hat = D^(1) * p'
+                fLGR::diff_matrix_multiply(mesh.nodes[i], &u_vec[start_index], p_1.raw());   // p'  = D^(1) * u_hat
+                fLGR::diff_matrix_multiply(mesh.nodes[i], p_1.raw(), p_2.raw());             // p'' = D^(2) * u_hat = D^(1) * p'
 
                 // remember last value for next boundary condition
                 p_boundary_1_this_end = p_1.back();
@@ -457,8 +454,8 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const C
                 Linalg::square(mesh.nodes[i], q_2); // q'' = ((p_1'')^2, (p_2'')^2, ..., (p_m'')^2)
 
                 // calculate the L_2 norm with exact quadrature
-                f64 norm_p_1 = sqrt(collocation.integrate(mesh.nodes[i], q_1)); // norm_p_1 := sqrt(b^T * q')
-                f64 norm_p_2 = sqrt(collocation.integrate(mesh.nodes[i], q_2)); // norm_p_2 := sqrt(b^T * q'')
+                f64 norm_p_1 = sqrt(fLGR::integrate(mesh.nodes[i], q_1)); // norm_p_1 := sqrt(b^T * q')
+                f64 norm_p_2 = sqrt(fLGR::integrate(mesh.nodes[i], q_2)); // norm_p_2 := sqrt(b^T * q'')
 
                 // === on-interval condition ===
                 if (norm_p_1 > TOL_1 || norm_p_2 > TOL_2) {

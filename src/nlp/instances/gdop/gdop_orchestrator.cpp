@@ -24,15 +24,15 @@ void MeshRefinementOrchestrator::optimize() {
         // === mesh refinement ===
 
         // 1. detect intervals and degrees (new vectors)
-        auto mesh_update = strategies->detect(gdop.get_mesh(), gdop.get_collocation(), *gdop.get_optimal_solution());
+        auto mesh_update = strategies->detect(gdop.get_mesh(), *gdop.get_optimal_solution());
 
         if (!mesh_update) { break; }
 
         // 2. create refined Mesh
-        auto refined_mesh = Mesh(std::move(mesh_update), gdop.get_collocation());
+        auto refined_mesh = Mesh(std::move(mesh_update));
 
         // 3. interpolate (x*, lambda*, z*) to new mesh -> new initial guess
-        initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), refined_mesh, gdop.get_collocation(), *gdop.get_optimal_solution());
+        initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), refined_mesh, *gdop.get_optimal_solution());
         solver.solver_settings.set(NLP::Option::WarmStart, true);
 
         initial_guess->costates->to_csv("costates_interp.csv");

@@ -46,7 +46,6 @@ public:
  *
  * @param old_mesh Old Mesh of the GDOP
  * @param new_mesh New Mesh of the GDOP (interpolate onto this)
- * @param collocation Given Collocation scheme
  * @param trajectory Optimal trajectory on old_mesh
  * @return A unique_ptr to a PrimalDualTrajectory object representing the new, interpolated guess.
  */
@@ -54,7 +53,6 @@ class RefinedInitialization {
 public:
     virtual std::unique_ptr<PrimalDualTrajectory> operator()(const Mesh& old_mesh,
                                                              const Mesh& new_mesh,
-                                                             const Collocation& collocation,
                                                              const PrimalDualTrajectory& trajectory) = 0; 
     virtual ~RefinedInitialization() = default;
 };
@@ -99,7 +97,6 @@ class MeshRefinement {
 public:
     virtual void reset(const GDOP& gdop) = 0;
     virtual std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh,
-                                                   const Collocation& collocation,
                                                    const PrimalDualTrajectory& trajectory) = 0;
     virtual ~MeshRefinement() = default;
 };
@@ -118,7 +115,6 @@ class Interpolation {
 public:
     virtual std::vector<f64> operator()(const Mesh& old_mesh,
                                         const Mesh& new_mesh,
-                                        const Collocation& collocation,
                                         const std::vector<f64>& values) = 0;
     virtual ~Interpolation() = default;
 };
@@ -183,14 +179,13 @@ public:
 class NoMeshRefinement : public MeshRefinement {
 public:
     void reset(const GDOP& gdop) override;
-    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
+    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const PrimalDualTrajectory& trajectory) override;
 };
 
 class LinearInterpolation : public Interpolation {
 public:
     std::vector<f64> operator()(const Mesh& old_mesh,
                                 const Mesh& new_mesh,
-                                const Collocation& collocation,
                                 const std::vector<f64>& values) override;
 };
 
@@ -208,7 +203,6 @@ public:
 
     std::unique_ptr<PrimalDualTrajectory> operator()(const Mesh& old_mesh,
                                                      const Mesh& new_mesh,
-                                                     const Collocation& collocation,
                                                      const PrimalDualTrajectory& trajectory) override;
 };
 
@@ -236,12 +230,11 @@ public:
 
 // ==================== more advanced Strategies ====================
 
-// -- uses Collocation scheme to interpolate States and Controls --
+// -- uses fLGR scheme to interpolate States and Controls --
 class PolynomialInterpolation : public Interpolation {
 public:
     std::vector<f64> operator()(const Mesh& old_mesh,
                                 const Mesh& new_mesh,
-                                const Collocation& collocation,
                                 const std::vector<f64>& values) override;
 };
 
@@ -274,7 +267,7 @@ public:
 
     void reset(const GDOP& gdop) override;
 
-    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) override;
+    std::unique_ptr<MeshUpdate> operator()(const Mesh& mesh, const PrimalDualTrajectory& trajectory) override;
 };
 
 // -- emit optimal solution to csv --
@@ -331,8 +324,8 @@ public:
         return (*initialization)(gdop);
     }
 
-    auto get_refined_initial_guess(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
-        return (*refined_initialization)(old_mesh, new_mesh, collocation, trajectory);
+    auto get_refined_initial_guess(const Mesh& old_mesh, const Mesh& new_mesh, const PrimalDualTrajectory& trajectory) {
+        return (*refined_initialization)(old_mesh, new_mesh, trajectory);
     }
 
     auto simulate(const ControlTrajectory& controls, int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
@@ -343,12 +336,12 @@ public:
         return (*simulation_step)(controls, start_time, stop_time, x_start_values);
     }
 
-    auto detect(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory) {
-        return (*mesh_refinement)(mesh, collocation, trajectory);
+    auto detect(const Mesh& mesh, const PrimalDualTrajectory& trajectory) {
+        return (*mesh_refinement)(mesh, trajectory);
     }
 
-    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const std::vector<f64>& values) {
-        return (*interpolation)(old_mesh, new_mesh, collocation, values);
+    auto interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const std::vector<f64>& values) {
+        return (*interpolation)(old_mesh, new_mesh, values);
     }
 
     auto emit(const Trajectory& trajectory) {

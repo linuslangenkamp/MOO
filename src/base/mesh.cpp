@@ -8,7 +8,7 @@
  * @param stages     Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages, const Collocation& collocation) {
+Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages) {
     FixedVector<f64> grid(intervals + 1);
     FixedVector<f64> delta_t(intervals);
     FixedVector<int> nodes(intervals);
@@ -26,14 +26,14 @@ Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages, co
         nodes[i] = stages;
         for (int j = 0; j < stages; j++) {
             acc_nodes[i][j] = stages * i + j;
-            t[i][j] = grid[i] + delta_t[i] * collocation.c[stages][j];
+            t[i][j] = grid[i] + delta_t[i] * fLGR::get_c(stages, j);
         }
     }
     int node_count = stages * intervals;
     return Mesh{intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
 }
 
-Mesh::Mesh(std::unique_ptr<MeshUpdate> mesh_update, const Collocation& collocation)
+Mesh::Mesh(std::unique_ptr<MeshUpdate> mesh_update)
     : grid(std::move(mesh_update->new_grid)),
       nodes(std::move(mesh_update->new_nodes_per_interval))
 {
@@ -62,7 +62,7 @@ Mesh::Mesh(std::unique_ptr<MeshUpdate> mesh_update, const Collocation& collocati
         acc_nodes[i] = FixedVector<int>(p);
 
         for (int j = 0; j < p; j++) {
-            t[i][j] = grid[i] + h * collocation.c[p][j];
+            t[i][j] = grid[i] + h * fLGR::get_c(p, j);
             acc_nodes[i][j] = global_index++;
         }
     }

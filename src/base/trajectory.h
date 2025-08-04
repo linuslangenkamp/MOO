@@ -4,7 +4,7 @@
 #include "log.h"
 #include "mesh.h"
 #include "linalg.h"
-#include "collocation.h"
+#include "fLGR.h"
 
 enum class InterpolationMethod {
     LINEAR = 0
@@ -46,15 +46,14 @@ struct Trajectory {
           p(other.p),
           interpolation(other.interpolation) {}
 
-    // checks if a trajectory has the same nodes as a mesh + collocation (valid Trajectory + Collocation)
-    bool compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const;
+    // checks if a trajectory has the same nodes as a mesh + collocation (valid Trajectory + fLGR)
+    bool compatible_with_mesh(const Mesh& mesh) const;
 
     // create new trajectories based on mesh & collocation
-    Trajectory interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const;
-    Trajectory interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const;
+    Trajectory interpolate_onto_mesh(const Mesh& mesh) const;
+    Trajectory interpolate_onto_mesh_linear(const Mesh& mesh) const;
 
     Trajectory interpolate_polynomial_from_mesh_onto_grid(const Mesh& mesh,
-                                                          const Collocation& collocation,
                                                           const std::vector<f64>& time_grid);
 
     // extract + copy information from the trajectory
@@ -95,12 +94,12 @@ struct CostateTrajectory {
           costates_r(other.costates_r),
           interpolation(other.interpolation) {}
 
-    // checks if a dual trajectory has the same nodes as a mesh + collocation (valid CostateTrajectory + Collocation)
-    bool compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const;
+    // checks if a dual trajectory has the same nodes as a mesh + collocation (valid CostateTrajectory + fLGR)
+    bool compatible_with_mesh(const Mesh& mesh) const;
 
     // create new trajectories based on mesh & collocation
-    CostateTrajectory interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const;
-    CostateTrajectory interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const;
+    CostateTrajectory interpolate_onto_mesh(const Mesh& mesh) const;
+    CostateTrajectory interpolate_onto_mesh_linear(const Mesh& mesh) const;
 
     // dumps
     void print();
@@ -143,13 +142,11 @@ struct PrimalDualTrajectory {
 
 std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(
     const Mesh& mesh,
-    const Collocation& collocation,
     const std::vector<f64>& values,
     const std::vector<f64>& time_grid);
 
 std::vector<std::vector<f64>> interpolate_polynomial_from_mesh_onto_grid_multiple(
     const Mesh& mesh,
-    const Collocation& collocation,
     const std::vector<std::vector<f64>>& values,
     const std::vector<f64>& time_grid);
 

@@ -7,7 +7,7 @@
 #include <numeric>
 
 #include "fixed_vector.h"
-#include "collocation.h"
+#include "fLGR.h"
 #include "util.h"
 
 
@@ -49,8 +49,8 @@ struct Mesh {
   FixedVector<int>   nodes;     // number of collocation nodes p for each interval
   FixedField<int, 2> acc_nodes; // number of nodes to the left of index (i, j)
 
-  static Mesh create_equidistant_fixed_stages(f64 tf, int intervals, int p, const Collocation& collocation);
-  Mesh(std::unique_ptr<MeshUpdate> mesh_update, const Collocation& collocation);
+  static Mesh create_equidistant_fixed_stages(f64 tf, int intervals, int p);
+  Mesh(std::unique_ptr<MeshUpdate> mesh_update);
 
   void move_from(Mesh&& other);
   std::vector<f64> get_flat_t() const;

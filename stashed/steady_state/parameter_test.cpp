@@ -1,7 +1,7 @@
 
 #include <iostream>
 
-#include <base/collocation.h>
+#include <base/fLGR.h>
 #include <nlp/instances/gdop/gdop.h>
 #include <nlp/instances/gdop/problem.h>
 #include <nlp/solvers/ipopt/ipopt_solver.h>
@@ -9,10 +9,10 @@
 #include <nlp/instances/gdop/test_problem_impl.h>
 
 int example() {
-    Collocation coll = Collocation();
+    fLGR coll = fLGR();
     auto mesh = std::make_unique<Mesh>(Mesh::create_equidistant_fixed_stages(100, 150, 5, coll));
 
-    std::unique_ptr<Collocation> radau = std::make_unique<Collocation>(coll);
+    std::unique_ptr<fLGR> radau = std::make_unique<fLGR>(coll);
 
     // r(x) = x0 - p
     FixedVector<FunctionMR> mr(1);

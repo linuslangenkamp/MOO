@@ -158,7 +158,7 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, c
     }
 }
 
-GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) {
+GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh) {
     DATA* data = info.data;
 
     // at first call init for all start values
@@ -263,8 +263,7 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
         std::move(xf_fixed),
         std::move(r_bounds),
         std::move(g_bounds),
-        mesh,
-        collocation
+        mesh
     );
 
     auto fs = std::make_unique<FullSweep_OM>(std::move(layout_lfg), *pc, info);

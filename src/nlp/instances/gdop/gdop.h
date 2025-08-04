@@ -4,7 +4,7 @@
 #include <cassert>
 
 #include <base/block_sparsity.h>
-#include <base/collocation.h>
+#include <base/fLGR.h>
 #include <base/trajectory.h>
 #include <base/fixed_vector.h>
 #include <base/linalg.h>
@@ -23,12 +23,10 @@ using NLP::Scaling;
 class GDOP : public NLP::NLP {
 public:
   GDOP(Problem& problem,
-        Collocation& collocation,
         Mesh& mesh)
       : NLP::NLP(),
         mesh(mesh),
-        problem(problem),
-        collocation(collocation) {}
+        problem(problem) {}
 
 
   // === API + external calls ===
@@ -43,7 +41,6 @@ public:
 
   // main objects
   inline const Mesh&               get_mesh()           const { return mesh; }
-  inline const Collocation&        get_collocation()    const { return collocation; }
   inline const Problem&            get_problem()        const { return problem; }
 
   // offsets and sizes
@@ -141,7 +138,6 @@ private:
 
   Mesh& mesh;                 // grid / mesh
   Problem& problem;           // continuous GDOP
-  Collocation& collocation;   // collocation data
   NLPState evaluation_state;  // simple state to check which callbacks are performed for an iteration
 
   // scaling
@@ -177,7 +173,7 @@ private:
 
   /* scaling factors for lagrange terms in augmented Hessian callback -
    * absorb "b[i][j] * delta_t[i]" in Lagrange term */
-  FixedField<f64, 2> lagrange_obj_factors; // = sigma_f * collocation.b[mesh.intervals[i]][mesh.nodes[j]] * mesh.delta_t[i]
+  FixedField<f64, 2> lagrange_obj_factors; // = sigma_f * fLGR::b(mesh.intervals[i], mesh.nodes[j]) * mesh.delta_t[i]
 
   /* transformed dual variables passed to the callbacks - absorb "-deltaT[i]" in dynamics only */
   FixedVector<f64> transformed_lambda; // = lambda_NLP[i][j] * (- mesh.deltaT[i])

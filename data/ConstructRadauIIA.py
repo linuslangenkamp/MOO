@@ -207,8 +207,39 @@ def generate(s, dps=150):
         D1[i][i] = -sum(D1[i][j] for j in range(s + 1) if j != i)
     return c, c0, b, D1, weights0, weights
 
+# ------------------------------------------------------------------------
+# Access pattern for the flattened Radau constant arrays in C
+#
+# Assume:
+#   - `scheme` is the number of collocation points
+#   - c, c0, b, w, w0, D are all flattened 1D arrays in row-major order
+#
+# Offsets:
+#   offset_linear(scheme)    = (scheme - 1) * scheme / 2                    for arrays of size 'scheme'
+#   offset_linear0(scheme)   = scheme * (scheme + 1) / 2                    for arrays of size 'scheme + 1'
+#   offset_quadratic(scheme) = scheme * (scheme + 1) * (2 * scheme + 1) / 6 for (scheme + 1) x (scheme + 1) D-matrix
+#
+# Access pattern:
+#   c[scheme][i]     → c[offset_linear(scheme) + i]        (i = 0 .. scheme - 1)
+#   c0[scheme][i]    → c0[offset_linear0(scheme) + i]      (i = 0 .. scheme)
+#   b[scheme][i]     → b[offset_linear(scheme) + i]        (i = 0 .. scheme - 1)
+#   w[scheme][i]     → w[offset_linear(scheme) + i]        (i = 0 .. scheme - 1)
+#   w0[scheme][i]    → w0[offset_linear0(scheme) + i]      (i = 0 .. scheme)
+#   D[scheme][i][j]  → D[offset_quadratic(scheme) + i * (scheme + 1) + j]  (i, j = 0 .. scheme)
+# ------------------------------------------------------------------------
 
-clist, c0list, blist, Dlist, w0list, wlist = [], [], [], [], [], []
+# ------------------------------------------------------------------------
+# Why c0, w0, D start with zero entries:
+#   We initialize c0list, w0list, and Dlist with zero-padding at index 0:
+#     c0list = [[0.0]], w0list = [[0.0]], Dlist = [[[0.0]]]
+#   This ensures that:
+#     - offset_linear0(1) = 1 and accesses c0[1] at correct flat offset
+#     - offset_quadratic(1) = 1 gives correct start for D[1]
+#   In other words, by padding these arrays, we align scheme indices with their offsets
+#   and make indexing cleaner and consistent starting from scheme = 1.
+#   Otherwise we would need an additional -1 when indexing.
+# ------------------------------------------------------------------------
+clist, c0list, blist, Dlist, w0list, wlist = [], [[mpf(0.0)]], [], [[[mpf(0.0)]]], [[mpf(0.0)]], []
 
 for m in range(1, 101):
     startTime = time.time()

@@ -224,9 +224,9 @@ Additionally, time-invariant box constraints are included, which can also be int
 The problem is discretized using a **Radau IIA collocation scheme** of arbitrary order (1–199) with 1-100 stages.
 The collocation scheme can differ from interval to interval. It is therefore possible to implement a hp-adaptive pseudospectral mesh refinement algorithm.
 
-The `Mesh` and `Collocation` objects are fundamental to this discretization:
+The `Mesh` and `fLGR` objects are fundamental to this discretization:
 
-* **`Collocation`**: Defines the properties of the collocation method itself, such as the type (Radau IIA) and potentially the collocation points and weights.
+* **`fLGR`**: Defines the properties of the collocation method itself, such as the type (Radau IIA) and potentially the collocation points and weights.
 
 * **`Mesh`**: Defines the structure of the time horizon, dividing it into intervals and specifying the number of collocation stages within each interval. The `hp-adaptive` capability implies that the order of the collocation polynomial (stages) and the number/length of intervals can be dynamically adjusted during the optimization process to improve efficiency and accuracy.
 
@@ -251,7 +251,7 @@ To define a specific GDOP, you will need to implement concrete classes derived f
 
    * Fixed initial (`x0_fixed`) and final (`xf_fixed`) state components.
 
-   * References to the `Mesh` and `Collocation` objects, which define the discretization of the problem.
+   * References to the `Mesh` and `fLGR` objects, which define the discretization of the problem.
 
 2. **`FullSweep` (Abstract Base Class)**:
    This class represents the "full sweep" of the dynamic optimization problem, encompassing
@@ -391,7 +391,7 @@ The callbacks expect the following mathematical quantities to be computed and wr
 
 ### 3.4. GDOP-Specific NLP Implementation (`GDOP::GDOP`)
 
-The `GDOP::GDOP` class is the concrete implementation of the abstract `NLP::NLP` interface for a General Dynamic Optimization Problem. It acts as the bridge between the problem's continuous-time formulation (discretized by `Mesh` and `Collocation`) and the generic NLP solver.
+The `GDOP::GDOP` class is the concrete implementation of the abstract `NLP::NLP` interface for a General Dynamic Optimization Problem. It acts as the bridge between the problem's continuous-time formulation (discretized by `Mesh` and `fLGR`) and the generic NLP solver.
 
 `GDOP::GDOP` inherits from `NLP::NLP` and implements all the pure virtual methods defined in the `NLP` interface. Its primary responsibility is to translate the requests from the NLP solver (e.g., "give me the objective value at this point") into calls to the user-defined `GDOP::FullSweep` and `GDOP::BoundarySweep` methods, aggregating the results across all collocation points and intervals to form the complete NLP objective, constraints, and derivatives.
 
@@ -428,7 +428,7 @@ These offsets are crucial for `GDOP::GDOP` to correctly interpret and populate t
   This method populates the NLP variable and constraint bounds. It maps the `problem.pc`'s `x_bounds`, `u_bounds`, `p_bounds`, `g_bounds`, and `r_bounds` to the flattened NLP bounds. Special handling is included for fixed initial (`x0_fixed`) and final (`xf_fixed`) states, where their bounds are set to the fixed values.
 
 * **`get_initial_guess(...)`**:
-  This method provides an initial guess for the NLP variables and duals. It utilizes an internal `std::unique_ptr<PrimalDualTrajectory> initial_guess`. If the `initial_guess` is not compatible with the current `Mesh` and `Collocation`, it is automatically interpolated to match the current discretization. The primal variables are flattened into `x_init`, and the costates (dual variables) and duals for bounds are transformed and flattened into `lambda_init`, `z_lb_init`, and `z_ub_init`.
+  This method provides an initial guess for the NLP variables and duals. It utilizes an internal `std::unique_ptr<PrimalDualTrajectory> initial_guess`. If the `initial_guess` is not compatible with the current `Mesh` and `fLGR`, it is automatically interpolated to match the current discretization. The primal variables are flattened into `x_init`, and the costates (dual variables) and duals for bounds are transformed and flattened into `lambda_init`, `z_lb_init`, and `z_ub_init`.
 
 * **`get_nnz(int& nnz_jac, int& nnz_hes)`**:
   This method calculates the total number of non-zero elements in the NLP Jacobian and Hessian. It calls `init_jacobian_nonzeros` and `init_hessian_nonzeros` internally, which analyze the sparsity patterns defined in `GDOP::Problem`'s `FullSweep` and `BoundarySweep` components and aggregate them across the mesh.
@@ -587,7 +587,7 @@ Each strategy interface defines a specific operation:
 
   * **Purpose**: Creates an initial guess for variables on a *new, refined mesh*, typically by interpolating a previously found optimal solution from an older mesh. This is crucial for warm-starting the NLP solver during mesh refinement.
 
-  * **`operator()(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory)`**: Returns a `std::unique_ptr<PrimalDualTrajectory>`.
+  * **`operator()(const Mesh& old_mesh, const Mesh& new_mesh, const fLGR& collocation, const PrimalDualTrajectory& trajectory)`**: Returns a `std::unique_ptr<PrimalDualTrajectory>`.
 
   * **Example Implementations**: `InterpolationRefinedInitialization` (uses an `Interpolation` strategy to create the refined guess).
 
@@ -613,15 +613,15 @@ Each strategy interface defines a specific operation:
 
   * **`reset(const GDOP& gdop)`**: Resets any internal state of the refinement strategy (e.g., iteration counters).
 
-  * **`operator()(const Mesh& mesh, const Collocation& collocation, const PrimalDualTrajectory& trajectory)`**: Returns a `std::unique_ptr<MeshUpdate>` (a structure describing the proposed mesh changes) or `nullptr` if no refinement is needed.
+  * **`operator()(const Mesh& mesh, const fLGR& collocation, const PrimalDualTrajectory& trajectory)`**: Returns a `std::unique_ptr<MeshUpdate>` (a structure describing the proposed mesh changes) or `nullptr` if no refinement is needed.
 
-  * **Example Implementations**: `NoMeshRefinement` (no refinement), `L2BoundaryNorm` (h-method: [Adaptively Refined Mesh for Collocation-Based Dynamic Optimization](https://www.researchgate.net/publication/390454809_Adaptively_Refined_Mesh_for_Collocation-Based_Dynamic_Optimization)).
+  * **Example Implementations**: `NoMeshRefinement` (no refinement), `L2BoundaryNorm` (h-method: [Adaptively Refined Mesh for fLGR-Based Dynamic Optimization](https://www.researchgate.net/publication/390454809_Adaptively_Refined_Mesh_for_Collocation-Based_Dynamic_Optimization)).
 
 * **`Interpolation`**:
 
   * **Purpose**: Interpolates a trajectory (e.g., states or controls) from one mesh to another. Used by `RefinedInitialization` and potentially other strategies.
 
-  * **`operator()(const Mesh& old_mesh, const Mesh& new_mesh, const Collocation& collocation, const std::vector<f64>& values)`**: Returns a `std::vector<f64>` of interpolated values.
+  * **`operator()(const Mesh& old_mesh, const Mesh& new_mesh, const fLGR& collocation, const std::vector<f64>& values)`**: Returns a `std::vector<f64>` of interpolated values.
 
   * **Example Implementations**: `LinearInterpolation`, `PolynomialInterpolation` (uses collocation scheme for higher-order interpolation).
 

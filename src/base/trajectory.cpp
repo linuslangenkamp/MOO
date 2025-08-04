@@ -1,26 +1,26 @@
 #include "trajectory.h"
 
-bool Trajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
+bool Trajectory::compatible_with_mesh(const Mesh& mesh) const {
     // check size of time vector: expect mesh.node_count + 1 (t = 0.0 included)
     return check_time_compatibility(t, {x, u}, mesh);
 }
 
-Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
+Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
-            return interpolate_onto_mesh_linear(mesh, collocation);
+            return interpolate_onto_mesh_linear(mesh);
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
 }
 
-Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
+Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh) const {
     Trajectory new_traj;
 
     std::vector<f64> new_t = {0.0};
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
+            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * fLGR::get_c(mesh.nodes[i], j);
             new_t.push_back(new_time);
         }
     }
@@ -34,14 +34,13 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Coll
 }
 
 Trajectory Trajectory::interpolate_polynomial_from_mesh_onto_grid(const Mesh& mesh,
-                                                                  const Collocation& collocation,
                                                                   const std::vector<f64>& time_grid)
 {
     Trajectory new_traj;
 
     new_traj.t = time_grid;
-    new_traj.x = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, collocation, x, time_grid);
-    new_traj.u = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, collocation, u, time_grid);
+    new_traj.x = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, x, time_grid);
+    new_traj.u = interpolate_polynomial_from_mesh_onto_grid_multiple(mesh, u, time_grid);
     new_traj.p = p;
 
     return new_traj;
@@ -221,27 +220,27 @@ void ControlTrajectory::interpolate_at(f64 t_query, f64* interpolation_values) c
 
 // === Dual Trajectory ===
 
-bool CostateTrajectory::compatible_with_mesh(const Mesh& mesh, const Collocation& collocation) const {
+bool CostateTrajectory::compatible_with_mesh(const Mesh& mesh) const {
     // For duals, time grid has no t=0. So expect mesh.node_count entries (not +1)
     return check_time_compatibility(t, {costates_f, costates_g}, mesh);
 }
 
-CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh, const Collocation& collocation) const {
+CostateTrajectory CostateTrajectory::interpolate_onto_mesh(const Mesh& mesh) const {
     switch (interpolation) {
         case InterpolationMethod::LINEAR:
-            return interpolate_onto_mesh_linear(mesh, collocation);
+            return interpolate_onto_mesh_linear(mesh);
         default:
             throw std::runtime_error("Unknown interpolation method!");
     }
 }
 
-CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& mesh, const Collocation& collocation) const {
+CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& mesh) const {
     CostateTrajectory new_dual;
 
     std::vector<f64> new_t;
     for (int i = 0; i < mesh.intervals; i++) {
         for (int j = 0; j < mesh.nodes[i]; j++) {
-            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * collocation.c[mesh.nodes[i]][j];
+            f64 new_time = mesh.grid[i] + mesh.delta_t[i] * fLGR::get_c(mesh.nodes[i], j);
             new_t.push_back(new_time);
         }
     }
@@ -304,7 +303,6 @@ bool check_time_compatibility(
 
 // interpolate trajectory to new mesh with collocation scheme - polynomial interpolation
 std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(const Mesh& mesh,
-                                                                   const Collocation& collocation,
                                                                    const std::vector<f64>& values,
                                                                    const std::vector<f64>& time_grid) {
     std::vector<f64> new_values(time_grid.size());
@@ -322,14 +320,14 @@ std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(const Mesh& m
             curr_mesh_interval++;
         }
 
-        const int stride            = 1;
-        const int mesh_p_order      = mesh.nodes[curr_mesh_interval];
-        const f64* values_i         = values.data() + offset;
+        const int stride       = 1;
+        const int mesh_p_order = mesh.nodes[curr_mesh_interval];
+        const f64* values_i    = values.data() + offset;
 
         f64 t_start = mesh.grid[curr_mesh_interval];
         f64 t_end   = mesh.grid[curr_mesh_interval + 1];
 
-        new_values[k] = collocation.interpolate(
+        new_values[k] = fLGR::interpolate(
             mesh_p_order, true, values_i, stride,
             t_start, t_end, t_query
         );
@@ -339,13 +337,12 @@ std::vector<f64> interpolate_polynomial_from_mesh_onto_grid_single(const Mesh& m
 }
 
 std::vector<std::vector<f64>> interpolate_polynomial_from_mesh_onto_grid_multiple(const Mesh& mesh,
-                                                                                  const Collocation& collocation,
                                                                                   const std::vector<std::vector<f64>>& values,
                                                                                   const std::vector<f64>& time_grid)
 {
     std::vector<std::vector<f64>> out(values.size());
     for (size_t i = 0; i < values.size(); i++) {
-        out[i] = interpolate_polynomial_from_mesh_onto_grid_single(mesh, collocation, values[i], time_grid);
+        out[i] = interpolate_polynomial_from_mesh_onto_grid_single(mesh, values[i], time_grid);
     }
     return out;
 }
