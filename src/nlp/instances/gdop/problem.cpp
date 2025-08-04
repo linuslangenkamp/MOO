@@ -36,71 +36,93 @@ void FullSweepBuffers::resize(const Mesh& mesh) {
     aug_hes = FixedVector<f64>(mesh.node_count * aug_hes_size);
 }
 
-// TODO: replace all c-style marked by -Wold-style-cast
-
-// TODO: fix these
-/*
 void FullSweep::print_jacobian_sparsity_pattern() {
-    std::cout << "\n=== LFG Jacobian Sparsity ===\n================================\n";
-    for (size_t i = 0; i < lfg.size(); ++i) {
-        std::cout << "FunctionLFG[" << i << "] - ";
-        if (pc.has_lagrange && i == 0) {
-            std::cout << "L - Lagrange term:\n";
-        } else if (i >= static_cast<size_t>(pc.f_index_start) && i < static_cast<size_t>(pc.f_index_end)) {
-            std::cout << "f[" << (i - pc.f_index_start) << "] - Dynamic Equation:\n";
-        } else if (i >= static_cast<size_t>(pc.g_index_start) && i < static_cast<size_t>(pc.g_index_end)) {
-            std::cout << "g[" << (i - pc.g_index_start) << "] - Path Constraint:\n";
-        } 
+    FixedTableFormat<4> table_format = {{18, 15, 16, 14}, {Align::Center, Align::Center, Align::Center, Align::Center}};
 
-        std::cout << "  dx sparsity pattern:\n";
-        for (const auto& entry : lfg[i].jac.dx) {
-            std::cout << "    x_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+    LOG_START_MODULE(table_format, "FullSweep (LFG) - Jacobian Sparsity");
+    LOG_HEADER(table_format, "Function", "Variable Type", "Variable Index", "Buffer Index");
+    LOG_DASHES(table_format);
+
+    if (layout.L) {
+        for (const auto& entry : layout.L->jac.dx) {
+            LOG_ROW(table_format, "Lagrange - L", "dx", entry.col, entry.buf_index);
         }
-
-        std::cout << "  du sparsity pattern:\n";
-        for (const auto& entry : lfg[i].jac.du) {
-            std::cout << "    u_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+        for (const auto& entry : layout.L->jac.du) {
+            LOG_ROW(table_format, "Lagrange - L", "du", entry.col, entry.buf_index);
         }
-
-        std::cout << "  dp sparsity pattern:\n";
-        for (const auto& entry : lfg[i].jac.dp) {
-            std::cout << "    p_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+        for (const auto& entry : layout.L->jac.dp) {
+            LOG_ROW(table_format, "Lagrange - L", "dp", entry.col, entry.buf_index);
         }
-
-        std::cout << "-----------------------------\n";
+        LOG_DASHES(table_format);
     }
-    std::cout << "================================\n";
-}*/
-/*
-void BoundarySweep::print_jacobian_sparsity_pattern() {
-    std::cout << "\n=== MR Jacobian Sparsity ===\n================================\n";
-    for (size_t i = 0; i < mr.size(); ++i) {
-        std::cout << "FunctionMR[" << i << "] - ";
-        if (pc.has_mayer && i == 0) {
-            std::cout << "M - Mayer term:\n";
-        } else if (i >= static_cast<size_t>(pc.r_index_start) && i < static_cast<size_t>(pc.r_index_end)) {
-            std::cout << "r[" << (i - pc.r_index_start) << "] - Boundary Constraint:\n";
-        } else {
-            std::cout << "(unknown):\n";
-        }
 
-        std::cout << "  dx0 sparsity pattern:\n";
-        for (const auto& entry : mr[i].jac.dx0) {
-            std::cout << "    x0_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
-        }
+    for (size_t f = 0; f < layout.f.size(); f++) {
+        const auto& current_f = layout.f[f];
 
-        std::cout << "  dxf sparsity pattern:\n";
-        for (const auto& entry : mr[i].jac.dxf) {
-            std::cout << "    xf_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+        for (const auto& entry : current_f.jac.dx) {
+            LOG_ROW(table_format, fmt::format("Dynamic - f[{}]", f), "dx", entry.col, entry.buf_index);
         }
-
-        std::cout << "  dp sparsity pattern:\n";
-        for (const auto& entry : mr[i].jac.dp) {
-            std::cout << "    p_idx = " << entry.col << " (jac_buf_index = " << entry.buf_index << ")\n";
+        for (const auto& entry : current_f.jac.du) {
+            LOG_ROW(table_format, fmt::format("Dynamic - f[{}]", f), "du", entry.col, entry.buf_index);
         }
-        std::cout << "-----------------------------\n";
+        for (const auto& entry : current_f.jac.dp) {
+            LOG_ROW(table_format, fmt::format("Dynamic - f[{}]", f), "dp", entry.col, entry.buf_index);
+        }
+        LOG_DASHES(table_format);
     }
-    std::cout << "================================\n";
+
+    for (size_t g = 0; g < layout.g.size(); g++) {
+        const auto& current_g = layout.g[g];
+
+        for (const auto& entry : current_g.jac.dx) {
+            LOG_ROW(table_format, fmt::format("Path - g[{}]", g), "dx", entry.col, entry.buf_index);
+        }
+        for (const auto& entry : current_g.jac.du) {
+            LOG_ROW(table_format, fmt::format("Path - g[{}]", g), "du", entry.col, entry.buf_index);
+        }
+        for (const auto& entry : current_g.jac.dp) {
+            LOG_ROW(table_format, fmt::format("Path - g[{}]", g), "dp", entry.col, entry.buf_index);
+        }
+        LOG_DASHES(table_format);
+    }
+    LOG("");
 }
-*/
+
+void BoundarySweep::print_jacobian_sparsity_pattern() {
+    FixedTableFormat<4> table_format = {{18, 15, 16, 14}, {Align::Center, Align::Center, Align::Center, Align::Center}};
+
+    LOG_START_MODULE(table_format, "BoundarySweep (MR) - Jacobian Sparsity");
+    LOG_HEADER(table_format, "Function", "Variable Type", "Variable Index", "Buffer Index");
+    LOG_DASHES(table_format);
+
+    if (layout.M) {
+        for (const auto& entry : layout.M->jac.dx0) {
+            LOG_ROW(table_format, "Mayer - M", "dx0", entry.col, entry.buf_index);
+        }
+        for (const auto& entry : layout.M->jac.dxf) {
+            LOG_ROW(table_format, "Mayer - M", "dxf", entry.col, entry.buf_index);
+        }
+        for (const auto& entry : layout.M->jac.dp) {
+            LOG_ROW(table_format, "Mayer - M", "dp", entry.col, entry.buf_index);
+        }
+        LOG_DASHES(table_format);
+    }
+
+    for (size_t r = 0; r < layout.r.size(); r++) {
+        const auto& current_r = layout.r[r];
+
+        for (const auto& entry : current_r.jac.dx0) {
+            LOG_ROW(table_format, fmt::format("Boundary - r[{}]", r), "dx0", entry.col, entry.buf_index);
+        }
+        for (const auto& entry : current_r.jac.dxf) {
+            LOG_ROW(table_format, fmt::format("Boundary - r[{}]", r), "dxf", entry.col, entry.buf_index);
+        }
+        for (const auto& entry : current_r.jac.dp) {
+            LOG_ROW(table_format, fmt::format("Boundary - r[{}]", r), "dp", entry.col, entry.buf_index);
+        }
+        LOG_DASHES(table_format);
+    }
+    LOG("");
+}
+
 } // namespace GDOP

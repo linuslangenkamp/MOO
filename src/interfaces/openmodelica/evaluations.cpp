@@ -2,72 +2,72 @@
 
 namespace OpenModelica {
 
-void init_eval(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr) {
-    init_eval_lfg(info, lfg);
-    init_eval_mr(info, mr);
+void init_eval(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundarySweepLayout& layout_mr) {
+    init_eval_lfg(info, layout_lfg);
+    init_eval_mr(info, layout_mr);
 }
 
 /* just enumerate them in order: L -> f -> g. The correct placement will be handled in eval */
-void init_eval_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
+void init_eval_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg) {
     int buf_index = 0;
 
-    if (lfg.L) {
-        lfg.L->buf_index = buf_index++;
+    if (layout_lfg.L) {
+        layout_lfg.L->buf_index = buf_index++;
     }
 
-    for (auto& f : lfg.f) {
+    for (auto& f : layout_lfg.f) {
         f.buf_index = buf_index++;
     }
 
-    for (auto& g : lfg.g) {
+    for (auto& g : layout_lfg.g) {
         g.buf_index = buf_index++;
     }
 }
 
 /* just enumerate them in order: M -> r. The correct placement will be handled in eval */
-void init_eval_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
+void init_eval_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
     int buf_index = 0;
 
-    if (mr.M) {
-        mr.M->buf_index = buf_index++;
+    if (layout_mr.M) {
+        layout_mr.M->buf_index = buf_index++;
     }
 
-    for (auto& r : mr.r) {
+    for (auto& r : layout_mr.r) {
         r.buf_index = buf_index++;
     }
 }
 
-void init_jac(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr) {
-    init_jac_lfg(info, lfg);
-    init_jac_mr(info, mr);
+void init_jac(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundarySweepLayout& layout_mr) {
+    init_jac_lfg(info, layout_lfg);
+    init_jac_mr(info, layout_mr);
 }
 
 // return reference to FunctionLFG
 // OpenModelica orders its B Jacobian as [f1, ..., f_n, ?maybe L?, g_1, ..., g_m]
 // so we return the specific function based on which row is given from the OpenModelica format
-FunctionLFG& access_fLg_from_row(GDOP::FullSweepLayout& lfg, int row) {
-    int f_size = lfg.f.int_size();
-    int L_size = lfg.L ? 1 : 0;
+FunctionLFG& access_fLg_from_row(GDOP::FullSweepLayout& layout_lfg, int row) {
+    int f_size = layout_lfg.f.int_size();
+    int L_size = layout_lfg.L ? 1 : 0;
 
     if (row < f_size) {
-        return lfg.f[row];
+        return layout_lfg.f[row];
     }
-    else if (lfg.L && row == f_size) {
-        return *lfg.L;
+    else if (layout_lfg.L && row == f_size) {
+        return *layout_lfg.L;
     }
     else {
-        return lfg.g[row - f_size - L_size];
+        return layout_lfg.g[row - f_size - L_size];
     }
 }
 
 // rows are sorted as fLg (as in OpenModelica)
-void init_jac_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
+void init_jac_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg) {
     /* full B Jacobian */
     for (int nz = 0; nz < info.exc_jac->B_coo.nnz; nz++) {
         int row = info.exc_jac->B_coo.row[nz];                       // OpenModelica B matrix row
         int col = info.exc_jac->B_coo.col[nz];                       // OpenModelica B matrix col
         int csc_buffer_entry_B = info.exc_jac->B_coo.coo_to_csc(nz); // OpenModelica B matrix CSC buffer index
-        FunctionLFG& fn = access_fLg_from_row(lfg, row);             // get function corresponding to the OM row
+        FunctionLFG& fn = access_fLg_from_row(layout_lfg, row);             // get function corresponding to the OM row
         if (col < info.x_size) {
             fn.jac.dx.push_back(JacobianSparsity{col, csc_buffer_entry_B});
         }
@@ -80,11 +80,11 @@ void init_jac_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
     }
 }
 
-void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
+void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
     /* M (first row) in C(COO) Jacobian */
     int nz_C = 0;
     if (info.mayer_exists) {
-        assert(mr.M);
+        assert(layout_mr.M);
 
         while (info.exc_jac->C_coo.row[nz_C] == 0) {
             int col = info.exc_jac->C_coo.col[nz_C];
@@ -92,11 +92,11 @@ void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
             /* for now only final states: xf! no parameters, no dx0 */
             if (col < info.x_size) {
                 /* just point to nz_C, since for 1 row, CSC == COO */
-                mr.M->jac.dxf.push_back(JacobianSparsity{col, nz_C});
+                layout_mr.M->jac.dxf.push_back(JacobianSparsity{col, nz_C});
             }
             else if (col < info.xu_size) {
                 /* just point to nz_C, since for 1 row, CSC == COO */
-                mr.M->jac.duf.push_back(JacobianSparsity{col - info.x_size, nz_C});
+                layout_mr.M->jac.duf.push_back(JacobianSparsity{col - info.x_size, nz_C});
             }
 
             nz_C++;
@@ -108,7 +108,7 @@ void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
         int row = info.exc_jac->D_coo.row[nz_D];
         int col = info.exc_jac->D_coo.col[nz_D];
         int csc_buffer_entry_D = info.exc_jac->D_coo.coo_to_csc(nz_D); // jac_buffer == OpenModelica D CSC buffer!
-        auto& fn = mr.r[row];
+        auto& fn = layout_mr.r[row];
         if (col < info.x_size) {
             /* add the Mayer offset, since the values f64* is [M, r] */
             // Attention: this offset only works if D contains just r!!
@@ -120,14 +120,14 @@ void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
     }
 }
 
-void init_hes(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr) {
-    init_hes_lfg(info, lfg);
-    init_hes_mr(info, mr);
+void init_hes(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundarySweepLayout& layout_mr) {
+    init_hes_lfg(info, layout_lfg);
+    init_hes_mr(info, layout_mr);
 }
 
-void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
+void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg) {
     /* TODO: PARAMETERS include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
-    auto& aug_hes = lfg.aug_hes;
+    auto& aug_hes = layout_lfg.aug_hes;
 
     HESSIAN_PATTERN* hes_b = info.exc_hes->B;
 
@@ -147,8 +147,8 @@ void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg) {
     }
 }
 
-void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
-    auto& aug_hes_mr = mr.aug_hes;
+void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
+    auto& aug_hes_mr = layout_mr.aug_hes;
 
     HESSIAN_PATTERN* hes_c = info.exc_hes->C;
     HESSIAN_PATTERN* hes_d = info.exc_hes->D;
@@ -157,9 +157,9 @@ void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr) {
     std::vector<HessianSparsity> M_sparsities;
     std::vector<int> M_cols;
     if (info.mayer_exists) {
-        assert(mr.M);
+        assert(layout_mr.M);
 
-        auto& mayer_term = *mr.M;
+        auto& mayer_term = *layout_mr.M;
 
         // ignore x0 and p for now
         for (auto& M_dxf : mayer_term.jac.dxf) M_cols.push_back(M_dxf.col);

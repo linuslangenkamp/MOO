@@ -9,10 +9,10 @@
 
 namespace OpenModelica {
 
-FullSweep_OM::FullSweep_OM(GDOP::FullSweepLayout&& lfg,
+FullSweep_OM::FullSweep_OM(GDOP::FullSweepLayout&& layout_lfg,
                            const GDOP::ProblemConstants& pc,
                            InfoGDOP& info)
-    : FullSweep(std::move(lfg), pc), info(info) {
+    : FullSweep(std::move(layout_lfg), pc), info(info) {
 }
 void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
@@ -90,10 +90,10 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
     }
 }
 
-BoundarySweep_OM::BoundarySweep_OM(GDOP::BoundarySweepLayout&& mr,
+BoundarySweep_OM::BoundarySweep_OM(GDOP::BoundarySweepLayout&& layout_mr,
                                    const GDOP::ProblemConstants& pc,
                                    InfoGDOP& info)
-    : BoundarySweep(std::move(mr), pc), info(info) {}
+    : BoundarySweep(std::move(layout_mr), pc), info(info) {}
 
 void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     set_parameters(info, p);
@@ -245,13 +245,13 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
     info.exc_hes = std::make_unique<ExchangeHessians>(info);
 
     /* create blocks (contains sparse patterns and mapping to buffer indices) */
-    GDOP::BoundarySweepLayout mr(info.mayer_exists, info.r_size);
-    GDOP::FullSweepLayout lfg(info.lagrange_exists, info.f_size, info.g_size);
+    GDOP::BoundarySweepLayout layout_mr(info.mayer_exists, info.r_size);
+    GDOP::FullSweepLayout layout_lfg(info.lagrange_exists, info.f_size, info.g_size);
 
-    /* fill lfg and mr objects with COO sparsity patterns */
-    init_eval(info, lfg, mr);
-    init_jac(info, lfg, mr);
-    init_hes(info, lfg, mr);
+    /* fill layout_lfg and layout_mr objects with COO sparsity patterns */
+    init_eval(info, layout_lfg, layout_mr);
+    init_jac(info, layout_lfg, layout_mr);
+    init_hes(info, layout_lfg, layout_mr);
 
     auto pc = std::make_unique<GDOP::ProblemConstants>(
         info.mayer_exists,
@@ -267,8 +267,11 @@ GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh, Collocation& collocation) 
         collocation
     );
 
-    auto fs = std::make_unique<FullSweep_OM>(std::move(lfg), *pc, info);
-    auto bs = std::make_unique<BoundarySweep_OM>(std::move(mr), *pc, info);
+    auto fs = std::make_unique<FullSweep_OM>(std::move(layout_lfg), *pc, info);
+    auto bs = std::make_unique<BoundarySweep_OM>(std::move(layout_mr), *pc, info);
+
+    fs->print_jacobian_sparsity_pattern();
+    bs->print_jacobian_sparsity_pattern();
 
     return GDOP::Problem(std::move(fs), std::move(bs),std::move(pc));
 }

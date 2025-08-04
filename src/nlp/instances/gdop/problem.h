@@ -7,6 +7,7 @@
 
 #include <base/nlp_structs.h>
 #include <base/mesh.h>
+#include <base/log.h>
 
 namespace GDOP {
 
@@ -78,16 +79,15 @@ struct ProblemConstants {
     {}
 };
 
-// ================== Continuous, Dynamic - Lfg Block ==================
+// ================== Continuous, Dynamic - Lfg Layout ==================
 
 struct FullSweepLayout {
     std::unique_ptr<FunctionLFG> L; // Lagrange Term
     FixedVector<FunctionLFG> f;     // Dynamic Equations
     FixedVector<FunctionLFG> g;     // Path Constraints
 
-    // augmented Hessian structures (excluding parameters / parameters only)
-    AugmentedHessianLFG aug_hes;
-    AugmentedParameterHessian aug_pp_hes;
+    AugmentedHessianLFG aug_hes;          // augmented Hessian (excluding parameters)
+    AugmentedParameterHessian aug_pp_hes; // augmented Hessian (parameters only)
 
     FullSweepLayout(bool lagrange_exists,
                     int size_f,
@@ -119,11 +119,11 @@ struct FullSweepBuffers {
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
     FixedVector<f64> aug_pp_hes; // make it like array<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
-    FullSweepBuffers(FullSweepLayout& lfg,
+    FullSweepBuffers(FullSweepLayout& layout_lfg,
                      AugmentedHessianLFG& aug_hes,
                      const ProblemConstants& pc) :
-        eval_size(lfg.size()),
-        jac_size(lfg.compute_jac_nnz()),
+        eval_size(layout_lfg.size()),
+        jac_size(layout_lfg.compute_jac_nnz()),
         aug_hes_size(aug_hes.nnz())
     {
         resize(pc.mesh);
@@ -136,16 +136,16 @@ class FullSweep {
     friend class Problem;
 
 public:
-    FullSweep(FullSweepLayout&& lfg_in,
+    FullSweep(FullSweepLayout&& layout_in,
               const ProblemConstants& pc_in)
-    : lfg(std::move(lfg_in)),
+    : layout(std::move(layout_in)),
       pc(pc_in),
-      buffers(lfg, lfg.aug_hes, pc) {}
+      buffers(layout, layout.aug_hes, pc) {}
 
     virtual ~FullSweep() = default;
 
     // eval + jacobian structure (includes sparsity + mapping to buffer indices - location to write to)
-    FullSweepLayout lfg;
+    FullSweepLayout layout;
 
     // stores all the relevant constants such as dimensions, bounds, offsets, mesh and collocation
     const ProblemConstants& pc;
@@ -215,11 +215,11 @@ struct BoundarySweepBuffers {
     FixedVector<f64> jac;
     FixedVector<f64> aug_hes;
 
-    BoundarySweepBuffers(BoundarySweepLayout& mr,
+    BoundarySweepBuffers(BoundarySweepLayout& layout,
                          AugmentedHessianMR& aug_hes,
                          const ProblemConstants& pc)
-    : eval(FixedVector<f64>(mr.size())),
-      jac(FixedVector<f64>(mr.compute_jac_nnz())),
+    : eval(FixedVector<f64>(layout.size())),
+      jac(FixedVector<f64>(layout.compute_jac_nnz())),
       aug_hes(FixedVector<f64>(aug_hes.nnz())) {}
 };
 
@@ -227,16 +227,16 @@ class BoundarySweep {
     friend class Problem;
 
 public:
-    BoundarySweep(BoundarySweepLayout&& mr_in,
+    BoundarySweep(BoundarySweepLayout&& layout_in,
                   const ProblemConstants& pc_in)
-    : mr(std::move(mr_in)),
+    : layout(std::move(layout_in)),
       pc(pc_in),
-      buffers(mr, mr.aug_hes, pc) {}
+      buffers(layout, layout.aug_hes, pc) {}
 
     virtual ~BoundarySweep() = default;
 
     // eval + Jacobian + augmented Hessian (includes sparsity + mapping to buffer indices - location to write to)
-    BoundarySweepLayout mr;
+    BoundarySweepLayout layout;
 
     // stores all the relevant constants such as dimensions, bounds, offsets, mesh and collocation
     const ProblemConstants& pc;
@@ -287,16 +287,16 @@ public:
     //              in nearly all other calculations with indices these are not that large
 
     inline f64 lfg_eval_L(int interval_i, int node_j) {
-        assert(full->pc.has_lagrange && full->lfg.L);
-        return full->buffers.eval[full->lfg.L->buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        assert(full->pc.has_lagrange && full->layout.L);
+        return full->buffers.eval[full->layout.L->buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_eval_f(int f_index, int interval_i, int node_j) {
-        return full->buffers.eval[full->lfg.f[f_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.eval[full->layout.f[f_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_eval_g(int g_index, int interval_i, int node_j) {
-        return full->buffers.eval[full->lfg.g[g_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.eval[full->layout.g[g_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_jac(int jac_buf_base_index, int interval_i, int node_j) {
@@ -313,12 +313,12 @@ public:
     }
 
     inline f64 mr_eval_M() {
-        assert(boundary->pc.has_mayer && boundary->mr.M);
-        return boundary->buffers.eval[boundary->mr.M->buf_index];
+        assert(boundary->pc.has_mayer && boundary->layout.M);
+        return boundary->buffers.eval[boundary->layout.M->buf_index];
     }
 
     inline f64 mr_eval_r(int r_index) {
-        return boundary->buffers.eval[boundary->mr.r[r_index].buf_index];
+        return boundary->buffers.eval[boundary->layout.r[r_index].buf_index];
     }
 
     inline f64 mr_jac(int jac_buf_base_index) {

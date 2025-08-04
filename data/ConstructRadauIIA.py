@@ -10,10 +10,9 @@ def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
         # c
         outStr = "{"
         for c in clist:
-            outStr += "{"
             for i in range(len(c)):
                 outStr += str(c[i]) + ","
-            outStr = outStr[:-1] + "},\n"
+            outStr += "\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -21,10 +20,9 @@ def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
     with open("radauConstantsC0.txt", "w") as f:
         outStr = "{"
         for c0 in c0list:
-            outStr += "{"
             for i in range(len(c0)):
                 outStr += str(c0[i]) + ","
-            outStr = outStr[:-1] + "},\n"
+            outStr += "\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -32,10 +30,9 @@ def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
     with open("radauConstantsB.txt", "w") as f:
         outStr = "{"
         for b in blist:
-            outStr += "{"
             for i in range(len(b)):
                 outStr += str(b[i]) + ","
-            outStr = outStr[:-1] + "},\n"
+            outStr += "\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -43,13 +40,11 @@ def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
     with open("radauConstantsD.txt", "w") as f:
         outStr = "{"
         for D1 in Dlist:
-            outStr += "{"
             for i in range(len(D1)):
-                outStr += "{"
                 for j in range(len(D1[0])):
                     outStr += str(D1[i][j]) + ","
-                outStr = outStr[:-1] + "},\n"
-            outStr = outStr[:-2] + "},\n"
+                outStr += "\n"
+            outStr += "\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -57,10 +52,9 @@ def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
     with open("radauConstantsW0.txt", "w") as f:
         outStr = "{"
         for w0 in w0list:
-            outStr += "{"
             for i in range(len(w0)):
                 outStr += str(w0[i]) + ","
-            outStr = outStr[:-1] + "},\n"
+            outStr += "\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -68,10 +62,9 @@ def genCppCode(clist, c0list, blist, Dlist, w0list, wlist, dps=250, mindps=40):
     with open("radauConstantsW.txt", "w") as f:
         outStr = "{"
         for w in wlist:
-            outStr += "{"
             for i in range(len(w)):
                 outStr += str(w[i]) + ","
-            outStr = outStr[:-1] + "},\n"
+            outStr += "\n"
         outStr = outStr[:-2] + "}\n"
         f.write(outStr)
 
@@ -217,7 +210,7 @@ def generate(s, dps=150):
 
 clist, c0list, blist, Dlist, w0list, wlist = [], [], [], [], [], []
 
-for m in range(2, 101):
+for m in range(1, 101):
     startTime = time.time()
     c, c0, b, D, w0, w = generate(m, 200)
     clist.append(c)

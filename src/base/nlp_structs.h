@@ -30,7 +30,7 @@ struct HessianSparsity {
 // used for Lagrange term (L), dynamic (F), path (G) in GDOP
 
 struct JacobianLFG {
-    // coordinate format jacobian for LFGH functions
+    // coordinate format jacobian for LFG functions
     std::vector<JacobianSparsity> dx;
     std::vector<JacobianSparsity> du;
     std::vector<JacobianSparsity> dp;

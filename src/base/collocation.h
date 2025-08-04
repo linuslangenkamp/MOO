@@ -6,6 +6,8 @@
 #include "util.h"
 #include "linalg.h"
 
+// TODO: use flat compile const arrays for these
+
 struct Collocation {
 
     // nodes, i.e. [c1, c2, ..., cm]

@@ -17,19 +17,19 @@ namespace OpenModelica {
 // => maybe allocate an additional buffer for the realVars + parameters and memcpy them inside the evaluation again
 
 /* init evaluations */
-void init_eval(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr);
-void init_eval_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg);
-void init_eval_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr);
+void init_eval(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundarySweepLayout& layout_mr);
+void init_eval_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg);
+void init_eval_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr);
 
 /* init Jacobians  */
-void init_jac(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr);
-void init_jac_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg);
-void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr);
+void init_jac(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundarySweepLayout& layout_mr);
+void init_jac_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg);
+void init_jac_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr);
 
 /* init Hessians */
-void init_hes(InfoGDOP& info, GDOP::FullSweepLayout& lfg, GDOP::BoundarySweepLayout& mr);
-void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& lfg);
-void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& mr);
+void init_hes(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundarySweepLayout& layout_mr);
+void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg);
+void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr);
 
 /* set values in OM realVars array / time value */
 void set_parameters(InfoGDOP& info, const f64* p);

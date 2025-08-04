@@ -58,27 +58,28 @@ option(WITH_FMT "Build and link with 'fmt' library" TRUE)
 if(WITH_FMT)
   message(STATUS "Library 'fmt' will be built from source and linked (WITH_FMT=TRUE)")
   target_compile_definitions(moo PRIVATE WITH_FMT)
-else()
-  message(STATUS "Library 'fmt' is disabled (WITH_FMT=FALSE)")
-endif()
 
-if(WITH_FMT)
-  ExternalProject_Add(fmt-ext
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG 11.2.0
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${THIRD_PARTY_INSTALL_PREFIX}
-                -DFMT_DOC=OFF
-                -DFMT_TEST=OFF
-                -DFMT_FUZZ=OFF
-                -DFMT_INSTALL=ON
-                -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-                -DBUILD_SHARED_LIBS=OFF
-    EXCLUDE_FROM_ALL TRUE
-  )
-endif()
+  # Check if the library has already been built and installed
+  if(NOT EXISTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libfmt.a)
+    message(STATUS "fmt library not found. Defining ExternalProject to build it.")
+    ExternalProject_Add(fmt-ext
+      GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+      GIT_TAG 11.2.0
+      CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${THIRD_PARTY_INSTALL_PREFIX}
+                  -DFMT_DOC=OFF
+                  -DFMT_TEST=OFF
+                  -DFMT_FUZZ=OFF
+                  -DFMT_INSTALL=ON
+                  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                  -DBUILD_SHARED_LIBS=OFF
+      EXCLUDE_FROM_ALL TRUE
+      BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libfmt.a
+    )
+    #add_dependencies(moo fmt-ext)
+  else()
+    message(STATUS "fmt library found. Skipping ExternalProject build.")
+  endif()
 
-if(WITH_FMT)
-  #add_dependencies(moo fmt-ext)
   target_include_directories(moo PRIVATE
     ${THIRD_PARTY_INSTALL_PREFIX}/include
   )
@@ -87,6 +88,7 @@ if(WITH_FMT)
   )
   target_link_libraries(moo PRIVATE fmt)
 endif()
+
 
 ###### END FMT
 
