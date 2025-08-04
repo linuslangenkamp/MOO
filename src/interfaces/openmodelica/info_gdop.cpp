@@ -74,6 +74,15 @@ void InfoGDOP::set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings) {
     }
 }
 
+void InfoGDOP::set_user_solver() {
+    for(int solver = 1; solver < S_MAX; solver++) {
+        if(std::string(SOLVER_METHOD_NAME[solver]) == omc_flagValue[FLAG_S]) {
+            user_ode_solver = static_cast<SOLVER_METHOD>(solver);
+            return;
+        }
+    }
+}
+
 ExchangeJacobians::ExchangeJacobians(InfoGDOP& info) :
     /* set OpenModelica Jacobian ptrs, allocate memory, initilization of A, B, C, D */
     A(&(info.data->simulationInfo->analyticJacobians[info.data->callback->INDEX_JAC_A])),

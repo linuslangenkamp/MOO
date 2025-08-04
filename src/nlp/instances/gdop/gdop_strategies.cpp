@@ -375,7 +375,7 @@ void L2BoundaryNorm::reset(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
     max_phase_one_iterations = 3;
-    max_phase_two_iterations = 15;
+    max_phase_two_iterations = 5;
 
     // on-interval
     mesh_lambda    = 0.0;

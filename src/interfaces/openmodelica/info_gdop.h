@@ -67,10 +67,13 @@ struct InfoGDOP {
     int intervals;        // model interval count
     int stages;           // stage count
 
+    SOLVER_METHOD user_ode_solver = S_GBODE;
+
     InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv);
 
     void set_omc_flags(NLP::NLPSolverSettings& nlp_solver_settings);
     void set_time_horizon(int steps);
+    void set_user_solver();
 };
 
 // TODO: Refactor Jacobian and Hessians in A, B, C, D structures
