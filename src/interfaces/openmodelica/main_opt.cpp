@@ -35,11 +35,11 @@ int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* t
 
     nlp_solver_settings.print();
     auto mesh = Mesh::create_equidistant_fixed_stages(info.tf, info.intervals, info.stages);
-    auto problem = create_gdop(info, mesh);
+    auto problem = create_gdop(info, *mesh);
 
     // auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());
-    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info, info.user_ode_solver));
-    auto gdop = GDOP::GDOP(problem, mesh);
+    auto strategies = std::make_unique<GDOP::Strategies>(default_strategies(info));
+    auto gdop = GDOP::GDOP(problem);
 
     IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_settings);
 

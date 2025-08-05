@@ -125,9 +125,9 @@ std::vector<f64> LinearInterpolation::operator()(
 // TODO: reduce overhead in interpolation + copies, etc. if necessary, make this without aux allocation of new_t and old_t
 // interpolate trajectory to new mesh with simple linear interpolation
 InterpolationRefinedInitialization::InterpolationRefinedInitialization(std::shared_ptr<Interpolation> interpolation_,
-                                                                                     bool interpolate_primals_,
-                                                                                     bool interpolate_costates_constraints_,
-                                                                                     bool interpolate_costates_bounds_)
+                                                                       bool interpolate_primals_,
+                                                                       bool interpolate_costates_constraints_,
+                                                                       bool interpolate_costates_bounds_)
     : interpolation(interpolation_),
       interpolate_primals(interpolate_primals_),
       interpolate_costates_constraints(interpolate_costates_constraints_),
@@ -169,6 +169,8 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
         for (size_t p_index = 0; p_index < old_primals->p.size(); p_index++) {
             new_primals->p[p_index] = old_primals->p[p_index];
         }
+
+        new_primals->inducing_mesh = new_mesh.shared_from_this();
     }
 
     // === interpolation of duals / costates onto new_mesh ===
@@ -196,6 +198,8 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
         for (size_t r_index = 0; r_index < old_costates->costates_r.size(); r_index++) {
             new_costates->costates_r[r_index] = old_costates->costates_r[r_index];
         }
+
+        new_costates->inducing_mesh = new_mesh.shared_from_this();
     }
 
     // === interpolation of primal variables onto new_mesh ===
@@ -226,6 +230,8 @@ std::unique_ptr<PrimalDualTrajectory> InterpolationRefinedInitialization::operat
             }
 
             new_dual.p = old_dual.p;
+
+            new_dual.inducing_mesh = new_mesh.shared_from_this();
         }
 
     }

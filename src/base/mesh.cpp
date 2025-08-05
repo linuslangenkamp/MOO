@@ -8,7 +8,7 @@
  * @param stages     Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages) {
+std::shared_ptr<const Mesh> Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages) {
     FixedVector<f64> grid(intervals + 1);
     FixedVector<f64> delta_t(intervals);
     FixedVector<int> nodes(intervals);
@@ -30,53 +30,63 @@ Mesh Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages) {
         }
     }
     int node_count = stages * intervals;
-    return Mesh{intervals, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count};
+    return std::shared_ptr<const Mesh>(
+        new Mesh(
+            intervals,
+            tf,
+            std::move(grid),
+            std::move(delta_t),
+            std::move(t),
+            std::move(nodes),
+            std::move(acc_nodes),
+            node_count
+        )
+    );
 }
 
-Mesh::Mesh(std::unique_ptr<MeshUpdate> mesh_update)
-    : grid(std::move(mesh_update->new_grid)),
-      nodes(std::move(mesh_update->new_nodes_per_interval))
-{
-    intervals = nodes.int_size();
-    tf = grid.back();
+std::shared_ptr<const Mesh> Mesh::create_from_mesh_update(std::unique_ptr<MeshUpdate> mesh_update) {
+    FixedVector<f64> grid = std::move(mesh_update->new_grid);
+    FixedVector<int> nodes = std::move(mesh_update->new_nodes_per_interval);
 
-    // compute delta_t
-    delta_t = FixedVector<f64>(intervals);
+    int intervals = nodes.int_size();
+    f64 tf = grid.back();
+
+    FixedVector<f64> delta_t(intervals);
     for (int i = 0; i < intervals; i++) {
         delta_t[i] = grid[i + 1] - grid[i];
     }
 
-    // compute node_count
-    node_count = std::accumulate(nodes.begin(), nodes.end(), 0);
+    int node_count = std::accumulate(nodes.begin(), nodes.end(), 0);
 
-    // allocate t and acc_nodes
-    t = FixedField<f64, 2>(intervals);
-    acc_nodes = FixedField<int, 2>(intervals);
+    FixedField<f64, 2> t(intervals);
+    FixedField<int, 2> acc_nodes(intervals);
 
     int global_index = 0;
-    for (int i = 0; i < intervals; i++) {
+    for (int i = 0; i < intervals; ++i) {
         int p = nodes[i];
         f64 h = delta_t[i];
 
         t[i] = FixedVector<f64>(p);
         acc_nodes[i] = FixedVector<int>(p);
 
-        for (int j = 0; j < p; j++) {
+        for (int j = 0; j < p; ++j) {
             t[i][j] = grid[i] + h * fLGR::get_c(p, j);
             acc_nodes[i][j] = global_index++;
         }
     }
-}
 
-void Mesh::move_from(Mesh&& other) {
-    intervals = other.intervals;
-    tf = other.tf;
-    grid = std::move(other.grid);
-    delta_t = std::move(other.delta_t);
-    t = std::move(other.t);
-    nodes = std::move(other.nodes);
-    acc_nodes = std::move(other.acc_nodes);
-    node_count = other.node_count;
+    return std::shared_ptr<const Mesh>(
+        new Mesh(
+            intervals,
+            tf,
+            std::move(grid),
+            std::move(delta_t),
+            std::move(t),
+            std::move(nodes),
+            std::move(acc_nodes),
+            node_count
+        )
+    );
 }
 
 std::vector<f64> Mesh::get_flat_t() const {

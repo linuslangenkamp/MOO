@@ -21,7 +21,7 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh) const {
     new_traj.x = interpolate_linear_multiple(t, x, new_t);
     new_traj.u = interpolate_linear_multiple(t, u, new_t);
     new_traj.p = p;
-    new_traj.inducing_mesh = &mesh;
+    new_traj.inducing_mesh = mesh.shared_from_this();
 
     return new_traj;
 }
@@ -29,7 +29,7 @@ Trajectory Trajectory::interpolate_onto_mesh_linear(const Mesh& mesh) const {
 Trajectory Trajectory::interpolate_onto_mesh_polynomial(const Mesh& mesh) const {
     std::vector<f64> mesh_grid = mesh.get_flat_t();
     auto new_traj = interpolate_polynomial_onto_grid(mesh_grid);
-    new_traj.inducing_mesh = &mesh;
+    new_traj.inducing_mesh = mesh.shared_from_this();
 
     return new_traj;
 }
@@ -298,7 +298,7 @@ CostateTrajectory CostateTrajectory::interpolate_onto_mesh_linear(const Mesh& me
     new_dual.costates_f = interpolate_linear_multiple(t, costates_f, new_t);
     new_dual.costates_g = interpolate_linear_multiple(t, costates_g, new_t);
     new_dual.costates_r = costates_r;
-    new_dual.inducing_mesh = &mesh;
+    new_dual.inducing_mesh = mesh.shared_from_this();
 
     return new_dual;
 }
@@ -307,7 +307,7 @@ CostateTrajectory CostateTrajectory::interpolate_onto_mesh_polynomial(const Mesh
     std::vector<f64> new_t = mesh.get_flat_t();
 
     auto new_dual = interpolate_polynomial_onto_grid(new_t);
-    new_dual.inducing_mesh = &mesh;
+    new_dual.inducing_mesh = mesh.shared_from_this();
 
     return new_dual;
 }

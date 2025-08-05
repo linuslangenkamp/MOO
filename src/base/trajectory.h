@@ -5,7 +5,6 @@
 #include "mesh.h"
 #include "linalg.h"
 #include "fLGR.h"
-#include "observer.h"
 
 enum class InterpolationMethod {
     LINEAR = 0,
@@ -18,7 +17,7 @@ struct ControlTrajectory {
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     // optional mesh observer (nullptr if not set)
-    Observer<Mesh> inducing_mesh = nullptr;
+    std::shared_ptr<const Mesh> inducing_mesh = nullptr;
 
     // for repeated interpolation, cache last index in this->t or last mesh interval
     mutable size_t last_t_index = 0;
@@ -39,14 +38,14 @@ struct Trajectory {
     InterpolationMethod interpolation = InterpolationMethod::LINEAR;
 
     // optional mesh observer (nullptr if not set)
-    Observer<Mesh> inducing_mesh = nullptr;
+    std::shared_ptr<const Mesh> inducing_mesh = nullptr;
 
     Trajectory() = default;
 
     Trajectory(std::vector<f64> t, std::vector<std::vector<f64>> x, std::vector<std::vector<f64>> u,
                std::vector<f64> p, InterpolationMethod interpolation = InterpolationMethod::LINEAR,
                const Mesh* inducing_mesh = nullptr)
-        : t(t), x(x), u(u), p(p), interpolation(interpolation), inducing_mesh(inducing_mesh) {}
+        : t(t), x(x), u(u), p(p), interpolation(interpolation), inducing_mesh(inducing_mesh ? inducing_mesh->shared_from_this() : nullptr) {}
 
     Trajectory(const Trajectory& other)
         : t(other.t),
@@ -88,7 +87,7 @@ struct CostateTrajectory {
     InterpolationMethod interpolation;
 
     // optional mesh observer (nullptr if not set)
-    Observer<Mesh> inducing_mesh = nullptr;
+    std::shared_ptr<const Mesh> inducing_mesh = nullptr;
 
     CostateTrajectory() = default;
 
@@ -100,7 +99,7 @@ struct CostateTrajectory {
           costates_g(costates_g),
           costates_r(costates_r),
           interpolation(interpolation),
-          inducing_mesh(inducing_mesh) {}
+          inducing_mesh(inducing_mesh ? inducing_mesh->shared_from_this() : nullptr) {}
 
     CostateTrajectory(const CostateTrajectory& other)
         : t(other.t),
@@ -176,7 +175,7 @@ std::vector<std::vector<f64>> interpolate_linear_multiple(
     const std::vector<std::vector<f64>>& values,
     const std::vector<f64>& new_t);
 
-// @deprecated not in use anymore by "Observer<Mesh> inducing_mesh" members
+// only used for asserts / by "observer_ptr<Mesh> inducing_mesh" members
 bool check_time_compatibility(
     const std::vector<f64>& t_vec,
     const std::vector<std::vector<std::vector<f64>>>& fields_to_check,

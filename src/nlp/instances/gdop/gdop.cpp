@@ -4,20 +4,20 @@
 
 namespace GDOP {
 
-void GDOP::update(Mesh&& new_mesh) {
-    // update mesh from rvalue
-    mesh.move_from(std::move(new_mesh));
+void GDOP::update(std::shared_ptr<const Mesh> new_mesh) {
+    // update mesh
+    mesh = new_mesh;
 
-    // update the callback buffers with the new mesh sizes
-    problem.resize_buffers(mesh);
+    // set the new mesh and update the callback buffers with new sizes
+    problem.update_mesh(new_mesh);
 }
 
 void GDOP::create_acc_offset_xu(int off_x, int off_xu) {
-    off_acc_xu = FixedField<int, 2>(mesh.intervals);
+    off_acc_xu = FixedField<int, 2>(mesh->intervals);
     int off = off_x;
-    for (int i = 0; i < mesh.intervals; i++) {
-        off_acc_xu[i] = FixedVector<int>(mesh.nodes[i]);
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        off_acc_xu[i] = FixedVector<int>(mesh->nodes[i]);
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             off_acc_xu[i][j] = off;
             off += off_xu;
         }
@@ -25,11 +25,11 @@ void GDOP::create_acc_offset_xu(int off_x, int off_xu) {
 }
 
 void GDOP::create_acc_offset_fg(int off_fg) {
-    off_acc_fg = FixedField<int, 2>(mesh.acc_nodes.size());
-    for (int i = 0; i < mesh.intervals; i++) {
-        off_acc_fg[i] = FixedVector<int>(mesh.acc_nodes[i]);
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            off_acc_fg[i][j] = mesh.acc_nodes[i][j] * off_fg;
+    off_acc_fg = FixedField<int, 2>(mesh->acc_nodes.size());
+    for (int i = 0; i < mesh->intervals; i++) {
+        off_acc_fg[i] = FixedVector<int>(mesh->acc_nodes[i]);
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            off_acc_fg[i][j] = mesh->acc_nodes[i][j] * off_fg;
         }
     }
 }
@@ -48,7 +48,7 @@ void GDOP::get_sizes(
     off_xu_total = off_last_xu + off_xu;                           // first parameter
     number_vars = off_xu_total + problem.pc->p_size;
     create_acc_offset_fg(problem.pc->fg_size);                   // constraint f_ij offset
-    off_fg_total = mesh.node_count * problem.pc->fg_size;        // constraint r_0 offset
+    off_fg_total = mesh->node_count * problem.pc->fg_size;        // constraint r_0 offset
     number_constraints = problem.pc->r_size + off_fg_total;
 }
 
@@ -78,9 +78,9 @@ void GDOP::get_bounds(
         x_ub[x_index] = problem.pc->x0_fixed[x_index] ? *problem.pc->x0_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
     }
 
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            if (i == mesh.intervals - 1 && j == mesh.nodes[i] - 1) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            if (i == mesh->intervals - 1 && j == mesh->nodes[i] - 1) {
                 for (int x_index = 0; x_index < off_x; x_index++) {
                     x_lb[off_acc_xu[i][j] + x_index] = problem.pc->xf_fixed[x_index] ? *problem.pc->xf_fixed[x_index] : problem.pc->x_bounds[x_index].lb;
                     x_ub[off_acc_xu[i][j] + x_index] = problem.pc->xf_fixed[x_index] ? *problem.pc->xf_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
@@ -105,8 +105,8 @@ void GDOP::get_bounds(
     }
 
     // standard constraint bounds
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
                 g_lb[off_acc_fg[i][j] + f_index] = 0;
                 g_ub[off_acc_fg[i][j] + f_index] = 0;
@@ -144,10 +144,12 @@ void GDOP::get_initial_guess(
     auto& initial_guess_upper_costates = initial_guess->upper_costates;
 
     if (initial_guess_primal) {
-        // interpolate to mesh if not compatible
-        if (initial_guess_primal->inducing_mesh.get() != &mesh) {
-            initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(mesh));
+        // check compatibility
+        if (initial_guess_primal->inducing_mesh.get() != mesh.get()) {
+            initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(*mesh));
         }
+        assert(check_time_compatibility(initial_guess_primal->t, {initial_guess_primal->x, initial_guess_primal->u}, *mesh)); // debug only
+
         flatten_trajectory_to_layout(*initial_guess_primal, x_init);
     }
     else {
@@ -155,11 +157,15 @@ void GDOP::get_initial_guess(
     }
 
     if (initial_guess_costate) {
-        // assume mesh is compatible, we dont do that again, as it should be covered in primal case
+        // check compatibility
+        if (initial_guess_costate->inducing_mesh.get() != mesh.get()) {
+            initial_guess_costate = std::make_unique<CostateTrajectory>(initial_guess_costate->interpolate_onto_mesh(*mesh));
+        }
+        assert(check_time_compatibility(initial_guess_costate->t, {initial_guess_costate->costates_f, initial_guess_costate->costates_g}, *mesh)); // debug only
 
         int index = 1; // ignore interpolated costates at t = 0
-        for (int i = 0; i < mesh.intervals; i++) {
-            for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int i = 0; i < mesh->intervals; i++) {
+            for (int j = 0; j < mesh->nodes[i]; j++) {
                 for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
                     lambda_init[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
                 }
@@ -177,7 +183,18 @@ void GDOP::get_initial_guess(
     }
 
     if (initial_guess_lower_costates && initial_guess_upper_costates) {
-        // assume mesh is compatible, we dont do that again, as it should be covered in primal case
+        // check compatibility
+        if (initial_guess_lower_costates->inducing_mesh.get() != mesh.get()) {
+            initial_guess_lower_costates = std::make_unique<Trajectory>(initial_guess_lower_costates->interpolate_onto_mesh(*mesh));
+        }
+
+        if (initial_guess_upper_costates->inducing_mesh.get() != mesh.get()) {
+            initial_guess_upper_costates = std::make_unique<Trajectory>(initial_guess_upper_costates->interpolate_onto_mesh(*mesh));
+        }
+
+        assert(check_time_compatibility(initial_guess_lower_costates->t, {initial_guess_lower_costates->x, initial_guess_lower_costates->u}, *mesh));
+        assert(check_time_compatibility(initial_guess_lower_costates->t, {initial_guess_lower_costates->x, initial_guess_lower_costates->u}, *mesh));
+
         flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb_init);
         flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub_init);
 
@@ -206,9 +223,9 @@ void GDOP::init_jacobian_nonzeros(int& nnz_jac) {
     }
 
     // nnz of block i can be calculated as m_i * ((m_i + 2) * #f + #g - coll(df_i, dx_i)), where m_i is the number of nodes on that interval
-    off_acc_jac_fg = FixedVector<int>(mesh.intervals + 1);
-    for (int i = 0; i < mesh.intervals; i++) {
-        off_acc_jac_fg[i+1] = off_acc_jac_fg[i] + mesh.nodes[i] * ((mesh.nodes[i] + 1) * off_x + nnz_f + nnz_g - diagonal_collisions);
+    off_acc_jac_fg = FixedVector<int>(mesh->intervals + 1);
+    for (int i = 0; i < mesh->intervals; i++) {
+        off_acc_jac_fg[i+1] = off_acc_jac_fg[i] + mesh->nodes[i] * ((mesh->nodes[i] + 1) * off_x + nnz_f + nnz_g - diagonal_collisions);
     }
 
     for (int r_index = 0; r_index < problem.pc->r_size; r_index++) {
@@ -268,7 +285,7 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     H.insert_sparsity(full_aug_pp_hes.dp_dp,        0,     0);
 
     // calculate nnz from block sparsity
-    nnz_hes = (B.size() + F.size()) * (mesh.node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
+    nnz_hes = (B.size() + F.size()) * (mesh->node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
 }
 
 // === overload ===
@@ -286,16 +303,16 @@ void GDOP::get_jac_sparsity(
     FixedVector<int>& j_col_jac)
 {
     // calculate the sparsity pattern i_row_jac, j_col_jac and the constant differentiation matrix part der_jac
-    for (int i = 0; i < mesh.intervals; i++) {
+    for (int i = 0; i < mesh->intervals; i++) {
         int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
                 int eqn_index = off_acc_fg[i][j] + f_index;
 
                 // dColl / dx for x_{i-1, m_{i-1}} base point states (k = -1, prev state)
                 i_row_jac[nnz_index]     = eqn_index;
-                j_col_jac[nnz_index]     = (i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]) + f_index;
-                const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, 0);
+                j_col_jac[nnz_index]     = (i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]) + f_index;
+                const_der_jac[nnz_index] = fLGR::get_D(mesh->nodes[i], j + 1, 0);
                 nnz_index++;
 
                 // dColl / dx for x_{i, j} collocation point states up to the collision
@@ -303,7 +320,7 @@ void GDOP::get_jac_sparsity(
                 for (int k = 0; k < j; k++) {
                     i_row_jac[nnz_index]     = eqn_index;
                     j_col_jac[nnz_index]     = off_acc_xu[i][k] + f_index;
-                    const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, k + 1);
+                    const_der_jac[nnz_index] = fLGR::get_D(mesh->nodes[i], j + 1, k + 1);
                     nnz_index++;
                 }
 
@@ -316,7 +333,7 @@ void GDOP::get_jac_sparsity(
                         // case for collocation block
                         i_row_jac[nnz_index]     = eqn_index;
                         j_col_jac[nnz_index]     = off_acc_xu[i][j] + f_index; // here df_dx and f_index collide!! (could also be written with dx_dx = f_index), which is nz element of the derivaitve matrix part
-                        const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, j + 1);
+                        const_der_jac[nnz_index] = fLGR::get_D(mesh->nodes[i], j + 1, j + 1);
 
                         // handle the diagonal collision of the diagonal jacobian block
                         // this means the derivative matrix linear combinations x_ik have k == j and df_k / dx_k != 0
@@ -344,10 +361,10 @@ void GDOP::get_jac_sparsity(
 
                 // dColl / dx for x_{i, j} collocation point states after the collision / diagonal block in block jacobian
                 // this means the derivative matrix linear combinations x_ik have k > j
-                for (int k = j + 1; k < mesh.nodes[i]; k++) {
+                for (int k = j + 1; k < mesh->nodes[i]; k++) {
                     i_row_jac[nnz_index]     = eqn_index;
                     j_col_jac[nnz_index]     = off_acc_xu[i][k] + f_index;
-                    const_der_jac[nnz_index] = fLGR::get_D(mesh.nodes[i], j + 1, k + 1);
+                    const_der_jac[nnz_index] = fLGR::get_D(mesh->nodes[i], j + 1, k + 1);
                     nnz_index++;
                 }
 
@@ -431,9 +448,9 @@ void GDOP::get_hes_sparsity(
 
     // 1. get memory for Lagrange object factors
     if (problem.pc->has_lagrange) {
-        lagrange_obj_factors = FixedField<f64, 2>(mesh.intervals);
-        for (int i = 0; i < mesh.intervals; i++) {
-            lagrange_obj_factors[i] = FixedVector<f64>(mesh.nodes[i]);
+        lagrange_obj_factors = FixedField<f64, 2>(mesh->intervals);
+        for (int i = 0; i < mesh->intervals; i++) {
+            lagrange_obj_factors[i] = FixedVector<f64>(mesh->nodes[i]);
         }
     }
 
@@ -461,11 +478,11 @@ void GDOP::get_hes_sparsity(
     hes_b.off_prev = hes_a.nnz;  // set size of A block as offset
 
     // init B hessian pattern O(node_count * nnz(L_{xu, xu} ∪ f_{xu, xu} ∪ g_{xu, xu})) - expensive, parallel execution should be possible
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            if (!(i == mesh.intervals - 1 && j == mesh.nodes[mesh.intervals - 1] - 1)) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
                 for (auto [row, col] : B.set) {
-                    int xu_hes_index = hes_b.access(row, col, mesh.acc_nodes[i][j]);
+                    int xu_hes_index = hes_b.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -473,7 +490,7 @@ void GDOP::get_hes_sparsity(
         }
     }
 
-    hes_nnz_counter += block_b_nnz * (mesh.node_count - 1);
+    hes_nnz_counter += block_b_nnz * (mesh->node_count - 1);
 
     // C, D: exact with row dependence
     int c_index = 0;
@@ -520,7 +537,7 @@ void GDOP::get_hes_sparsity(
         }
         /* F_{p_index, :} size -> offset for next F blocks */
         hes_f.row_size[p_index] = row_f_nnz;
-        hes_nnz_counter += (mesh.node_count - 1) * row_f_nnz;
+        hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
 
         while (g_index < G_flat.int_size() && G_flat[g_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first; // p
@@ -538,11 +555,11 @@ void GDOP::get_hes_sparsity(
     }
 
     // init F hessian pattern O(node_count * nnz(L_{p, xu} ∪ f_{p, xu} ∪ g_{p, xu})) - expensive, parallel execution should be possible
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
-            if (!(i == mesh.intervals - 1 && j == mesh.nodes[mesh.intervals - 1] - 1)) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
+            if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
                 for (auto& [row, col] : F.set) {
-                    int xu_hes_index = hes_f.access(row, col, mesh.acc_nodes[i][j]);
+                    int xu_hes_index = hes_f.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_xu_total + row;     // p
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -692,11 +709,11 @@ void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
 void GDOP::update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
     transformed_lambda = curr_lambda; // copy curr_lambda
 
-    for (int i = 0; i < mesh.intervals; i++) {
-        f64 delta_t = mesh.delta_t[i];
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        f64 delta_t = mesh->delta_t[i];
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             if (problem.pc->has_lagrange) {
-                lagrange_obj_factors[i][j] = curr_sigma_f * fLGR::get_b(mesh.nodes[i], j) * delta_t;
+                lagrange_obj_factors[i][j] = curr_sigma_f * fLGR::get_b(mesh->nodes[i], j) * delta_t;
             }
             for (int f = 0; f < problem.pc->f_size; f++) {
                 transformed_lambda[off_acc_fg[i][j] + f] *= -delta_t;
@@ -721,9 +738,9 @@ void GDOP::eval_f_internal(f64& curr_obj) {
 
     f64 lagrange = 0;
     if (problem.pc->has_lagrange) {
-        for (int i = 0; i < mesh.intervals; i++) {
-            for (int j = 0; j < mesh.nodes[i]; j++) {
-                lagrange += mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_eval_L(i, j);
+        for (int i = 0; i < mesh->intervals; i++) {
+            for (int j = 0; j < mesh->nodes[i]; j++) {
+                lagrange += mesh->delta_t[i] * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_eval_L(i, j);
             }
         }
     }
@@ -734,16 +751,16 @@ void GDOP::eval_f_internal(f64& curr_obj) {
 void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
     curr_grad.fill_zero();
     if (problem.pc->has_lagrange) {
-        for (int i = 0; i < mesh.intervals; i++) {
-            for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int i = 0; i < mesh->intervals; i++) {
+            for (int j = 0; j < mesh->nodes[i]; j++) {
                 for (auto& dL_dx : problem.full->layout.L->jac.dx) {
-                    curr_grad[off_acc_xu[i][j] + dL_dx.col] = mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_jac(dL_dx.buf_index, i, j);
+                    curr_grad[off_acc_xu[i][j] + dL_dx.col] = mesh->delta_t[i] * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_jac(dL_dx.buf_index, i, j);
                 }
                 for (auto& dL_du : problem.full->layout.L->jac.du) {
-                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.col] = mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_jac(dL_du.buf_index, i, j);
+                    curr_grad[off_acc_xu[i][j] + off_x + dL_du.col] = mesh->delta_t[i] * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_jac(dL_du.buf_index, i, j);
                 }
                 for (auto& dL_dp : problem.full->layout.L->jac.dp) {
-                    curr_grad[off_xu_total + dL_dp.col] += mesh.delta_t[i] * fLGR::get_b(mesh.nodes[i], j) * problem.lfg_jac(dL_dp.buf_index, i, j);
+                    curr_grad[off_xu_total + dL_dp.col] += mesh->delta_t[i] * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_jac(dL_dp.buf_index, i, j);
                 }
             }
         }
@@ -766,14 +783,14 @@ void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
 
 void GDOP::eval_g_internal(const FixedVector<f64>& curr_x, FixedVector<f64>& curr_g) {
     curr_g.fill_zero();
-    for (int i = 0; i < mesh.intervals; i++) {
-        fLGR::diff_matrix_multiply_block_strided(mesh.nodes[i], off_x, off_xu, problem.pc->fg_size,
-                                                       &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh.nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
+    for (int i = 0; i < mesh->intervals; i++) {
+        fLGR::diff_matrix_multiply_block_strided(mesh->nodes[i], off_x, off_xu, problem.pc->fg_size,
+                                                       &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
                                                        &curr_x[off_acc_xu[i][0]],                                       // collocation point states
                                                        &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
-                curr_g[off_acc_fg[i][j] + f_index] -= mesh.delta_t[i] * problem.lfg_eval_f(f_index, i, j);
+                curr_g[off_acc_fg[i][j] + f_index] -= mesh->delta_t[i] * problem.lfg_eval_f(f_index, i, j);
             }
             for (int g_index = 0; g_index < problem.pc->g_size; g_index++) {
                 curr_g[off_acc_fg[i][j] + problem.pc->f_size + g_index] += problem.lfg_eval_g(g_index, i, j);
@@ -789,9 +806,9 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
     // copy constant part into curr_jac
     curr_jac = const_der_jac;
 
-    for (int i = 0; i < mesh.intervals; i++) {
+    for (int i = 0; i < mesh->intervals; i++) {
         int nnz_index = off_acc_jac_fg[i]; // make local var: possible block parallelization
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
                 // offset for all leading diagonal matrix blocks: d_{jk} * I at t_ik with j < k
                 nnz_index += j + 1;
@@ -805,7 +822,7 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
                         // handle the diagonal collision of the diagonal jacobian block
                         // this means the derivative matrix linear combinations x_ik have k == j and df_k / dx_k != 0
                         if (df_dx_counter < int_size(df_dx) && (df_dx)[df_dx_counter].col == x_elem) {
-                            curr_jac[nnz_index] -= mesh.delta_t[i] * problem.lfg_jac((df_dx)[df_dx_counter].buf_index, i, j);
+                            curr_jac[nnz_index] -= mesh->delta_t[i] * problem.lfg_jac((df_dx)[df_dx_counter].buf_index, i, j);
                             df_dx_counter++;
                         }
                         // even if df_k / dx_k == 0 => increment nnz from the collocation block nonzero
@@ -813,22 +830,22 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
                     }
                     else if (df_dx_counter < int_size(df_dx) && (df_dx)[df_dx_counter].col == x_elem){
                         // no collision between collocation block and df / dx
-                        curr_jac[nnz_index++] -= mesh.delta_t[i] * problem.lfg_jac((df_dx)[df_dx_counter].buf_index, i, j);
+                        curr_jac[nnz_index++] -= mesh->delta_t[i] * problem.lfg_jac((df_dx)[df_dx_counter].buf_index, i, j);
                         df_dx_counter++;
                     }
                 }
 
                 // df / du
                 for (auto& df_du : problem.full->layout.f[f_index].jac.du) {
-                    curr_jac[nnz_index++] = -mesh.delta_t[i] * problem.lfg_jac(df_du.buf_index, i, j);
+                    curr_jac[nnz_index++] = -mesh->delta_t[i] * problem.lfg_jac(df_du.buf_index, i, j);
                 }
 
                 // offset for all remaining diagonal matrix blocks: d_{jk} * I at t_ik with k > j
-                 nnz_index += mesh.nodes[i] - j - 1;
+                 nnz_index += mesh->nodes[i] - j - 1;
 
                 // df / dp
                 for (auto& df_dp : problem.full->layout.f[f_index].jac.dp) {
-                    curr_jac[nnz_index++] = -mesh.delta_t[i] * problem.lfg_jac(df_dp.buf_index, i, j);
+                    curr_jac[nnz_index++] = -mesh->delta_t[i] * problem.lfg_jac(df_dp.buf_index, i, j);
                 }
             }
 
@@ -881,14 +898,14 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
 void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
     curr_hes.fill_zero();
 
-    for (int i = 0; i < mesh.intervals; i++) {
+    for (int i = 0; i < mesh->intervals; i++) {
         // insert buffer for parallel execution here / pass the buffer in updateHessian(f64*) calls
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             // make sure to be in the right ptr_map region, B and F are only valid for i,j != n,m
             //                                              D and G are only valid for i,j == n,m
             const BlockSparsity* ptr_map_xu_xu;
             const BlockSparsity* ptr_map_p_xu;
-            if (!(i == mesh.intervals - 1 && j == mesh.nodes[mesh.intervals - 1] - 1)) {
+            if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
                 ptr_map_xu_xu = &hes_b;
                 ptr_map_p_xu  = &hes_f;
             }
@@ -906,7 +923,7 @@ void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
 void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
                                         const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu,
                                         FixedVector<f64>& curr_hes) {
-    const int block_count = mesh.acc_nodes[i][j];
+    const int block_count = mesh->acc_nodes[i][j];
     for (const auto& dx_dx : hes.dx_dx) {
         curr_hes[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += problem.lfg_aug_hes(dx_dx.buf_index, i, j);
     }
@@ -1007,8 +1024,8 @@ void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVecto
     }
 
     int index = 1;
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
                 flat_buffer[off_acc_xu[i][j] + x_index] = trajectory.x[x_index][index];
             }
@@ -1042,27 +1059,27 @@ void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVecto
 std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64>& opt_x) {
     auto optimal_primals = std::make_unique<Trajectory>();
 
-    optimal_primals->t.reserve(mesh.node_count + 1);
+    optimal_primals->t.reserve(mesh->node_count + 1);
     optimal_primals->x.resize(off_x);
     optimal_primals->u.resize(off_u);
-    optimal_primals->inducing_mesh = &mesh;
+    optimal_primals->inducing_mesh = mesh->shared_from_this();
 
-    for (auto& v : optimal_primals->x) { v.reserve(mesh.node_count + 1); }
-    for (auto& v : optimal_primals->u) { v.reserve(mesh.node_count + 1); }
+    for (auto& v : optimal_primals->x) { v.reserve(mesh->node_count + 1); }
+    for (auto& v : optimal_primals->u) { v.reserve(mesh->node_count + 1); }
 
     for (int x_index = 0; x_index < off_x; x_index++) {
         optimal_primals->x[x_index].push_back(opt_x[x_index]);
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        f64 u0 = fLGR::interpolate(mesh.nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 u0 = fLGR::interpolate(mesh->nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh->t[0][0], mesh->grid[1], 0.0);
         optimal_primals->u[u_index].push_back(u0);
     }
 
     optimal_primals->t.push_back(0.0);
 
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int x_index = 0; x_index < off_x; x_index++) {
                 optimal_primals->x[x_index].push_back(opt_x[off_acc_xu[i][j] + x_index]);
             }
@@ -1071,7 +1088,7 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
                 optimal_primals->u[u_index].push_back(opt_x[off_acc_xu[i][j] + off_x + u_index]);
             }
 
-            optimal_primals->t.push_back(mesh.t[i][j]);
+            optimal_primals->t.push_back(mesh->t[i][j]);
         }
     }
 
@@ -1097,16 +1114,16 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
  * @param to_costate A boolean flag. If `true`, transforms NLP duals to costates. If `false`, transforms costates to NLP duals.
  */
 void GDOP::transform_duals_costates(FixedVector<f64>& lambda, bool to_costate) {
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int fg_index = 0; fg_index < problem.pc->fg_size; fg_index++) {
                 if (to_costate) {
                     // NLP dual lambda -> costates lambda
-                    lambda[off_acc_fg[i][j] + fg_index] /= -fLGR::get_b(mesh.nodes[i], j);
+                    lambda[off_acc_fg[i][j] + fg_index] /= -fLGR::get_b(mesh->nodes[i], j);
                 }
                 else {
                     // costates lambda -> NLP dual lambda
-                    lambda[off_acc_fg[i][j] + fg_index] *= -fLGR::get_b(mesh.nodes[i], j);
+                    lambda[off_acc_fg[i][j] + fg_index] *= -fLGR::get_b(mesh->nodes[i], j);
                 }
             }
         }
@@ -1137,32 +1154,32 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
     FixedVector<f64> costates(opt_lambda);
     transform_duals_costates(costates, true);
 
-    optimal_costates->t.reserve(mesh.node_count + 1);
+    optimal_costates->t.reserve(mesh->node_count + 1);
     optimal_costates->costates_f.resize(f_size);
     optimal_costates->costates_g.resize(g_size);
-    optimal_costates->inducing_mesh = &mesh;
+    optimal_costates->inducing_mesh = mesh->shared_from_this();
 
-    for (auto& v : optimal_costates->costates_f) { v.reserve(mesh.node_count + 1); }
-    for (auto& v : optimal_costates->costates_g) { v.reserve(mesh.node_count + 1); }
+    for (auto& v : optimal_costates->costates_f) { v.reserve(mesh->node_count + 1); }
+    for (auto& v : optimal_costates->costates_g) { v.reserve(mesh->node_count + 1); }
 
     // interpolate lambda at t = 0
     const int inp_stride = f_size + g_size;
 
     for (int f_index = 0; f_index < f_size; f_index++) {
-        f64 lambda_f_0 = fLGR::interpolate(mesh.nodes[0], false, &costates[f_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 lambda_f_0 = fLGR::interpolate(mesh->nodes[0], false, &costates[f_index], inp_stride, mesh->t[0][0], mesh->grid[1], 0.0);
         optimal_costates->costates_f[f_index].push_back(lambda_f_0);
     }
 
     for (int g_index = 0; g_index < g_size; g_index++) {
-        f64 lambda_g_0 = fLGR::interpolate(mesh.nodes[0], false, &costates[f_size + g_index], inp_stride, mesh.t[0][0], mesh.grid[1], 0.0);
+        f64 lambda_g_0 = fLGR::interpolate(mesh->nodes[0], false, &costates[f_size + g_index], inp_stride, mesh->t[0][0], mesh->grid[1], 0.0);
         optimal_costates->costates_g[g_index].push_back(lambda_g_0);
     }
 
     optimal_costates->t.push_back(0.0);
 
     // use exact values for the others
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < f_size; f_index++) {
                 optimal_costates->costates_f[f_index].push_back(costates[off_acc_fg[i][j] + f_index]);
             }
@@ -1171,7 +1188,7 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
                 optimal_costates->costates_g[g_index].push_back(costates[off_acc_fg[i][j] + f_size + g_index]);
             }
 
-            optimal_costates->t.push_back(mesh.t[i][j]);
+            optimal_costates->t.push_back(mesh->t[i][j]);
         }
     }
 
@@ -1201,16 +1218,16 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
  * @attention The sign convention for non-ODE costates is not clear right now.
  */
 void GDOP::transform_duals_costates_bounds(FixedVector<f64>& zeta, bool to_costate) {
-    for (int i = 0; i < mesh.intervals; i++) {
-        for (int j = 0; j < mesh.nodes[i]; j++) {
+    for (int i = 0; i < mesh->intervals; i++) {
+        for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int xu_index = 0; xu_index < off_xu; xu_index++) {
                 if (to_costate) {
                     // NLP dual lambda -> costates lambda
-                    zeta[off_acc_xu[i][j] + xu_index] /= -fLGR::get_b(mesh.nodes[i], j);
+                    zeta[off_acc_xu[i][j] + xu_index] /= -fLGR::get_b(mesh->nodes[i], j);
                 }
                 else {
                     // costates lambda -> NLP dual lambda
-                    zeta[off_acc_xu[i][j] + xu_index] *= -fLGR::get_b(mesh.nodes[i], j);
+                    zeta[off_acc_xu[i][j] + xu_index] *= -fLGR::get_b(mesh->nodes[i], j);
                 }
             }
         }
@@ -1261,28 +1278,28 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
         Trajectory& traj         = *bound_trajs[bound_idx];
         FixedVector<f64>& z_dual = *bound_vals[bound_idx];
 
-        traj.t.reserve(mesh.node_count + 1);
+        traj.t.reserve(mesh->node_count + 1);
         traj.x.resize(off_x);
         traj.u.resize(off_u);
         traj.p.reserve(off_p); // TODO: PARAMETERS add parameters to result trajectory
-        traj.inducing_mesh = &mesh;
+        traj.inducing_mesh = mesh->shared_from_this();
 
-        for (auto& v : traj.x) { v.reserve(mesh.node_count + 1); }
-        for (auto& v : traj.u) { v.reserve(mesh.node_count + 1); }
+        for (auto& v : traj.x) { v.reserve(mesh->node_count + 1); }
+        for (auto& v : traj.u) { v.reserve(mesh->node_count + 1); }
 
         for (int x_index = 0; x_index < off_x; x_index++) {
             traj.x[x_index].push_back(z_dual[x_index]);
         }
 
         for (int u_index = 0; u_index < off_u; u_index++) {
-            f64 u0 = fLGR::interpolate(mesh.nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh.t[0][0], mesh.grid[1], 0.0);
+            f64 u0 = fLGR::interpolate(mesh->nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh->t[0][0], mesh->grid[1], 0.0);
             traj.u[u_index].push_back(u0);
         }
 
         traj.t.push_back(0.0);
 
-        for (int i = 0; i < mesh.intervals; i++) {
-            for (int j = 0; j < mesh.nodes[i]; j++) {
+        for (int i = 0; i < mesh->intervals; i++) {
+            for (int j = 0; j < mesh->nodes[i]; j++) {
                 for (int x_index = 0; x_index < off_x; x_index++) {
                     traj.x[x_index].push_back(z_dual[off_acc_xu[i][j] + x_index]);
                 }
@@ -1291,7 +1308,7 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
                     traj.u[u_index].push_back(z_dual[off_acc_xu[i][j] + off_x + u_index]);
                 }
 
-                traj.t.push_back(mesh.t[i][j]);
+                traj.t.push_back(mesh->t[i][j]);
             }
         }
     }

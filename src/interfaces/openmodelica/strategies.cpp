@@ -318,7 +318,7 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
 }
 
 // default strategies for OpenModelica
-GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
+GDOP::Strategies default_strategies(InfoGDOP& info) {
     GDOP::Strategies strategies;
 
     // TODO: do add simulation_tolerance factor here?
@@ -328,7 +328,7 @@ GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver) {
     auto scaling_factory                    = std::make_shared<NominalScalingFactory>(info);
     auto emitter                            = std::make_shared<MatEmitter>(MatEmitter(info));
     auto const_initialization_strategy      = std::make_shared<ConstantInitialization>(ConstantInitialization(info));
-    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, solver));
+    auto simulation_strategy                = std::make_shared<Simulation>(Simulation(info, info.user_ode_solver));
     auto simulation_step_strategy           = std::make_shared<SimulationStep>(SimulationStep(simulation_strategy));
     auto simulation_initialization_strategy = std::make_shared<GDOP::SimulationInitialization>(GDOP::SimulationInitialization(const_initialization_strategy,
                                                                                                                               simulation_strategy));

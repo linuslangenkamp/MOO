@@ -16,13 +16,13 @@ FullSweep_OM::FullSweep_OM(GDOP::FullSweepLayout&& layout_lfg,
 }
 void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
-    for (int i = 0; i < pc.mesh.intervals; i++) {
-        for (int j = 0; j < pc.mesh.nodes[i]; j++) {
+    for (int i = 0; i < pc.mesh->intervals; i++) {
+        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* eval_buf_ij = get_eval_buffer(i, j);
 
             set_states_inputs(info, xu_ij);
-            set_time(info, pc.mesh.t[i][j]);
+            set_time(info, pc.mesh->t[i][j]);
             eval_current_point(info);
             eval_lfg_write(info, eval_buf_ij);
         }
@@ -31,13 +31,13 @@ void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
 
 void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
-    for (int i = 0; i < pc.mesh.intervals; i++) {
-        for (int j = 0; j < pc.mesh.nodes[i]; j++) {
+    for (int i = 0; i < pc.mesh->intervals; i++) {
+        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* jac_buf_ij  = get_jac_buffer(i, j);
 
             set_states_inputs(info, xu_ij);
-            set_time(info, pc.mesh.t[i][j]);
+            set_time(info, pc.mesh->t[i][j]);
             eval_current_point(info);
             /* TODO: check if B matrix does hold additional ders */
             jac_eval_write_as_csc(info, info.exc_jac->B, jac_buf_ij);
@@ -47,15 +47,15 @@ void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
 
 void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
     set_parameters(info, p);
-    for (int i = 0; i < pc.mesh.intervals; i++) {
-        for (int j = 0; j < pc.mesh.nodes[i]; j++) {
+    for (int i = 0; i < pc.mesh->intervals; i++) {
+        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij     = get_xu_ij(xu_nlp, i, j);
             const f64* lambda_ij = get_lambda_ij(lambda, i, j);
             f64* jac_buf_ij      = get_jac_buffer(i, j);
             f64* aug_hes_buf_ij  = get_aug_hes_buffer(i, j);
 
             set_states_inputs(info, xu_ij);
-            set_time(info, pc.mesh.t[i][j]);
+            set_time(info, pc.mesh->t[i][j]);
 
             /* TODO: check if B matrix does hold additional ders */
 
@@ -98,7 +98,7 @@ BoundarySweep_OM::BoundarySweep_OM(GDOP::BoundarySweepLayout&& layout_mr,
 void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
-    set_time(info, pc.mesh.tf);
+    set_time(info, pc.mesh->tf);
     eval_current_point(info);
     eval_mr_write(info, get_eval_buffer());
 }
@@ -107,7 +107,7 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const
     f64* jac_buf = get_jac_buffer();
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
-    set_time(info, pc.mesh.tf);
+    set_time(info, pc.mesh->tf);
     eval_current_point(info);
     /* TODO: check if C matrix does hold additional ders */
 
@@ -126,7 +126,7 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const
 void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
-    set_time(info, pc.mesh.tf);
+    set_time(info, pc.mesh->tf);
     fill_zero_aug_hes_buffer();
 
     f64* jac_buf = get_jac_buffer();
@@ -158,7 +158,7 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, c
     }
 }
 
-GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh) {
+GDOP::Problem create_gdop(InfoGDOP& info, const Mesh& mesh) {
     DATA* data = info.data;
 
     // at first call init for all start values

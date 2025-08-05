@@ -73,7 +73,7 @@ public:
     std::shared_ptr<NLP::Scaling> operator()(const GDOP::GDOP& gdop) override;
 };
 
-GDOP::Strategies default_strategies(InfoGDOP& info, SOLVER_METHOD solver);
+GDOP::Strategies default_strategies(InfoGDOP& info);
 
 } // namespace OpenModelica
 

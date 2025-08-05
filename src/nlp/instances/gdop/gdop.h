@@ -22,16 +22,15 @@ using NLP::Scaling;
 
 class GDOP : public NLP::NLP {
 public:
-  GDOP(Problem& problem,
-        Mesh& mesh)
+  GDOP(Problem& problem)
       : NLP::NLP(),
-        mesh(mesh),
+        mesh(problem.pc->mesh),
         problem(problem) {}
 
 
   // === API + external calls ===
 
-  void update(Mesh&& new_mesh);
+  void update(std::shared_ptr<const Mesh> new_mesh);
 
   void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
 
@@ -40,7 +39,7 @@ public:
   // === Constant Reference Getters for Private Members ===
 
   // main objects
-  inline const Mesh&               get_mesh()           const { return mesh; }
+  inline const Mesh&               get_mesh()           const { return *mesh; }
   inline const Problem&            get_problem()        const { return problem; }
 
   // offsets and sizes
@@ -136,9 +135,9 @@ private:
 
   // === private structures ===
 
-  Mesh& mesh;                 // grid / mesh
-  Problem& problem;           // continuous GDOP
-  NLPState evaluation_state;  // simple state to check which callbacks are performed for an iteration
+  std::shared_ptr<const Mesh> mesh; // grid / mesh
+  Problem& problem;                 // continuous GDOP
+  NLPState evaluation_state;        // simple state to check which callbacks are performed for an iteration
 
   // scaling
   std::shared_ptr<ScalingFactory> scaling_factory;

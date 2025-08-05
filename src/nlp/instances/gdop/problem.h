@@ -42,7 +42,7 @@ struct ProblemConstants {
     const FixedVector<Bounds> g_bounds;
 
     // Mesh reference
-    const Mesh& mesh;
+    std::shared_ptr<const Mesh> mesh;
 
     ProblemConstants(
         bool has_mayer,
@@ -72,7 +72,7 @@ struct ProblemConstants {
       xf_fixed(std::move(xf_fixed)),
       r_bounds(std::move(r_bounds)),
       g_bounds(std::move(g_bounds)),
-      mesh(mesh) {}
+      mesh(mesh.shared_from_this()) {}
 };
 
 // ================== Continuous, Dynamic - Lfg Layout ==================
@@ -122,7 +122,7 @@ struct FullSweepBuffers {
         jac_size(layout_lfg.compute_jac_nnz()),
         aug_hes_size(aug_hes.nnz())
     {
-        resize(pc.mesh);
+        resize(*pc.mesh);
     }
 
     void resize(const Mesh& mesh);
@@ -160,23 +160,23 @@ public:
     virtual void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) = 0;
 
     inline const f64* get_xu_ij(const f64* xu_nlp, int i, int j) {
-        return xu_nlp + pc.xu_size * pc.mesh.acc_nodes[i][j];
+        return xu_nlp + pc.xu_size * pc.mesh->acc_nodes[i][j];
     }
 
     inline const f64* get_lambda_ij(const f64* lambda, int i, int j) {
-        return lambda + pc.fg_size * pc.mesh.acc_nodes[i][j];
+        return lambda + pc.fg_size * pc.mesh->acc_nodes[i][j];
     }
 
     inline f64* get_eval_buffer(int i, int j) {
-        return buffers.eval.raw() + buffers.eval_size * pc.mesh.acc_nodes[i][j];
+        return buffers.eval.raw() + buffers.eval_size * pc.mesh->acc_nodes[i][j];
     }
 
     inline f64* get_jac_buffer(int i, int j) {
-        return buffers.jac.raw() + buffers.jac_size * pc.mesh.acc_nodes[i][j];
+        return buffers.jac.raw() + buffers.jac_size * pc.mesh->acc_nodes[i][j];
     }
 
     inline f64* get_aug_hes_buffer(int i, int j) {
-        return buffers.aug_hes.raw() + buffers.aug_hes_size * pc.mesh.acc_nodes[i][j];
+        return buffers.aug_hes.raw() + buffers.aug_hes_size * pc.mesh->acc_nodes[i][j];
     }
 
     void print_jacobian_sparsity_pattern();
@@ -270,13 +270,13 @@ private:
 
 class Problem {
 public:
-    Problem(std::unique_ptr<FullSweep>&& full, std::unique_ptr<BoundarySweep>&& boundary, std::unique_ptr<const ProblemConstants>&& pc)
+    Problem(std::unique_ptr<FullSweep>&& full, std::unique_ptr<BoundarySweep>&& boundary, std::unique_ptr<ProblemConstants>&& pc)
     : full(std::move(full)), boundary(std::move(boundary)), pc(std::move(pc)) {
     };
 
     std::unique_ptr<FullSweep> full;
     std::unique_ptr<BoundarySweep> boundary;
-    std::unique_ptr<const ProblemConstants> pc;
+    std::unique_ptr<ProblemConstants> pc;
 
     // FIXME: TODO: get rid of int where possible: below could actually overflow with decent hardware!
     //              for now it might be sufficient to just static cast to size_t for the calculations, since
@@ -284,23 +284,23 @@ public:
 
     inline f64 lfg_eval_L(int interval_i, int node_j) {
         assert(full->pc.has_lagrange && full->layout.L);
-        return full->buffers.eval[full->layout.L->buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.eval[full->layout.L->buf_index + full->buffers.eval_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_eval_f(int f_index, int interval_i, int node_j) {
-        return full->buffers.eval[full->layout.f[f_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.eval[full->layout.f[f_index].buf_index + full->buffers.eval_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_eval_g(int g_index, int interval_i, int node_j) {
-        return full->buffers.eval[full->layout.g[g_index].buf_index + full->buffers.eval_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.eval[full->layout.g[g_index].buf_index + full->buffers.eval_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_jac(int jac_buf_base_index, int interval_i, int node_j) {
-        return full->buffers.jac[jac_buf_base_index + full->buffers.jac_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.jac[jac_buf_base_index + full->buffers.jac_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
     inline f64 lfg_aug_hes(int hes_buf_base_index, int interval_i, int node_j) {
-        return full->buffers.aug_hes[hes_buf_base_index + full->buffers.aug_hes_size * pc->mesh.acc_nodes[interval_i][node_j]];
+        return full->buffers.aug_hes[hes_buf_base_index + full->buffers.aug_hes_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
     /* TODO: add and make threaded */
@@ -325,8 +325,9 @@ public:
         return boundary->buffers.aug_hes[hes_buf_base_index];
     }
 
-    inline void resize_buffers(const Mesh& mesh) {
-        full->buffers.resize(mesh);
+    inline void update_mesh(std::shared_ptr<const Mesh> mesh) {
+        pc->mesh = mesh;
+        full->buffers.resize(*mesh);
     }
 };
 

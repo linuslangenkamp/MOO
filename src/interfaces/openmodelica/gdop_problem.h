@@ -41,7 +41,7 @@ public:
     void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) override;
 };
 
-GDOP::Problem create_gdop(InfoGDOP& info, Mesh& mesh);
+GDOP::Problem create_gdop(InfoGDOP& info, const Mesh& mesh);
 
 } // namespace OpenModelica
 
