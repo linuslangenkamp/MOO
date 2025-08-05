@@ -1,4 +1,4 @@
-#include "ipopt_solver.h"
+#include "solver.h"
 
 namespace IpoptSolver {
 

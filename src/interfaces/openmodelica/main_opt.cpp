@@ -9,10 +9,10 @@
 #include <base/log.h>
 #include <base/mesh.h>
 
-#include <nlp/solvers/ipopt/ipopt_solver.h>
-#include <nlp/instances/gdop/gdop_orchestrator.h>
+#include <nlp/solvers/ipopt/solver.h>
+#include <nlp/instances/gdop/orchestrator.h>
 
-#include "gdop_problem.h"
+#include "problem.h"
 
 using namespace OpenModelica;
 

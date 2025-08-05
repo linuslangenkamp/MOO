@@ -12,7 +12,7 @@
 
 #include "simulation_data.h"
 
-#include "debug_om.h"
+#include "debug.h"
 
 typedef struct {
   int i;  // first variable index

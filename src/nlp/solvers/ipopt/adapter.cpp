@@ -1,6 +1,6 @@
 #include <iomanip> 
 
-#include "ipopt_adapter.h"
+#include "adapter.h"
 
 namespace IpoptSolver {
 

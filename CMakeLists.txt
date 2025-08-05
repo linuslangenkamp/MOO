@@ -22,25 +22,25 @@ set(SOURCES
 
     src/nlp/instances/gdop/gdop.cpp
     src/nlp/instances/gdop/problem.cpp
-    src/nlp/instances/gdop/gdop_strategies.cpp
-    src/nlp/instances/gdop/gdop_orchestrator.cpp
+    src/nlp/instances/gdop/strategies.cpp
+    src/nlp/instances/gdop/orchestrator.cpp
 
     src/nlp/solvers/nlp_solver_settings.cpp
     src/nlp/nlp_scaling.cpp
     src/nlp/nlp.cpp
 
-    src/nlp/solvers/ipopt/ipopt_adapter.cpp
-    src/nlp/solvers/ipopt/ipopt_solver.cpp
+    src/nlp/solvers/ipopt/adapter.cpp
+    src/nlp/solvers/ipopt/solver.cpp
 
     src/interfaces/openmodelica/main_opt.cpp
-    src/interfaces/openmodelica/info_gdop.cpp
-    src/interfaces/openmodelica/gdop_problem.cpp
+    src/interfaces/openmodelica/info.cpp
+    src/interfaces/openmodelica/problem.cpp
     src/interfaces/openmodelica/evaluations.cpp
-    src/interfaces/openmodelica/debug_om.cpp
+    src/interfaces/openmodelica/debug.cpp
     src/interfaces/openmodelica/sim_runtime_ext.cpp
     src/interfaces/openmodelica/strategies.cpp
 
-    # src/nlp/instances/gdop/test_problem_impl.cpp
+    # src/nlp/instances/gdop/test_problem.cpp
     # stashed/steady_state/parameter_test.cpp
 )
 

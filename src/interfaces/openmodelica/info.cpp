@@ -1,4 +1,4 @@
-#include "info_gdop.h"
+#include "info.h"
 
 namespace OpenModelica {
 

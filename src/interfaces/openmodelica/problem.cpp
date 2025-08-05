@@ -1,4 +1,4 @@
-#include "gdop_problem.h"
+#include "problem.h"
 
 #define NUM_HES_FD_STEP 1e-6      // base step size for numerical Hessian perturbation
 #define NUM_HES_DF_EXTR_STEPS 1   // number of extrapolation steps

@@ -1,4 +1,4 @@
-#include "gdop_strategies.h"
+#include "strategies.h"
 #include "gdop.h"
 
 // TODO: add doxygen everywhere

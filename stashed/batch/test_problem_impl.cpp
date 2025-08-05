@@ -1,4 +1,4 @@
-#include "test_problem_impl.h"
+#include "test_problem.h"
 
 // a first cpp implementation of the GDOP Problem
 

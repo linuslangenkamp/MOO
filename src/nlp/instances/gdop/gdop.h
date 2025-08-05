@@ -14,7 +14,7 @@
 #include <nlp/nlp.h>
 
 #include "problem.h"
-#include "gdop_strategies.h"
+#include "strategies.h"
 
 namespace GDOP {
 

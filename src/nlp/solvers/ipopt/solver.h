@@ -6,7 +6,7 @@
 #include <nlp/nlp_solver.h>
 #include "base/nlp_structs.h"
 #include "base/log.h"
-#include "ipopt_adapter.h"
+#include "adapter.h"
 
 namespace IpoptSolver {
 

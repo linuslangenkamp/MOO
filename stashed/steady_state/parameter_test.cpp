@@ -4,9 +4,9 @@
 #include <base/fLGR.h>
 #include <nlp/instances/gdop/gdop.h>
 #include <nlp/instances/gdop/problem.h>
-#include <nlp/solvers/ipopt/ipopt_solver.h>
+#include <nlp/solvers/ipopt/solver.h>
 
-#include <nlp/instances/gdop/test_problem_impl.h>
+#include <nlp/instances/gdop/test_problem.h>
 
 int example() {
     fLGR coll = fLGR();

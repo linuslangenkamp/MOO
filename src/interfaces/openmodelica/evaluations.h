@@ -6,8 +6,8 @@
 #include <nlp/instances/gdop/problem.h>
 #include <base/block_sparsity.h>
 
-#include "debug_om.h"
-#include "info_gdop.h"
+#include "debug.h"
+#include "info.h"
 #include "sim_runtime_ext.h"
 
 namespace OpenModelica {

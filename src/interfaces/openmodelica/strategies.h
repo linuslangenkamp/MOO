@@ -5,7 +5,7 @@
 
 #include <src/nlp/instances/gdop/gdop.h>
 
-#include "info_gdop.h"
+#include "info.h"
 #include "evaluations.h"
 
 namespace OpenModelica {

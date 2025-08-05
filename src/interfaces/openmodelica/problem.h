@@ -11,7 +11,7 @@
 
 #include "evaluations.h"
 #include "strategies.h"
-#include "debug_om.h"
+#include "debug.h"
 
 namespace OpenModelica {
 

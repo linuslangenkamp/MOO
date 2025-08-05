@@ -4,9 +4,9 @@
 #include "base/fLGR.h"
 #include "impl/gdop/gdop.h"
 #include "impl/gdop/problem.h"
-#include "interfaces/ipopt_solver.h"
+#include "interfaces/solver.h"
 
-#include "impl/gdop/test_problem_impl.h"
+#include "impl/gdop/test_problem.h"
 
 int main() {
     auto radau = fLGR();
