@@ -101,8 +101,6 @@ public:
     virtual ~MeshRefinement() = default;
 };
 
-
-// TODO: add State and Control interpolation as combined Strategy
 /**
  * @brief Strategy for interpolating a Trajectory onto a new Mesh
  *

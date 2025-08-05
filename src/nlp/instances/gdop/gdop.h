@@ -179,8 +179,8 @@ private:
 
   // hessian sparsity helpers, O(1/2 * (x + u)² + p * (p + x + u)) memory, but no need for hashmaps, these are still fairly cheap
   // for further info see hessian layout at the bottom
-  BlockSparsity hes_a, hes_b, hes_c, hes_d, hes_e, hes_f, hes_g, hes_h;
-  OrderedIndexSet A, B, C, D, E, F, G, H; // rename
+  BlockSparsity hes_a_block, hes_b_block, hes_c_block, hes_d_block, hes_e_block, hes_f_block, hes_g_block, hes_h_block;
+  OrderedIndexSet hes_A_set, hes_B_set, hes_C_set, hes_D_set, hes_E_set, hes_F_set, hes_G_set, hes_H_set; // rename
 
   // === private / internal methods ===
 

@@ -19,12 +19,22 @@ inline int int_size(const std::vector<T>& vec) {
     return static_cast<int>(vec.size());
 }
 
+template <typename T>
+inline T sign(T value) { return (value > 0 ? 1.0 : -1.0); }
+
+template <typename T>
+inline T apply_threshold_floor(T value, T tol, T min_magnitude) {
+    return (std::abs(value) < tol) ? sign(value) * min_magnitude : value;
+}
+
 /* AutoFree manages a list of raw pointers and their corresponding free functions.
  * When an AutoFree object goes out of scope, it automatically calls each stored free function
  * on its associated pointer to release resources and avoid memory leaks.
  * You register pointers and their free functions using the attach() method.
  * Used for pure C-style mallocs / callocs in the OPT module */
-class AutoFree {
+
+/* @deprecated not in use
+ class AutoFree {
 public:
     ~AutoFree() {
         for (auto& [ptr, free_fn] : _to_free) {
@@ -49,5 +59,5 @@ public:
 private:
     std::vector<std::pair<void*, std::function<void(void*)>>> _to_free;
 };
-
+*/
 #endif // OPT_UTIL_H

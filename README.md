@@ -219,6 +219,167 @@ $$
 
 Additionally, time-invariant box constraints are included, which can also be interpreted as path constraints.
 
+# Pontryagin’s Minimum Principle for Optimal Control with Parameter Optimization
+
+## Problem Statement
+
+Consider the optimal control problem
+
+$$
+\begin{aligned}
+&\min_{u(\cdot),\, p} && M(x(t_f), p) \\
+&\text{subject to:} \\
+& && \dot{x}(t) = f(x(t), u(t), p), \quad t \in [t_0, t_f] \\
+& && h(x(t), u(t), p) \leq 0, \quad \forall t \in [t_0, t_f] \\
+& && r(x(t_0), x(t_f), p) \leq 0
+\end{aligned}
+$$
+
+where
+
+- $x(t) \in \mathbb{R}^n$: state vector
+- $u(t) \in \mathbb{R}^m$: control vector (measurable functions)
+- $p \in \mathbb{R}^q$: parameters (decision variables)
+- $M: \mathbb{R}^n \times \mathbb{R}^q \to \mathbb{R}$: terminal cost function
+- $f: \mathbb{R}^n \times \mathbb{R}^m \times \mathbb{R}^q \to \mathbb{R}^n$: dynamics
+- $h: \mathbb{R}^n \times \mathbb{R}^m \times \mathbb{R}^q \to \mathbb{R}^r$: path constraints
+- $r: \mathbb{R}^n \times \mathbb{R}^n \times \mathbb{R}^q \to \mathbb{R}^s$: boundary constraints
+
+---
+
+## Pontryagin’s Minimum Principle (PMP)
+
+### Hamiltonian
+
+Define the Hamiltonian function
+
+$$
+H(x, u, \lambda, p) = \lambda^\top f(x, u, p)
+$$
+
+where $\lambda(t) \in \mathbb{R}^n$ is the costate (adjoint) vector.
+
+---
+
+### Necessary Conditions for Optimality
+
+For an optimal solution $(x^*(\cdot), u^*(\cdot), p^*)$, there exist multipliers $\lambda(t)$, $\mu(t) \geq 0$ (for path constraints), and $\nu \geq 0$ (for boundary constraints) such that:
+
+1. **State dynamics**
+
+$$
+\dot{x}(t) = \frac{\partial H}{\partial \lambda} = f(x(t), u(t), p)
+$$
+
+2. **Costate (adjoint) dynamics**
+
+$$
+\dot{\lambda}(t) = - \frac{\partial H}{\partial x} - \left(\frac{\partial h}{\partial x}\right)^\top \mu(t) = - \left( \frac{\partial f}{\partial x}(x,u,p) \right)^\top \lambda(t) - \left( \frac{\partial h}{\partial x}(x,u,p) \right)^\top \mu(t)
+$$
+
+3. **Hamiltonian minimization condition**
+
+At each time $t \in [t_0, t_f]$, the control minimizes the Hamiltonian subject to path constraints:
+
+$$
+u(t) \in \arg\min_{v} \left\{ H(x(t), v, \lambda(t), p) \mid h(x(t), v, p) \leq 0 \right\}
+$$
+
+4. **Parameter stationarity condition**
+
+Parameters $p$ must satisfy
+
+$$
+0 = \frac{\partial M}{\partial p}(x_f, p) + \left(\frac{\partial r}{\partial p}(x_0, x_f, p)\right)^\top \nu + \int_{t_0}^{t_f} \left[ \lambda(t)^\top \frac{\partial f}{\partial p}(x,u,p) + \mu(t)^\top \frac{\partial h}{\partial p}(x,u,p) \right] dt
+$$
+
+5. **Transversality (boundary) conditions**
+
+$$
+\lambda(t_f) = \frac{\partial M}{\partial x_f}(x_f, p) + \left(\frac{\partial r}{\partial x_f}(x_0, x_f, p)\right)^\top \nu
+$$
+
+$$
+\lambda(t_0) = -\left(\frac{\partial r}{\partial x_0}(x_0, x_f, p)\right)^\top \nu
+$$
+
+6. **Complementarity slackness for path constraints**
+
+For each component $i$ of the path constraints,
+
+$$
+\mu_i(t) \geq 0, \quad h_i(x(t), u(t), p) \leq 0, \quad \mu_i(t) h_i(x(t), u(t), p) = 0
+$$
+
+7. **Complementarity slackness for boundary constraints**
+
+For each component $j$ of boundary constraints,
+
+$$
+\nu_j \geq 0, \quad r_j(x_0, x_f, p) \leq 0, \quad \nu_j r_j(x_0, x_f, p) = 0
+$$
+
+---
+
+## Derivation Sketch
+
+1. **Form Lagrangian**
+
+Introduce multipliers $\lambda(t)$ for dynamics, $\mu(t)$ for path constraints, $\nu$ for boundary constraints, and form
+
+$$
+\begin{aligned}
+\mathcal{L} = &\, M(x(t_f), p) + \nu^\top r(x(t_0), x(t_f), p) \\
+& + \int_{t_0}^{t_f} \lambda(t)^\top [f(x,u,p) - \dot{x}(t)] dt + \int_{t_0}^{t_f} \mu(t)^\top h(x,u,p) dt
+\end{aligned}
+$$
+
+2. **Perform first variation $\delta \mathcal{L} = 0$** with respect to $x(\cdot)$, $u(\cdot)$, and $p$.
+
+3. **Apply integration by parts** on terms with $\dot{x}$ to move derivatives from $\delta x$ to $\lambda$.
+
+4. **Obtain adjoint equation** from variations in $x$, leading to
+
+$$
+\dot{\lambda} = - \frac{\partial f}{\partial x}^\top \lambda - \frac{\partial h}{\partial x}^\top \mu
+$$
+
+with boundary conditions involving $\lambda(t_0), \lambda(t_f)$.
+
+5. **Optimality in control** arises from stationarity w.r.t. $u$:
+
+$$
+0 = \frac{\partial}{\partial u} \left[ \lambda^\top f + \mu^\top h \right]
+$$
+
+subject to $h(x,u,p) \leq 0$.
+
+6. **Optimality in parameters** $p$ follows similarly:
+
+$$
+0 = \frac{\partial M}{\partial p} + \left(\frac{\partial r}{\partial p}\right)^\top \nu + \int \left[ \lambda^\top \frac{\partial f}{\partial p} + \mu^\top \frac{\partial h}{\partial p} \right] dt
+$$
+
+7. **Complementarity and feasibility conditions** on $\mu(t)$, $\nu$, $h$, and $r$ come from the Karush-Kuhn-Tucker (KKT) conditions on inequality constraints.
+
+---
+
+## Remarks
+
+- The PMP generalizes the Euler-Lagrange equations in calculus of variations to optimal control problems with constraints.
+- The inclusion of parameters $p$ as decision variables adds integral terms in the stationarity conditions.
+- Path and boundary constraints introduce multipliers $\mu$, $\nu$ with complementarity conditions.
+- In practice, solving this system involves two-point boundary value problems plus algebraic complementarity conditions, often handled numerically.
+
+---
+
+If you want, I can also provide a **LaTeX source file** or an extended explanation of each step.
+
+---
+
+**End of document.**
+
+
 ### 3.2. Discretization
 
 The problem is discretized using a **Radau IIA collocation scheme** of arbitrary order (1–199) with 1-100 stages.

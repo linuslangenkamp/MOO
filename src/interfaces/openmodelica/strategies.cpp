@@ -81,10 +81,14 @@ static void trajectory_p_emit(simulation_result* sim_result, DATA* data, threadD
 
 // sets state and control initial values
 // from e.g. initial equations / parameters
-// TODO: make this non-leaky!
 void initialize_model(InfoGDOP& info) {
     externalInputallocate(info.data);
     initializeModel(info.data, info.threadData, "", "", info.model_start_time);
+}
+
+// at least free for externalInputallocate();
+void free_model(InfoGDOP& info) {
+    externalInputFree(info.data);
 }
 
 // ==================== Emit to MAT file ====================
@@ -189,7 +193,7 @@ std::unique_ptr<Trajectory> Simulation::operator()(const ControlTrajectory& cont
     std::vector<f64> p_sim(info.p_size);
 
     // create Trajectory object
-    auto trajectory = std::make_unique<Trajectory>(Trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR});
+    auto trajectory = std::make_unique<Trajectory>(Trajectory{t, x_sim, u_sim, p_sim, InterpolationMethod::LINEAR, nullptr});
 
     // auxiliary data (passed as void* in storage member of sim_result)
     auto aux_trajectory = std::make_unique<AuxiliaryTrajectory>(AuxiliaryTrajectory{*trajectory, info, &solver_info});
@@ -235,6 +239,10 @@ std::unique_ptr<Trajectory> Simulation::operator()(const ControlTrajectory& cont
 
     // set global aux data to nullptr
     clear_global_reference_data();
+
+    // free allocated memory
+    free_model(info);                   // free for initialize_model() (at least partial)
+    freeSolverData(data, &solver_info); // free for initializeSolverData
 
     return trajectory;
 }

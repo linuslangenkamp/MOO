@@ -36,6 +36,36 @@ void FullSweepBuffers::resize(const Mesh& mesh) {
     aug_hes = FixedVector<f64>(mesh.node_count * aug_hes_size);
 }
 
+FunctionLFG& access_fLg_from_row(FullSweepLayout& layout_lfg, int row) {
+    int f_size = layout_lfg.f.int_size();
+    int L_size = layout_lfg.L ? 1 : 0;
+
+    if (row < f_size) {
+        return layout_lfg.f[row];
+    }
+    else if (layout_lfg.L && row == f_size) {
+        return *layout_lfg.L;
+    }
+    else {
+        return layout_lfg.g[row - f_size - L_size];
+    }
+}
+
+FunctionLFG& access_Lfg_from_row(FullSweepLayout& layout_lfg, int row) {
+    int f_size = layout_lfg.f.int_size();
+    int L_size = layout_lfg.L ? 1 : 0;
+
+    if (layout_lfg.L && row == 0) {
+        return *layout_lfg.L;
+    }
+    else if (row < f_size + L_size) {
+        return layout_lfg.f[row - L_size];
+    }
+    else {
+        return layout_lfg.g[row - f_size - L_size];
+    }
+}
+
 void FullSweep::print_jacobian_sparsity_pattern() {
     FixedTableFormat<4> table_format = {{18, 15, 16, 14}, {Align::Center, Align::Center, Align::Center, Align::Center}};
 

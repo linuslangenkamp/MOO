@@ -146,7 +146,7 @@ equation
   );
 end include_test;
 */
-/*
+
 model include_test
   parameter Real NOMINAL = 1e5; // 1e12
   Real y1(start=NOMINAL, fixed=true, nominal=NOMINAL);
@@ -166,7 +166,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica");
 end include_test;
-*/
+
 /*
 model include_test
   Real y1(start=1, fixed=true);
@@ -198,7 +198,7 @@ equation
     __OpenModelica_simulationFlags(s = "optimization", optimizerNP = "3", ipopt_init="CONST",  lv = "LOG_STDOUT,LOG_ASSERT,LOG_STATS"),
     __OpenModelica_commandLineOptions = "+g=Optimica --matchingAlgorithm=PFPlusExt --indexReductionMethod=dynamicStateSelection -d=initialization,NLSanalyticJacobian");
 end include_test;*/
-
+/*
 model include_test
 
 
@@ -479,3 +479,4 @@ equation
   );
 
 end include_test;
+*/

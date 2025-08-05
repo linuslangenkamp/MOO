@@ -102,6 +102,14 @@ struct FullSweepLayout {
     int compute_jac_nnz();
 };
 
+// return reference to FunctionLFG
+// OpenModelica orders its B Jacobian as [f1, ..., f_n, ?maybe L?, g_1, ..., g_m]
+// so we return the specific function based on which row is given from the OpenModelica format
+FunctionLFG& access_fLg_from_row(FullSweepLayout& layout_lfg, int row);
+
+// default case where ordering as [?maybe L?, f1, ..., f_n, g_1, ..., g_m] -> return fn at index row
+FunctionLFG& access_Lfg_from_row(FullSweepLayout& layout_lfg, int row);
+
 struct FullSweepBuffers {
     // sizes of 1 buffer chuck
     const int eval_size = 0;

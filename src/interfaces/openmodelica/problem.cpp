@@ -4,17 +4,15 @@
 #define NUM_HES_DF_EXTR_STEPS 1   // number of extrapolation steps
 #define NUM_HES_EXTR_DIV 2        // divisor for new step size in extrapolation
 
-// TODO: can we actually remove the ugly row extraction / move? That would be amazing!
-// Goal: just sort CSC -> COO but use csc_buf_index
 
 namespace OpenModelica {
 
-FullSweep_OM::FullSweep_OM(GDOP::FullSweepLayout&& layout_lfg,
+FullSweep::FullSweep(GDOP::FullSweepLayout&& layout_lfg,
                            const GDOP::ProblemConstants& pc,
                            InfoGDOP& info)
-    : FullSweep(std::move(layout_lfg), pc), info(info) {
+    : GDOP::FullSweep(std::move(layout_lfg), pc), info(info) {
 }
-void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
+void FullSweep::callback_eval(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
@@ -29,7 +27,7 @@ void FullSweep_OM::callback_eval(const f64* xu_nlp, const f64* p) {
     }
 }
 
-void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
+void FullSweep::callback_jac(const f64* xu_nlp, const f64* p) {
     set_parameters(info, p);
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
@@ -40,12 +38,12 @@ void FullSweep_OM::callback_jac(const f64* xu_nlp, const f64* p) {
             set_time(info, pc.mesh->t[i][j]);
             eval_current_point(info);
             /* TODO: check if B matrix does hold additional ders */
-            jac_eval_write_as_csc(info, info.exc_jac->B, jac_buf_ij);
+            jac_eval_write_as_csc(info, info.exc_jac->B.jacobian, jac_buf_ij);
         }
     }
 }
 
-void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
+void FullSweep::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
     set_parameters(info, p);
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
@@ -64,38 +62,38 @@ void FullSweep_OM::callback_aug_hes(const f64* xu_nlp, const f64* p, const Fixed
                  * use the workspace buffer from info.exc_hes and split the old lambda
                  * (lmbd_f_1, ..., lmbd_f_n,             lmbd_g_1, ..., lmbd_g_m) in the middle as
                  * (lmbd_f_1, ..., lmbd_f_n, *L_factor*, lmbd_g_1, ..., lmbd_g_m) */
-                info.exc_hes->B_lambda[pc.x_size] = lagrange_factors[i][j];
+                info.exc_hes->B.lambda[pc.x_size] = lagrange_factors[i][j];
                 for (int f = 0; f < pc.f_size; f++) {
-                    info.exc_hes->B_lambda[f] = lambda_ij[f];
+                    info.exc_hes->B.lambda[f] = lambda_ij[f];
                 }
                 for (int g = 0; g < pc.g_size; g++) {
                     /* Lagrange offset */
-                    info.exc_hes->B_lambda[pc.f_size + 1 + g] = lambda_ij[pc.f_size + g];
+                    info.exc_hes->B.lambda[pc.f_size + 1 + g] = lambda_ij[pc.f_size + g];
                 }
                 /* set wrapper lambda */
-                info.exc_hes->B_args.lambda = info.exc_hes->B_lambda.raw();
+                info.exc_hes->B.args.lambda = info.exc_hes->B.lambda.raw();
             }
             else {
                 /* set wrapper lambda, as Lagrange term isnt set and OM and MOO sortings are the same (f, g) */
-                info.exc_hes->B_args.lambda = lambda_ij;
+                info.exc_hes->B.args.lambda = lambda_ij;
             }
 
             /* set previous Jacobian *CSC* OpenModelica buffer */
-            info.exc_hes->B_args.jac_csc = jac_buf_ij;
+            info.exc_hes->B.args.jac_csc = jac_buf_ij;
 
             /* call Hessian */
-            richardsonExtrapolation(info.exc_hes->B_extr, forwardDiffHessianWrapper, &info.exc_hes->B_args,
+            richardsonExtrapolation(info.exc_hes->B.extr, forwardDiffHessianWrapper, &info.exc_hes->B.args,
                                     NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, aug_hes_buf_ij);
         }
     }
 }
 
-BoundarySweep_OM::BoundarySweep_OM(GDOP::BoundarySweepLayout&& layout_mr,
+BoundarySweep::BoundarySweep(GDOP::BoundarySweepLayout&& layout_mr,
                                    const GDOP::ProblemConstants& pc,
                                    InfoGDOP& info)
-    : BoundarySweep(std::move(layout_mr), pc), info(info) {}
+    : GDOP::BoundarySweep(std::move(layout_mr), pc), info(info) {}
 
-void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
+void BoundarySweep::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
     set_time(info, pc.mesh->tf);
@@ -103,7 +101,7 @@ void BoundarySweep_OM::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, cons
     eval_mr_write(info, get_eval_buffer());
 }
 
-void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
+void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {
     f64* jac_buf = get_jac_buffer();
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
@@ -113,17 +111,17 @@ void BoundarySweep_OM::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const
 
     /* derivative of mayer to jacbuffer[0] ... jac_buffer[exc_jac.D_coo.nnz_offset - 1] */
     if (pc.has_mayer) {
-        jac_eval_write_first_row_as_csc(info, info.exc_jac->C, info.exc_jac->C_buffer.raw(),
-                                        jac_buf, info.exc_jac->C_coo);
+        jac_eval_write_first_row_as_csc(info, info.exc_jac->C.jacobian, info.exc_jac->C.buffer.raw(),
+                                        jac_buf, info.exc_jac->C.sparsity);
     }
 
-    if (info.exc_jac->D_exists) {
+    if (info.exc_jac->D.exists) {
         /* TODO: check if D matrix does hold additional ders */
-        jac_eval_write_as_csc(info, info.exc_jac->D, jac_buf + info.exc_jac->D_coo.nnz_offset);
+        jac_eval_write_as_csc(info, info.exc_jac->D.jacobian, jac_buf + info.exc_jac->D.sparsity.nnz_offset);
     }
 }
 
-void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {
+void BoundarySweep::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {
     set_parameters(info, p);
     set_states_inputs(info, xuf_nlp);
     set_time(info, pc.mesh->tf);
@@ -135,25 +133,25 @@ void BoundarySweep_OM::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, c
     if (pc.has_mayer) {
         // set all lambdas to 0, except mayer lambda
         int index_mayer = pc.x_size + static_cast<int>(info.lagrange_exists);
-        info.exc_hes->C_lambda[index_mayer] = mayer_factor;
-        info.exc_hes->C_args.lambda = info.exc_hes->C_lambda.raw();
+        info.exc_hes->C.lambda[index_mayer] = mayer_factor;
+        info.exc_hes->C.args.lambda = info.exc_hes->C.lambda.raw();
 
-        richardsonExtrapolation(info.exc_hes->C_extr, forwardDiffHessianWrapper, &info.exc_hes->C_args,
-                                NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C_buffer.raw());
+        richardsonExtrapolation(info.exc_hes->C.extr, forwardDiffHessianWrapper, &info.exc_hes->C.args,
+                                NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C.buffer.raw());
         for (auto& [index_C, index_buffer] : info.exc_hes->C_to_Mr_buffer) {
-            aug_hes_buffer[index_buffer] += info.exc_hes->C_buffer[index_C];
+            aug_hes_buffer[index_buffer] += info.exc_hes->C.buffer[index_C];
         }
     }
 
     if (pc.r_size != 0) {
         /* set duals and precomputed Jacobian D */
-        info.exc_hes->D_args.lambda = lambda;
-        info.exc_hes->D_args.jac_csc = jac_buf + info.exc_jac->D_coo.nnz_offset;
+        info.exc_hes->C.args.lambda = lambda;
+        info.exc_hes->C.args.jac_csc = jac_buf + info.exc_jac->D.sparsity.nnz_offset;
 
-        richardsonExtrapolation(info.exc_hes->D_extr, forwardDiffHessianWrapper, &info.exc_hes->D_args,
-                                NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->D_buffer.raw());
-        for (auto& [index_D, index_buffer] : info.exc_hes->D_to_Mr_buffer) {
-            aug_hes_buffer[index_buffer] += info.exc_hes->D_buffer[index_D];
+        richardsonExtrapolation(info.exc_hes->C.extr, forwardDiffHessianWrapper, &info.exc_hes->C.args,
+                                NUM_HES_FD_STEP, NUM_HES_DF_EXTR_STEPS, NUM_HES_EXTR_DIV, 1, info.exc_hes->C.buffer.raw());
+        for (auto& [index_D, index_buffer] : info.exc_hes->C_to_Mr_buffer) {
+            aug_hes_buffer[index_buffer] += info.exc_hes->C.buffer[index_D];
         }
     }
 }
@@ -195,7 +193,6 @@ GDOP::Problem create_gdop(InfoGDOP& info, const Mesh& mesh) {
     info.g_size = data->modelData->nOptimizeConstraints;
     info.r_size = data->modelData->nOptimizeFinalConstraints; // TODO: add *generic boundary* constraints later also at t=t0
 
-    // TODO: figure this out; we get some derivative ptrs i guess?
     short der_index_mayer_realVars = -1;
     short der_indices_lagrange_realVars[2] = {-1, -1};
 
@@ -266,8 +263,8 @@ GDOP::Problem create_gdop(InfoGDOP& info, const Mesh& mesh) {
         mesh
     );
 
-    auto fs = std::make_unique<FullSweep_OM>(std::move(layout_lfg), *pc, info);
-    auto bs = std::make_unique<BoundarySweep_OM>(std::move(layout_mr), *pc, info);
+    auto fs = std::make_unique<FullSweep>(std::move(layout_lfg), *pc, info);
+    auto bs = std::make_unique<BoundarySweep>(std::move(layout_mr), *pc, info);
 
     return GDOP::Problem(std::move(fs), std::move(bs),std::move(pc));
 }

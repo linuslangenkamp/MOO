@@ -1,27 +1,18 @@
-#ifndef OPT_OM_GDOP_PROBLEM_H
-#define OPT_OM_GDOP_PROBLEM_H
-
-#include "simulation_data.h"
-#include "simulation/simulation_runtime.h"
-#include "simulation/solver/gbode_main.h"
-#include "simulation/solver/external_input.h"
+#ifndef MOO_C_PROBLEM_H
+#define MOO_C_PROBLEM_H
 
 #include <nlp/instances/gdop/problem.h>
 #include <nlp/instances/gdop/gdop.h>
 
-#include "evaluations.h"
-#include "strategies.h"
-#include "debug.h"
+#include <src/interfaces/c/structures.h>
 
-namespace OpenModelica {
+namespace C {
 
 class FullSweep : public GDOP::FullSweep {
 public:
-    InfoGDOP& info;
-
-    FullSweep(GDOP::FullSweepLayout&& lfg_in,
-              const GDOP::ProblemConstants& pc,
-              InfoGDOP& info);
+    FullSweep(GDOP::FullSweepLayout&& layout_in,
+              const GDOP::ProblemConstants& pc)
+        : GDOP::FullSweep(std::move(layout_in), pc) {};
 
     void callback_eval(const f64* xu_nlp, const f64* p) override;
     void callback_jac(const f64* xu_nlp, const f64* p) override;
@@ -30,19 +21,17 @@ public:
 
 class BoundarySweep : public GDOP::BoundarySweep {
 public:
-    InfoGDOP& info;
-
-    BoundarySweep(GDOP::BoundarySweepLayout&& mr_in,
-                  const GDOP::ProblemConstants& pc,
-                  InfoGDOP& info);
+    BoundarySweep(GDOP::BoundarySweepLayout&& layout_in,
+                  const GDOP::ProblemConstants& pc)
+        : GDOP::BoundarySweep(std::move(layout_in), pc) {};
 
     void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
     void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
     void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) override;
 };
 
-GDOP::Problem create_gdop(InfoGDOP& info, const Mesh& mesh);
+GDOP::Problem create_gdop(c_problem_t* c_problem, const Mesh& mesh);
 
-} // namespace OpenModelica
+} // namespace C
 
-#endif // OPT_OM_GDOP_PROBLEM_H
+#endif // MOO_C_PROBLEM_H

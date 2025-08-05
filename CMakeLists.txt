@@ -15,23 +15,28 @@ include(ProcessorCount)
 ProcessorCount(N)
 
 set(SOURCES
+    # base sources for GDOP and similar problems
     src/base/fLGR.cpp
     src/base/trajectory.cpp
     src/base/mesh.cpp
     src/base/linalg.cpp
 
+    # General Dynamic Optimization Problem
     src/nlp/instances/gdop/gdop.cpp
     src/nlp/instances/gdop/problem.cpp
     src/nlp/instances/gdop/strategies.cpp
     src/nlp/instances/gdop/orchestrator.cpp
 
+    # generic NLP
     src/nlp/solvers/nlp_solver_settings.cpp
     src/nlp/nlp_scaling.cpp
     src/nlp/nlp.cpp
 
+    # Ipopt Interface for generic NLP
     src/nlp/solvers/ipopt/adapter.cpp
     src/nlp/solvers/ipopt/solver.cpp
 
+    # OpenModelica interface for GDOP
     src/interfaces/openmodelica/main_opt.cpp
     src/interfaces/openmodelica/info.cpp
     src/interfaces/openmodelica/problem.cpp
@@ -39,6 +44,13 @@ set(SOURCES
     src/interfaces/openmodelica/debug.cpp
     src/interfaces/openmodelica/sim_runtime_ext.cpp
     src/interfaces/openmodelica/strategies.cpp
+
+    # C interface for GDOP
+    src/interfaces/c/problem.cpp
+
+    # GDOPT interface for GDOP
+    src/interfaces/gdopt/generated.c
+    src/interfaces/gdopt/main_gdopt.cpp
 
     # src/nlp/instances/gdop/test_problem.cpp
     # stashed/steady_state/parameter_test.cpp

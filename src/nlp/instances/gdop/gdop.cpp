@@ -128,6 +128,8 @@ void GDOP::set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_traje
     initial_guess = std::move(initial_trajectory);
 }
 
+// TODO: add flag: with apply_threshold_floor() or without - should be in the new yaml config file where strategies and stuff are given
+
 // === overload ===
 void GDOP::get_initial_guess(
       bool init_x,
@@ -170,7 +172,11 @@ void GDOP::get_initial_guess(
                     lambda_init[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
                 }
                 for (int g_index = 0; g_index < problem.pc->g_size; g_index++) {
+                    // apply threshold below 1e-10 to prevent oscillations
+                    // lambda_init[off_acc_fg[i][j] + problem.pc->f_size + g_index] = apply_threshold_floor(value, 1e-10, 1e-12);
+
                     lambda_init[off_acc_fg[i][j] + problem.pc->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
+
                 }
                 index++;
             }
@@ -200,6 +206,12 @@ void GDOP::get_initial_guess(
 
         transform_duals_costates_bounds(z_lb_init, false);
         transform_duals_costates_bounds(z_ub_init, false);
+
+        // apply threshold below 1e-10 to prevent oscillations
+        // for (int idx = 0; idx < get_number_vars(); idx++) {
+        //     z_lb_init[idx] = apply_threshold_floor(z_lb_init[idx], 1e-10, 1e-12);
+        //     z_ub_init[idx] = apply_threshold_floor(z_ub_init[idx], 1e-10, 1e-12);
+        // }
     }
 }
 
@@ -242,50 +254,50 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     // takes O(nnz(A) + nnz(B) + ...+ nnz(H)) for creation of ** Maps and O(nnz(Hessian)) for creation of Hessian sparsity pattern
 
     // reset block sparsities
-    hes_a = BlockSparsity::create_lower_triangular(problem.pc->x_size, BlockType::Exact);
-    hes_b = BlockSparsity::create_lower_triangular(problem.pc->x_size + problem.pc->u_size, BlockType::Offset);
-    hes_c = BlockSparsity::create_rectangular(problem.pc->x_size + problem.pc->u_size, problem.pc->x_size, BlockType::Exact);
-    hes_d = BlockSparsity::create_lower_triangular(problem.pc->x_size + problem.pc->u_size, BlockType::Exact);
-    hes_e = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size, BlockType::Exact);
-    hes_f = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size + problem.pc->u_size, BlockType::RowOffset);
-    hes_g = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size + problem.pc->u_size, BlockType::Exact);
-    hes_h = BlockSparsity::create_lower_triangular(problem.pc->p_size, BlockType::Exact);
+    hes_a_block = BlockSparsity::create_lower_triangular(problem.pc->x_size, BlockType::Exact);
+    hes_b_block = BlockSparsity::create_lower_triangular(problem.pc->x_size + problem.pc->u_size, BlockType::Offset);
+    hes_c_block = BlockSparsity::create_rectangular(problem.pc->x_size + problem.pc->u_size, problem.pc->x_size, BlockType::Exact);
+    hes_d_block = BlockSparsity::create_lower_triangular(problem.pc->x_size + problem.pc->u_size, BlockType::Exact);
+    hes_e_block = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size, BlockType::Exact);
+    hes_f_block = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size + problem.pc->u_size, BlockType::RowOffset);
+    hes_g_block = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size + problem.pc->u_size, BlockType::Exact);
+    hes_h_block = BlockSparsity::create_lower_triangular(problem.pc->p_size, BlockType::Exact);
 
-    // TODO: remove me later, and reuse the sets for following iters
-    // clear previous content before reuse
-    A.clear(); B.clear(); C.clear(); D.clear();
-    E.clear(); F.clear(); G.clear(); H.clear();
+    // clear previous sparsity (may be reused)
+    hes_A_set.clear(); hes_B_set.clear(); hes_C_set.clear(); hes_D_set.clear();
+    hes_E_set.clear(); hes_F_set.clear(); hes_G_set.clear(); hes_H_set.clear();
 
     auto& boundary_aug_hes = problem.boundary->layout.aug_hes;
     auto& full_aug_hes     = problem.full->layout.aug_hes;
     auto& full_aug_pp_hes  = problem.full->layout.aug_pp_hes;
 
     // calculate IndexSet and nnz
-    A.insert_sparsity(boundary_aug_hes.dx0_dx0,     0,     0);
-    C.insert_sparsity(boundary_aug_hes.dxf_dx0,     0,     0);
-    C.insert_sparsity(boundary_aug_hes.duf_dx0, off_x,     0);
-    D.insert_sparsity(boundary_aug_hes.dxf_dxf,     0,     0);
-    D.insert_sparsity(boundary_aug_hes.duf_dxf, off_x,     0);
-    D.insert_sparsity(boundary_aug_hes.duf_duf, off_x, off_x);
-    E.insert_sparsity(boundary_aug_hes.dp_dx0,      0,     0);
-    G.insert_sparsity(boundary_aug_hes.dp_dxf,      0,     0);
-    G.insert_sparsity(boundary_aug_hes.dp_duf,      0, off_x);
-    H.insert_sparsity(boundary_aug_hes.dp_dp,       0,     0);
+    hes_A_set.insert_sparsity(boundary_aug_hes.dx0_dx0,     0,     0);
+    hes_C_set.insert_sparsity(boundary_aug_hes.dxf_dx0,     0,     0);
+    hes_C_set.insert_sparsity(boundary_aug_hes.duf_dx0, off_x,     0);
+    hes_D_set.insert_sparsity(boundary_aug_hes.dxf_dxf,     0,     0);
+    hes_D_set.insert_sparsity(boundary_aug_hes.duf_dxf, off_x,     0);
+    hes_D_set.insert_sparsity(boundary_aug_hes.duf_duf, off_x, off_x);
+    hes_E_set.insert_sparsity(boundary_aug_hes.dp_dx0,      0,     0);
+    hes_G_set.insert_sparsity(boundary_aug_hes.dp_dxf,      0,     0);
+    hes_G_set.insert_sparsity(boundary_aug_hes.dp_duf,      0, off_x);
+    hes_H_set.insert_sparsity(boundary_aug_hes.dp_dp,       0,     0);
 
-    B.insert_sparsity(full_aug_hes.dx_dx,           0,     0);
-    B.insert_sparsity(full_aug_hes.du_dx,       off_x,     0);
-    B.insert_sparsity(full_aug_hes.du_du,       off_x, off_x);
-    D.insert_sparsity(full_aug_hes.dx_dx,           0,     0);
-    D.insert_sparsity(full_aug_hes.du_dx,       off_x,     0);
-    D.insert_sparsity(full_aug_hes.du_du,       off_x, off_x);
-    F.insert_sparsity(full_aug_hes.dp_dx,           0,     0);
-    F.insert_sparsity(full_aug_hes.dp_du,           0, off_x);
-    G.insert_sparsity(full_aug_hes.dp_dx,           0,     0);
-    G.insert_sparsity(full_aug_hes.dp_du,           0, off_x);
-    H.insert_sparsity(full_aug_pp_hes.dp_dp,        0,     0);
+    hes_B_set.insert_sparsity(full_aug_hes.dx_dx,           0,     0);
+    hes_B_set.insert_sparsity(full_aug_hes.du_dx,       off_x,     0);
+    hes_B_set.insert_sparsity(full_aug_hes.du_du,       off_x, off_x);
+    hes_D_set.insert_sparsity(full_aug_hes.dx_dx,           0,     0);
+    hes_D_set.insert_sparsity(full_aug_hes.du_dx,       off_x,     0);
+    hes_D_set.insert_sparsity(full_aug_hes.du_du,       off_x, off_x);
+    hes_F_set.insert_sparsity(full_aug_hes.dp_dx,           0,     0);
+    hes_F_set.insert_sparsity(full_aug_hes.dp_du,           0, off_x);
+    hes_G_set.insert_sparsity(full_aug_hes.dp_dx,           0,     0);
+    hes_G_set.insert_sparsity(full_aug_hes.dp_du,           0, off_x);
+    hes_H_set.insert_sparsity(full_aug_pp_hes.dp_dp,        0,     0);
 
     // calculate nnz from block sparsity
-    nnz_hes = (B.size() + F.size()) * (mesh->node_count - 1) + A.size() + C.size() + D.size() + E.size() + G.size() + H.size();
+    nnz_hes = (hes_B_set.size() + hes_F_set.size()) * (mesh->node_count - 1)
+             + hes_A_set.size() + hes_C_set.size() + hes_D_set.size() + hes_E_set.size() + hes_G_set.size() + hes_H_set.size();
 }
 
 // === overload ===
@@ -464,25 +476,25 @@ void GDOP::get_hes_sparsity(
     int hes_nnz_counter = 0;
 
     // A: exact
-    for (auto& [row, col] : A.set) {
+    for (auto& [row, col] : hes_A_set.set) {
         i_row_hes[hes_nnz_counter] = row; // x_0
         j_col_hes[hes_nnz_counter] = col; // x_0
-        hes_a.insert(row, col, hes_nnz_counter++);
+        hes_a_block.insert(row, col, hes_nnz_counter++);
     }
 
     // B: non exact, thus local counter
     int block_b_nnz = 0;
-    for (auto& [row, col] : B.set) {
-        hes_b.insert(row, col, block_b_nnz++);
+    for (auto& [row, col] : hes_B_set.set) {
+        hes_b_block.insert(row, col, block_b_nnz++);
     }
-    hes_b.off_prev = hes_a.nnz;  // set size of A block as offset
+    hes_b_block.off_prev = hes_a_block.nnz;  // set size of A block as offset
 
     // init B hessian pattern O(node_count * nnz(L_{xu, xu} ∪ f_{xu, xu} ∪ g_{xu, xu})) - expensive, parallel execution should be possible
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
-                for (auto [row, col] : B.set) {
-                    int xu_hes_index = hes_b.access(row, col, mesh->acc_nodes[i][j]);
+                for (auto [row, col] : hes_B_set.set) {
+                    int xu_hes_index = hes_b_block.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_acc_xu[i][j] + row; // xu_{ij}
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -495,19 +507,19 @@ void GDOP::get_hes_sparsity(
     // C, D: exact with row dependence
     int c_index = 0;
     int d_index = 0;
-    FixedVector<std::pair<int, int>> C_flat(C.set.begin(), C.set.end());
-    FixedVector<std::pair<int, int>> D_flat(D.set.begin(), D.set.end());
+    FixedVector<std::pair<int, int>> C_flat(hes_C_set.set.begin(), hes_C_set.set.end());
+    FixedVector<std::pair<int, int>> D_flat(hes_D_set.set.begin(), hes_D_set.set.end());
     for (int xu_index = 0; xu_index < off_xu; xu_index++) {
         while (c_index < C_flat.int_size() && C_flat[c_index].first == xu_index) {
             i_row_hes[hes_nnz_counter] = off_last_xu + C_flat[c_index].first; // xu_{nm}
             j_col_hes[hes_nnz_counter] = C_flat[c_index].second;              // x_0
-            hes_c.insert(C_flat[c_index].first, C_flat[c_index].second, hes_nnz_counter++);
+            hes_c_block.insert(C_flat[c_index].first, C_flat[c_index].second, hes_nnz_counter++);
             c_index++;
         }
         while (d_index < D_flat.int_size() && D_flat[d_index].first == xu_index) {
             i_row_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].first;  // xu_{nm}
             j_col_hes[hes_nnz_counter] = off_last_xu + D_flat[d_index].second; // xu_{nm}
-            hes_d.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
+            hes_d_block.insert(D_flat[d_index].first, D_flat[d_index].second, hes_nnz_counter++);
             d_index++;
         }
     }
@@ -517,39 +529,39 @@ void GDOP::get_hes_sparsity(
     int f_index = 0;
     int g_index = 0;
     int h_index = 0;
-    FixedVector<std::pair<int, int>> E_flat(E.set.begin(), E.set.end());
-    FixedVector<std::pair<int, int>> F_flat(F.set.begin(), F.set.end());
-    FixedVector<std::pair<int, int>> G_flat(G.set.begin(), G.set.end());
-    FixedVector<std::pair<int, int>> H_flat(H.set.begin(), H.set.end());
+    FixedVector<std::pair<int, int>> E_flat(hes_E_set.set.begin(), hes_E_set.set.end());
+    FixedVector<std::pair<int, int>> F_flat(hes_F_set.set.begin(), hes_F_set.set.end());
+    FixedVector<std::pair<int, int>> G_flat(hes_G_set.set.begin(), hes_G_set.set.end());
+    FixedVector<std::pair<int, int>> H_flat(hes_H_set.set.begin(), hes_H_set.set.end());
     for (int p_index = 0; p_index < problem.pc->p_size; p_index++) {
         while (e_index < E_flat.int_size() && E_flat[e_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + E_flat[e_index].first; // p
             j_col_hes[hes_nnz_counter] = E_flat[e_index].second;               // x_0
-            hes_e.insert(E_flat[e_index].first, E_flat[e_index].second, hes_nnz_counter++);
+            hes_e_block.insert(E_flat[e_index].first, E_flat[e_index].second, hes_nnz_counter++);
             e_index++;
         }
 
         int row_f_nnz = 0;
-        hes_f.row_offset_prev[p_index] = hes_nnz_counter; // E_{p_index, :} offset
+        hes_f_block.row_offset_prev[p_index] = hes_nnz_counter; // E_{p_index, :} offset
         while (f_index < F_flat.int_size() && F_flat[f_index].first == p_index) {
-            hes_f.insert(F_flat[f_index].first, F_flat[f_index].second, row_f_nnz++);
+            hes_f_block.insert(F_flat[f_index].first, F_flat[f_index].second, row_f_nnz++);
             f_index++;
         }
         /* F_{p_index, :} size -> offset for next F blocks */
-        hes_f.row_size[p_index] = row_f_nnz;
+        hes_f_block.row_size[p_index] = row_f_nnz;
         hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
 
         while (g_index < G_flat.int_size() && G_flat[g_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[g_index].first; // p
             j_col_hes[hes_nnz_counter] = off_last_xu + G_flat[g_index].second; // xu_{nm}
-            hes_g.insert(G_flat[g_index].first, G_flat[g_index].second, hes_nnz_counter++);
+            hes_g_block.insert(G_flat[g_index].first, G_flat[g_index].second, hes_nnz_counter++);
             g_index++;
         }
 
         while (h_index < H_flat.int_size() && H_flat[h_index].first == p_index) {
             i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[h_index].first;  // p
             j_col_hes[hes_nnz_counter] = off_xu_total + G_flat[h_index].second; // p
-            hes_h.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
+            hes_h_block.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
             h_index++;
         }
     }
@@ -558,8 +570,8 @@ void GDOP::get_hes_sparsity(
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
-                for (auto& [row, col] : F.set) {
-                    int xu_hes_index = hes_f.access(row, col, mesh->acc_nodes[i][j]);
+                for (auto& [row, col] : hes_F_set.set) {
+                    int xu_hes_index = hes_f_block.access(row, col, mesh->acc_nodes[i][j]);
                     i_row_hes[xu_hes_index] = off_xu_total + row;     // p
                     j_col_hes[xu_hes_index] = off_acc_xu[i][j] + col; // xu_{ij}
                 }
@@ -906,12 +918,12 @@ void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
             const BlockSparsity* ptr_map_xu_xu;
             const BlockSparsity* ptr_map_p_xu;
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
-                ptr_map_xu_xu = &hes_b;
-                ptr_map_p_xu  = &hes_f;
+                ptr_map_xu_xu = &hes_b_block;
+                ptr_map_p_xu  = &hes_f_block;
             }
             else {
-                ptr_map_xu_xu = &hes_d;
-                ptr_map_p_xu  = &hes_g;
+                ptr_map_xu_xu = &hes_d_block;
+                ptr_map_p_xu  = &hes_g_block;
             }
             update_augmented_hessian_lfg(problem.full->layout.aug_hes, i, j, ptr_map_xu_xu, ptr_map_p_xu, curr_hes);
         }
@@ -943,40 +955,40 @@ void GDOP::update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const in
 
 void GDOP::update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_p_hes, FixedVector<f64>& curr_hes) {
     for (const auto& dp_dp : aug_p_hes.dp_dp) {
-        curr_hes[hes_h.access(dp_dp.row, dp_dp.col)] += problem.lfg_aug_pp_hes(dp_dp.buf_index);
+        curr_hes[hes_h_block.access(dp_dp.row, dp_dp.col)] += problem.lfg_aug_pp_hes(dp_dp.buf_index);
     }
 }
 
 void GDOP::update_augmented_hessian_mr(const AugmentedHessianMR& hes, FixedVector<f64>& curr_hes) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
-        curr_hes[hes_a.access(dx0_dx0.row, dx0_dx0.col)] += problem.mr_aug_hes(dx0_dx0.buf_index);
+        curr_hes[hes_a_block.access(dx0_dx0.row, dx0_dx0.col)] += problem.mr_aug_hes(dx0_dx0.buf_index);
     }
     for (const auto& dxf_dx0 : hes.dxf_dx0) {
-        curr_hes[hes_c.access(dxf_dx0.row, dxf_dx0.col)] += problem.mr_aug_hes(dxf_dx0.buf_index);
+        curr_hes[hes_c_block.access(dxf_dx0.row, dxf_dx0.col)] += problem.mr_aug_hes(dxf_dx0.buf_index);
     }
     for (const auto& dxf_dxf : hes.dxf_dxf) {
-        curr_hes[hes_d.access(dxf_dxf.row, dxf_dxf.col)] += problem.mr_aug_hes(dxf_dxf.buf_index);
+        curr_hes[hes_d_block.access(dxf_dxf.row, dxf_dxf.col)] += problem.mr_aug_hes(dxf_dxf.buf_index);
     }
     for (const auto& duf_dx0 : hes.duf_dx0) {
-        curr_hes[hes_c.access(duf_dx0.row, duf_dx0.col)] += problem.mr_aug_hes(duf_dx0.buf_index);
+        curr_hes[hes_c_block.access(duf_dx0.row, duf_dx0.col)] += problem.mr_aug_hes(duf_dx0.buf_index);
     }
     for (const auto& duf_dxf : hes.duf_dxf) {
-        curr_hes[hes_d.access(duf_dxf.row, duf_dxf.col)] += problem.mr_aug_hes(duf_dxf.buf_index);
+        curr_hes[hes_d_block.access(duf_dxf.row, duf_dxf.col)] += problem.mr_aug_hes(duf_dxf.buf_index);
     }
     for (const auto& duf_duf : hes.duf_duf) {
-        curr_hes[hes_d.access(duf_duf.row, duf_duf.col)] += problem.mr_aug_hes(duf_duf.buf_index);
+        curr_hes[hes_d_block.access(duf_duf.row, duf_duf.col)] += problem.mr_aug_hes(duf_duf.buf_index);
     }
     for (const auto& dp_dx0 : hes.dp_dx0) {
-        curr_hes[hes_e.access(dp_dx0.row,  dp_dx0.col)]  += problem.mr_aug_hes(dp_dx0.buf_index);
+        curr_hes[hes_e_block.access(dp_dx0.row,  dp_dx0.col)]  += problem.mr_aug_hes(dp_dx0.buf_index);
     }
     for (const auto& dp_dxf : hes.dp_dxf) {
-        curr_hes[hes_g.access(dp_dxf.row,  dp_dxf.col)]  += problem.mr_aug_hes(dp_dxf.buf_index);
+        curr_hes[hes_g_block.access(dp_dxf.row,  dp_dxf.col)]  += problem.mr_aug_hes(dp_dxf.buf_index);
     }
     for (const auto& dp_duf : hes.dp_duf) {
-        curr_hes[hes_g.access(dp_duf.row,  dp_duf.col)]  += problem.mr_aug_hes(dp_duf.buf_index);
+        curr_hes[hes_g_block.access(dp_duf.row,  dp_duf.col)]  += problem.mr_aug_hes(dp_duf.buf_index);
     }
     for (const auto& dp_dp : hes.dp_dp) {
-        curr_hes[hes_h.access(dp_dp.row,   dp_dp.col)]   += problem.mr_aug_hes(dp_dp.buf_index);
+        curr_hes[hes_h_block.access(dp_dp.row,   dp_dp.col)]   += problem.mr_aug_hes(dp_dp.buf_index);
     }
 }
 

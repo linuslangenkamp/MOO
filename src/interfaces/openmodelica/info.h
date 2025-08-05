@@ -20,9 +20,6 @@ struct ExchangeJacobians;
 struct ExchangeHessians;
 
 struct InfoGDOP {
-    /* custom attaching and auto freeing of C-style mallocs / callocs */
-    AutoFree auto_free;
-
     DATA* data;               // pointer to OM data object
     threadData_t* threadData; // pointer to OM threadData object
     int argc;                 // command-line arg count OM
@@ -76,8 +73,6 @@ struct InfoGDOP {
     void set_user_solver();
 };
 
-// TODO: Refactor Jacobian and Hessians in A, B, C, D structures
-
 /**
  * @brief Constructs and initializes OpenModelica Jacobians and their COO mappings for optimization.
  *
@@ -115,63 +110,77 @@ struct InfoGDOP {
  * mapping between OpenModelica’s CSC structures and the COO format expected by the optimization routines.
  */
 
+struct ExchangeJacobian {
+    JACOBIAN* jacobian;
+    bool exists;
+    CscToCoo sparsity;
+    FixedVector<modelica_real> buffer;
+
+    ExchangeJacobian(InfoGDOP& info,
+                     int index,
+                     initialAnalyticalJacobian_func_ptr initial_jacobian,
+                     int move_to_first_row = -1,
+                     int nnz_offset = 0) :
+    jacobian(&(info.data->simulationInfo->analyticJacobians[index])),
+    exists(static_cast<bool>(initial_jacobian(info.data, info.threadData, jacobian) == 0)),
+    sparsity(exists ? CscToCoo::from_csc(reinterpret_cast<int*>(jacobian->sparsePattern->leadindex),
+                                         reinterpret_cast<int*>(jacobian->sparsePattern->index),
+                                         static_cast<int>(jacobian->sizeCols),
+                                         static_cast<int>(jacobian->sparsePattern->numberOfNonZeros),
+                                         move_to_first_row,
+                                         nnz_offset)
+                    : CscToCoo()),
+    buffer(FixedVector<modelica_real>(sparsity.nnz)) {}
+};
+
 struct ExchangeJacobians {
-    JACOBIAN* A;
-    JACOBIAN* B;
-    JACOBIAN* C;
-    JACOBIAN* D;
-
-    bool A_exists;
-    bool B_exists;
-    bool C_exists;
-    bool D_exists;
-
-    CscToCoo A_coo;
-    CscToCoo B_coo;
-    CscToCoo C_coo;
-    CscToCoo D_coo;
-
-    FixedVector<modelica_real> A_buffer;
-    FixedVector<modelica_real> B_buffer;
-    FixedVector<modelica_real> C_buffer;
-    FixedVector<modelica_real> D_buffer;
+    ExchangeJacobian A;
+    ExchangeJacobian B;
+    ExchangeJacobian C;
+    ExchangeJacobian D;
 
     ExchangeJacobians(InfoGDOP& info);
 };
 
-struct ExchangeHessians {
-    HESSIAN_PATTERN* A;
-    HESSIAN_PATTERN* B;
-    HESSIAN_PATTERN* C;
-    HESSIAN_PATTERN* D;
-
-    bool A_exists;
-    bool B_exists;
-    bool C_exists;
-    bool D_exists;
-
-    ExtrapolationData* A_extr;
-    ExtrapolationData* B_extr;
-    ExtrapolationData* C_extr;
-    ExtrapolationData* D_extr;
+struct ExchangeHessian {
+    HESSIAN_PATTERN* hessian;
+    bool exists;
+    ExtrapolationData* extr;
 
     /* some workspace memory for output of Hessian, use if needed */
-    FixedVector<modelica_real> A_buffer;
-    FixedVector<modelica_real> B_buffer;
-    FixedVector<modelica_real> C_buffer;
-    FixedVector<modelica_real> D_buffer;
+    FixedVector<modelica_real> buffer;
 
     /* some workspace memory for dual multiplicators, use if needed */
-    FixedVector<modelica_real> A_lambda;
-    FixedVector<modelica_real> B_lambda;
-    FixedVector<modelica_real> C_lambda;
-    FixedVector<modelica_real> D_lambda;
+    FixedVector<modelica_real> lambda;
 
     /* wrapper args for Richardson extrapolation */
-    HessianFiniteDiffArgs A_args;
-    HessianFiniteDiffArgs B_args;
-    HessianFiniteDiffArgs C_args;
-    HessianFiniteDiffArgs D_args;
+    HessianFiniteDiffArgs args;
+
+    ExchangeHessian(InfoGDOP& info,
+                    ExchangeJacobian& inducing_jacobian) :
+    hessian(generateHessianPattern(inducing_jacobian.jacobian)),
+    exists(inducing_jacobian.exists),
+    extr(!exists ? nullptr : initExtrapolationData(hessian->lnnz, 5)),
+    buffer(FixedVector<modelica_real>(!exists ? 0 : hessian->lnnz)),
+    lambda(FixedVector<modelica_real>(!exists ? 0 : hessian->numFuncs)),
+    args(HessianFiniteDiffArgs{info.data, info.threadData, hessian, info.u_indices_real_vars.raw(), lambda.raw(), nullptr}) {}
+
+    ~ExchangeHessian() {
+        // delete c mallocs
+        if (extr) freeExtrapolationData(extr);
+        if (hessian) freeHessianPattern(hessian);
+    }
+
+    // copy = delete
+    ExchangeHessian(const ExchangeHessian&) = delete;
+    ExchangeHessian& operator=(const ExchangeHessian&) = delete;
+};
+
+struct ExchangeHessians {
+    ExchangeHessian A;
+    ExchangeHessian B;
+    ExchangeHessian C;
+    ExchangeHessian D;
 
     /* mapping of OM C and D HESSIAN_PATTERN indices -> Mr buffer indices, will be set in 'init_hes_mr()' */
     FixedVector<std::pair<int, int>> C_to_Mr_buffer;

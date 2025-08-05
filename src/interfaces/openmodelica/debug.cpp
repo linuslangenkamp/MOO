@@ -26,8 +26,8 @@ void print_real_var_names_values(DATA* data) {
 
     for (long idx = 0; idx < data->modelData->nVariablesReal; idx++) {
         printf("%-8ld :: %-*s :: %+.17e\n", 
-               idx, 
-               static_cast<int>(maxNameLen), data->modelData->realVarsData[idx].info.name, 
+               idx,
+               static_cast<int>(maxNameLen), data->modelData->realVarsData[idx].info.name,
                data->localData[0]->realVars[idx]);
     }
 }
