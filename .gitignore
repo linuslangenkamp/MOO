@@ -31,6 +31,7 @@ Makefile
 *.intdata
 *.realdata
 *.mat
+*.csv
 *.log
 
 # Core dumps / crash logs
