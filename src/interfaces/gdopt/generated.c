@@ -10,20 +10,20 @@
 #define R_SIZE 0
 #define G_SIZE 0
 
-#define HAS_MAYER false
+#define HAS_MAYER true
 #define HAS_LAGRANGE true
 
 // === declare global variables (values can be influenced by runtime parameters - _rp) ===
 
 bounds_t globl_x_bounds[X_SIZE] = { { -100.0, 100.0 } };
-bounds_t globl_u_bounds[U_SIZE] = { { 0.5, 1.0 } };
+bounds_t globl_u_bounds[U_SIZE] = { { -5.0, 5.0 } };
 bounds_t globl_p_bounds[P_SIZE];
 
 bounds_t globl_g_bounds[G_SIZE];
 bounds_t globl_r_bounds[R_SIZE];
 
-optional_value_t globl_x0_fixed[X_SIZE] = { {1.0, true} };
-optional_value_t globl_xf_fixed[X_SIZE];
+optional_value_t globl_x0_fixed[X_SIZE] = { {0.0, true} };
+optional_value_t globl_xf_fixed[X_SIZE] = { {0.0, false} };
 
 f64 globl_x_nominal[X_SIZE];
 f64 globl_u_nominal[U_SIZE];
@@ -56,9 +56,23 @@ coo_t globl_lfg_lt_aug_hes = {
     .nnz = 2
 };
 
-eval_structure_t globl_mr_eval;
-coo_t globl_mr_jac;
-coo_t globl_mr_lt_aug_hes;
+eval_structure_t globl_mr_eval = {
+    .buf_index = (int[]){0}
+};
+
+coo_t globl_mr_jac = {
+    .row = (int[]){0, 0},
+    .col = (int[]){1, 2},
+    .buf_index = (int[]){0, 1},
+    .nnz = 2
+};
+
+coo_t globl_mr_lt_aug_hes = {
+    .row = (int[]){},
+    .col = (int[]){},
+    .buf_index = (int[]){},
+    .nnz = 0
+};
 
 c_problem_t globl_c_problem = {
     .x_size = X_SIZE,
@@ -98,14 +112,20 @@ c_problem_t* get_update_c_problem() {
 
 // [L, f, g]
 void eval_lfg(const f64* xu, const f64* p, f64* out) {
-    out[0] /* L */ = 0.5 * (xu[0] * xu[0] /* x^2 */ + xu[1] * xu[1] /* u */);
-    out[1] /* L */ = xu[0] /* x */ + xu[1] /* u */;
+    const f64* x = xu;
+    const f64* u = xu + X_SIZE;
+
+    out[0] /* L */ = 0.5 * (x[0] * x[0] /* x^2 */ + u[0] * u[0] /* u */);
+    out[1] /* f */ = x[0] /* x */ + u[0] /* u */;
 }
 
 // ∇ [L, f, g]
 void jac_lfg(const f64* xu, const f64* p, f64* out) {
-    out[0] = xu[0]; /* L_x = x */
-    out[1] = xu[1]; /* L_u = u */
+    const f64* x = xu;
+    const f64* u = xu + X_SIZE;
+
+    out[0] = x[0]; /* L_x = x */
+    out[1] = u[0]; /* L_u = u */
     out[2] = 1; /* f_x = 1 */
     out[3] = 1; /* f_u = 1 */
 }
@@ -118,12 +138,16 @@ void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_facto
 
 // [M, r]
 void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64* out) {
+    const f64* xf = xuf;
+    const f64* uf = xuf + X_SIZE;
 
+    out[0] = xf[0] + uf[0];
 }
 
 // ∇ [M, r]
 void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64* out) {
-
+    out[0] = 1;
+    out[1] = 1;
 }
 
 // σ ∇² M + λ^T ∇² r (lower triangle)

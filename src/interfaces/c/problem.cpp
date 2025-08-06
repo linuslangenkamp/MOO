@@ -140,7 +140,6 @@ void layout_mr_init_jac(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_pro
     }
 }
 
-
 void layout_mr_init_aug_hes(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem){
     for (int nz = 0; nz < c_problem->lfg_lt_aug_hes->nnz; nz++) {
         int row = c_problem->lfg_lt_aug_hes->row[nz];
@@ -222,7 +221,10 @@ GDOP::Problem create_gdop(c_problem_t* c_problem, const Mesh& mesh) {
     return GDOP::Problem(std::move(fs), std::move(bs),std::move(pc));
 }
 
-void FullSweep::callback_eval(const f64* xu_nlp, const f64* p) {
+void FullSweep::callback_eval(
+    const f64* xu_nlp,
+    const f64* p)
+{
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
@@ -232,7 +234,10 @@ void FullSweep::callback_eval(const f64* xu_nlp, const f64* p) {
     }
 }
 
-void FullSweep::callback_jac(const f64* xu_nlp, const f64* p) {
+void FullSweep::callback_jac(
+    const f64* xu_nlp,
+    const f64* p)
+{
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
@@ -242,7 +247,12 @@ void FullSweep::callback_jac(const f64* xu_nlp, const f64* p) {
     }
 }
 
-void FullSweep::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) {
+void FullSweep::callback_aug_hes(
+    const f64* xu_nlp,
+    const f64* p,
+    const FixedField<f64, 2>& lagrange_factors,
+    const f64* lambda)
+{
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
@@ -253,10 +263,34 @@ void FullSweep::callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedFie
     }
 }
 
-void BoundarySweep::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {};
-void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) {};
-void BoundarySweep::callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) {};
+void BoundarySweep::callback_eval(
+    const f64* x0_nlp,
+    const f64* xuf_nlp,
+    const f64* p)
+{
+    f64* eval_buf = get_eval_buffer();
+    eval_mr(x0_nlp, xuf_nlp, p, eval_buf);
+};
 
+void BoundarySweep::callback_jac(
+    const f64* x0_nlp,
+    const f64* xuf_nlp,
+    const f64* p)
+{
+    f64* jac_buf = get_jac_buffer();
+    jac_mr(x0_nlp, xuf_nlp, p, jac_buf);
+};
+
+void BoundarySweep::callback_aug_hes(
+    const f64* x0_nlp,
+    const f64* xuf_nlp,
+    const f64* p,
+    const f64 mayer_factor,
+    const f64* lambda)
+{
+    f64* aug_hes_buf = get_aug_hes_buffer();
+    hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor, aug_hes_buf);
+};
 
     /* here is probably not the correct place for these */
 /*

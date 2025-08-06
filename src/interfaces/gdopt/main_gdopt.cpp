@@ -36,6 +36,7 @@ int main_gdopt(int argc, char** argv) {
     c_problem_t* c_problem = get_update_c_problem();
 
     auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);
+    //nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
     nlp_solver_settings.print();
 
     auto mesh = Mesh::create_equidistant_fixed_stages(1 /* tf */, 25 /* intervals */, 3 /* stages */);
