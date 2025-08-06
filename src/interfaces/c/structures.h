@@ -75,12 +75,12 @@ typedef struct c_problem_t {
 // pass these in some callback struct
 c_problem_t* get_update_c_problem();
 
-void eval_lfg(const f64* xu, const f64* p, f64* out);
-void jac_lfg(const f64* xu, const f64* p, f64* out);
-void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64* out);
-void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64* out);
-void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64* out);
-void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64* out);
+void eval_lfg(const f64* xu, const f64* p, f64 t, f64* out);
+void jac_lfg(const f64* xu, const f64* p, f64 t, f64* out);
+void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, f64* out);
+void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out);
+void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out);
+void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf, f64* out);
 
 #ifdef __cplusplus
 }

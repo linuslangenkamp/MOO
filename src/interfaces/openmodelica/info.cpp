@@ -3,7 +3,7 @@
 namespace OpenModelica {
 
 InfoGDOP::InfoGDOP(DATA* data, threadData_t* threadData, int argc, char** argv) :
-                   data(data), threadData(threadData), argc(argc), argv(argv) {}
+                   data(data), threadData(threadData), argc(argc), argv(argv) { set_user_solver(); }
 
 void InfoGDOP::set_time_horizon(int steps) {
     model_start_time = data->simulationInfo->startTime;

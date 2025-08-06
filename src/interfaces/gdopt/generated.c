@@ -111,7 +111,7 @@ c_problem_t* get_update_c_problem() {
 }
 
 // [L, f, g]
-void eval_lfg(const f64* xu, const f64* p, f64* out) {
+void eval_lfg(const f64* xu, const f64* p, f64 t, f64* out) {
     const f64* x = xu;
     const f64* u = xu + X_SIZE;
 
@@ -120,7 +120,7 @@ void eval_lfg(const f64* xu, const f64* p, f64* out) {
 }
 
 // ∇ [L, f, g]
-void jac_lfg(const f64* xu, const f64* p, f64* out) {
+void jac_lfg(const f64* xu, const f64* p, f64 t, f64* out) {
     const f64* x = xu;
     const f64* u = xu + X_SIZE;
 
@@ -131,13 +131,13 @@ void jac_lfg(const f64* xu, const f64* p, f64* out) {
 }
 
 // σ ∇² L + λ^T ∇² [f, g] (lower triangle)
-void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64* out) {
+void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, f64* out) {
     out[0] = obj_factor; /* ℒ_xx = 1 * sigma */
     out[1] = obj_factor; /* ℒ_uu = 1 * sigma */
 }
 
 // [M, r]
-void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64* out) {
+void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out) {
     const f64* xf = xuf;
     const f64* uf = xuf + X_SIZE;
 
@@ -145,12 +145,12 @@ void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64* out) {
 }
 
 // ∇ [M, r]
-void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64* out) {
+void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out) {
     out[0] = 1;
     out[1] = 1;
 }
 
 // σ ∇² M + λ^T ∇² r (lower triangle)
-void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64* out) {
+void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf, f64* out) {
 
 }

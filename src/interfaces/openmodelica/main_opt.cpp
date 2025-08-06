@@ -32,7 +32,6 @@ int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto info = InfoGDOP(data, threadData, argc, argv);
     auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);
     info.set_omc_flags(nlp_solver_settings);
-    info.set_user_solver();
 
     nlp_solver_settings.print();
     auto mesh = Mesh::create_equidistant_fixed_stages(info.tf, info.intervals, info.stages);

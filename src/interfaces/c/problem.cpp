@@ -229,7 +229,7 @@ void FullSweep::callback_eval(
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* eval_buf_ij = get_eval_buffer(i, j);
-            eval_lfg(xu_ij, p, eval_buf_ij);
+            eval_lfg(xu_ij, p, pc.mesh->t[i][j], eval_buf_ij);
         }
     }
 }
@@ -242,7 +242,7 @@ void FullSweep::callback_jac(
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* jac_buf_ij = get_jac_buffer(i, j);
-            jac_lfg(xu_ij, p, jac_buf_ij);
+            jac_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
         }
     }
 }
@@ -258,7 +258,7 @@ void FullSweep::callback_aug_hes(
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             const f64* lmbd_ij = get_lambda_ij(lambda, i, j);
             f64* aug_hes_buffer = get_aug_hes_buffer(i, j);
-            hes_lfg(xu_ij, p, lmbd_ij, lagrange_factors[i][j], aug_hes_buffer);
+            hes_lfg(xu_ij, p, lmbd_ij, lagrange_factors[i][j], pc.mesh->t[i][j], aug_hes_buffer);
         }
     }
 }
@@ -269,7 +269,7 @@ void BoundarySweep::callback_eval(
     const f64* p)
 {
     f64* eval_buf = get_eval_buffer();
-    eval_mr(x0_nlp, xuf_nlp, p, eval_buf);
+    eval_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, eval_buf);
 };
 
 void BoundarySweep::callback_jac(
@@ -278,7 +278,7 @@ void BoundarySweep::callback_jac(
     const f64* p)
 {
     f64* jac_buf = get_jac_buffer();
-    jac_mr(x0_nlp, xuf_nlp, p, jac_buf);
+    jac_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, jac_buf);
 };
 
 void BoundarySweep::callback_aug_hes(
@@ -289,7 +289,7 @@ void BoundarySweep::callback_aug_hes(
     const f64* lambda)
 {
     f64* aug_hes_buf = get_aug_hes_buffer();
-    hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor, aug_hes_buf);
+    hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor,  0, pc.mesh->tf, aug_hes_buf);
 };
 
     /* here is probably not the correct place for these */
