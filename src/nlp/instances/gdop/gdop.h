@@ -166,11 +166,11 @@ private:
   FixedVector<int> off_acc_jac_fg; // offset to NLP_JAC_G first index of nabla (f, g)(t_ij)
 
   /* transforming dual variables (sigma_f and lambda) passed to the callbacks
-   * as callback is an augemented Hessian we must do this ourselves before the callback
+   * as callback is an Hessian we must do this ourselves before the callback
    * callback should already produce:
    *    ∑_{ij} sigma_f * deltaT[i] * b[i][j] * L[i][j] + λ^T ∑_{ij} [-deltaT[i] * f_ij, g_ij] */
 
-  /* scaling factors for lagrange terms in augmented Hessian callback -
+  /* scaling factors for lagrange terms in Hessian callback -
    * absorb "b[i][j] * delta_t[i]" in Lagrange term */
   FixedField<f64, 2> lagrange_obj_factors; // = sigma_f * fLGR::b(mesh.intervals[i], mesh.nodes[j]) * mesh.delta_t[i]
 
@@ -204,11 +204,11 @@ private:
   /* mutiply lambda (dual) with mesh factors => callbacks (except Lagrange) can use exact multipliers */
   void update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_sigma_f);
 
-  /* augmented hessian updates */
-  void update_augmented_hessian_lfg(const AugmentedHessianLFG& hes, const int i, const int j,
+  /* hessian updates */
+  void update_hessian_lfg(const HessianLFG& hes, const int i, const int j,
                                     const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu, FixedVector<f64>& curr_hes);
-  void update_augmented_parameter_hessian_lfg(const AugmentedParameterHessian& aug_hes, FixedVector<f64>& curr_hes); // sum of all weighted Hessian(Lfg)_pp
-  void update_augmented_hessian_mr(const AugmentedHessianMR& hes, FixedVector<f64>& curr_hes);
+  void update_parameter_hessian_lfg(const ParameterHessian& pp_hes, FixedVector<f64>& curr_hes); // sum of all weighted Hessian(Lfg)_pp
+  void update_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes);
 
   // === callbacks to continuous problem (fill problem buffers) ===
 

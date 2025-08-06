@@ -66,33 +66,33 @@ void layout_lfg_init_jac(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_probl
     }
 }
 
-void layout_lfg_init_aug_hes(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_problem){
-    for (int nz = 0; nz < c_problem->lfg_lt_aug_hes->nnz; nz++) {
-        int row = c_problem->lfg_lt_aug_hes->row[nz];
-        int col = c_problem->lfg_lt_aug_hes->col[nz];
-        int buf_index = c_problem->lfg_lt_aug_hes->buf_index[nz];
-        auto& aug_hes = layout_lfg.aug_hes;
-        auto& aug_hes_pp = layout_lfg.aug_pp_hes;
+void layout_lfg_init_hes(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_problem){
+    for (int nz = 0; nz < c_problem->lfg_lt_hes->nnz; nz++) {
+        int row = c_problem->lfg_lt_hes->row[nz];
+        int col = c_problem->lfg_lt_hes->col[nz];
+        int buf_index = c_problem->lfg_lt_hes->buf_index[nz];
+        auto& hes = layout_lfg.hes;
+        auto& hes_pp = layout_lfg.pp_hes;
 
-        assert(row >= col && "Augmented Hessian must be supplied in lower triangular form: row >= col index.");
+        assert(row >= col && "Hessian must be supplied in lower triangular form: row >= col index.");
 
         if (row < c_problem->x_size && col < c_problem->x_size) {
-            aug_hes.dx_dx.push_back({row, col, buf_index});
+            hes.dx_dx.push_back({row, col, buf_index});
         }
         else if (row < c_problem->xu_size && col < c_problem->x_size) {
-            aug_hes.du_dx.push_back({row - c_problem->x_size, col, buf_index});
+            hes.du_dx.push_back({row - c_problem->x_size, col, buf_index});
         }
         else if (row < c_problem->xu_size && col < c_problem->xu_size) {
-            aug_hes.du_du.push_back({row - c_problem->x_size, col - c_problem->x_size, buf_index});
+            hes.du_du.push_back({row - c_problem->x_size, col - c_problem->x_size, buf_index});
         }
         else if (col < c_problem->x_size) {
-            aug_hes.dp_dx.push_back({row - c_problem->xu_size, col, buf_index});
+            hes.dp_dx.push_back({row - c_problem->xu_size, col, buf_index});
         }
         else if (col < c_problem->xu_size) {
-            aug_hes.dp_du.push_back({row - c_problem->xu_size, col - c_problem->x_size, buf_index});
+            hes.dp_du.push_back({row - c_problem->xu_size, col - c_problem->x_size, buf_index});
         }
         else {
-            aug_hes_pp.dp_dp.push_back({row - c_problem->xu_size, col - c_problem->xu_size, buf_index});
+            hes_pp.dp_dp.push_back({row - c_problem->xu_size, col - c_problem->xu_size, buf_index});
         }
     }
 }
@@ -102,7 +102,7 @@ GDOP::FullSweepLayout create_fullsweep_layout(c_problem_t* c_problem) {
 
     layout_lfg_init_eval(layout_lfg, c_problem);
     layout_lfg_init_jac(layout_lfg, c_problem);
-    layout_lfg_init_aug_hes(layout_lfg, c_problem);
+    layout_lfg_init_hes(layout_lfg, c_problem);
 
     return layout_lfg;
 }
@@ -140,44 +140,44 @@ void layout_mr_init_jac(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_pro
     }
 }
 
-void layout_mr_init_aug_hes(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem){
-    for (int nz = 0; nz < c_problem->lfg_lt_aug_hes->nnz; nz++) {
-        int row = c_problem->lfg_lt_aug_hes->row[nz];
-        int col = c_problem->lfg_lt_aug_hes->col[nz];
-        int buf_index = c_problem->lfg_lt_aug_hes->buf_index[nz];
-        auto& aug_hes = layout_mr.aug_hes;
+void layout_mr_init_hes(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem){
+    for (int nz = 0; nz < c_problem->lfg_lt_hes->nnz; nz++) {
+        int row = c_problem->lfg_lt_hes->row[nz];
+        int col = c_problem->lfg_lt_hes->col[nz];
+        int buf_index = c_problem->lfg_lt_hes->buf_index[nz];
+        auto& hes = layout_mr.hes;
 
-        assert(row >= col && "Augmented Hessian must be supplied in lower triangular form: row >= col index.");
+        assert(row >= col && " Hessian must be supplied in lower triangular form: row >= col index.");
 
         if (row < c_problem->x_size && col < c_problem->x_size) {
-            aug_hes.dx0_dx0.push_back({row, col, buf_index});
+            hes.dx0_dx0.push_back({row, col, buf_index});
         }
         else if (row < 2 * c_problem->x_size && col < c_problem->x_size) {
-            aug_hes.dxf_dx0.push_back({row - c_problem->x_size, col, buf_index});
+            hes.dxf_dx0.push_back({row - c_problem->x_size, col, buf_index});
         }
         else if (row < 2 * c_problem->x_size + c_problem->u_size && col < c_problem->x_size) {
-            aug_hes.duf_dx0.push_back({row - 2 * c_problem->x_size, col, buf_index});
+            hes.duf_dx0.push_back({row - 2 * c_problem->x_size, col, buf_index});
         }
         else if (col < c_problem->x_size) {
-            aug_hes.dp_dx0.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col, buf_index});
+            hes.dp_dx0.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col, buf_index});
         }
         else if (row < 2 * c_problem->x_size && col < 2 * c_problem->x_size) {
-            aug_hes.dxf_dxf.push_back({row - c_problem->x_size, col - c_problem->x_size, buf_index});
+            hes.dxf_dxf.push_back({row - c_problem->x_size, col - c_problem->x_size, buf_index});
         }
         else if (row < 2 * c_problem->x_size + c_problem->u_size && col < 2 * c_problem->x_size) {
-            aug_hes.duf_dxf.push_back({row - 2 * c_problem->x_size, col - c_problem->x_size, buf_index});
+            hes.duf_dxf.push_back({row - 2 * c_problem->x_size, col - c_problem->x_size, buf_index});
         }
         else if (col < 2 * c_problem->x_size) {
-            aug_hes.dp_dxf.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - c_problem->x_size, buf_index});
+            hes.dp_dxf.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - c_problem->x_size, buf_index});
         }
         else if (row < 2 * c_problem->x_size + c_problem->u_size && col < 2 * c_problem->x_size + c_problem->u_size) {
-            aug_hes.duf_duf.push_back({row - 2 * c_problem->x_size, col - 2 * c_problem->x_size, buf_index});
+            hes.duf_duf.push_back({row - 2 * c_problem->x_size, col - 2 * c_problem->x_size, buf_index});
         }
         else if (col < 2 * c_problem->x_size + c_problem->u_size) {
-            aug_hes.dp_duf.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - 2 * c_problem->x_size, buf_index});
+            hes.dp_duf.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - 2 * c_problem->x_size, buf_index});
         }
         else {
-            aug_hes.dp_dp.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - (2 * c_problem->x_size + c_problem->u_size), buf_index});
+            hes.dp_dp.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - (2 * c_problem->x_size + c_problem->u_size), buf_index});
         }
     }
 }
@@ -187,7 +187,7 @@ GDOP::BoundarySweepLayout create_boundarysweep_layout(c_problem_t* c_problem) {
 
     layout_mr_init_eval(layout_mr, c_problem);
     layout_mr_init_jac(layout_mr, c_problem);
-    layout_mr_init_aug_hes(layout_mr, c_problem);
+    layout_mr_init_hes(layout_mr, c_problem);
 
     return layout_mr;
 }
@@ -215,8 +215,8 @@ GDOP::Problem create_gdop(c_problem_t* c_problem, const Mesh& mesh) {
         mesh
     );
 
-    auto fs = std::make_unique<FullSweep>(create_fullsweep_layout(c_problem), *pc);
-    auto bs = std::make_unique<BoundarySweep>(create_boundarysweep_layout(c_problem), *pc);
+    auto fs = std::make_unique<FullSweep>(create_fullsweep_layout(c_problem), *pc, c_problem->callbacks);
+    auto bs = std::make_unique<BoundarySweep>(create_boundarysweep_layout(c_problem), *pc, c_problem->callbacks);
 
     return GDOP::Problem(std::move(fs), std::move(bs),std::move(pc));
 }
@@ -229,7 +229,7 @@ void FullSweep::callback_eval(
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* eval_buf_ij = get_eval_buffer(i, j);
-            eval_lfg(xu_ij, p, pc.mesh->t[i][j], eval_buf_ij);
+            c_callbacks->eval_lfg(xu_ij, p, pc.mesh->t[i][j], eval_buf_ij);
         }
     }
 }
@@ -242,12 +242,12 @@ void FullSweep::callback_jac(
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* jac_buf_ij = get_jac_buffer(i, j);
-            jac_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
+            c_callbacks->jac_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
         }
     }
 }
 
-void FullSweep::callback_aug_hes(
+void FullSweep::callback_hes(
     const f64* xu_nlp,
     const f64* p,
     const FixedField<f64, 2>& lagrange_factors,
@@ -257,8 +257,8 @@ void FullSweep::callback_aug_hes(
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             const f64* lmbd_ij = get_lambda_ij(lambda, i, j);
-            f64* aug_hes_buffer = get_aug_hes_buffer(i, j);
-            hes_lfg(xu_ij, p, lmbd_ij, lagrange_factors[i][j], pc.mesh->t[i][j], aug_hes_buffer);
+            f64* hes_buffer = get_hes_buffer(i, j);
+            c_callbacks->hes_lfg(xu_ij, p, lmbd_ij, lagrange_factors[i][j], pc.mesh->t[i][j], hes_buffer);
         }
     }
 }
@@ -269,7 +269,7 @@ void BoundarySweep::callback_eval(
     const f64* p)
 {
     f64* eval_buf = get_eval_buffer();
-    eval_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, eval_buf);
+    c_callbacks->eval_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, eval_buf);
 };
 
 void BoundarySweep::callback_jac(
@@ -278,18 +278,18 @@ void BoundarySweep::callback_jac(
     const f64* p)
 {
     f64* jac_buf = get_jac_buffer();
-    jac_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, jac_buf);
+    c_callbacks->jac_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, jac_buf);
 };
 
-void BoundarySweep::callback_aug_hes(
+void BoundarySweep::callback_hes(
     const f64* x0_nlp,
     const f64* xuf_nlp,
     const f64* p,
     const f64 mayer_factor,
     const f64* lambda)
 {
-    f64* aug_hes_buf = get_aug_hes_buffer();
-    hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor,  0, pc.mesh->tf, aug_hes_buf);
+    f64* hes_buf = get_hes_buffer();
+    c_callbacks->hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor,  0, pc.mesh->tf, hes_buf);
 };
 
     /* here is probably not the correct place for these */

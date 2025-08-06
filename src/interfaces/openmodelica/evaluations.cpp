@@ -108,8 +108,8 @@ void init_hes(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg, GDOP::BoundaryS
 }
 
 void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg) {
-    /* TODO: PARAMETERS include aug_hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
-    auto& aug_hes = layout_lfg.aug_hes;
+    /* TODO: PARAMETERS include hes_lfg_pp and make it threaded (~numberThreads buffers with fancy pooling) */
+    auto& hes = layout_lfg.hes;
 
     HESSIAN_PATTERN* hes_b = info.exc_hes->B.hessian;
 
@@ -118,19 +118,19 @@ void init_hes_lfg(InfoGDOP& info, GDOP::FullSweepLayout& layout_lfg) {
         int col = hes_b->col[lnz];
 
         if (row < info.x_size && col < info.x_size) {
-            aug_hes.dx_dx.push_back({row, col, lnz});
+            hes.dx_dx.push_back({row, col, lnz});
         }
         else if (row >= info.x_size && col < info.x_size) {
-            aug_hes.du_dx.push_back({row - info.x_size, col, lnz});
+            hes.du_dx.push_back({row - info.x_size, col, lnz});
         }
         else {
-            aug_hes.du_du.push_back({row - info.x_size, col - info.x_size, lnz});
+            hes.du_du.push_back({row - info.x_size, col - info.x_size, lnz});
         }
     }
 }
 
 void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
-    auto& aug_hes_mr = layout_mr.aug_hes;
+    auto& hes_mr = layout_mr.hes;
 
     HESSIAN_PATTERN* hes_c = info.exc_hes->C.hessian;
     HESSIAN_PATTERN* hes_d = info.exc_hes->D.hessian;
@@ -163,7 +163,7 @@ void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
         }
     }
 
-    // create augmented sparsity pattern struct(H(M) + H(r))
+    // create sparsity pattern struct(H(M) + H(r))
     int lnz = 0;
     std::map<std::pair<int, int>, int> sparsity_to_lnz;
     for (auto pair : hessian_mr.set) {
@@ -171,13 +171,13 @@ void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
         sparsity_to_lnz[pair] = lnz;
 
         if (row < info.x_size && col < info.x_size) {
-            aug_hes_mr.dxf_dxf.push_back({row, col, lnz});
+            hes_mr.dxf_dxf.push_back({row, col, lnz});
         }
         else if (row >= info.x_size && col < info.x_size) {
-            aug_hes_mr.duf_dxf.push_back({row - info.x_size, col, lnz});
+            hes_mr.duf_dxf.push_back({row - info.x_size, col, lnz});
         }
         else {
-            aug_hes_mr.duf_duf.push_back({row - info.x_size, col - info.x_size, lnz});
+            hes_mr.duf_duf.push_back({row - info.x_size, col - info.x_size, lnz});
         }
         lnz++;
     }
@@ -199,7 +199,7 @@ void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
                 hes_c_index++;
             }
             else {
-                LOG_ERROR("Hessian entry row = {}, col = {} from hes_d not found in augmented pattern!", mayer_hess.row, mayer_hess.col);
+                LOG_ERROR("Hessian entry row = {}, col = {} from hes_d not found in pattern!", mayer_hess.row, mayer_hess.col);
                 std::abort();
             }
         }
@@ -214,7 +214,7 @@ void init_hes_mr(InfoGDOP& info, GDOP::BoundarySweepLayout& layout_mr) {
             if (it != sparsity_to_lnz.end()) {
                 info.exc_hes->D_to_Mr_buffer[i] = {i, it->second};
             } else {
-                LOG_ERROR("Hessian entry row = {}, col = {} from hes_d not found in augmented pattern!", row, col);
+                LOG_ERROR("Hessian entry row = {}, col = {} from hes_d not found in pattern!", row, col);
                 std::abort();
             }
         }

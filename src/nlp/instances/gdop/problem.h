@@ -82,8 +82,8 @@ struct FullSweepLayout {
     FixedVector<FunctionLFG> f;     // Dynamic Equations
     FixedVector<FunctionLFG> g;     // Path Constraints
 
-    AugmentedHessianLFG aug_hes;          // augmented Hessian (excluding parameters)
-    AugmentedParameterHessian aug_pp_hes; // augmented Hessian (parameters only)
+    HessianLFG hes;              //  Hessian (excluding parameters)
+    ParameterHessian pp_hes; //  Hessian (parameters only)
 
     FullSweepLayout(bool lagrange_exists,
                     int size_f,
@@ -91,8 +91,8 @@ struct FullSweepLayout {
     : L(lagrange_exists ? std::make_unique<FunctionLFG>() : nullptr),
       f(FixedVector<FunctionLFG>(size_f)),
       g(FixedVector<FunctionLFG>(size_g)),
-      aug_hes(AugmentedHessianLFG()),
-      aug_pp_hes(AugmentedParameterHessian()) {}
+      hes(HessianLFG()),
+      pp_hes(ParameterHessian()) {}
 
 
     inline int size() {
@@ -114,21 +114,21 @@ struct FullSweepBuffers {
     // sizes of 1 buffer chuck
     const int eval_size = 0;
     const int jac_size = 0;
-    const int aug_hes_size = 0;
+    const int hes_size = 0;
 
     FixedVector<f64> eval;
     FixedVector<f64> jac;
-    FixedVector<f64> aug_hes;
+    FixedVector<f64> hes;
 
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
-    FixedVector<f64> aug_pp_hes; // make it like array<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
+    FixedVector<f64> pp_hes; // make it like array<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
 
     FullSweepBuffers(FullSweepLayout& layout_lfg,
-                     AugmentedHessianLFG& aug_hes,
+                     HessianLFG& hes,
                      const ProblemConstants& pc) :
         eval_size(layout_lfg.size()),
         jac_size(layout_lfg.compute_jac_nnz()),
-        aug_hes_size(aug_hes.nnz())
+        hes_size(hes.nnz())
     {
         resize(*pc.mesh);
     }
@@ -144,7 +144,7 @@ public:
               const ProblemConstants& pc_in)
     : layout(std::move(layout_in)),
       pc(pc_in),
-      buffers(layout, layout.aug_hes, pc) {}
+      buffers(layout, layout.hes, pc) {}
 
     virtual ~FullSweep() = default;
 
@@ -160,12 +160,12 @@ public:
     // fill jac_buffer accoring to sparsity structure
     virtual void callback_jac(const f64* xu_nlp, const f64* p) = 0;
 
-    /* fill aug_hes_buffer and aug_pp_hes_buffer accoring to sparsity structure
-     * aug_hes_buffer is $\lambda^T * \nabla² (f, g) + lfactor * \nabla² L$ all except w.r.t. pp
-     * aug_pp_hes_buffer is $\lambda^T * \nabla²_{pp} (f, g) + lfactor * \nabla²_{pp} L$
+    /* fill hes_buffer and pp_hes_buffer accoring to sparsity structure
+     * hes_buffer is $\lambda^T * \nabla² (f, g) + lfactor * \nabla² L$ all except w.r.t. pp
+     * pp_hes_buffer is $\lambda^T * \nabla²_{pp} (f, g) + lfactor * \nabla²_{pp} L$
      * lambdas are exact multipliers (no transform needed) to each block [f, g]_{ij}
      * lagrange_factors are exact factor for lagrange terms in interval i, nodes j */
-    virtual void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) = 0;
+    virtual void callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) = 0;
 
     inline const f64* get_xu_ij(const f64* xu_nlp, int i, int j) {
         return xu_nlp + pc.xu_size * pc.mesh->acc_nodes[i][j];
@@ -183,8 +183,8 @@ public:
         return buffers.jac.raw() + buffers.jac_size * pc.mesh->acc_nodes[i][j];
     }
 
-    inline f64* get_aug_hes_buffer(int i, int j) {
-        return buffers.aug_hes.raw() + buffers.aug_hes_size * pc.mesh->acc_nodes[i][j];
+    inline f64* get_hes_buffer(int i, int j) {
+        return buffers.hes.raw() + buffers.hes_size * pc.mesh->acc_nodes[i][j];
     }
 
     void print_jacobian_sparsity_pattern();
@@ -197,18 +197,16 @@ private:
 // ================== Boundary - Mr Block ==================
 
 struct BoundarySweepLayout {
-    // hold eval and Jacobian
+    // hold eval and Jacobian + Hessian
     std::unique_ptr<FunctionMR> M; // Mayer Term
     FixedVector<FunctionMR> r;     // Boundary Constraints
-
-    // holds augmented Hessian
-    AugmentedHessianMR aug_hes;    // augmented Hessian structure
+    HessianMR hes;                 // Hessian structure
 
     BoundarySweepLayout(bool mayer_exists,
                         int size_r)
     : M(mayer_exists ? std::make_unique<FunctionMR>() : nullptr),
       r(FixedVector<FunctionMR>(size_r)),
-      aug_hes(AugmentedHessianMR()) {}
+      hes(HessianMR()) {}
 
     inline int size() { return (M ? 1 : 0) + r.int_size(); };
     int compute_jac_nnz();
@@ -217,14 +215,14 @@ struct BoundarySweepLayout {
 struct BoundarySweepBuffers {
     FixedVector<f64> eval;
     FixedVector<f64> jac;
-    FixedVector<f64> aug_hes;
+    FixedVector<f64> hes;
 
     BoundarySweepBuffers(BoundarySweepLayout& layout,
-                         AugmentedHessianMR& aug_hes,
+                         HessianMR& hes,
                          const ProblemConstants& pc)
     : eval(FixedVector<f64>(layout.size())),
       jac(FixedVector<f64>(layout.compute_jac_nnz())),
-      aug_hes(FixedVector<f64>(aug_hes.nnz())) {}
+      hes(FixedVector<f64>(hes.nnz())) {}
 };
 
 class BoundarySweep {
@@ -235,11 +233,11 @@ public:
                   const ProblemConstants& pc_in)
     : layout(std::move(layout_in)),
       pc(pc_in),
-      buffers(layout, layout.aug_hes, pc) {}
+      buffers(layout, layout.hes, pc) {}
 
     virtual ~BoundarySweep() = default;
 
-    // eval + Jacobian + augmented Hessian (includes sparsity + mapping to buffer indices - location to write to)
+    // eval + Jacobian + Hessian (includes sparsity + mapping to buffer indices - location to write to)
     BoundarySweepLayout layout;
 
     // stores all the relevant constants such as dimensions, bounds, offsets and mesh
@@ -251,7 +249,7 @@ public:
 
    /* lambdas are exact multipliers (no transform needed) to [r]
     * mayer_factor is eact multiplier (no transform needed) of M */
-    virtual void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) = 0;
+    virtual void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) = 0;
 
     inline f64* get_eval_buffer() {
         return buffers.eval.raw();
@@ -261,12 +259,12 @@ public:
         return buffers.jac.raw();
     }
 
-    inline f64* get_aug_hes_buffer() {
-        return buffers.aug_hes.raw();
+    inline f64* get_hes_buffer() {
+        return buffers.hes.raw();
     }
 
-    inline void fill_zero_aug_hes_buffer() {
-        buffers.aug_hes.fill_zero();
+    inline void fill_zero_hes_buffer() {
+        buffers.hes.fill_zero();
     }
 
     void print_jacobian_sparsity_pattern();
@@ -307,13 +305,13 @@ public:
         return full->buffers.jac[jac_buf_base_index + full->buffers.jac_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
-    inline f64 lfg_aug_hes(int hes_buf_base_index, int interval_i, int node_j) {
-        return full->buffers.aug_hes[hes_buf_base_index + full->buffers.aug_hes_size * pc->mesh->acc_nodes[interval_i][node_j]];
+    inline f64 lfg_hes(int hes_buf_base_index, int interval_i, int node_j) {
+        return full->buffers.hes[hes_buf_base_index + full->buffers.hes_size * pc->mesh->acc_nodes[interval_i][node_j]];
     }
 
     /* TODO: add and make threaded */
-    inline f64 lfg_aug_pp_hes(int hes_buf_base_index) {
-        return full->buffers.aug_pp_hes[hes_buf_base_index];
+    inline f64 lfg_pp_hes(int hes_buf_base_index) {
+        return full->buffers.pp_hes[hes_buf_base_index];
     }
 
     inline f64 mr_eval_M() {
@@ -329,8 +327,8 @@ public:
         return boundary->buffers.jac[jac_buf_base_index];
     }
 
-    inline f64 mr_aug_hes(int hes_buf_base_index) {
-        return boundary->buffers.aug_hes[hes_buf_base_index];
+    inline f64 mr_hes(int hes_buf_base_index) {
+        return boundary->buffers.hes[hes_buf_base_index];
     }
 
     inline void update_mesh(std::shared_ptr<const Mesh> mesh) {

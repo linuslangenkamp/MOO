@@ -25,7 +25,7 @@ public:
 
     void callback_eval(const f64* xu_nlp, const f64* p) override;
     void callback_jac(const f64* xu_nlp, const f64* p) override;
-    void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) override;
+    void callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) override;
 };
 
 class BoundarySweep : public GDOP::BoundarySweep {
@@ -38,7 +38,7 @@ public:
 
     void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
     void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p) override;
-    void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) override;
+    void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, const f64* lambda) override;
 };
 
 GDOP::Problem create_gdop(InfoGDOP& info, const Mesh& mesh);

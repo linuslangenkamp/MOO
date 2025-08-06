@@ -40,7 +40,7 @@ typedef struct {
   int* row;                      // flat COO row indices (i)
   int* col;                      // flat COO column indices (j)
   int size;                      // number of variables (Hessian is size × size)
-  int numFuncs;                  // number of functions in the augmented Hessian
+  int numFuncs;                  // number of functions in the Hessian
   int lnnz;                      // number of lower triangular nonzeros
   int** colsForColor;            // colsForColor[c] is an array of column indices in color c
   int* colorSizes;               // colorSizes[c] is the number of columns in colorCols[c]
@@ -92,7 +92,7 @@ typedef struct {
   int maxSteps;
 } ExtrapolationData;
 
-/* augmented Hessian structure for richardson extrapolation scheme */
+/* Hessian structure for richardson extrapolation scheme */
 typedef struct {
   DATA* data;
   threadData_t* threadData;

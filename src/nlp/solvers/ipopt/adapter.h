@@ -20,7 +20,7 @@ public:
     NLP::NLP& nlp;
 
     // Attention: this part is super confusing, since the lambda and sigma_f *unscale* is actually a scale with g and f!!
-    // this is the case, because the augmented Lagrangian does not allow for to scale f and g independently after evaluation
+    // this is the case, because the Lagrangian does not allow for to scale f and g independently after evaluation
     // so the only possibility is to apply this scaling a priori by updating the duals and sigma_f
 
     bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override;

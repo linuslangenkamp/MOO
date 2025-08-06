@@ -54,7 +54,7 @@ struct InfoGDOP {
     /* exchange format for Jacobians OM <-> OPT */
     std::unique_ptr<ExchangeJacobians> exc_jac;
 
-    /* numerical augmented Hessians */
+    /* numerical Hessians */
     std::unique_ptr<ExchangeHessians> exc_hes;
 
     /* time horizon */

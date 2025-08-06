@@ -33,7 +33,7 @@ int BoundarySweepLayout::compute_jac_nnz() {
 void FullSweepBuffers::resize(const Mesh& mesh) {
     eval = FixedVector<f64>(mesh.node_count * eval_size);
     jac = FixedVector<f64>(mesh.node_count * jac_size);
-    aug_hes = FixedVector<f64>(mesh.node_count * aug_hes_size);
+    hes = FixedVector<f64>(mesh.node_count * hes_size);
 }
 
 FunctionLFG& access_fLg_from_row(FullSweepLayout& layout_lfg, int row) {

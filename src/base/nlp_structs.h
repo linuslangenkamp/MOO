@@ -40,7 +40,7 @@ struct JacobianLFG {
     }
 };
 
-struct AugmentedHessianLFG {
+struct HessianLFG {
     // coordinate format hessian for LFG functions
     std::vector<HessianSparsity> dx_dx;
     std::vector<HessianSparsity> du_dx;
@@ -53,7 +53,7 @@ struct AugmentedHessianLFG {
     }
 };
 
-struct AugmentedParameterHessian {
+struct ParameterHessian {
     std::vector<HessianSparsity> dp_dp;
 
     inline int nnz() const {
@@ -81,7 +81,7 @@ struct JacobianMR {
     }
 };
 
-struct AugmentedHessianMR {
+struct HessianMR {
     // coordinate format hessian for MR functions
     std::vector<HessianSparsity> dx0_dx0;
     std::vector<HessianSparsity> dxf_dx0;
@@ -111,7 +111,7 @@ struct NLPState {
     bool eval_g         = false;
     bool grad_f         = false;
     bool jac_g          = false;
-    bool hes_lag        = false;
+    bool hes            = false;
 
     void check_reset_x(bool new_x) {
         if (new_x) {
@@ -119,13 +119,13 @@ struct NLPState {
             eval_g         = false;
             grad_f         = false;
             jac_g          = false;
-            hes_lag        = false; 
+            hes            = false; 
         }
     };
 
     void check_reset_lambda(bool new_lambda) {
         if (new_lambda) {
-            hes_lag        = false; 
+            hes = false; 
         }
     };
 };

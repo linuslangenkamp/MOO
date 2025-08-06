@@ -428,10 +428,10 @@ To define a specific GDOP, you will need to implement concrete classes derived f
      Calculates the Jacobian (first derivatives) of L, f, and g with respect to `x`, `u`, and `p`.
      These values should be written into `buffers.jac`.
 
-   * `virtual void callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) = 0;`
-     Calculates the augmented Hessian (second derivatives) of L, f, and g. This involves
+   * `virtual void callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda) = 0;`
+     Calculates the Hessian (second derivatives) of L, f, and g. This involves
      the second derivatives of the Lagrangian function (objective + constraints scaled by multipliers).
-     The results should be written into `buffers.aug_hes` and `buffers.aug_pp_hes`.
+     The results should be written into `buffers.hes` and `buffers.pp_hes`.
      `lagrange_factors` are the exact factors for the Lagrange terms, and `lambda` are the exact multipliers
      for the constraints (f and g).
 
@@ -449,15 +449,15 @@ To define a specific GDOP, you will need to implement concrete classes derived f
      Calculates the Jacobian of M and r with respect to `x0`, `xf`, `uf`, and `p`.
      These values should be written into `buffers.jac`.
 
-   * `virtual void callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) = 0;`
-     Calculates the augmented Hessian of M and r.
-     The results should be written into `buffers.aug_hes`.
+   * `virtual void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda) = 0;`
+     Calculates the Hessian of M and r.
+     The results should be written into `buffers.hes`.
      `mayer_factor` is the exact multiplier for the Mayer term, and `lambda` are the exact multipliers
      for the boundary constraints (r).
 
 #### 3.3.2. Data Structures for Sparsity and Buffers
 
-The sparsity structures (e.g., `JacobianLFG::dx`, `AugmentedHessianLFG::dx_dx`) hold
+The sparsity structures (e.g., `JacobianLFG::dx`, `HessianLFG::dx_dx`) hold
 `JacobianSparsity` or `HessianSparsity` objects. These objects contain a `buf_index`
 which is crucial for writing to the `FullSweepBuffers` and `BoundarySweepBuffers`.
 
@@ -470,7 +470,7 @@ to a single scalar function (e.g., the Mayer objective term M, or one component
 of the boundary constraints r).
 
 **Important Note on `buf_index` and Buffer Mapping**:
-The sparsity information (e.g., `FullSweep::lfg`, `FullSweep::aug_hes`, etc.)
+The sparsity information (e.g., `FullSweep::lfg`, `FullSweep::hes`, etc.)
 defines the structure and *sorted order* of the non-zero elements within the
 evaluation, Jacobian, and Hessian buffers.
 
@@ -481,17 +481,17 @@ evaluation, Jacobian, and Hessian buffers.
 
 * **For `FullSweep` (L, f, g) calculations (per collocation node)**:
 
-  * The `buffers.eval`, `buffers.jac`, and `buffers.aug_hes` are allocated as
+  * The `buffers.eval`, `buffers.jac`, and `buffers.hes` are allocated as
     large contiguous blocks of memory, designed to hold data for *all*
     collocation nodes.
 
-  * The `eval_size`, `jac_size`, `aug_hes_size` members of `FullSweepBuffers`
+  * The `eval_size`, `jac_size`, `hes_size` members of `FullSweepBuffers`
     represent the memory chunk size required for *a single collocation node*.
 
   * To correctly write results for a specific node `(i, j)` (interval `i`, node `j`),
     you must first calculate the starting address for that node's data chunk
     within the larger buffer. The inline helper methods `get_eval_buffer(i, j)`,
-    `get_jac_buffer(i, j)`, and `get_aug_hes_buffer(i, j)` provide this base pointer
+    `get_jac_buffer(i, j)`, and `get_hes_buffer(i, j)` provide this base pointer
     for the current node's data chunk.
 
   * You then use the `buf_index` from the relevant `FunctionLFG` object or
@@ -500,14 +500,14 @@ evaluation, Jacobian, and Hessian buffers.
 
 * **For `BoundarySweep` (M, r) calculations (single evaluation)**:
 
-  * The `buffers.eval`, `buffers.jac`, and `buffers.aug_hes` are single, fixed-size buffers.
+  * The `buffers.eval`, `buffers.jac`, and `buffers.hes` are single, fixed-size buffers.
     Boundary conditions are evaluated once for the problem, not per collocation node.
 
   * Therefore, the `buf_index` from `FunctionMR` or the respective `JacobianSparsity`/`HessianSparsity`
     entry directly gives the index into these single buffers (no additional node-based offset is needed).
 
 **Hessian Structure (Lower Triangular)**:
-For Hessian calculations (`callback_aug_hes`), you are expected to provide only the
+For Hessian calculations (`callback_hes`), you are expected to provide only the
 **lower triangular part** of the symmetric Hessian matrices. This means that for any
 `HessianSparsity` entry `(row, col)`, you should only write a value if `row >= col`.
 The `HessianSparsity` structures will only contain entries for the lower triangular part.
@@ -524,14 +524,14 @@ The callbacks expect the following mathematical quantities to be computed and wr
 * **`callback_jac(const f64* xu_nlp, const f64* p)`**:
     This callback computes the partial derivatives (Jacobian) of the Lagrange term ($L$), dynamic equations ($f$), and path constraints ($g$) with respect to $x$, $u$, and $p$ at a given collocation point. These derivative values should be written into the `buffers.jac` array, using the `buf_index` specified by the `JacobianSparsity` entries within each `FunctionLFG` object (e.g., `buffers.jac[lfg[idx].jac.dx[entry_idx].buf_index] = derivative_value;`).
 
-* **`callback_aug_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda)`**:
-    This callback computes the lower triangular part of the augmented Hessian (second derivatives of the Lagrangian) with respect to $(x, u, p)$ at a given collocation point. The Lagrangian $\mathcal{L}$ for a single node is:
+* **`callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, f64* lambda)`**:
+    This callback computes the lower triangular part of the Hessian (second derivatives of the Lagrangian) with respect to $(x, u, p)$ at a given collocation point. The Lagrangian $\mathcal{L}$ for a single node is:
 
     $$
     \mathcal{L}(x, u, p, t, \lambda, \text{$lfactor$}) = \text{$lfactor$} \cdot L(x, u, p, t) + \sum_{k} \lambda_k \cdot f_k(x, u, p, t) + \sum_{k} \lambda_k \cdot g_k(x, u, p, t)
     $$
 
-    The computed second derivative values should be written into the `buffers.aug_hes` array, using the `buf_index` specified by the `HessianSparsity` entries. For parameters, values are written to `buffers.aug_pp_hes`.
+    The computed second derivative values should be written into the `buffers.hes` array, using the `buf_index` specified by the `HessianSparsity` entries. For parameters, values are written to `buffers.pp_hes`.
 
 ##### `BoundarySweep` Callbacks:
 
@@ -541,14 +541,14 @@ The callbacks expect the following mathematical quantities to be computed and wr
 * **`callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p)`**:
     This callback computes the partial derivatives (Jacobian) of the Mayer term ($M$) and boundary constraints ($r$) with respect to $x_0$, $x_f$, $u_f$, and $p$. These values should be written into the `buffers.jac` array using the `buf_index` specified by the `JacobianSparsity` entries within each `FunctionMR` object.
 
-* **`callback_aug_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda)`**:
-    This callback computes the lower triangular part of the augmented Hessian (second derivatives of the boundary Lagrangian) with respect to $(x_0, x_f, u_f, p)$. The boundary Lagrangian $\mathcal{L}_B$ is:
+* **`callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 mayer_factor, f64* lambda)`**:
+    This callback computes the lower triangular part of the Hessian (second derivatives of the boundary Lagrangian) with respect to $(x_0, x_f, u_f, p)$. The boundary Lagrangian $\mathcal{L}_B$ is:
 
     $$
     \mathcal{L}_B(x_0, x_f, u_f, p, \lambda, \lambda_M) = \lambda_M \cdot M(x_0, x_f, u_f, p) + \sum_{k} \lambda_k \cdot r_k(x_0, x_f, u_f, p)
     $$
 
-    Here $\lambda_M$ denotes the `mayer_factor`. The computed second derivative values should be written into the `buffers.aug_hes` array using the `buf_index` specified by the `HessianSparsity` entries.
+    Here $\lambda_M$ denotes the `mayer_factor`. The computed second derivative values should be written into the `buffers.hes` array using the `buf_index` specified by the `HessianSparsity` entries.
 
 ### 3.4. GDOP-Specific NLP Implementation (`GDOP::GDOP`)
 
@@ -647,23 +647,23 @@ Where:
 
 * $p$: Refers to the global parameters.
 
-The blocks A-H represent sub-matrices derived from the problem's `AugmentedHessianMR` (boundary) and `AugmentedHessianLFG` (full sweep) structures:
+The blocks A-H represent sub-matrices derived from the problem's `HessianMR` (boundary) and `HessianLFG` (full sweep) structures:
 
-* **A**: Lower triangular block for $x_0$ derivatives, derived from `problem.boundary->aug_hes->dx0_dx0`.
+* **A**: Lower triangular block for $x_0$ derivatives, derived from `problem.boundary->hes->dx0_dx0`.
 
-* **B**: Lower triangular block for $(x, u)$ derivatives at an internal collocation node, derived from `problem.full->aug_hes->dx_dx`, `du_dx`, `du_du`. This block is repeated for each internal interval.
+* **B**: Lower triangular block for $(x, u)$ derivatives at an internal collocation node, derived from `problem.full->hes->dx_dx`, `du_dx`, `du_du`. This block is repeated for each internal interval.
 
-* **C**: Rectangular block for derivatives of $x_{\text{final}}$ and $u_{\text{final}}$ with respect to $x_0$, derived from `problem.boundary->aug_hes->dxf_dx0`, `duf_dx0`.
+* **C**: Rectangular block for derivatives of $x_{\text{final}}$ and $u_{\text{final}}$ with respect to $x_0$, derived from `problem.boundary->hes->dxf_dx0`, `duf_dx0`.
 
-* **D**: Lower triangular block for derivatives of $x_{\text{final}}$ and $u_{\text{final}}$ with respect to themselves, derived from `problem.boundary->aug_hes->dxf_dxf`, `duf_dxf`, `duf_duf`.
+* **D**: Lower triangular block for derivatives of $x_{\text{final}}$ and $u_{\text{final}}$ with respect to themselves, derived from `problem.boundary->hes->dxf_dxf`, `duf_dxf`, `duf_duf`.
 
-* **E**: Rectangular block for derivatives of parameters $p$ with respect to $x_0$, derived from `problem.boundary->aug_hes->dp_dx0`.
+* **E**: Rectangular block for derivatives of parameters $p$ with respect to $x_0$, derived from `problem.boundary->hes->dp_dx0`.
 
-* **F**: Rectangular block for derivatives of parameters $p$ with respect to $(x, u)$ at an internal collocation node, derived from `problem.full->aug_hes->dp_dx`, `dp_du`. This block is repeated for each internal interval.
+* **F**: Rectangular block for derivatives of parameters $p$ with respect to $(x, u)$ at an internal collocation node, derived from `problem.full->hes->dp_dx`, `dp_du`. This block is repeated for each internal interval.
 
-* **G**: Rectangular block for derivatives of parameters $p$ with respect to $x_{\text{final}}$ and $u_{\text{final}}$, derived from `problem.boundary->aug_hes->dp_dxf`, `dp_duf`.
+* **G**: Rectangular block for derivatives of parameters $p$ with respect to $x_{\text{final}}$ and $u_{\text{final}}$, derived from `problem.boundary->hes->dp_dxf`, `dp_duf`.
 
-* **H**: Lower triangular block for derivatives of parameters $p$ with respect to themselves, derived from `problem.boundary->aug_hes->dp_dp` and `problem.full->aug_pp_hes->dp_dp`.
+* **H**: Lower triangular block for derivatives of parameters $p$ with respect to themselves, derived from `problem.boundary->hes->dp_dp` and `problem.full->pp_hes->dp_dp`.
 
 This block structure is essential for efficiently populating the Hessian matrix by iterating through the relevant sparsity patterns and applying the correct offsets.
 
@@ -828,7 +828,7 @@ This strategy pattern is powerful because it allows:
 
 1. Define your specific GDOP by creating classes that inherit from `FullSweep` and `BoundarySweep`.
 
-2. In these derived classes, implement the `callback_eval`, `callback_jac`, and `callback_aug_hes` methods
+2. In these derived classes, implement the `callback_eval`, `callback_jac`, and `callback_hes` methods
    to compute your problem's specific objective, dynamics, and constraints, along with their derivatives.
    You will use the `lfg` (`FixedVector<FunctionLFG>`) and `mr` (`FixedVector<FunctionMR>`) members,
    and their contained sparsity information, to determine the correct `buf_index` where the

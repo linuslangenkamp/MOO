@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include <interfaces/openmodelica/main_opt.h>
-#include <interfaces/gdopt/main_gdopt.h>
+#include <interfaces/gdopt/generated.h>
 
 #include <base/fLGR.h>
 #include <base/log.h>
@@ -46,8 +46,8 @@ int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), ipopt_solver);
 
     orchestrator.optimize();
-    
-    main_gdopt(argc, argv);
+
+    run_model(argc, argv);
 
     return 0;
 }

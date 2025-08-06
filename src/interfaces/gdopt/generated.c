@@ -1,4 +1,5 @@
 #include <src/interfaces/c/structures.h>
+#include <src/interfaces/gdopt/generated.h>
 
 // === problem sizes (compile const) ===
 
@@ -15,7 +16,7 @@
 
 // === declare global variables (values can be influenced by runtime parameters - _rp) ===
 
-bounds_t globl_x_bounds[X_SIZE] = { { -100.0, 100.0 } };
+bounds_t globl_x_bounds[X_SIZE] = { { -DBL_MAX, DBL_MAX } };
 bounds_t globl_u_bounds[U_SIZE] = { { -5.0, 5.0 } };
 bounds_t globl_p_bounds[P_SIZE];
 
@@ -49,7 +50,7 @@ coo_t globl_lfg_jac = {
     .nnz = 4
 };
 
-coo_t globl_lfg_lt_aug_hes = {
+coo_t globl_lfg_lt_hes = {
     .row = (int[]){0, 1},
     .col = (int[]){0, 1},
     .buf_index = (int[]){0, 1},
@@ -67,56 +68,24 @@ coo_t globl_mr_jac = {
     .nnz = 2
 };
 
-coo_t globl_mr_lt_aug_hes = {
+coo_t globl_mr_lt_hes = {
     .row = (int[]){},
     .col = (int[]){},
     .buf_index = (int[]){},
     .nnz = 0
 };
 
-c_problem_t globl_c_problem = {
-    .x_size = X_SIZE,
-    .u_size = U_SIZE,
-    .xu_size = X_SIZE + U_SIZE,
-    .p_size = P_SIZE,
-    .rp_size = RP_SIZE,
-    .r_size = R_SIZE,
-    .g_size = G_SIZE,
-    .has_mayer = HAS_MAYER,
-    .has_lagrange = HAS_LAGRANGE,
-    .x_bounds = globl_x_bounds,
-    .u_bounds = globl_u_bounds,
-    .p_bounds = globl_p_bounds,
-    .r_bounds = globl_r_bounds,
-    .g_bounds = globl_g_bounds,
-    .x0_fixed = globl_x0_fixed,
-    .xf_fixed = globl_xf_fixed,
-    .x_nominal = globl_x_nominal,
-    .u_nominal = globl_u_nominal,
-    .p_nominal = globl_p_nominal,
-    .obj_nominal = &globl_obj_nominal,
-    .f_nominal = globl_f_nominal,
-    .g_nominal = globl_g_nominal,
-    .r_nominal = globl_r_nominal,
-    .lfg_eval  = &globl_lfg_eval,
-    .lfg_jac  = &globl_lfg_jac,
-    .lfg_lt_aug_hes  = &globl_lfg_lt_aug_hes,
-    .mr_eval = &globl_mr_eval,
-    .mr_jac = &globl_mr_jac,
-    .mr_lt_aug_hes = &globl_mr_lt_aug_hes,
-};
 
-c_problem_t* get_update_c_problem() {
-    return &globl_c_problem;
-}
+
+void update_c_problem(void* ctx) { return; }
 
 // [L, f, g]
 void eval_lfg(const f64* xu, const f64* p, f64 t, f64* out) {
     const f64* x = xu;
     const f64* u = xu + X_SIZE;
 
-    out[0] /* L */ = 0.5 * (x[0] * x[0] /* x^2 */ + u[0] * u[0] /* u */);
-    out[1] /* f */ = x[0] /* x */ + u[0] /* u */;
+    out[0] /* L */ = 0.5 * (x[0] * x[0] + u[0] * u[0]);
+    out[1] /* f */ = x[0] + u[0];
 }
 
 // ∇ [L, f, g]
@@ -153,4 +122,53 @@ void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* ou
 // σ ∇² M + λ^T ∇² r (lower triangle)
 void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf, f64* out) {
 
+}
+
+c_callbacks_t globl_callbacks = {
+    update_c_problem,
+    eval_lfg,
+    jac_lfg,
+    hes_lfg,
+    eval_mr,
+    jac_mr,
+    hes_mr
+};
+
+c_problem_t globl_c_problem = {
+    .x_size = X_SIZE,
+    .u_size = U_SIZE,
+    .xu_size = X_SIZE + U_SIZE,
+    .p_size = P_SIZE,
+    .rp_size = RP_SIZE,
+    .r_size = R_SIZE,
+    .g_size = G_SIZE,
+    .has_mayer = HAS_MAYER,
+    .has_lagrange = HAS_LAGRANGE,
+    .x_bounds = globl_x_bounds,
+    .u_bounds = globl_u_bounds,
+    .p_bounds = globl_p_bounds,
+    .r_bounds = globl_r_bounds,
+    .g_bounds = globl_g_bounds,
+    .x0_fixed = globl_x0_fixed,
+    .xf_fixed = globl_xf_fixed,
+    .x_nominal = globl_x_nominal,
+    .u_nominal = globl_u_nominal,
+    .p_nominal = globl_p_nominal,
+    .obj_nominal = &globl_obj_nominal,
+    .f_nominal = globl_f_nominal,
+    .g_nominal = globl_g_nominal,
+    .r_nominal = globl_r_nominal,
+    .lfg_eval  = &globl_lfg_eval,
+    .lfg_jac  = &globl_lfg_jac,
+    .lfg_lt_hes  = &globl_lfg_lt_hes,
+    .mr_eval = &globl_mr_eval,
+    .mr_jac = &globl_mr_jac,
+    .mr_lt_hes = &globl_mr_lt_hes,
+    .callbacks = &globl_callbacks
+};
+
+
+int run_model(int argc, char** argv) {
+    main_gdopt(argc, argv, &globl_c_problem);
+    return 0;
 }

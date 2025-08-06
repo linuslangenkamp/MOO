@@ -238,7 +238,7 @@ HESSIAN_PATTERN* generateHessianPattern(JACOBIAN* jac) {
  * Assumes the current point x has all controls and states set in `data->localData[0]->realVars`.
  * For a more detailed explanation of the algorithm (see generateHessianPattern).
  * 
- * Runtime: O(#colors * (#colors + 1) / 2 * T_{JVP} + #colors * T_{JVP} + #funcs_{avg} * nnz(augmented Hessian)),
+ * Runtime: O(#colors * (#colors + 1) / 2 * T_{JVP} + #colors * T_{JVP} + #funcs_{avg} * nnz(Hessian)),
  *          where T_{JVP} is the time of one Jacobian column evaluation and funcs_{avg} is the average
  *          number of functions for each variable pair
  * 
@@ -322,7 +322,7 @@ void evalHessianForwardDifferences(DATA* data, threadData_t* threadData, HESSIAN
       /* 7. evaluate JVP J(x_{c_1}) * s_{c_2}: writes column to jvp = jacobian->resultVars */
       jacobian->evalColumn(data, threadData, jacobian, NULL);
 
-      /* 8. retrieve augmented Hessian approximation */
+      /* 8. retrieve Hessian approximation */
       ColorPair* colorPair = hes_pattern->colorPairs[getColorPairIndex(c1, c2)];
       if (colorPair) {
         for (int varPairIdx = 0; varPairIdx < colorPair->size; varPairIdx++) {
@@ -371,7 +371,7 @@ void printHessianPattern(const HESSIAN_PATTERN* hes_pattern) {
     return;
   }
 
-  printf("\n=== AUGMENTED HESSIAN SPARISTY INFO ===\n");
+  printf("\n=== HESSIAN SPARISTY INFO ===\n");
   printf("Matrix size: %d x %d\n", hes_pattern->size, hes_pattern->size);
   printf("Lower triangle NNZ: %d\n", hes_pattern->lnnz);
   printf("Number of colors: %d\n", hes_pattern->numColors);

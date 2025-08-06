@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+#include <float.h>
 
 typedef double f64;
 
@@ -30,6 +31,16 @@ typedef struct coo_t {
     int* buf_index;  // non-zero index == buf_index
     int nnz;         // total nnz
 } coo_t;
+
+typedef struct c_callbacks_t {
+    void (*update_c_problem)(void* ctx);
+    void (*eval_lfg)(const f64* xu, const f64* p, f64 t, f64* out);
+    void (*jac_lfg)(const f64* xu, const f64* p, f64 t, f64* out);
+    void (*hes_lfg)(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, f64* out);
+    void (*eval_mr)(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out);
+    void (*jac_mr)(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out);
+    void (*hes_mr)(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf, f64* out);
+} c_callbacks_t;
 
 typedef struct c_problem_t {
     const int x_size;
@@ -65,22 +76,14 @@ typedef struct c_problem_t {
 
     eval_structure_t* lfg_eval;
     coo_t* lfg_jac;
-    coo_t* lfg_lt_aug_hes;
+    coo_t* lfg_lt_hes;
 
     eval_structure_t* mr_eval;
     coo_t* mr_jac;
-    coo_t* mr_lt_aug_hes;
+    coo_t* mr_lt_hes;
+
+    c_callbacks_t* callbacks;
 } c_problem_t;
-
-// pass these in some callback struct
-c_problem_t* get_update_c_problem();
-
-void eval_lfg(const f64* xu, const f64* p, f64 t, f64* out);
-void jac_lfg(const f64* xu, const f64* p, f64 t, f64* out);
-void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, f64* out);
-void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out);
-void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, f64* out);
-void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf, f64* out);
 
 #ifdef __cplusplus
 }
