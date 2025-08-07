@@ -52,6 +52,10 @@ set(SOURCES
     src/interfaces/gdopt/generated.c
     src/interfaces/gdopt/main_gdopt.cpp
 
+    # Sources to call simulations
+    src/simulation/radau5/wrapper.cpp
+    src/simulation/radau5/test.cpp
+
     # src/nlp/instances/gdop/test_problem.cpp
     # stashed/steady_state/parameter_test.cpp
 )
@@ -100,7 +104,6 @@ if(WITH_FMT)
   )
   target_link_libraries(moo PRIVATE fmt)
 endif()
-
 
 ###### END FMT
 
@@ -166,6 +169,17 @@ ExternalProject_Add(ipopt-ext
 
 ##### END MUMPS + Ipopt
 
+##### START RADAU5
+
+option(WITH_RADAU5 "Enable RADAU5 build and linking" ON)
+option(RADAU5_USE_LAPACK "Use LAPACK with RADAU5" ON)
+
+if(WITH_RADAU5)
+    add_subdirectory(third-party/RADAU5)
+endif()
+
+##### END RADAU5
+
 target_include_directories(moo PUBLIC include)
 
 target_include_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)
@@ -189,6 +203,8 @@ endif()
 
 target_link_libraries(moo PRIVATE ipopt coinmumps metis)
 target_link_libraries(moo PRIVATE lapack blas dl gfortran gomp)
+target_link_libraries(moo PRIVATE radau5)
+
 if (COINHSL_FOUND)
     message(STATUS "Coin-HSL found")
     target_link_libraries(moo PRIVATE coinhsl)

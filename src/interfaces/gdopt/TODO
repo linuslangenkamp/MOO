@@ -3,7 +3,7 @@ New Interface for GDOPT (General Dynamic Optimizer - Python Modeling Environment
     - generate Code (e.g. just raw C-Code or use a Python AD-lib for C-Code gen)
         - with parameters
         - runtime parameters
-        - exact hessians (augmented)
+        - exact hessians
         - exact sparsity
         - extended modeling (more generic M and r -> define x0 = m.addInitialState(x) / m.addFinalState(x))
 
