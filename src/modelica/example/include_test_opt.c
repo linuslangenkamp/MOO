@@ -10,7 +10,7 @@
 /* new stuff below */
 
 // OptimizationRuntime entry point
-extern int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData);
+extern int _main_OptimizationRuntime(int argc, char **argv, DATA *data, threadData_t *threadData);
 #define CALL_OPT_RUNTIME TRUE
 #define CALL_SIM_RUNTIME FALSE
 

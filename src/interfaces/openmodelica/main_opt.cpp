@@ -13,17 +13,16 @@
 #include <nlp/solvers/ipopt/solver.h>
 #include <nlp/instances/gdop/orchestrator.h>
 
+#include <simulation/radau/test.h>
+
 #include "problem.h"
 
 using namespace OpenModelica;
 
-// TODO: rename all variables on this OpenModelica side, clearly we use stuff from moo (choose camelCase or _!)
-// TODO: add a simple optional plotting lib (open source)
-
 /* entry point to the optimization runtime from OpenModelica generated code
  * this dir, i.e. interfaces/openmodelica, defines the glue code (Mesh, Problem, Flags, CallSimulation) between the runtime and the simulation code */
 int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* threadData) {
-    LOG_PREFIX('*', "Entry point [OPT] - _main_OptimizationRuntime\n");
+    LOG_PREFIX('*', "Entry point [MOO] _main_OptimizationRuntime()\n");
 
     // disable omc logs
     //memset(omc_useStream, 0, OMC_SIM_LOG_MAX * sizeof(int));
@@ -48,6 +47,8 @@ int _main_OptimizationRuntime(int argc, char** argv, DATA* data, threadData_t* t
     orchestrator.optimize();
 
     run_model(argc, argv);
+
+    radau_wrapper_test();
 
     return 0;
 }

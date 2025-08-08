@@ -1,4 +1,4 @@
-      SUBROUTINE RADAU5(N,FCN,X,Y,XEND,H,
+      SUBROUTINE RADAU(N,FCN,X,Y,XEND,H,
      &                  RTOL,ATOL,ITOL,
      &                  JAC ,IJAC,MLJAC,MUJAC,
      &                  MAS ,IMAS,MLMAS,MUMAS,
@@ -149,7 +149,7 @@ C                    GRID-POINT "X" (THEREBY THE INITIAL VALUE IS
 C                    THE FIRST GRID-POINT).
 C                 "XOLD" IS THE PRECEEDING GRID-POINT.
 C                 "IRTRN" SERVES TO INTERRUPT THE INTEGRATION. IF IRTRN
-C                    IS SET <0, RADAU5 RETURNS TO THE CALLING PROGRAM.
+C                    IS SET <0, RADAU RETURNS TO THE CALLING PROGRAM.
 C           
 C          -----  CONTINUOUS OUTPUT: -----
 C                 DURING CALLS TO "SOLOUT", A CONTINUOUS SOLUTION
@@ -660,7 +660,7 @@ C ----------- RETURN -----------
       RETURN
       END
 C
-C     END OF SUBROUTINE RADAU5
+C     END OF SUBROUTINE RADAU
 C
 C ***********************************************************
 C
@@ -672,8 +672,8 @@ C
      &   Y0,SCAL,F1,F2,F3,FJAC,E1,E2R,E2I,FMAS,IP1,IP2,IPHES,
      &   CONT,NFCN,NJAC,NSTEP,NACCPT,NREJCT,NDEC,NSOL,RPAR,IPAR)
 C ----------------------------------------------------------
-C     CORE INTEGRATOR FOR RADAU5
-C     PARAMETERS SAME AS IN RADAU5 WITH WORKSPACE ADDED 
+C     CORE INTEGRATOR FOR RADAU
+C     PARAMETERS SAME AS IN RADAU WITH WORKSPACE ADDED 
 C ---------------------------------------------------------- 
 C         DECLARATIONS 
 C ---------------------------------------------------------- 
@@ -1118,7 +1118,7 @@ C --- FAIL EXIT
 C --- EXIT CAUSED BY SOLOUT
  179  CONTINUE
       WRITE(6,979)X
- 979  FORMAT(' EXIT OF RADAU5 AT X=',E18.4) 
+ 979  FORMAT(' EXIT OF RADAU AT X=',E18.4) 
       IDID=2
       RETURN
       END
@@ -1132,7 +1132,7 @@ C ----------------------------------------------------------
 C     THIS FUNCTION CAN BE USED FOR CONINUOUS OUTPUT. IT PROVIDES AN
 C     APPROXIMATION TO THE I-TH COMPONENT OF THE SOLUTION AT X.
 C     IT GIVES THE VALUE OF THE COLLOCATION POLYNOMIAL, DEFINED FOR
-C     THE LAST SUCCESSFULLY COMPUTED STEP (BY RADAU5).
+C     THE LAST SUCCESSFULLY COMPUTED STEP (BY RADAU).
 C ----------------------------------------------------------
       IMPLICIT DOUBLE PRECISION (A-H,O-Z)
       DIMENSION CONT(LRC)

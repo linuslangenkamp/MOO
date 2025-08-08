@@ -3,20 +3,15 @@
 namespace GDOP {
 
 void MeshRefinementOrchestrator::optimize() {
-    // reset strategies
     strategies->reset(gdop);
 
-    // create initial guess
     auto initial_guess = strategies->get_initial_guess(gdop);
 
-    // set scaling
     gdop.set_scaling_factory(strategies->scaling_factory);
 
     for(;;) {
-        // set initial guess initially or after refinement
         gdop.set_initial_guess(std::move(initial_guess));
 
-        // optimizer loop
         solver.optimize();
 
         // === mesh refinement ===
@@ -41,10 +36,7 @@ void MeshRefinementOrchestrator::optimize() {
         gdop.update(refined_mesh);
     }
 
-    // verify by simulation
     strategies->verify(gdop, *gdop.get_optimal_solution());
-
-    // emit optimal solution, maybe set verify only here
     strategies->emit(*gdop.get_optimal_solution()->primals);
 
     gdop.get_optimal_solution()->costates->to_csv("costates_final.csv");

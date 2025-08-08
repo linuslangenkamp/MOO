@@ -30,9 +30,38 @@ extern "C" {
         int* ipar,
         int* idid
     );
+
+    void radau_(
+        int* n,
+        void (*fcn)(int*, double*, double*, double*),
+        double* x,
+        double* y,
+        double* xend,
+        double* h,
+        double* rtol,
+        double* atol,
+        int* itol,
+        void (*jac)(int*, double*, double*, int*, int*, double*, double*),
+        int* ijac,
+        int* mljac,
+        int* mujac,
+        void (*mas)(int*, int*, double*),
+        int* imas,
+        int* mlmas,
+        int* mumas,
+        void (*solout)(int*, double*, double*, double*, double*),
+        int* iout,
+        double* work,
+        int* lwork,
+        int* iwork,
+        int* liwork,
+        double* rpar,
+        int* ipar,
+        int* idid
+    );
 }
 
-void radau5_solver(
+void radau_solver(
     int* n,           // N: size of the problem
     void (*fcn)(int*, double*, double*, double*), // FCN: function for dy/dx
     double* x,        // X: initial value of the independent variable

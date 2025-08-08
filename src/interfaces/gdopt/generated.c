@@ -75,8 +75,6 @@ coo_t globl_mr_lt_hes = {
     .nnz = 0
 };
 
-
-
 void update_c_problem(void* ctx) { return; }
 
 // [L, f, g]

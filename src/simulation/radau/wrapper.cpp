@@ -2,7 +2,7 @@
 
 // TODO: make this more simple: just provide tolerances time ControlTrajectory etc. => Obtain simulated Trajectory (optionally at predefined points)
 
-void radau5_solver(
+void radau_solver(
     int* n,
     void (*fcn)(int*, double*, double*, double*),
     double* x,
@@ -30,7 +30,7 @@ void radau5_solver(
     int* ipar,
     int* idid)
 {
-    radau5_(
+    radau_(
         n, fcn, x, y, xend, h, rtol, atol, itol,
         jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
         solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
