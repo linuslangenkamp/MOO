@@ -4,7 +4,7 @@ project(moo)
 set(CMAKE_CXX_STANDARD 17)
 
 include(ExternalProject)
-set(THIRD_PARTY_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/third-party-install/usr/local)
+set(THIRD_PARTY_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local)
 set(OPENMODELICA_ROOT /home/linus/Projects/OpenModelica) # FIXME
 
 find_package(PkgConfig)
@@ -37,20 +37,20 @@ set(SOURCES
     src/nlp/solvers/ipopt/solver.cpp
 
     # OpenModelica interface for GDOP
-    src/interfaces/openmodelica/main_opt.cpp
-    src/interfaces/openmodelica/info.cpp
-    src/interfaces/openmodelica/problem.cpp
-    src/interfaces/openmodelica/evaluations.cpp
-    src/interfaces/openmodelica/debug.cpp
-    src/interfaces/openmodelica/sim_runtime_ext.cpp
-    src/interfaces/openmodelica/strategies.cpp
+    # src/interfaces/openmodelica/main_opt.cpp
+    # src/interfaces/openmodelica/info.cpp
+    # src/interfaces/openmodelica/problem.cpp
+    # src/interfaces/openmodelica/evaluations.cpp
+    # src/interfaces/openmodelica/debug.cpp
+    # src/interfaces/openmodelica/sim_runtime_ext.cpp
+    # src/interfaces/openmodelica/strategies.cpp
 
     # C interface for GDOP
     src/interfaces/c/problem.cpp
 
     # GDOPT interface for GDOP
-    src/interfaces/gdopt/generated.c
-    src/interfaces/gdopt/main_gdopt.cpp
+    #s rc/interfaces/gdopt/generated.c
+    # src/interfaces/gdopt/main_gdopt.cpp
 
     # Sources to call simulations
     src/simulation/radau/wrapper.cpp
@@ -63,8 +63,8 @@ set(SOURCES
 add_library(moo SHARED ${SOURCES})
 
 target_include_directories(moo
-  PUBLIC ${CMAKE_SOURCE_DIR}/include
-  PRIVATE ${CMAKE_SOURCE_DIR}/src
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 ###### START FMT
@@ -91,7 +91,7 @@ if(WITH_FMT)
       EXCLUDE_FROM_ALL TRUE
       BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libfmt.a
     )
-    #add_dependencies(moo fmt-ext)
+    add_dependencies(moo fmt-ext)
   else()
     message(STATUS "fmt library found. Skipping ExternalProject build.")
   endif()
@@ -137,8 +137,8 @@ endif()
 ExternalProject_Add(mumps-ext
     GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
     GIT_TAG releases/3.0.10
-    PATCH_COMMAND ${CMAKE_BINARY_DIR}/mumps-ext-prefix/src/mumps-ext/get.Mumps
-    CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+    PATCH_COMMAND ${CMAKE_CURRENT_BINARY_DIR}/mumps-ext-prefix/src/mumps-ext/get.Mumps
+    CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local
     BUILD_COMMAND make -j${N}
     BUILD_IN_SOURCE true
     EXCLUDE_FROM_ALL true
@@ -157,7 +157,7 @@ endif()
 ExternalProject_Add(ipopt-ext
     GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
     GIT_TAG releases/3.14.19
-    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-debug --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
+    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-debug --enable-shared=no --enable-static=yes --prefix=${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local
     BUILD_COMMAND make -j${N}
     BUILD_IN_SOURCE true
     DEPENDS mumps-ext
@@ -165,7 +165,7 @@ ExternalProject_Add(ipopt-ext
     BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libipopt.a
 )
 
-#add_dependencies(moo ipopt-ext mumps-ext)
+add_dependencies(moo ipopt-ext mumps-ext)
 
 ##### END MUMPS + Ipopt
 
@@ -180,6 +180,7 @@ endif()
 ##### END RADAU5
 
 target_include_directories(moo PUBLIC include)
+target_include_directories(moo PUBLIC src)
 
 target_include_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)
 
@@ -209,48 +210,11 @@ if (COINHSL_FOUND)
     target_link_libraries(moo PRIVATE coinhsl)
 endif ()
 
-add_subdirectory(src/modelica/example)
+install(TARGETS moo
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+#add_subdirectory(src/modelica/example)
 
 
-##### INCLUDE OM SIMULATION RUNTIME
-
-target_link_directories(moo PRIVATE
-  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/lib/x86_64-linux-gnu/omc
-)
-
-target_include_directories(moo PRIVATE
-  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/c
-  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc
-  ${OPENMODELICA_ROOT}/OMCompiler
-  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/suitesparse
-  /home/linus/Projects/OpenModelica/build_cmake/install_cmake/include/omc/sundials
-  ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-target_link_libraries(moo PRIVATE 
-    SimulationRuntimeC
-    OpenModelicaRuntimeC
-    omcgc
-    zlib
-    lapack
-    blas
-    gfortran
-    pthread
-    dl
-    m
-    stdc++
-)
-
-target_compile_definitions(moo PRIVATE
-  OM_HAVE_PTHREADS
-  OMC_DLL_MAIN_DEFINE
-  OPENMODELICA_XML_FROM_FILE_AT_RUNTIME
-  OMC_MODEL_PREFIX=include_test
-  OMC_NUM_MIXED_SYSTEMS=0
-  OMC_NUM_LINEAR_SYSTEMS=0
-  OMC_NUM_NONLINEAR_SYSTEMS=0
-  OMC_NDELAY_EXPRESSIONS=0
-  OMC_NVAR_STRING=0
-)
-
-##### INCLUDE OM SIMULATION RUNTIME

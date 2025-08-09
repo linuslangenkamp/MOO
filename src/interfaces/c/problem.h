@@ -4,7 +4,7 @@
 #include <nlp/instances/gdop/problem.h>
 #include <nlp/instances/gdop/gdop.h>
 
-#include <src/interfaces/c/structures.h>
+#include <interfaces/c/structures.h>
 
 namespace C {
 

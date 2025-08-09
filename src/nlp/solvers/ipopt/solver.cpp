@@ -1,19 +1,32 @@
+
+#include "adapter.h"
+
 #include "solver.h"
 
 namespace IpoptSolver {
 
+struct IpoptSolverData {
+    Ipopt::SmartPtr<IpoptAdapter> adapter;
+    Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
+
+    IpoptSolverData(NLP::NLP& nlp) : adapter(new IpoptAdapter(nlp)), app(IpoptApplicationFactory()) {}
+};
+
 IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings)
-    : NLPSolver(nlp, solver_settings),
-      adapter(new IpoptAdapter(nlp)),
-      app(IpoptApplicationFactory()) {
+    : NLPSolver(nlp, solver_settings), data{new IpoptSolverData{nlp}}
+{
     init_application();
+}
+
+IpoptSolver::~IpoptSolver() {
+    delete data;
 }
 
 // simple wrapper to adapter
 void IpoptSolver::optimize() {
     set_settings();
 
-    Ipopt::ApplicationReturnStatus status = app->OptimizeTNLP(adapter);
+    Ipopt::ApplicationReturnStatus status = data->app->OptimizeTNLP(data->adapter);
 
     switch (status) {
         case Ipopt::Solve_Succeeded:
@@ -103,7 +116,7 @@ void IpoptSolver::optimize() {
 }
 
 void IpoptSolver::init_application() {
-    Ipopt::ApplicationReturnStatus status = app->Initialize();
+    Ipopt::ApplicationReturnStatus status = data->app->Initialize();
     if (status != Ipopt::Solve_Succeeded) {
         LOG_ERROR("[Ipopt Interface] Error during application initialization!");
         abort();
@@ -112,74 +125,74 @@ void IpoptSolver::init_application() {
 
 void IpoptSolver::set_settings() {
     // --- termination ---
-    app->Options()->SetIntegerValue("max_iter", solver_settings.get_or_default<int>(NLP::Option::Iterations));
-    app->Options()->SetNumericValue("max_cpu_time", solver_settings.get_or_default<f64>(NLP::Option::CPUTime));
+    data->app->Options()->SetIntegerValue("max_iter", solver_settings.get_or_default<int>(NLP::Option::Iterations));
+    data->app->Options()->SetNumericValue("max_cpu_time", solver_settings.get_or_default<f64>(NLP::Option::CPUTime));
 
     // --- tolerances, step sizes ---
     f64 tol = solver_settings.get_or_default<f64>(NLP::Option::Tolerance);
-    app->Options()->SetNumericValue("tol", tol);
-    app->Options()->SetNumericValue("acceptable_tol", tol * 1e3);
-    app->Options()->SetNumericValue("bound_push", 1e-2);
-    app->Options()->SetNumericValue("bound_frac", 1e-2);
-    app->Options()->SetNumericValue("alpha_red_factor", 0.5);
+    data->app->Options()->SetNumericValue("tol", tol);
+    data->app->Options()->SetNumericValue("acceptable_tol", tol * 1e3);
+    data->app->Options()->SetNumericValue("bound_push", 1e-2);
+    data->app->Options()->SetNumericValue("bound_frac", 1e-2);
+    data->app->Options()->SetNumericValue("alpha_red_factor", 0.5);
 
     // --- strategy settings ---
-    app->Options()->SetStringValue("mu_strategy", "adaptive");
-    app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
-    app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
-    app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
+    data->app->Options()->SetStringValue("mu_strategy", "adaptive");
+    data->app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
+    data->app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
+    data->app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
 
     // --- hessian options ---
     NLP::HessianOption hess_opt = solver_settings.get_or_default<NLP::HessianOption>(NLP::Option::Hessian);
     switch (hess_opt) {
         case NLP::HessianOption::LBFGS:
-            app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+            data->app->Options()->SetStringValue("hessian_approximation", "limited-memory");
             break;
         case NLP::HessianOption::CONST:
-            app->Options()->SetStringValue("hessian_constant", "yes");
+            data->app->Options()->SetStringValue("hessian_constant", "yes");
             break;
         case NLP::HessianOption::Exact:
-            app->Options()->SetStringValue("hessian_approximation", "exact");
+            data->app->Options()->SetStringValue("hessian_approximation", "exact");
             break;
     }
 
     // --- warm start ---
     if (solver_settings.option_is_true(NLP::Option::WarmStart)) {
-        app->Options()->SetStringValue("warm_start_init_point", "yes");
-        app->Options()->SetStringValue("mu_strategy", "monotone");
-        app->Options()->SetNumericValue("mu_init", 1e-14);
-        app->Options()->SetNumericValue("warm_start_bound_push", 1e-8);
-        app->Options()->SetNumericValue("warm_start_bound_frac", 1e-8);
-        app->Options()->SetNumericValue("warm_start_slack_bound_push", 1e-8);
-        app->Options()->SetNumericValue("warm_start_slack_bound_frac", 1e-8);
-        app->Options()->SetNumericValue("warm_start_mult_bound_push", 1e-8);
+        data->app->Options()->SetStringValue("warm_start_init_point", "yes");
+        data->app->Options()->SetStringValue("mu_strategy", "monotone");
+        data->app->Options()->SetNumericValue("mu_init", 1e-14);
+        data->app->Options()->SetNumericValue("warm_start_bound_push", 1e-8);
+        data->app->Options()->SetNumericValue("warm_start_bound_frac", 1e-8);
+        data->app->Options()->SetNumericValue("warm_start_slack_bound_push", 1e-8);
+        data->app->Options()->SetNumericValue("warm_start_slack_bound_frac", 1e-8);
+        data->app->Options()->SetNumericValue("warm_start_mult_bound_push", 1e-8);
     }
 
     // --- linear solver ---
     NLP::LinearSolverOption linear_solver = solver_settings.get_or_default<NLP::LinearSolverOption>(NLP::Option::LinearSolver);
     switch (linear_solver) {
-        case NLP::LinearSolverOption::MUMPS: app->Options()->SetStringValue("linear_solver", "mumps"); break;
-        case NLP::LinearSolverOption::MA27:  app->Options()->SetStringValue("linear_solver", "ma27");  break;
-        case NLP::LinearSolverOption::MA57:  app->Options()->SetStringValue("linear_solver", "ma57");  break;
-        case NLP::LinearSolverOption::MA77:  app->Options()->SetStringValue("linear_solver", "ma77");  break;
-        case NLP::LinearSolverOption::MA86:  app->Options()->SetStringValue("linear_solver", "ma86");  break;
-        case NLP::LinearSolverOption::MA97:  app->Options()->SetStringValue("linear_solver", "ma97");  break;
+        case NLP::LinearSolverOption::MUMPS: data->app->Options()->SetStringValue("linear_solver", "mumps"); break;
+        case NLP::LinearSolverOption::MA27:  data->app->Options()->SetStringValue("linear_solver", "ma27");  break;
+        case NLP::LinearSolverOption::MA57:  data->app->Options()->SetStringValue("linear_solver", "ma57");  break;
+        case NLP::LinearSolverOption::MA77:  data->app->Options()->SetStringValue("linear_solver", "ma77");  break;
+        case NLP::LinearSolverOption::MA86:  data->app->Options()->SetStringValue("linear_solver", "ma86");  break;
+        case NLP::LinearSolverOption::MA97:  data->app->Options()->SetStringValue("linear_solver", "ma97");  break;
     }
 
     // --- constant derivatives (assumed false for now) ---
-    app->Options()->SetStringValue("grad_f_constant", "no");
-    app->Options()->SetStringValue("jac_c_constant", "no");
-    app->Options()->SetStringValue("jac_d_constant", "no");
+    data->app->Options()->SetStringValue("grad_f_constant", "no");
+    data->app->Options()->SetStringValue("jac_c_constant", "no");
+    data->app->Options()->SetStringValue("jac_d_constant", "no");
 
     // --- info ---
-    app->Options()->SetStringValue("timing_statistics", "yes");
-    app->Options()->SetIntegerValue("print_level", 5);
+    data->app->Options()->SetStringValue("timing_statistics", "yes");
+    data->app->Options()->SetIntegerValue("print_level", 5);
 
     // --- derivative test (optional) ---
     if (solver_settings.option_is_true(NLP::Option::IpoptDerivativeTest)) {
-        app->Options()->SetStringValue("derivative_test", "second-order");
-        app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
-        app->Options()->SetNumericValue("point_perturbation_radius", 0);
+        data->app->Options()->SetStringValue("derivative_test", "second-order");
+        data->app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
+        data->app->Options()->SetNumericValue("point_perturbation_radius", 0);
     }
 }
 

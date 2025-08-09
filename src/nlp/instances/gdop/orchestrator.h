@@ -1,7 +1,7 @@
 #ifndef OPT_GDOP_ORCHESTRATOR_H
 #define OPT_GDOP_ORCHESTRATOR_H
 
-#include <src/nlp/nlp_solver.h>
+#include <nlp/nlp_solver.h>
 #include "gdop.h"
 
 namespace GDOP {

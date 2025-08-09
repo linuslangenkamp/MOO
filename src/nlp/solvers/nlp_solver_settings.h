@@ -7,8 +7,8 @@
 #include <optional>
 #include <iostream>
 
-#include <src/base/util.h>
-#include <src/base/log.h>
+#include <base/util.h>
+#include <base/log.h>
 
 namespace NLP {
 

@@ -3,9 +3,9 @@
 
 #include <functional>
 #include <memory>
-#include <src/base/trajectory.h>
-#include <src/nlp/nlp.h>
-#include <src/base/log.h>
+#include <base/trajectory.h>
+#include <nlp/nlp.h>
+#include <base/log.h>
 
 // Strategies define interchangeable behaviors for key stages such as initialization, simulation,
 // mesh refinement, result emission, and optimality verification in the GDOP optimization process.

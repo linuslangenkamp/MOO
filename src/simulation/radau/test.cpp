@@ -1,8 +1,8 @@
 #include <iomanip>
 #include <cmath>
 
-#include <src/simulation/radau/wrapper.h>
-#include <src/base/log.h>
+#include <simulation/radau/wrapper.h>
+#include <base/log.h>
 
 // ODE function fcn: dy/dx = f(x,y)
 void fcn(int* n, double* x, double* y, double* dydx) {
