@@ -211,7 +211,8 @@ else()
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O3 -march=native -funroll-loops -g")
 endif()
 
-target_link_libraries(moo PRIVATE ipopt coinmumps metis fmt)
+target_link_libraries(moo PUBLIC fmt)
+target_link_libraries(moo PRIVATE ipopt coinmumps metis)
 target_link_libraries(moo PRIVATE lapack blas dl gfortran gomp)
 target_link_libraries(moo PRIVATE radau)
 
