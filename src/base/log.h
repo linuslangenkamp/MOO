@@ -1,7 +1,7 @@
 #ifndef OPT_LOG_H
 #define OPT_LOG_H
 
-#if defined(DISABLE_LOGGING) || !defined(WITH_FMT)
+#if defined(DISABLE_LOGGING)
 
     #define LOG(...)              do {} while(0)
     #define LOG_T(...)            do {} while(0)
