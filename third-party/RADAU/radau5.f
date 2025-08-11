@@ -1,4 +1,4 @@
-      SUBROUTINE RADAU(N,FCN,X,Y,XEND,H,
+      SUBROUTINE RADAU5(N,FCN,X,Y,XEND,H,
      &                  RTOL,ATOL,ITOL,
      &                  JAC ,IJAC,MLJAC,MUJAC,
      &                  MAS ,IMAS,MLMAS,MUMAS,

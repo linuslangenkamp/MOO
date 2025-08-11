@@ -1,5 +1,25 @@
-#ifndef OPT_NLP_H
-#define OPT_NLP_H
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// This file is part of MOO - Modelica / Model Optimizer
+// Copyright (C) 2025 University of Applied Sciences and Arts
+// Bielefeld, Faculty of Engineering and Mathematics
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
+#ifndef MOO_NLP_H
+#define MOO_NLP_H
 
 #include <base/fixed_vector.h>
 #include <base/log.h>
@@ -257,18 +277,18 @@ public:
      * This method is called by the solver after a solution has been found, allowing
      * the user to process or store the optimal values.
      *
-     * @param[in] opt_obj The optimal objective function value.
-     * @param[in] opt_x The optimal primal variables \f$x^*\f$.
-     * @param[in] opt_lambda The optimal dual variables (Lagrange multipliers) \f$\lambda^*\f$.
-     * @param[in] opt_z_lb The optimal dual multipliers for the lower variable bounds \f$z_{LB}^*\f$.
-     * @param[in] opt_z_ub The optimal dual multipliers for the upper variable bounds \f$z_{UB}^*\f$.
+     * @param[in] MOO_obj The optimal objective function value.
+     * @param[in] MOO_x The optimal primal variables \f$x^*\f$.
+     * @param[in] MOO_lambda The optimal dual variables (Lagrange multipliers) \f$\lambda^*\f$.
+     * @param[in] MOO_z_lb The optimal dual multipliers for the lower variable bounds \f$z_{LB}^*\f$.
+     * @param[in] MOO_z_ub The optimal dual multipliers for the upper variable bounds \f$z_{UB}^*\f$.
      */
     virtual void finalize_solution(
-        f64 opt_obj,
-        const FixedVector<f64>& opt_x,
-        const FixedVector<f64>& opt_lambda,
-        const FixedVector<f64>& opt_z_lb,
-        const FixedVector<f64>& opt_z_ub) = 0;
+        f64 MOO_obj,
+        const FixedVector<f64>& MOO_x,
+        const FixedVector<f64>& MOO_lambda,
+        const FixedVector<f64>& MOO_z_lb,
+        const FixedVector<f64>& MOO_z_ub) = 0;
 
     // ============ Solver API ============
 
@@ -562,4 +582,4 @@ private:
 
 } // namespace NLP
 
-#endif  // OPT_NLP_H
+#endif  // MOO_NLP_H

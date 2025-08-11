@@ -1,5 +1,25 @@
-#ifndef OPT_GDOP_H
-#define OPT_GDOP_H
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// This file is part of MOO - Modelica / Model Optimizer
+// Copyright (C) 2025 University of Applied Sciences and Arts
+// Bielefeld, Faculty of Engineering and Mathematics
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
+#ifndef MOO_GDOP_H
+#define MOO_GDOP_H
 
 #include <cassert>
 
@@ -125,11 +145,11 @@ public:
     FixedVector<f64>& curr_hes) override;
 
   void finalize_solution(
-    f64 opt_obj,
-    const FixedVector<f64>& opt_x,
-    const FixedVector<f64>& opt_lambda,
-    const FixedVector<f64>& opt_z_lb,
-    const FixedVector<f64>& opt_z_ub) override;
+    f64 MOO_obj,
+    const FixedVector<f64>& MOO_x,
+    const FixedVector<f64>& MOO_lambda,
+    const FixedVector<f64>& MOO_z_lb,
+    const FixedVector<f64>& MOO_z_ub) override;
 
 private:
 
@@ -240,18 +260,18 @@ private:
     FixedVector<f64>& zeta,
     bool to_costate);
 
-  std::unique_ptr<Trajectory> finalize_optimal_primals(const FixedVector<f64>& opt_x);
+  std::unique_ptr<Trajectory> finalize_optimal_primals(const FixedVector<f64>& MOO_x);
 
-  std::unique_ptr<CostateTrajectory> finalize_optimal_costates(const FixedVector<f64>& opt_lambda);
+  std::unique_ptr<CostateTrajectory> finalize_optimal_costates(const FixedVector<f64>& MOO_lambda);
 
   std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> finalize_optimal_bound_duals(
-    const FixedVector<f64>& opt_z_lb,
-    const FixedVector<f64>& opt_z_ub);
+    const FixedVector<f64>& MOO_z_lb,
+    const FixedVector<f64>& MOO_z_ub);
 };
 
 } // namespace GDOP
 
-#endif // OPT_GDOP_H
+#endif // MOO_GDOP_H
 
 /*
 Hessian Sparsity Layout (lower triangle):

@@ -1,3 +1,23 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// This file is part of MOO - Modelica / Model Optimizer
+// Copyright (C) 2025 University of Applied Sciences and Arts
+// Bielefeld, Faculty of Engineering and Mathematics
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include <iomanip>
 #include <cmath>
 
@@ -14,7 +34,7 @@ void jac(int* n, double* x, double* y, int* ml, int* mu, double* pd, double* pda
 }
 
 void mas(int* n, int* m, double* data) {
-    // no mass matrix for this problem
+    // no mass matrix
 }
 
 void solout(int* nr, double* x_old, double* x, double* y, double* rpar) {
@@ -65,7 +85,7 @@ int radau_wrapper_test() {
     radau_solver(
         &n, fcn, &x, y, &xend, &h, &rtol, &atol, &itol,
         jac, &ijac, &mljac, &mujac, mas, &imas, &mlmas, &mumas,
-        solout, &iout, work, &lwork, iwork, &liwork, rpar, ipar, &idid
+        solout, &iout, work, &lwork, iwork, &liwork, rpar, ipar, &idid, Integrator::RADAU_ADAPTIVE
     );
 
     if (idid < 0) {

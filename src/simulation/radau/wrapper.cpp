@@ -1,3 +1,23 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// This file is part of MOO - Modelica / Model Optimizer
+// Copyright (C) 2025 University of Applied Sciences and Arts
+// Bielefeld, Faculty of Engineering and Mathematics
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include "wrapper.h"
 
 // TODO: make this more simple: just provide tolerances time ControlTrajectory etc. => Obtain simulated Trajectory (optionally at predefined points)
@@ -28,11 +48,26 @@ void radau_solver(
     int* liwork,
     double* rpar,
     int* ipar,
-    int* idid)
+    int* idid,
+    Integrator integrator)
 {
-    radau_(
-        n, fcn, x, y, xend, h, rtol, atol, itol,
-        jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
-        solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
-    );
+    switch (integrator)
+    {
+    case RADAU_FIVE:
+        radau5_(
+            n, fcn, x, y, xend, h, rtol, atol, itol,
+            jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
+            solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
+        );
+        break;
+
+    case RADAU_ADAPTIVE:
+    default:
+        radau_(
+            n, fcn, x, y, xend, h, rtol, atol, itol,
+            jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
+            solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
+        );
+        break;
+    }
 }

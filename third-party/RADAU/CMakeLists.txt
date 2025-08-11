@@ -12,7 +12,8 @@ if(WITH_RADAU)
     find_package(LAPACK REQUIRED)
 
     add_library(radau STATIC
-        radau.f # use radau.f or radau5.f both offer the same interface
+        radau.f
+        radau5.f
         dc_lapack.f
     )
 

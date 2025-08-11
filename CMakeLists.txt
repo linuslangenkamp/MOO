@@ -36,28 +36,12 @@ set(SOURCES
     src/nlp/solvers/ipopt/adapter.cpp
     src/nlp/solvers/ipopt/solver.cpp
 
-    # OpenModelica interface for GDOP
-    # src/interfaces/openmodelica/main_opt.cpp
-    # src/interfaces/openmodelica/info.cpp
-    # src/interfaces/openmodelica/problem.cpp
-    # src/interfaces/openmodelica/evaluations.cpp
-    # src/interfaces/openmodelica/debug.cpp
-    # src/interfaces/openmodelica/sim_runtime_ext.cpp
-    # src/interfaces/openmodelica/strategies.cpp
-
     # C interface for GDOP
     src/interfaces/c/problem.cpp
 
-    # GDOPT interface for GDOP
-    #s rc/interfaces/gdopt/generated.c
-    # src/interfaces/gdopt/main_gdopt.cpp
-
-    # Sources to call simulations
+    # Sources to call simulations for C interface
     src/simulation/radau/wrapper.cpp
     src/simulation/radau/test.cpp
-
-    # src/nlp/instances/gdop/test_problem.cpp
-    # stashed/steady_state/parameter_test.cpp
 )
 
 add_library(moo SHARED ${SOURCES})
@@ -89,7 +73,7 @@ endif()
 
 ###### START MUMPS + Ipopt
 
-# TODO: enable build w/o mumps or ipopt
+# TODO: enable build w/o mumps or ipopt - alternative NLP solvers
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS)
   message(STATUS "Downloading mumps sources...")
   execute_process(COMMAND ./get.Mumps WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps OUTPUT_QUIET)
@@ -98,7 +82,9 @@ endif()
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/config.status
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/configure --enable-shared=no --enable-static=yes
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/configure
+        --enable-shared=no
+        --enable-static=yes
   COMMAND make clean
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps)
 add_custom_command(
@@ -114,7 +100,10 @@ set_property(TARGET coinmumps PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/config.status
-  COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/configure --without-pardiso --enable-shared=no --enable-static=yes
+  COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/configure
+      --without-pardiso
+      --enable-shared=no
+      --enable-static=yes
   COMMAND make clean
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt)
 add_custom_command(
@@ -133,54 +122,10 @@ target_include_directories(ipopt INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/LinAlg
 )
 
-#add_custom_target(mumps DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/libmumps.a)
-#option(WITH_MUMPS "Build and link with 'MUMPS' library" TRUE)
-#
-#if(WITH_MUMPS)
-#  message(STATUS "Library 'MUMPS' will be built from source and linked (WITH_MUMPS=TRUE)")
-#  target_compile_definitions(moo PRIVATE WITH_MUMPS)
-#else()
-#  message(STATUS "Library 'MUMPS' is disabled (WITH_MUMPS=FALSE)")
-#endif()
-#
-## CONFIGURE_COMMAND ./configure CFLAGS=-Ofast FCFLAGS=-Ofast\ -fopenmp --enable-shared=no --enable-static=yes --prefix=${CMAKE_BINARY_DIR}/third-party-install/usr/local
-#ExternalProject_Add(mumps-ext
-#    GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git
-#    GIT_TAG releases/3.0.10
-#    PATCH_COMMAND ${CMAKE_CURRENT_BINARY_DIR}/mumps-ext-prefix/src/mumps-ext/get.Mumps
-#    CONFIGURE_COMMAND ./configure --enable-shared=no --enable-static=yes --prefix=${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local
-#    BUILD_COMMAND make -j${N}
-#    BUILD_IN_SOURCE true
-#    EXCLUDE_FROM_ALL true
-#    BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libdmumps.a
-#)
-#
-#option(WITH_IPOPT "Build and link with 'Ipopt' library" TRUE)
-#
-#if(WITH_IPOPT)
-#  message(STATUS "Library 'Ipopt' will be built from source and linked (WITH_IPOPT=TRUE)")
-#  target_compile_definitions(moo PRIVATE WITH_IPOPT)
-#else()
-#  message(STATUS "Library 'Ipopt' is disabled (WITH_IPOPT=FALSE)")
-#endif()
-#
-#ExternalProject_Add(ipopt-ext
-#    GIT_REPOSITORY https://github.com/coin-or/Ipopt.git
-#    GIT_TAG releases/3.14.19
-#    CONFIGURE_COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ./configure --without-pardiso --enable-debug --enable-shared=no --enable-static=yes --prefix=${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local
-#    BUILD_COMMAND make -j${N}
-#    BUILD_IN_SOURCE true
-#    DEPENDS mumps-ext
-#    EXCLUDE_FROM_ALL true
-#    BUILD_BYPRODUCTS ${THIRD_PARTY_INSTALL_PREFIX}/lib/libipopt.a
-#)
-#
-#add_dependencies(moo ipopt-ext mumps-ext)
-#
 ###### END MUMPS + Ipopt
-#
+
 ###### START RADAU5
-#
+
 option(WITH_RADAU "Enable RADAU build and linking" ON)
 
 if(WITH_RADAU)
@@ -225,7 +170,3 @@ install(TARGETS moo
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
-#add_subdirectory(src/modelica/example)
-
-
