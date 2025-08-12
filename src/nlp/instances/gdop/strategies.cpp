@@ -395,15 +395,17 @@ std::vector<f64> PolynomialInterpolation::operator()(const Mesh& old_mesh,
     return new_values;
 }
 
+L2BoundaryNorm::L2BoundaryNorm(int max_phase_one_iterations, int max_phase_two_iterations, f64 phase_two_level)
+    : max_phase_one_iterations(max_phase_one_iterations),
+      max_phase_two_iterations(max_phase_two_iterations),
+      phase_two_level(phase_two_level) {}
+
 // L2BoundaryNorm reset for next call
 void L2BoundaryNorm::reset(const GDOP& gdop) {
     phase_one_iteration = 0;
     phase_two_iteration = 0;
-    max_phase_one_iterations = 3;
-    max_phase_two_iterations = 5;
 
     // on-interval
-    mesh_lambda    = 0.0;
     mesh_size_zero = gdop.get_mesh().intervals;
 
     // corner
@@ -458,7 +460,7 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const P
             f64 u_range = *max_it - *min_it;
 
             // TODO: what about nominals? What about u == const. ?
-            f64 TOL_1 = u_range * pow(10, -mesh_lambda) / mesh_size_zero;
+            f64 TOL_1 = u_range * pow(10, -phase_two_level) / mesh_size_zero;
             f64 TOL_2 = TOL_1 / 2;
 
             for (int i = 0; i < mesh.grid.int_size() - 1; i++) {
