@@ -21,8 +21,6 @@
 #ifndef MOO_FLGR_H
 #define MOO_FLGR_H
 
-#include <vector>
-
 #include "util.h"
 #include "linalg.h"
 

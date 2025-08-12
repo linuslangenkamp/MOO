@@ -190,8 +190,7 @@ public:
         for (int nz = 0; nz < row.int_size(); nz++) {
             if (row[nz] == row_index) {
                 count++;
-            }
-            else if (row[nz] > row_index) {
+            } else if (row[nz] > row_index) {
                 return count;
             }
         }
@@ -261,8 +260,7 @@ private:
                     if (curr_row == move_to_first_row) {
                         curr_row = 0;
                         nnz_moved_row++;
-                    }
-                    else if (curr_row <  move_to_first_row) {
+                    } else if (curr_row <  move_to_first_row) {
                          curr_row++;
                     }
                 }

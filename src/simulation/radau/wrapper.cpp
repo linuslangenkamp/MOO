@@ -53,21 +53,35 @@ void radau_solver(
 {
     switch (integrator)
     {
-    case RADAU_FIVE:
-        radau5_(
-            n, fcn, x, y, xend, h, rtol, atol, itol,
-            jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
-            solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
-        );
-        break;
+        case RADAU_5:
+            iwork[10] = 3; /* min_m */
+            iwork[11] = 3; /* max_m */
+            iwork[12] = 3; /* start_m */
+            break;
 
-    case RADAU_ADAPTIVE:
-    default:
-        radau_(
-            n, fcn, x, y, xend, h, rtol, atol, itol,
-            jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
-            solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
-        );
-        break;
+        case RADAU_9:
+            iwork[10] = 5; /* min_m */
+            iwork[11] = 5; /* max_m */
+            iwork[12] = 5; /* start_m */
+            break;
+
+        case RADAU_13:
+            iwork[10] = 7; /* min_m */
+            iwork[11] = 7; /* max_m */
+            iwork[12] = 7; /* start_m */
+            break;
+
+        case RADAU_ADAPTIVE:
+        default:
+            iwork[10] = 1; /* min_m */
+            iwork[11] = 7; /* max_m */
+            iwork[12] = 5; /* start_m */
+            break;
     }
+
+    radau_(
+        n, fcn, x, y, xend, h, rtol, atol, itol,
+        jac, ijac, mljac, mumas, mas, imas, mlmas, mumas,
+        solout, iout, work, lwork, iwork, liwork, rpar, ipar, idid
+    );
 }

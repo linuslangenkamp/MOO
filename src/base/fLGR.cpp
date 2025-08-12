@@ -51,6 +51,7 @@ f64 fLGR::integrate(int scheme, const f64* values) {
  * @param out     Output vector of length (scheme + 1), contains the result of D * in.
  */
 void fLGR::diff_matrix_multiply(int scheme, const f64* in, f64* out) {
+    // TODO: replace by row-major blas routine dgemv
     for (int row = 0; row < scheme + 1; row++) {
         out[row] = Linalg::dot(scheme + 1, get_D(scheme, row), in);
     }
@@ -76,7 +77,7 @@ void fLGR::diff_matrix_multiply(int scheme, const f64* in, f64* out) {
  * @param out        Pointer to the output buffer where results are accumulated (has stride out_stride).
  */
 void fLGR::diff_matrix_multiply_block_strided(int scheme, int x_size, int x_stride, int out_stride,
-                                                     const f64* x_prev, const f64* x_new, f64* out) {
+                                              const f64* x_prev, const f64* x_new, f64* out) {
     for (int row = 1; row < scheme + 1; row++) {
         int out_row_base = (row - 1) * out_stride;
 
@@ -108,13 +109,13 @@ void fLGR::diff_matrix_multiply_block_strided(int scheme, int x_size, int x_stri
  *                       or `c`/`w` (not containing zero) sets of nodes/weights should be used.
  * @param values         A pointer to an array of function values corresponding to the collocation nodes.
  * @param increment      The stride to use when accessing elements in the `values` array.
- * @param interval_start The start of the physical interval. (time of values[0])
- * @param interval_end   The end of the physical interval.   (time of values[-1])
+ * @param interval_start The start of the physical interval. (time of values[0], first)
+ * @param interval_end   The end of the physical interval.   (time of values[-1], last)
  * @param point          The point at which to interpolate.
  * @return The interpolated value at point.
  */
 f64 fLGR::interpolate(int scheme, bool contains_zero, const f64* values, int increment,
-                             f64 interval_start, f64 interval_end, f64 point) {
+                      f64 interval_start, f64 interval_end, f64 point) {
     const auto& nodes   = contains_zero ? get_c0(scheme) : get_c(scheme);
     const auto& weights = contains_zero ? get_w0(scheme) : get_w(scheme);
     int node_count = scheme + static_cast<int>(contains_zero);

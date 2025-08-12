@@ -182,4 +182,5 @@ bool IpoptAdapter::intermediate_callback(
     return true;
 };
 
+
 } // namespace IpoptSolver

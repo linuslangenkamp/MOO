@@ -23,39 +23,12 @@
 
 enum Integrator {
     RADAU_ADAPTIVE = 0,
-    RADAU_FIVE = 5
+    RADAU_5 = 5,
+    RADAU_9 = 9,
+    RADAU_13 = 13
 };
 
 extern "C" {
-    void radau5_(
-        int* n,
-        void (*fcn)(int*, double*, double*, double*),
-        double* x,
-        double* y,
-        double* xend,
-        double* h,
-        double* rtol,
-        double* atol,
-        int* itol,
-        void (*jac)(int*, double*, double*, int*, int*, double*, double*),
-        int* ijac,
-        int* mljac,
-        int* mujac,
-        void (*mas)(int*, int*, double*),
-        int* imas,
-        int* mlmas,
-        int* mumas,
-        void (*solout)(int*, double*, double*, double*, double*),
-        int* iout,
-        double* work,
-        int* lwork,
-        int* iwork,
-        int* liwork,
-        double* rpar,
-        int* ipar,
-        int* idid
-    );
-
     void radau_(
         int* n,
         void (*fcn)(int*, double*, double*, double*),
@@ -113,7 +86,7 @@ void radau_solver(
     double* rpar,     // RPAR: user-defined double precision parameters
     int* ipar,        // IPAR: user-defined integer parameters
     int* idid,        // IDID: success indicator
-    Integrator integrator // choose RADAU or RADAU5
+    Integrator integrator
 );
 
 #endif // MOO_RADAU_WRAPPER_H

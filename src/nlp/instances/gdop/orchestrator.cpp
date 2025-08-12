@@ -48,9 +48,9 @@ void MeshRefinementOrchestrator::optimize() {
         initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), *refined_mesh, *gdop.get_optimal_solution());
         solver.solver_settings.set(NLP::Option::WarmStart, true);
 
-        initial_guess->costates->to_csv("costates_interp.csv");
-        initial_guess->lower_costates->to_csv("lower_costates_interp.csv");
-        initial_guess->upper_costates->to_csv("upper_costates_interp.csv");
+        //initial_guess->costates->to_csv("costates_interp.csv");
+        //initial_guess->lower_costates->to_csv("lower_costates_interp.csv");
+        //initial_guess->upper_costates->to_csv("upper_costates_interp.csv");
 
         // 4. update gdop with new mesh
         gdop.update(refined_mesh);
@@ -59,9 +59,9 @@ void MeshRefinementOrchestrator::optimize() {
     strategies->verify(gdop, *gdop.get_optimal_solution());
     strategies->emit(*gdop.get_optimal_solution()->primals);
 
-    gdop.get_optimal_solution()->costates->to_csv("costates_final.csv");
-    gdop.get_optimal_solution()->lower_costates->to_csv("lower_costates_final.csv");
-    gdop.get_optimal_solution()->upper_costates->to_csv("upper_costates_final.csv");
+    //gdop.get_optimal_solution()->costates->to_csv("costates_final.csv");
+    //gdop.get_optimal_solution()->lower_costates->to_csv("lower_costates_final.csv");
+    //gdop.get_optimal_solution()->upper_costates->to_csv("upper_costates_final.csv");
 }
 
 } // namespace GDOP

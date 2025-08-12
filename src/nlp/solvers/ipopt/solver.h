@@ -40,7 +40,7 @@ public:
     void set_settings();
 
 private:
-   IpoptSolverData* data;
+   IpoptSolverData* ipdata;
 };
 
 } // namespace IpoptSolver

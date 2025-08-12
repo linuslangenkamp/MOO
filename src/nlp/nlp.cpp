@@ -18,6 +18,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+// TODO: make scaling accept NLP, only call after init x has been set?
+//       => create more sophisticated scalings : `https://elib.dlr.de/93327/1/Performance_analysis_of_linear_and_nonlinear_techniques.pdf`
+
 #include "nlp.h"
 
 namespace NLP {
@@ -49,7 +52,7 @@ void NLP::solver_get_info(
     if (user_scaling) {
         scaling = user_scaling;
     } else {
-        LOG_WARNING("Overloaded method .get_scaling() returned nullptr - defaulting to NoScaling.");
+        LOG_WARNING("Overloaded method get_scaling() returned nullptr - defaulting to NoScaling.");
         scaling = std::make_shared<NoScaling>();
     }
 }

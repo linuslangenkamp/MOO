@@ -13,7 +13,6 @@ if(WITH_RADAU)
 
     add_library(radau STATIC
         radau.f
-        radau5.f
         dc_lapack.f
     )
 

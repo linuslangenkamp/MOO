@@ -63,9 +63,9 @@ int radau_wrapper_test() {
     double x = 0.0;       // initial x
     double y[1] = {1.0};  // initial condition y(0) = 1
     double xend = 1.0;    // final x
-    double h = 0.1;      // initial step size
-    double rtol = 1e-6;   // relative tolerance
-    double atol = 1e-6;   // absolute tolerance
+    double h = 0.1;       // initial step size
+    double rtol = 1e-14;  // relative tolerance
+    double atol = 1e-14;  // absolute tolerance
     int itol = 0;         // tolerance type (0 = scalar)
     int ijac = 1;         // jacobian supplied (1 = yes)
     int mljac = 0;        // lower band width (not used here)
@@ -85,7 +85,7 @@ int radau_wrapper_test() {
     radau_solver(
         &n, fcn, &x, y, &xend, &h, &rtol, &atol, &itol,
         jac, &ijac, &mljac, &mujac, mas, &imas, &mlmas, &mumas,
-        solout, &iout, work, &lwork, iwork, &liwork, rpar, ipar, &idid, Integrator::RADAU_ADAPTIVE
+        solout, &iout, work, &lwork, iwork, &liwork, rpar, ipar, &idid, Integrator::RADAU_13
     );
 
     if (idid < 0) {

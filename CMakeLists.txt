@@ -36,7 +36,7 @@ set(SOURCES
     src/nlp/solvers/ipopt/adapter.cpp
     src/nlp/solvers/ipopt/solver.cpp
 
-    # C interface for GDOP
+    # C interface
     src/interfaces/c/problem.cpp
 
     # Sources to call simulations for C interface
@@ -93,15 +93,18 @@ add_custom_command(
   COMMAND make -j
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps)
 add_custom_target(coinmumps-build DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs/libcoinmumps.a)
-add_library(coinmumps STATIC IMPORTED)
-add_dependencies(coinmumps coinmumps-build)
-set_property(TARGET coinmumps PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs/libcoinmumps.a)
+add_library(moo::coinmumps STATIC IMPORTED)
+add_dependencies(moo::coinmumps coinmumps-build)
+set_property(TARGET moo::coinmumps PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs/libcoinmumps.a)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/config.status
   COMMAND ADD_CFLAGS=-Ofast ADD_CXXFLAGS=-Ofast ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/configure
       --without-pardiso
+      --with-mumps
+      --with-mumps-lflags='-L${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs'
+      --with-mumps-cflags='-DCOIN_USE_MUMPS_MPI_H -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/include -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/libseq'
       --enable-shared=no
       --enable-static=yes
   COMMAND make clean
@@ -112,10 +115,10 @@ add_custom_command(
   COMMAND make -j
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt)
 add_custom_target(ipopt-build DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/src/.libs/libipopt.a)
-add_library(ipopt STATIC IMPORTED)
-add_dependencies(ipopt ipopt-build)
-set_property(TARGET ipopt PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/src/.libs/libipopt.a)
-target_include_directories(ipopt INTERFACE 
+add_library(moo::ipopt STATIC IMPORTED)
+add_dependencies(moo::ipopt ipopt-build)
+set_property(TARGET moo::ipopt PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/src/.libs/libipopt.a)
+target_include_directories(moo::ipopt INTERFACE 
   ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/Interfaces
   ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/Common
   ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/Algorithm
@@ -157,9 +160,13 @@ else()
 endif()
 
 target_link_libraries(moo PUBLIC fmt)
-target_link_libraries(moo PRIVATE ipopt coinmumps metis)
+target_link_libraries(moo PRIVATE moo::ipopt moo::coinmumps metis)
 target_link_libraries(moo PRIVATE lapack blas dl gfortran gomp)
 target_link_libraries(moo PRIVATE radau)
+
+# hide symbols
+target_compile_options(moo PRIVATE -Wl,--exclude-libs,ALL )
+target_link_options(moo PRIVATE -Wl,--exclude-libs,ALL)
 
 if (COINHSL_FOUND)
     message(STATUS "Coin-HSL found")

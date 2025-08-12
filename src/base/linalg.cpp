@@ -50,7 +50,6 @@ void square(const int size, f64* x) {
     }
 }
 
-
 void diagmat_vec(const f64* D, bool invD, const f64* x, const int size, f64* out) {
     int i;
 

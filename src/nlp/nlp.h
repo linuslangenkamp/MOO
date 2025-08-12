@@ -554,6 +554,10 @@ private:
 
     // ============ Helpers for Scaling ============
 
+    // Attention: this part is super confusing, since the lambda and sigma_f *unscale* is actually a scale with g and f!!
+    // this is the case, because the Lagrangian Hessian does not allow for to scale f and g independently after evaluation
+    // so the only possibility is to apply this scaling a priori by updating the duals and sigma_f
+
     inline void unscale_dual_bounds(const f64* z_L, const f64* z_U) {
         scaling->unscale_x(z_L, z_lb.raw(), number_vars);
         scaling->unscale_x(z_U, z_ub.raw(), number_vars);

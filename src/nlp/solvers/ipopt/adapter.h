@@ -21,6 +21,7 @@
 #ifndef MOO_IPOPT_ADAPTER_H
 #define MOO_IPOPT_ADAPTER_H
 
+
 #include <IpTNLP.hpp>
 #include <IpIpoptData.hpp>
 #include <IpDenseVector.hpp>
@@ -38,10 +39,6 @@ public:
     explicit IpoptAdapter(NLP::NLP& nlp) : nlp(nlp) {}
 
     NLP::NLP& nlp;
-
-    // Attention: this part is super confusing, since the lambda and sigma_f *unscale* is actually a scale with g and f!!
-    // this is the case, because the Lagrangian does not allow for to scale f and g independently after evaluation
-    // so the only possibility is to apply this scaling a priori by updating the duals and sigma_f
 
     bool get_nlp_info(Ipopt::Index& n, Ipopt::Index& m, Ipopt::Index& nnz_jac_g, Ipopt::Index& nnz_h_lag, IndexStyleEnum& index_style) override;
 
@@ -70,5 +67,6 @@ public:
 };
 
 } // namespace IpoptSolver
+
 
 #endif // MOO_IPOPT_ADAPTER_H
