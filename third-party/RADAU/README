@@ -1,6 +1,6 @@
-# Radau5
+# RADAU / RADAU5
 
-This directory contains the Radau5 stiff ODE solver.
+This directory contains the RADAU + RADAU5 stiff ODE solver.
 
 - Authors: Ernst Hairer and Gerhard Wanner
 - Copyright: © 2004, UNIGE

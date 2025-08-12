@@ -1,5 +1,25 @@
-#ifndef OPT_UTIL_H
-#define OPT_UTIL_H
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// This file is part of MOO - Modelica / Model Optimizer
+// Copyright (C) 2025 University of Applied Sciences and Arts
+// Bielefeld, Faculty of Engineering and Mathematics
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
+#ifndef MOO_UTIL_H
+#define MOO_UTIL_H
 
 #include <functional>
 #include <iostream>
@@ -31,7 +51,7 @@ inline T apply_threshold_floor(T value, T tol, T min_magnitude) {
  * When an AutoFree object goes out of scope, it automatically calls each stored free function
  * on its associated pointer to release resources and avoid memory leaks.
  * You register pointers and their free functions using the attach() method.
- * Used for pure C-style mallocs / callocs in the OPT module */
+ * Used for pure C-style mallocs / callocs in the MOO module */
 
 /* @deprecated not in use
  class AutoFree {
@@ -60,4 +80,4 @@ private:
     std::vector<std::pair<void*, std::function<void(void*)>>> _to_free;
 };
 */
-#endif // OPT_UTIL_H
+#endif // MOO_UTIL_H

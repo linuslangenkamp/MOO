@@ -1,3 +1,23 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// This file is part of MOO - Modelica / Model Optimizer
+// Copyright (C) 2025 University of Applied Sciences and Arts
+// Bielefeld, Faculty of Engineering and Mathematics
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include "gdop.h"
 
 // TODO: add timings for each component
@@ -47,8 +67,8 @@ void GDOP::get_sizes(
     off_last_xu = off_acc_xu.back().back();                        // variables final grid point x_ij
     off_xu_total = off_last_xu + off_xu;                           // first parameter
     number_vars = off_xu_total + problem.pc->p_size;
-    create_acc_offset_fg(problem.pc->fg_size);                   // constraint f_ij offset
-    off_fg_total = mesh->node_count * problem.pc->fg_size;        // constraint r_0 offset
+    create_acc_offset_fg(problem.pc->fg_size);                     // constraint f_ij offset
+    off_fg_total = mesh->node_count * problem.pc->fg_size;         // constraint r_0 offset
     number_constraints = problem.pc->r_size + off_fg_total;
 }
 
