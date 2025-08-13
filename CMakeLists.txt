@@ -104,7 +104,7 @@ add_custom_command(
       --without-pardiso
       --with-mumps
       --with-mumps-lflags='-L${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs'
-      --with-mumps-cflags='-DCOIN_USE_MUMPS_MPI_H -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/include -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/libseq'
+      --with-mumps-cflags='-DCOIN_USE_MUMPS_MPI_H -I${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/include -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/libseq'
       --enable-shared=no
       --enable-static=yes
   COMMAND make clean
