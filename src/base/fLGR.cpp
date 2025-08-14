@@ -51,10 +51,7 @@ f64 fLGR::integrate(int scheme, const f64* values) {
  * @param out     Output vector of length (scheme + 1), contains the result of D * in.
  */
 void fLGR::diff_matrix_multiply(int scheme, const f64* in, f64* out) {
-    // TODO: replace by row-major blas routine dgemv
-    for (int row = 0; row < scheme + 1; row++) {
-        out[row] = Linalg::dot(scheme + 1, get_D(scheme, row), in);
-    }
+    Linalg::matrix_vector(scheme + 1, 'R', get_D(scheme), in, out);
 }
 
 /**

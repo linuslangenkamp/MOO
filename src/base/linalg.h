@@ -23,8 +23,7 @@
 
 #include "util.h"
 
-// these are possibly blas functions that can be replaced with proper BLAS later
-// for now its sufficient to memorize where these subroutines are used
+// This Linear Algebra namespace implements several useful subroutines, which are (in part) straight BLAS wrappers, but also custom implementations
 
 namespace Linalg {
 
@@ -43,12 +42,13 @@ inline std::string norm_to_string(Norm norm) {
     }
 }
 
-f64 dot(const int size, const f64* x, const f64* y);
-void square(const int size, f64* x);
-void dsaxpy(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
-void dgmv(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
-void diagmat_vec(const f64* D, bool invD, const f64* x, const int size, f64* out);
-void diagmat_vec_inplace(const f64* D, bool invD, f64* x, const int size);
+f64 dot(int size, const f64* x, const f64* y);
+void matrix_vector(int size, char format, const f64* matrix, const f64* vector, f64* out);
+void square(int size, f64* x);
+void dsaxpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
+void dgmv(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
+void diagmat_vec(const f64* D, bool invD, const f64* x, int size, f64* out);
+void diagmat_vec_inplace(const f64* D, bool invD, f64* x, int size);
 
 } // namespace Linalg
 
