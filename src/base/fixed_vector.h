@@ -62,7 +62,7 @@ public:
 
     constexpr FixedVector(const FixedVector &other) : FixedVector(other._size) {
         if constexpr (std::is_trivially_copyable_v<T>) {
-            memcpy(_data.get(), other._data.get(), _size * sizeof(T));
+            std::memcpy(_data.get(), other._data.get(), _size * sizeof(T));
         } else {
             for (std::size_t i = 0; i < _size; i++) {
                 (*this)[i] = T(other[i]);
@@ -113,14 +113,14 @@ public:
 
     // fill entire vector with 0
     constexpr void fill_zero() {
-        memset(_data.get(), 0, _size * sizeof(T));
+        std::memset(_data.get(), 0, _size * sizeof(T));
     }
 
     // fills the vector with some data of the same len
     constexpr void assign(const T* data) {
         assert(data != nullptr);
 
-        memcpy(_data.get(), data, _size * sizeof(T));
+        std::memcpy(_data.get(), data, _size * sizeof(T));
     }
 
     // fills the vector with some data with given len: vector[offset] = data[0], ..., vector[offset + len - 1] = data[len - 1]
@@ -128,7 +128,7 @@ public:
         assert(data != nullptr);
         assert(len <= _size - offset);
 
-        memcpy(_data.get() + offset, data, len * sizeof(T));
+        std::memcpy(_data.get() + offset, data, len * sizeof(T));
     }
 
     // assign the vector from a given iterator: vector[offset] = first, ..., vector[offset + len - 1] = last
@@ -144,14 +144,14 @@ public:
         assert(data != nullptr);
         assert(len <= _size - offset);
 
-        memcpy(data, _data.get() + offset, len * sizeof(T));
+        std::memcpy(data, _data.get() + offset, len * sizeof(T));
     }
 
     // write from vector -> data_buffer: data[0] = vector[0], ..., data[_size - 1] = vector[_size - 1]
     constexpr void write_to(T* data) const {
         assert(data != nullptr);
 
-        memcpy(data, _data.get(), _size * sizeof(T));
+        std::memcpy(data, _data.get(), _size * sizeof(T));
     }
 
     constexpr std::size_t size() const {

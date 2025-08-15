@@ -51,10 +51,7 @@ f64 fLGR::integrate(int scheme, const f64* values) {
  * @param out     Output vector of length (scheme + 1), contains the result of D * in.
  */
 void fLGR::diff_matrix_multiply(int scheme, const f64* in, f64* out) {
-    // TODO: replace by row-major blas routine dgemv
-    for (int row = 0; row < scheme + 1; row++) {
-        out[row] = Linalg::dot(scheme + 1, get_D(scheme, row), in);
-    }
+    Linalg::matrix_vector(scheme + 1, 'R', get_D(scheme), in, out);
 }
 
 /**
@@ -124,6 +121,12 @@ f64 fLGR::interpolate(int scheme, bool contains_zero, const f64* values, int inc
     f64 h          = interval_end - interval_start;
     f64 node_start = nodes[0];
     f64 node_end   = nodes[node_count - 1];
+
+    // check if interval is empty or if just one point is given -> return constant polynomial
+    if ((std::abs(node_end - node_start) < 1e-14) || (!contains_zero && scheme == 1)) {
+        return values[0];
+    }
+
     f64 point_hat  = (point - interval_start) / h * (node_end - node_start) + node_start;
 
     // check for exact match with any node to avoid division by zero

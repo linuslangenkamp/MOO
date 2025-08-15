@@ -17,10 +17,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include <cstring>
 
 #include "linalg.h"
 
 namespace Linalg {
+
+/**
+ * @brief Perform inplace squaring (x_1^2, x_2^2, ..., x_size^2)
+ *
+ * @param size      Vector length
+ * @param x         Vector ptr
+ */
+void square(int size, f64* x) {
+    for (int i = 0; i < size; i++) {
+        x[i] *= x[i];
+    }
+}
+
 
 /** 
  * @brief Perform dot product: ret = transpose(x) * y
@@ -30,7 +44,7 @@ namespace Linalg {
  * @param y         Second Vector ptr
  * @return f64   transpose(vec1) * vec2
  */
-f64 dot(const int size, const f64* x, const f64* y) {
+f64 dot(int size, const f64* x, const f64* y) {
     f64 ret = 0.0;
     for (int i = 0; i < size; i++) {
         ret += x[i] * y[i];
@@ -38,19 +52,38 @@ f64 dot(const int size, const f64* x, const f64* y) {
     return ret;
 }
 
-/** 
- * @brief Perform inplace squaring (x_1^2, x_2^2, ..., x_size^2)
+/**
+ * @brief Matrix-vector multiply: out = matrix * vector
  *
- * @param size      Vector length
- * @param x         Vector ptr
+ * @param size    Size of the matrix
+ * @param format  'R' = row-major, 'C' = column-major
+ * @param matrix  Pointer to flat matrix (size x size)
+ * @param vector  Pointer to input vector (size)
+ * @param out     Pointer to output vector (size)
  */
-void square(const int size, f64* x) {
-    for (int i = 0; i < size; i++) {
-        x[i] *= x[i];
+void matrix_vector(int size, char format, const double* matrix,
+                   const double* vector, double* out)
+{
+    std::memset(out, 0, size * sizeof(f64));
+
+    if (format == 'C' || format == 'c') {
+        // Column-major
+        for (int col = 0; col < size; col++) {
+            for (int row = 0; row < size; row++) {
+                out[row] += matrix[row + col * size] * vector[col];
+            }
+        }
+    } else {
+        // Row-major
+        for (int row = 0; row < size; row++) {
+            for (int col = 0; col < size; col++) {
+                out[row] += matrix[row * size + col] * vector[col];
+            }
+        }
     }
 }
 
-void diagmat_vec(const f64* D, bool invD, const f64* x, const int size, f64* out) {
+void diagmat_vec(const f64* D, bool invD, const f64* x, int size, f64* out) {
     int i;
 
     if (invD) {
@@ -65,7 +98,7 @@ void diagmat_vec(const f64* D, bool invD, const f64* x, const int size, f64* out
     }
 }
 
-void diagmat_vec_inplace(const f64* D, bool invD, f64* x, const int size) {
+void diagmat_vec_inplace(const f64* D, bool invD, f64* x, int size) {
     int i;
 
     if (invD) {
@@ -91,7 +124,7 @@ void diagmat_vec_inplace(const f64* D, bool invD, f64* x, const int size) {
  * @param invD      Invert Matrix D
  * @param out       Vector to fill
  */
-void dsaxpy(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
+void dsaxpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
     int i;
 
     if (invD) {
@@ -117,7 +150,7 @@ void dsaxpy(const int size, const f64* x, const f64* y, const f64* D, f64 beta, 
  * @param invD      Invert Matrix D
  * @param out       Vector to fill
  */
-void dgmv(const int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
+void dgmv(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
     int i;
 
     if (invD) {

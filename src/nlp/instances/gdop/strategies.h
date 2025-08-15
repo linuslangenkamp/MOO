@@ -276,12 +276,14 @@ public:
     int max_phase_two_iterations;
 
     // on-interval
-    f64 mesh_lambda;
+    f64 phase_two_level;
     f64 mesh_size_zero;
 
     // corner
     FixedVector<f64> CTOL_1;
     FixedVector<f64> CTOL_2;
+
+    L2BoundaryNorm(int max_phase_one_iterations, int max_phase_two_iterations, f64 phase_two_level);
 
     void reset(const GDOP& gdop) override;
 

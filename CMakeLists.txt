@@ -70,10 +70,10 @@ target_compile_options(fmt PRIVATE -fPIC)
 option(DISABLE_LOGGING "Disable logging macros" FALSE)
 
 if(DISABLE_LOGGING)
-  message(STATUS "Define DISABLE_LOGGING set to TRUE")
+  message(STATUS "DISABLE_LOGGING set to TRUE")
   target_compile_definitions(moo PRIVATE DISABLE_LOGGING)
 else()
-  message(STATUS "Define DISABLE_LOGGING set to FALSE")
+  message(STATUS "DISABLE_LOGGING set to FALSE")
 endif()
 
 ###### END DISABLE_LOGGING
@@ -111,7 +111,7 @@ add_custom_command(
       --without-pardiso
       --with-mumps
       --with-mumps-lflags='-L${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs'
-      --with-mumps-cflags='-DCOIN_USE_MUMPS_MPI_H -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/include -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/libseq'
+      --with-mumps-cflags='-DCOIN_USE_MUMPS_MPI_H -I${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/include -I${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/libseq'
       --enable-shared=no
       --enable-static=yes
   COMMAND make clean
@@ -155,13 +155,19 @@ target_link_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 #add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 
 # TODO: Make it a clean build with -Wextra
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+
+# force release build if included in 3rdParty tool - explicitly set MOO_BUILD_TYPE to debug for debug build!
+if(NOT DEFINED MOO_BUILD_TYPE)
+  set(MOO_BUILD_TYPE "RelWithDebInfo")
+  message(STATUS "MOO_BUILD_TYPE not defined: defaulting to RelWithDebInfo")
+endif()
+
+if ("${MOO_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Configuration: Debug")
     target_compile_options(moo PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O0 -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O0 -g")
-    # -Wold-style-cast
-else()
-    message(STATUS "Configuration: Release")
+else ()
+    message(STATUS "Configuration: RelWithDebInfo / Release")
     target_compile_options(moo PRIVATE -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O3 -march=native -funroll-loops -g)
     message(STATUS "Compile Options: -Wall -fno-rtti -fno-var-tracking-assignments -Wnon-virtual-dtor -pedantic -O3 -march=native -funroll-loops -g")
 endif()
@@ -169,7 +175,10 @@ endif()
 target_link_libraries(moo PUBLIC fmt)
 target_link_libraries(moo PRIVATE moo::ipopt moo::coinmumps metis)
 target_link_libraries(moo PRIVATE lapack blas dl gfortran gomp)
-target_link_libraries(moo PRIVATE radau)
+
+if(WITH_RADAU)
+    target_link_libraries(moo PRIVATE radau)
+endif()
 
 # hide symbols
 target_compile_options(moo PRIVATE -Wl,--exclude-libs,ALL )
