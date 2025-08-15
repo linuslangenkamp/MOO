@@ -63,10 +63,10 @@ target_compile_options(fmt PRIVATE -fPIC)
 option(DISABLE_LOGGING "Disable logging macros" FALSE)
 
 if(DISABLE_LOGGING)
-  message(STATUS "Define DISABLE_LOGGING set to TRUE")
+  message(STATUS "DISABLE_LOGGING set to TRUE")
   target_compile_definitions(moo PRIVATE DISABLE_LOGGING)
 else()
-  message(STATUS "Define DISABLE_LOGGING set to FALSE")
+  message(STATUS "DISABLE_LOGGING set to FALSE")
 endif()
 
 ###### END DISABLE_LOGGING
@@ -152,6 +152,7 @@ target_link_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
 # force release build if included in 3rdParty tool - explicitly set MOO_BUILD_TYPE to debug for debug build!
 if(NOT DEFINED MOO_BUILD_TYPE)
   set(MOO_BUILD_TYPE "RelWithDebInfo")
+  message(STATUS "MOO_BUILD_TYPE not defined: defaulting to RelWithDebInfo")
 endif()
 
 if ("${MOO_BUILD_TYPE}" STREQUAL "Debug")
@@ -167,7 +168,10 @@ endif()
 target_link_libraries(moo PUBLIC fmt)
 target_link_libraries(moo PRIVATE moo::ipopt moo::coinmumps metis)
 target_link_libraries(moo PRIVATE lapack blas dl gfortran gomp)
-target_link_libraries(moo PRIVATE radau)
+
+if(WITH_RADAU)
+    target_link_libraries(moo PRIVATE radau)
+endif()
 
 # hide symbols
 target_compile_options(moo PRIVATE -Wl,--exclude-libs,ALL )
