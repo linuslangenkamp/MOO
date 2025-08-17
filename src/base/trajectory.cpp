@@ -18,6 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+#include <algorithm>
+
 #include "trajectory.h"
 
 Trajectory Trajectory::interpolate_onto_mesh(const Mesh& mesh) const {
@@ -66,6 +68,13 @@ Trajectory Trajectory::interpolate_polynomial_onto_grid(const std::vector<f64>& 
 
 void Trajectory::print() {
     print_trajectory(t, {
+        {"x", x},
+        {"u", u}
+    }, "p", p);
+}
+
+void Trajectory::print_table() {
+    print_trajectory_table(t, {
         {"x", x},
         {"u", u}
     }, "p", p);
@@ -517,6 +526,64 @@ void print_trajectory(
         print_matrix(name, mat);
     }
     print_vector(static_name, static_field);
+}
+
+void print_trajectory_table(
+    const std::vector<f64>& t,
+    const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
+    const std::string& static_name,
+    const std::vector<f64>& static_field)
+{
+    size_t N = t.size();
+
+    std::vector<std::string> col_names;
+    col_names.push_back("t");
+    for (const auto& [name, mat] : fields) {
+        for (size_t j = 0; j < mat[0].size(); j++) {
+            col_names.push_back(fmt::format("{}[{}]", name, j + 1));
+        }
+    }
+
+    std::vector<int> widths(col_names.size(), 8);
+    for (size_t c = 0; c < col_names.size(); c++) {
+        widths[c] = std::max(widths[c], static_cast<int>(col_names[c].size()));
+    }
+    for (size_t i = 0; i < N; i++) {
+        widths[0] = std::max(widths[0], static_cast<int>(fmt::format("{:.6e}", t[i]).size()));
+        size_t col = 1;
+        for (const auto& [_, mat] : fields) {
+            for (size_t j = 0; j < mat[0].size(); j++, col++) {
+                widths[col] = std::max(widths[col], static_cast<int>(fmt::format("{:.6e}", mat[i][j]).size()));
+            }
+        }
+    }
+
+    std::vector<Align> aligns(col_names.size(), Align::Right);
+    TableFormat tf(widths, aligns);
+
+    LOG_START_MODULE(tf, "Trajectory Table");
+    LOG_ROW(tf, col_names);
+    LOG_DASHES(tf);
+
+    for (size_t i = 0; i < N; i++) {
+        std::vector<std::string> row;
+        row.push_back(fmt::format("{:.6e}", t[i]));
+        for (const auto& [_, mat] : fields) {
+            for (size_t j = 0; j < mat[0].size(); j++) {
+                row.push_back(fmt::format("{:.6e}", mat[i][j]));
+            }
+        }
+        LOG_ROW(tf, row);
+    }
+    LOG_DASHES_LN(tf);
+
+    TableFormat tfp({6, widths[1]}, {Align::Right, Align::Right});
+    LOG_ROW(tfp, {static_name, "Value"});
+    LOG_DASHES(tfp);
+    for (size_t i = 0; i < static_field.size(); i++) {
+        LOG_ROW(tfp, {fmt::format("{}[{}]", static_name, i + 1), fmt::format("{:.6e}", static_field[i])});
+    }
+    LOG_DASHES_LN(tfp);
 }
 
 int write_trajectory_csv(

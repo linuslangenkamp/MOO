@@ -19,14 +19,18 @@
 //
 
 // TODO: add proper logging with SPD log, override Ipopt Journalist -> useful for 3rd party logging; add colors as runtime option?
+// TODO: Unify this logging? also only return std::string / char* -> Logger -> dump
 
 #ifndef MOO_LOG_H
 #define MOO_LOG_H
 
 #include <fmt/core.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <fmt/color.h>
+#include <cassert>
 #include <string>
+#include <vector>
 #include <array>
 
 // ---------------------------
@@ -51,10 +55,10 @@ do { \
     log_start_module(title, (fmt).total_width()); \
 } while (0)
 
-#define LOG_ROW(ftf, ...)       do { log_row_fast(ftf, __VA_ARGS__); }         while (0)
-#define LOG_HEADER(ftf, ...)    do { log_row_fast(ftf, __VA_ARGS__); }         while (0)
-#define LOG_DASHES(ftf)         do { log_dashes_fast(ftf); }                   while (0)
-#define LOG_DASHES_LN(ftf)      do { log_dashes_fast(ftf); fmt::println(""); } while (0)
+#define LOG_ROW(tf, ...)       do { log_row_fast(tf, __VA_ARGS__); }         while (0)
+#define LOG_HEADER(tf, ...)    do { log_row_fast(tf, __VA_ARGS__); }         while (0)
+#define LOG_DASHES(tf)         do { log_dashes_fast(tf); }                   while (0)
+#define LOG_DASHES_LN(tf)      do { log_dashes_fast(tf); fmt::println(""); } while (0)
 
 enum class Align { Left, Right, Center };
 
@@ -75,7 +79,7 @@ struct FixedTableFormat {
     constexpr FixedTableFormat(const std::array<int, N>& widths,
                                 const std::array<Align, N>& aligns)
         : col_widths(widths) {
-        for (size_t i = 0; i < N; ++i) {
+        for (size_t i = 0; i < N; i++) {
             fmt_strings[i] = fmt::format("{{:{}{}}}", align_to_char(aligns[i]), col_widths[i]);
         }
     }
@@ -118,6 +122,46 @@ constexpr inline void log_row_fast(const FixedTableFormat<N>& ftf, Args&&... arg
     const char* sep = "";
     ((fmt::print("{}{}", sep, fmt::format(ftf.fmt_strings[i++], args)), sep = " | "), ...);
     fmt::print("\n");
+}
+
+struct TableFormat {
+    std::vector<int> widths;
+    std::vector<Align> aligns;
+
+    TableFormat(const std::vector<int>& w, const std::vector<Align>& a)
+        : widths(w), aligns(a) {}
+
+    std::vector<std::string> fmt_strings() const {
+        std::vector<std::string> fs;
+        for (size_t i = 0; i < widths.size(); i++)
+            fs.push_back(fmt::format("{{:{}{}}}", align_to_char(aligns[i]), widths[i]));
+        return fs;
+    }
+
+    int total_width() const {
+        int total = -1;
+        for (auto w : widths) total += w + 3;
+        return total;
+    }
+};
+
+inline void log_row_fast(const TableFormat& tf, const std::vector<std::string>& cols) {
+    if (cols.size() != tf.widths.size()) {
+        LOG_ERROR("Column count does not match table format!");
+        return;
+    }
+
+    auto fs = tf.fmt_strings();
+    const char* sep = "";
+    for (size_t i = 0; i < cols.size(); i++) {
+        fmt::print("{}{}", sep, fmt::format(fs[i], cols[i]));
+        sep = " | ";
+    }
+    fmt::print("\n");
+}
+
+inline void log_dashes_fast(const TableFormat& tf) {
+    fmt::print("{:-<{}}\n", "", tf.total_width());
 }
 
 #endif // MOO_LOG_H

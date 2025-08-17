@@ -94,6 +94,7 @@ struct Trajectory {
 
     // dumps
     void print();
+    void print_table();
     int to_csv(const std::string& filename) const;
 };
 
@@ -209,6 +210,12 @@ int write_trajectory_csv(
     const std::vector<f64>& static_field);
 
 void print_trajectory(
+    const std::vector<f64>& t,
+    const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
+    const std::string& static_name,
+    const std::vector<f64>& static_field);
+
+void print_trajectory_table(
     const std::vector<f64>& t,
     const std::vector<std::pair<std::string, std::vector<std::vector<f64>>>>& fields,
     const std::string& static_name,
