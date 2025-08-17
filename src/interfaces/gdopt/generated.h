@@ -25,13 +25,10 @@
 extern "C" {
 #endif
 
-#include <interfaces/gdopt/main_gdopt.h>
-
-int run_model(int argc, char** argv);
+int main_generated(int argc, char** argv);
 
 #ifdef __cplusplus
 }
 #endif
-
 
 #endif // MOO_C_GDOPT_GENERATED

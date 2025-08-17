@@ -19,6 +19,7 @@
 //
 
 #include <interfaces/c/structures.h>
+#include <interfaces/gdopt/main_gdopt.h>
 #include <interfaces/gdopt/generated.h>
 
 // === problem sizes (compile const) ===
@@ -186,7 +187,7 @@ c_problem_t globl_c_problem = {
 };
 
 
-int run_model(int argc, char** argv) {
+int main_generated(int argc, char** argv) {
     main_gdopt(argc, argv, &globl_c_problem);
     return 0;
 }

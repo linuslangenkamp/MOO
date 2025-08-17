@@ -41,8 +41,14 @@ target_sources(moo PRIVATE
     # C interface
     src/interfaces/c/problem.cpp
 
+    # GDOPT interface
+    src/interfaces/gdopt/main_gdopt.cpp
+    src/interfaces/gdopt/generated.c
+
     # Sources to call simulations for C interface
-    src/simulation/radau/wrapper.cpp
+    src/simulation/integrator/integrator.cpp
+    src/simulation/radau/radau_builder.cpp
+    src/simulation/radau/radau_integrator.cpp
     src/simulation/radau/test.cpp
 )
 
