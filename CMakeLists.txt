@@ -3,13 +3,10 @@ project(moo LANGUAGES C CXX Fortran)
 
 set(CMAKE_CXX_STANDARD 17)
 
+### Build command
+# cmake .. -DMOO_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release -DMOO_WITH_GDOPT_EXAMPLE=1 -DMUMPS_USE_METIS=ON / OFF
+
 ### Options
-
-set(MOO_MAKEPROGRAM "" CACHE STRING "Make program used to build third party dependencies of MOO library.")
-set(MOO_SUBMAKE_FLAGS "" CACHE STRING "Extra flags passed to sub-make when building MUMPS/Ipopt (leave empty for standard hierarchy, set e.g. -j{PROCS} for parallel build, or -j1 for single-threaded). This has no effect if CMake generator is Unix or MSYS Makefiles!")
-
-set(MOO_LAPACK_LIB "" CACHE STRING "Override path to LAPACK library")
-set(MOO_GFORTRAN_LIB "" CACHE STRING "Override path to gfortran library")
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_GDOPT "Build MOO with GDOPT support" ON)
@@ -21,16 +18,6 @@ message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "Fortran Compiler: ${CMAKE_Fortran_COMPILER}")
 
-if(WIN32)
-    set(LIB_EXT .dll)
-elseif(APPLE)
-    set(LIB_EXT .dylib)
-else()
-    set(LIB_EXT .so)
-endif()
-
-message(STATUS "Target library extension: ${LIB_EXT}")
-
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(IS_GCC TRUE)
 else()
@@ -39,80 +26,12 @@ endif()
 
 ##### END setup
 
-##### END make
-
 include(ExternalProject)
 set(THIRD_PARTY_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local)
 
 find_package(PkgConfig)
 
-###### START DEPENDENCIES
-
 pkg_check_modules(COINHSL coinhsl)
-
-set(MOO_EXTRA_LIBS "")
-
-# LAPACK
-if(MOO_LAPACK_LIB)
-    message(STATUS "Using user-provided LAPACK: ${MOO_LAPACK_LIB}")
-    list(APPEND MOO_EXTRA_LIBS ${MOO_LAPACK_LIB})
-else()
-    message(STATUS "MOO_LAPACK_LIB not defined: searching for LAPACK")
-    find_package(LAPACK REQUIRED)
-
-    if(LAPACK_FOUND)
-        set(MOO_LAPACK_LIB ${LAPACK_LIBRARIES})
-        message(STATUS "Found LAPACK: ${MOO_LAPACK_LIB}")
-        list(APPEND MOO_EXTRA_LIBS ${MOO_LAPACK_LIB})
-    else()
-        message(FATAL_ERROR "LAPACK library not found")
-    endif()
-endif()
-
-string(JOIN " " MOO_LAPACK_LIB_STRING ${MOO_LAPACK_LIB})
-
-# gfortran runtime
-if(MOO_GFORTRAN_LIB)
-    message(STATUS "Using user-provided gfortran: ${MOO_GFORTRAN_LIB}")
-    list(APPEND MOO_EXTRA_LIBS ${MOO_GFORTRAN_LIB})
-else()
-    message(STATUS "MOO_GFORTRAN_LIB not defined: searching for gfortran")
-    find_library(MOO_GFORTRAN_LIB NAMES gfortran)
-
-    if(NOT MOO_GFORTRAN_LIB)
-        message(STATUS "gfortran library not found in default paths. Attempting to find via the compiler.")
-        find_program(GFORTRAN_EXECUTABLE NAMES gfortran)
-
-        if(GFORTRAN_EXECUTABLE)
-            message(STATUS "Found gfortran executable: ${GFORTRAN_EXECUTABLE}")
-
-            execute_process(
-                COMMAND "${GFORTRAN_EXECUTABLE}" -print-file-name=libgfortran${LIB_EXT}
-                OUTPUT_VARIABLE GFORTRAN_LIB_PATH
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-                RESULT_VARIABLE EXECUTE_RESULT
-            )
-
-            if(GFORTRAN_LIB_PATH)
-                message(STATUS "Found gfortran library path using the compiler: ${GFORTRAN_LIB_PATH}")
-                set(MOO_GFORTRAN_LIB "${GFORTRAN_LIB_PATH}")
-            else()
-                message(STATUS "Failed to get gfortran library path from the compiler.")
-            endif()
-        else()
-            message(STATUS "gfortran executable not found.")
-        endif()
-    else()
-        message(STATUS "Found gfortran: ${MOO_GFORTRAN_LIB}")
-        list(APPEND MOO_EXTRA_LIBS ${MOO_GFORTRAN_LIB})
-    endif()
-
-    if(NOT MOO_GFORTRAN_LIB)
-        message(WARNING "gfortran library not found: linking may still work if system finds it automatically")
-    endif()
-endif()
-
-###### END DEPENDENCIES
 
 ###### START BUILD + COMPILER FLAGS
 
@@ -134,10 +53,6 @@ else()
     set(MOO_O3_BUILD_FLAGS -O3)
     message(STATUS "MOO_NATIVE_BUILD not defined: adding no additional compiler flags")
 endif()
-
-set(MOO_MUMPS_FORTRAN_FLAGS -O3)
-
-string(JOIN " " MOO_MUMPS_FORTRAN_FLAGS_STRING ${MOO_MUMPS_FORTRAN_FLAGS})
 
 ###### END BUILD + COMPILER FLAGS
 
@@ -205,6 +120,9 @@ target_include_directories(moo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third-party/Ipopt.cmake/Ipopt/sources/src/LinAlg
 )
 
+# dmumps, mumps_common, seq, pord static libs
+target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/Dependencies/lib)
+
 ###### END MUMPS + Ipopt
 
 ###### START RADAU5
@@ -217,8 +135,6 @@ endif()
 
 target_include_directories(moo PUBLIC include)
 target_include_directories(moo PUBLIC src)
-
-target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/Dependencies/lib)
 
 # add_compile_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 # add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
@@ -244,7 +160,6 @@ message(STATUS "Compile Options: ${MOO_COMPILE_OPTIONS}")
 
 target_link_libraries(moo PUBLIC fmt)
 target_link_libraries(moo PRIVATE ipopt)
-target_link_libraries(moo PRIVATE ${MOO_EXTRA_LIBS})
 
 if(MOO_WITH_RADAU)
     target_link_libraries(moo PRIVATE radau)
