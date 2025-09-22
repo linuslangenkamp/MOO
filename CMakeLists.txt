@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10) # 3.21 for FindMsys
+cmake_minimum_required(VERSION 3.10)
 project(moo LANGUAGES C CXX Fortran)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -38,80 +38,7 @@ else()
     set(IS_GCC FALSE)
 endif()
 
-set(MOO_IS_MAKEFILE_GENERATOR OFF)
-if(CMAKE_GENERATOR STREQUAL "Unix Makefiles" OR CMAKE_GENERATOR STREQUAL "MSYS Makefiles")
-    set(MOO_IS_MAKEFILE_GENERATOR ON)
-endif()
-
 ##### END setup
-
-##### START make
-
-# A make program is necessary for the legacy configure builds of Ipopt and MUMPS
-
-set(MOO_MAKEPROGRAM_INTERNAL "")
-set(MOO_SUBMAKE_FLAGS_INTERNAL "")
-set(MOO_SUBMAKE_CMD "")
-
-# determine the make program if not already defined
-if(MOO_MAKEPROGRAM STREQUAL "")
-    if(MOO_IS_MAKEFILE_GENERATOR)
-        # Unix/MSYS Makefile generators support $(MAKE) environment variable -> needed for parallel jobserver makes
-        set(MOO_MAKEPROGRAM_INTERNAL "\$(MAKE)")
-        message(STATUS "Using automatic parallel jobserver make (generator supports $(MAKE)).")
-    # fallbacks cause MOO_MAKEPROGRAM not set
-    elseif(DEFINED ENV{MAKE})
-        # use MAKE from environment
-        set(MOO_MAKEPROGRAM_INTERNAL "$ENV{MAKE}")
-        message(STATUS "Detected MAKE from environment: using ${MOO_MAKEPROGRAM_INTERNAL}")
-    else()
-        # find in PATH
-        message(STATUS "Attempting to find a make program in PATH...")
-        find_program(MAKE_PROGRAM "make")
-        set(MOO_MAKEPROGRAM_INTERNAL "${MAKE_PROGRAM}")
-        if(MAKE_PROGRAM STREQUAL "MAKE_PROGRAM-NOTFOUND")
-            set(MOO_MAKEPROGRAM_INTERNAL "\$(MAKE)")
-            message(WARNING "Could not find a make program in PATH. Falling back to $(MAKE) environment variable. Please set MOO_MAKEPROGRAM to specify an appropriate make program.")
-            if(CMAKE_MAKE_PROGRAM MATCHES "ninja$")
-                message(SEND_ERROR "Ninja build does not support reading $(MAKE) environment variable. Build will likely fail.")
-            endif()
-        else()
-            message(STATUS "Found make program in PATH: ${MAKE_PROGRAM}")
-        endif()
-    endif()
-else()
-    set(MOO_MAKEPROGRAM_INTERNAL "${MOO_MAKEPROGRAM}")
-    message(STATUS "Using user specified MOO_MAKEPROGRAM: ${MOO_MAKEPROGRAM_INTERNAL}.")
-endif()
-
-# determine sub-make flags only if the generator does not support automatic jobserver
-if(NOT MOO_IS_MAKEFILE_GENERATOR)
-    # handle parallelism
-    if(MOO_SUBMAKE_FLAGS STREQUAL "")
-        message(WARNING "Cannot use automatic parallel make jobserver, because generator does not support \$(MAKE). "
-                        "MOO_SUBMAKE_FLAGS not set: using default resolution order (user > MAKEFLAGS > half of available cores). "
-                        "For a safe single-threaded build, set MOO_SUBMAKE_FLAGS=\"\" explicitly.")
-        if(DEFINED ENV{MAKEFLAGS} AND NOT "$ENV{MAKEFLAGS}" STREQUAL "")
-            set(MOO_SUBMAKE_FLAGS_INTERNAL "$ENV{MAKEFLAGS}")
-            message(STATUS "Detected MAKEFLAGS from environment: ${MOO_SUBMAKE_FLAGS_INTERNAL}")
-        else()
-            include(ProcessorCount)
-            ProcessorCount(NPROC)
-            math(EXPR SUBMAKE_JOBS "${NPROC}/2")
-            if(SUBMAKE_JOBS LESS 1)
-                set(SUBMAKE_JOBS 1)
-            endif()
-            set(MOO_SUBMAKE_FLAGS_INTERNAL "-j${SUBMAKE_JOBS}")
-            message(STATUS "Using default sub-make parallelism (half of available cores, ${MOO_SUBMAKE_FLAGS_INTERNAL})")
-        endif()
-    else()
-        set(MOO_SUBMAKE_FLAGS_INTERNAL "${MOO_SUBMAKE_FLAGS}")
-        message(STATUS "Using user-specified sub-make flags: ${MOO_SUBMAKE_FLAGS_INTERNAL}")
-    endif()
-endif()
-
-set(MOO_SUBMAKE_CMD ${MOO_MAKEPROGRAM_INTERNAL} ${MOO_SUBMAKE_FLAGS_INTERNAL})
-message(STATUS "Make command used to build third-party dependencies of MOO library: ${MOO_SUBMAKE_CMD}")
 
 ##### END make
 
@@ -203,63 +130,6 @@ endif()
 
 ###### END DEPENDENCIES
 
-###### START HANDLE NON MSYS MAKEFILES ON WIN
-
-if(WIN32)
-    if(NOT CMAKE_GENERATOR STREQUAL "MSYS Makefiles")
-        if(CMAKE_VERSION VERSION_LESS "3.21")
-            message(FATAL_ERROR "Building MOO on Windows with Generator != 'MSYS Makefiles' requires CMake >= 3.21 for FindMsys support")
-        endif()
-
-        find_package(Msys) # setting 'REQUIRED', leads to failures somehow
-        find_program(MSYS_BASH bash PATHS ${MSYS_INSTALL_PATH}/usr/bin REQUIRED)
-        set(MOO_SHELL "${MSYS_BASH}")
-        set(MOO_DOWNLOAD_SHELL "${MSYS_BASH}")
-    else()
-        set(MOO_SHELL "")
-        set(MOO_DOWNLOAD_SHELL "sh")
-    endif()
-else()
-    set(MOO_SHELL "sh")
-    set(MOO_DOWNLOAD_SHELL "sh")
-endif()
-
-message(STATUS "Using MOO_SHELL: ${MSYS_BASH}")
-message(STATUS "Using MOO_DOWNLOAD_SHELL: ${MOO_DOWNLOAD_SHELL}")
-
-# Function: make_posix_path(VAR_NAME OUT_VAR)
-#   VAR_NAME   : the name of the input variable (e.g., CMAKE_C_COMPILER)
-#   OUT_VAR    : the name of the output variable (e.g., CMAKE_C_COMPILER_POSIX)
-function(make_posix_path VAR_NAME OUT_VAR)
-    set(_in_value "${${VAR_NAME}}")
-
-    if (WIN32 AND (NOT CMAKE_GENERATOR STREQUAL "MSYS Makefiles"))
-        set(CYGPATH "${MSYS_INSTALL_PATH}/usr/bin/cygpath.exe")
-
-        # Convert to Posix-style path
-        execute_process(
-            COMMAND ${CYGPATH} -u "${_in_value}"
-            OUTPUT_VARIABLE _posix_value
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-
-        # Export to the requested output variable
-        set(${OUT_VAR} "${_posix_value}" PARENT_SCOPE)
-    else()
-        # On Linux/macOS or in MSYS just copy the original
-        set(${OUT_VAR} "${_in_value}" PARENT_SCOPE)
-    endif()
-endfunction()
-
-make_posix_path(CMAKE_C_COMPILER CMAKE_C_COMPILER_POSIX)
-make_posix_path(CMAKE_CXX_COMPILER CMAKE_CXX_COMPILER_POSIX)
-make_posix_path(CMAKE_Fortran_COMPILER CMAKE_Fortran_COMPILER_POSIX)
-make_posix_path(MOO_LAPACK_LIB_STRING MOO_LAPACK_LIB_STRING_POSIX)
-make_posix_path(CMAKE_CURRENT_SOURCE_DIR CMAKE_CURRENT_SOURCE_DIR_POSIX)
-make_posix_path(CMAKE_CURRENT_BINARY_DIR CMAKE_CURRENT_BINARY_DIR_POSIX)
-
-###### END HANDLE NON MSYS MAKEFILES ON WIN
-
 ###### START BUILD + COMPILER FLAGS
 
 # Attention:
@@ -346,109 +216,6 @@ target_compile_options(fmt PRIVATE -fPIC)
 ###### END FMT
 
 ###### START MUMPS + Ipopt
-
-# TODO: add option to use binaries of mumps and ipopt that are already available
-#       or fetched from MOO release - targets: Linux, MacOS, Windows (MSYS compatible)
-# TODO: enable build w/o mumps or ipopt - alternative NLP solvers
-# TODO: remove Ipopt examples / tutorial as they bloat the build
-
-# for redistribution, we always call this manually as not all platforms can run this script
-if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS)
-    message(STATUS "MUMPS sources not found. Trying to download MUMPS sources")
-    message(STATUS "Downloading MUMPS sources requires patch")
-    find_program(PATCH_EXECUTABLE patch)
-    if (PATCH_EXECUTABLE)
-        message(STATUS "patch found: ${PATCH_EXECUTABLE}")
-    else()
-        message(WARNING "patch not found! MUMPS download might fail.")
-    endif()
-    message(STATUS "Downloading mumps sources...")
-    execute_process(COMMAND ${MOO_DOWNLOAD_SHELL} ./get.Mumps WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps)
-else()
-    message(STATUS "MUMPS sources found")
-endif()
-
-ExternalProject_Add(moo_coinmumps
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps
-    CONFIGURE_COMMAND ${MOO_SHELL}
-        ${CMAKE_CURRENT_SOURCE_DIR_POSIX}/third-party/mumps/configure
-        CC=${CMAKE_C_COMPILER_POSIX}
-        CXX=${CMAKE_CXX_COMPILER_POSIX}
-        FC=${CMAKE_Fortran_COMPILER_POSIX}
-        ADD_CFLAGS=-O3
-        ADD_FCFLAGS=${MOO_MUMPS_FORTRAN_FLAGS_STRING}
-        ADD_CXXFLAGS=-O3
-        --with-lapack=${MOO_LAPACK_LIB_STRING_POSIX}
-        --enable-shared=no
-        --enable-static=yes
-    BUILD_COMMAND ${MOO_SUBMAKE_CMD}
-    INSTALL_COMMAND ""
-    BUILD_ALWAYS 0
-    BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs/libcoinmumps.a
-)
-
-add_library(moo::coinmumps STATIC IMPORTED GLOBAL)
-
-set_target_properties(moo::coinmumps PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/third-party/mumps/.libs/libcoinmumps.a
-    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third-party/mumps/MUMPS/include
-)
-
-add_dependencies(moo::coinmumps moo_coinmumps)
-
-set(MUMPS_LFLAGS_POSIX "-L${CMAKE_CURRENT_BINARY_DIR_POSIX}/third-party/mumps/.libs")
-
-set(MUMPS_CFLAGS_POSIX
-    -DCOIN_USE_MUMPS_MPI_H
-    -I${CMAKE_CURRENT_BINARY_DIR_POSIX}/third-party/mumps
-    -I${CMAKE_CURRENT_SOURCE_DIR_POSIX}/third-party/mumps/MUMPS/include
-    -I${CMAKE_CURRENT_SOURCE_DIR_POSIX}/third-party/mumps/MUMPS/libseq
-)
-
-string(JOIN " " MUMPS_CFLAGS_STRING_POSIX ${MUMPS_CFLAGS_POSIX})
-
-ExternalProject_Add(moo_ipopt
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt
-    CONFIGURE_COMMAND ${MOO_SHELL}
-    ${CMAKE_CURRENT_SOURCE_DIR_POSIX}/third-party/ipopt/configure
-        CC=${CMAKE_C_COMPILE_POSIX}
-        CXX=${CMAKE_CXX_COMPILER_POSIX}
-        FC=${CMAKE_Fortran_COMPILER_POSIX}
-        ADD_CFLAGS=-O3
-        ADD_FCFLAGS=-O3
-        ADD_CXXFLAGS=-O3
-        --with-lapack=${MOO_LAPACK_LIB_STRING_POSIX}
-        --without-pardiso
-        --with-mumps
-        --with-mumps-lflags=${MUMPS_LFLAGS_POSIX}
-        --with-mumps-cflags=${MUMPS_CFLAGS_STRING_POSIX}
-        --enable-shared=no
-        --enable-static=yes
-        --disable-sipopt
-        --disable-java
-    BUILD_COMMAND ${MOO_SUBMAKE_CMD}
-    INSTALL_COMMAND ""
-    BUILD_ALWAYS 0
-    BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/src/.libs/libipopt.a
-)
-
-add_library(moo::ipopt STATIC IMPORTED GLOBAL)
-
-set(IPOPT_INCLUDE_DIRS
-    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/Interfaces
-    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/Common
-    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/Algorithm
-    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/ipopt/src/LinAlg
-)
-
-set_target_properties(moo::ipopt PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/third-party/ipopt/src/.libs/libipopt.a
-    INTERFACE_INCLUDE_DIRECTORIES "${IPOPT_INCLUDE_DIRS}"
-)
-
-add_dependencies(moo::ipopt moo_ipopt)
 
 ###### END MUMPS + Ipopt
 
