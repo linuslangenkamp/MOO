@@ -9,7 +9,6 @@ set(MOO_MAKEPROGRAM "" CACHE STRING "Make program used to build third party depe
 set(MOO_SUBMAKE_FLAGS "" CACHE STRING "Extra flags passed to sub-make when building MUMPS/Ipopt (leave empty for standard hierarchy, set e.g. -j{PROCS} for parallel build, or -j1 for single-threaded). This has no effect if CMake generator is Unix or MSYS Makefiles!")
 
 set(MOO_LAPACK_LIB "" CACHE STRING "Override path to LAPACK library")
-set(MOO_METIS_LIB "" CACHE STRING "Override path to METIS library")
 set(MOO_GFORTRAN_LIB "" CACHE STRING "Override path to gfortran library")
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
@@ -71,21 +70,6 @@ else()
 endif()
 
 string(JOIN " " MOO_LAPACK_LIB_STRING ${MOO_LAPACK_LIB})
-
-# METIS
-if(MOO_METIS_LIB)
-    message(STATUS "Using user-provided METIS: ${MOO_METIS_LIB}")
-    list(APPEND MOO_EXTRA_LIBS ${MOO_METIS_LIB})
-else()
-    message(STATUS "MOO_METIS_LIB not defined: searching for METIS")
-    find_library(MOO_METIS_LIB NAMES metis)
-    if(MOO_METIS_LIB)
-        message(STATUS "Found METIS: ${MOO_METIS_LIB}")
-        list(APPEND MOO_EXTRA_LIBS ${MOO_METIS_LIB})
-    else()
-        message(FATAL_ERROR "METIS library not found")
-    endif()
-endif()
 
 # gfortran runtime
 if(MOO_GFORTRAN_LIB)
@@ -153,11 +137,6 @@ endif()
 
 set(MOO_MUMPS_FORTRAN_FLAGS -O3)
 
-if(CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
-    # we need to add this for gfortran / f95 as there are size mismatches between metis and mumps type sizes
-    list(APPEND MOO_MUMPS_FORTRAN_FLAGS -fallow-argument-mismatch)
-endif()
-
 string(JOIN " " MOO_MUMPS_FORTRAN_FLAGS_STRING ${MOO_MUMPS_FORTRAN_FLAGS})
 
 ###### END BUILD + COMPILER FLAGS
@@ -217,6 +196,15 @@ target_compile_options(fmt PRIVATE -fPIC)
 
 ###### START MUMPS + Ipopt
 
+add_subdirectory(third-party/Ipopt.cmake)
+
+target_include_directories(moo PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/Ipopt.cmake/Ipopt/sources/src/Interfaces
+    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/Ipopt.cmake/Ipopt/sources/src/Common
+    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/Ipopt.cmake/Ipopt/sources/src/Algorithm
+    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/Ipopt.cmake/Ipopt/sources/src/LinAlg
+)
+
 ###### END MUMPS + Ipopt
 
 ###### START RADAU5
@@ -230,9 +218,7 @@ endif()
 target_include_directories(moo PUBLIC include)
 target_include_directories(moo PUBLIC src)
 
-target_include_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/include/coin-or)
-
-target_link_directories(moo PRIVATE ${THIRD_PARTY_INSTALL_PREFIX}/lib)
+target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/Dependencies/lib)
 
 # add_compile_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 # add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
@@ -257,7 +243,7 @@ target_compile_options(moo PRIVATE ${MOO_COMPILE_OPTIONS})
 message(STATUS "Compile Options: ${MOO_COMPILE_OPTIONS}")
 
 target_link_libraries(moo PUBLIC fmt)
-target_link_libraries(moo PRIVATE moo::ipopt moo::coinmumps)
+target_link_libraries(moo PRIVATE ipopt)
 target_link_libraries(moo PRIVATE ${MOO_EXTRA_LIBS})
 
 if(MOO_WITH_RADAU)
