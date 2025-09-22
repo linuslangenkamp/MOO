@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: true
+          submodules: "recursive"
 
       - name: Install METIS, LAPACK (Linux)
         if: runner.os == 'Linux'
