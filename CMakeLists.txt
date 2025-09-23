@@ -26,13 +26,6 @@ endif()
 
 ##### END setup
 
-include(ExternalProject)
-set(THIRD_PARTY_INSTALL_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/third-party-install/usr/local)
-
-find_package(PkgConfig)
-
-pkg_check_modules(COINHSL coinhsl)
-
 ###### START BUILD + COMPILER FLAGS
 
 # Attention:
@@ -164,10 +157,6 @@ target_link_libraries(moo PRIVATE ipopt)
 if(MOO_WITH_RADAU)
     target_link_libraries(moo PRIVATE radau)
 endif()
-
-if (COINHSL_FOUND)
-    target_link_libraries(moo PRIVATE coinhsl)
-endif ()
 
 # hide symbols
 if(WIN32)
