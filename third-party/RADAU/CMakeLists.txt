@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 
 if(MOO_WITH_RADAU)
     message(STATUS "Library RADAU will be built from source and linked (MOO_WITH_RADAU=TRUE)")

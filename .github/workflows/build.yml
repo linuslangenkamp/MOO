@@ -18,7 +18,7 @@ jobs:
         include:
           - os: ubuntu-latest
             exe-ext: ""
-            metis-lib: "-DMUMPS_METIS_LIB_PATH=/usr/lib/x86_64-linux-gnu/libmetis.so.5.1.0"
+            metis-lib: ""
             lapack-lib: ""
 
     runs-on: ${{ matrix.os }}

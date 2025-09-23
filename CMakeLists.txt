@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(moo LANGUAGES C CXX Fortran)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -120,8 +120,8 @@ target_include_directories(moo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third-party/Ipopt.cmake/Ipopt/sources/src/LinAlg
 )
 
-# dmumps, mumps_common, seq, pord static libs
-target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/Dependencies/lib)
+# dmumps, mumps_common, seq static libs
+target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/bin)
 
 ###### END MUMPS + Ipopt
 
