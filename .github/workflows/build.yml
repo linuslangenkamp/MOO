@@ -18,7 +18,8 @@ jobs:
         include:
           - os: ubuntu-latest
             exe-ext: ""
-            metis-lib: ""
+            metis-lib: "-DMETIS_LIB_PATH=/usr/lib/x86_64-linux-gnu/libmetis.so.5.1.0"
+            metis-inc: "-DMETIS_INC_PATH=/usr/include"
             lapack-lib: ""
 
     runs-on: ${{ matrix.os }}
@@ -36,7 +37,7 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install ${{ matrix.metis-lib }} ${{ matrix.lapack-lib }} -DMOO_WITH_GDOPT_EXAMPLE=ON -G "${{ matrix.generator }}"
+          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install ${{ matrix.metis-lib }} ${{ matrix.metis-inc }} ${{ matrix.lapack-lib }} -DMOO_WITH_GDOPT_EXAMPLE=ON -G "${{ matrix.generator }}"
 
       - name: Build
         run: cmake --build build --target install
