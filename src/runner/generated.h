@@ -27,7 +27,7 @@ extern "C" {
 
 #include <base/export.h>
 
-MOO_EXPORT int main_generated(int argc, char** argv);
+int main_generated(int argc, char** argv);
 
 #ifdef __cplusplus
 }
