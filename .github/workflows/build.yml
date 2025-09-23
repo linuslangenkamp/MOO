@@ -33,7 +33,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get -qqy install metis libblas-dev liblapack-dev gfortran
+          sudo apt-get -qqy install libmetis-dev libblas-dev liblapack-dev gfortran
 
       - name: Configure
         run: |
