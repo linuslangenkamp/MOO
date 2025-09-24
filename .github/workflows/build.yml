@@ -45,6 +45,7 @@ jobs:
             mingw-w64-ucrt-x86_64-clang
 
       - name: Configure
+        shell: bash
         run: |
           if [ "${{ runner.os }}" == "Windows" ]; then
             export PATH="/ucrt64/bin:$PATH"
