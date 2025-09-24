@@ -50,8 +50,6 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          METIS_LIB_PATH="/usr/lib/x86_64-linux-gnu/libmetis.so"
-          METIS_INC_PATH="/usr/include"
           if [ "${{ matrix.generator }}" = "Makefiles" ]; then
             GENERATOR="Unix Makefiles"
           else
@@ -63,8 +61,6 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
-            -DMETIS_LIB_PATH=${METIS_LIB_PATH} \
-            -DMETIS_INC_PATH=${METIS_INC_PATH} \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${GENERATOR}"
 
@@ -73,8 +69,6 @@ jobs:
         shell: msys2 {0}
         run: |
           export PATH="/ucrt64/bin:$PATH"
-          METIS_LIB_PATH="/ucrt64/bin/libmetis.dll"
-          METIS_INC_PATH="/ucrt64/include"
           if [ "${{ matrix.generator }}" = "Makefiles" ]; then
             GENERATOR="MSYS Makefiles"
           else
@@ -86,8 +80,6 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
-            -DMETIS_LIB_PATH=${METIS_LIB_PATH} \
-            -DMETIS_INC_PATH=${METIS_INC_PATH} \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${GENERATOR}"
 
