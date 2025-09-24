@@ -43,26 +43,16 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc-fortran
             mingw-w64-ucrt-x86_64-clang
 
-      - name: Configure
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            export PATH="/ucrt64/bin:$PATH"
-            METIS_LIB_PATH="/ucrt64/bin/libmetis.dll"
-            METIS_INC_PATH="/ucrt64/include"
-            if [ "${{ matrix.generator }}" = "Makefiles" ]; then
-              GENERATOR="MSYS Makefiles"
-            else
-              GENERATOR="Ninja"
-            fi
+          METIS_LIB_PATH="/usr/lib/x86_64-linux-gnu/libmetis.so"
+          METIS_INC_PATH="/usr/include"
+          if [ "${{ matrix.generator }}" = "Makefiles" ]; then
+            GENERATOR="Unix Makefiles"
           else
-            METIS_LIB_PATH="/usr/lib/x86_64-linux-gnu/libmetis.so"
-            METIS_INC_PATH="/usr/include"
-            if [ "${{ matrix.generator }}" = "Makefiles" ]; then
-              GENERATOR="Unix Makefiles"
-            else
-              GENERATOR="Ninja"
-            fi
+            GENERATOR="Ninja"
           fi
 
           cmake -S . -B build \
@@ -75,10 +65,47 @@ jobs:
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${GENERATOR}"
 
-      - name: Build
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PATH="/ucrt64/bin:$PATH"
+          METIS_LIB_PATH="/ucrt64/bin/libmetis.dll"
+          METIS_INC_PATH="/ucrt64/include"
+          if [ "${{ matrix.generator }}" = "Makefiles" ]; then
+            GENERATOR="MSYS Makefiles"
+          else
+            GENERATOR="Ninja"
+          fi
+
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DMETIS_LIB_PATH=${METIS_LIB_PATH} \
+            -DMETIS_INC_PATH=${METIS_INC_PATH} \
+            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -G "${GENERATOR}"
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
         run: cmake --build build --target install -- -j$(nproc)
 
-      - name: Run test
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --target install -- -j$(nproc)
+
+      - name: Run test (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./build/gdopt
+
+      - name: Run test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: ./build/gdopt
 
       - uses: actions/upload-artifact@v4
