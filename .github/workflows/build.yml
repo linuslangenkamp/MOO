@@ -7,32 +7,63 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    timeout-minutes: 30
+  build-linux:
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "windows-latest"]
-        generator: ["Ninja", "Makefiles"] # Makefiles expands to Unix or MSYS Makefiles
+        generator: ["Unix Makefiles", "Ninja"]
         compiler-pair:
-          - { c: "gcc", cxx: "g++" , fortran: "gfortran"}
-          - { c: "clang", cxx: "clang++" , fortran: "gfortran"} # flang-20 isnt available on 'Jammy'
-
-    runs-on: ${{ matrix.os }}
+          - { c: "gcc", cxx: "g++", fortran: "gfortran" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran" }
 
     steps:
       - uses: actions/checkout@v5
         with:
-          submodules: "recursive"
+          submodules: recursive
 
-      - name: Install Dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get -qqy install libmetis-dev liblapack-dev gfortran make ninja-build
+          sudo apt-get -qqy install libmetis-dev liblapack-dev gfortran
 
-      - name: Install Dependencies (Windows)
-        if: runner.os == 'Windows'
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -G "${{ matrix.generator }}"
+
+      - name: Build
+        run: cmake --build build --target install -- -j$(nproc)
+
+      - name: Run test
+        run: ./build/gdopt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-linux-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
+          path: install/
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        generator: ["MSYS Makefiles", "Ninja"]
+        compiler-pair:
+          - { c: "gcc", cxx: "g++", fortran: "gfortran" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran" }
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -46,64 +77,27 @@ jobs:
             mingw-w64-ucrt-x86_64-ninja
             make
 
-      - name: Configure (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          if [ "${{ matrix.generator }}" = "Makefiles" ]; then
-            GENERATOR="Unix Makefiles"
-          else
-            GENERATOR="Ninja"
-          fi
-
-          cmake -S . -B build \
-            -DCMAKE_INSTALL_PREFIX=install \
-            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
-            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
-            -DMOO_WITH_GDOPT_EXAMPLE=ON \
-            -G "${GENERATOR}"
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
+      - name: Configure
         shell: msys2 {0}
         run: |
           export PATH="/ucrt64/bin:$PATH"
-          if [ "${{ matrix.generator }}" = "Makefiles" ]; then
-            GENERATOR="MSYS Makefiles"
-          else
-            GENERATOR="Ninja"
-          fi
-
           cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
-            -G "${GENERATOR}"
+            -G "${{ matrix.generator }}"
 
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: cmake --build build --target install -- -j$(nproc)
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
+      - name: Build
         shell: msys2 {0}
         run: cmake --build build --target install -- -j$(nproc)
 
-      - name: Run test (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: ./build/gdopt
-
-      - name: Run test (Windows)
-        if: runner.os == 'Windows'
+      - name: Run test
         shell: msys2 {0}
         run: ./build/gdopt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: install-${{ matrix.os }}-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
+          name: install-windows-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
           path: install/
