@@ -39,8 +39,7 @@ jobs:
           update: true
           install: |
             mingw-w64-ucrt-x86_64-metis
-            mingw-w64-ucrt-x86_64-blas
-            mingw-w64-ucrt-x86_64-lapack
+            mingw-w64-ucrt-x86_64-openblas
             mingw-w64-ucrt-x86_64-gcc-fortran
             mingw-w64-ucrt-x86_64-clang
 
