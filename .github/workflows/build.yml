@@ -14,13 +14,9 @@ jobs:
       matrix:
         os: ["ubuntu-latest"]
         generator: ["Unix Makefiles", "Ninja"]
-
-        include:
-          - os: ubuntu-latest
-            exe-ext: ""
-            metis-lib: "-DMETIS_LIB_PATH=/usr/lib/x86_64-linux-gnu/libmetis.so.5.1.0"
-            metis-inc: "-DMETIS_INC_PATH=/usr/include"
-            lapack-lib: ""
+        compiler-pair:
+          - { c: "gcc", cxx: "g++" , fortran: "gfortran"}
+          - { c: "clang", cxx: "clang++" , fortran: "gfortran"} # flang-20 isnt available on 'Jammy'
 
     runs-on: ${{ matrix.os }}
 
@@ -33,19 +29,27 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get -qqy install libmetis-dev libblas-dev liblapack-dev gfortran
+          sudo apt-get -qqy install libmetis-dev liblapack-dev gfortran
 
       - name: Configure
         run: |
-          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install ${{ matrix.metis-lib }} ${{ matrix.metis-inc }} ${{ matrix.lapack-lib }} -DMOO_WITH_GDOPT_EXAMPLE=ON -G "${{ matrix.generator }}"
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DMETIS_LIB_PATH=/usr/lib/x86_64-linux-gnu/libmetis.so.5.1.0 \
+            -DMETIS_INC_PATH=/usr/include \
+            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -G "${{ matrix.generator }}"
 
       - name: Build
-        run: cmake --build build --target install
+        run: cmake --build build --target install -- -j$(nproc)
 
       - name: Run test
-        run: ./build/gdopt${{ matrix.exe-ext }}
+        run: ./build/gdopt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: install-${{ matrix.os }}-${{ matrix.generator }}
+          name: install-${{ matrix.os }}-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
           path: install/
