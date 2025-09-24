@@ -43,7 +43,6 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc-fortran
             mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-make
             mingw-w64-ucrt-x86_64-ninja
 
       - name: Configure (Linux)
@@ -58,7 +57,7 @@ jobs:
             GENERATOR="Ninja"
           fi
 
-          cmake -S . -B build \
+          /ucrt64/bin/cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
