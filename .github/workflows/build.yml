@@ -44,6 +44,7 @@ jobs:
             mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
+            make
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'
@@ -80,7 +81,7 @@ jobs:
             GENERATOR="Ninja"
           fi
 
-          /ucrt64/bin/cmake -S . -B build \
+          cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
