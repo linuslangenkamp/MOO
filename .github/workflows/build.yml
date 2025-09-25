@@ -122,6 +122,7 @@ jobs:
           brew update
           brew install metis gcc ninja
           brew link gcc --force --overwrite
+          echo "PATH=$(brew --prefix)/bin:$PATH" >> $GITHUB_ENV
 
       - name: Configure
         run: |
