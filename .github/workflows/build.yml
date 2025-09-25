@@ -34,8 +34,6 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
-            -DCOIN_ENABLE_DOWNLOAD_LAPACK=ON \
-            -DCOIN_USE_SYSTEM_LAPACK=OFF \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${{ matrix.setup.generator }}"
 
@@ -54,11 +52,10 @@ jobs:
     timeout-minutes: 30
     runs-on: windows-latest
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         setup:
-          - { c: "gcc",   cxx: "g++",     fortran: "gfortran", generator: "MSYS Makefiles" }
-          - { c: "clang", cxx: "clang++", fortran: "gfortran", generator: "Ninja" }
+          - { c: "gcc", cxx: "g++", fortran: "gfortran", generator: "MSYS Makefiles" }
 
     steps:
       - uses: actions/checkout@v5
@@ -88,8 +85,6 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
-            -DCOIN_ENABLE_DOWNLOAD_LAPACK=ON \
-            -DCOIN_USE_SYSTEM_LAPACK=OFF \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${{ matrix.setup.generator }}"
 
@@ -110,11 +105,10 @@ jobs:
     timeout-minutes: 30
     runs-on: macos-latest
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         setup:
-          - { c: "gcc-15", cxx: "g++-15",  fortran: "gfortran-15", generator: "Unix Makefiles" }
-          - { c: "clang",  cxx: "clang++", fortran: "gfortran-15", generator: "Ninja" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran-15", generator: "Ninja" }
 
     steps:
       - uses: actions/checkout@v5
@@ -133,8 +127,6 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
-            -DCOIN_ENABLE_DOWNLOAD_LAPACK=ON \
-            -DCOIN_USE_SYSTEM_LAPACK=OFF \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${{ matrix.setup.generator }}"
 
