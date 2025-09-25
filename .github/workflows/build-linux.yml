@@ -1,0 +1,49 @@
+name: Build-Linux
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        setup:
+          - { c: "gcc",   cxx: "g++",     fortran: "gfortran", generator: "Unix Makefiles" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran", generator: "Ninja"}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get -qqy install libmetis-dev liblapack-dev gfortran
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -G "${{ matrix.setup.generator }}"
+
+      - name: Build
+        run: cmake --build build --target install -- -j$(nproc)
+
+      - name: Run test
+        run: ./build/gdopt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-linux-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
+          path: install/
