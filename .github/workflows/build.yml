@@ -122,20 +122,12 @@ jobs:
           brew update
           brew install metis
 
-      - name: Debug gfortran
+      - name: Debug metis header
         run: |
-          echo "Current PATH: $PATH"
-          which gfortran-15 || echo "gfortran not found in PATH"
-          echo "All gfortran binaries found on disk:"
-          sudo find /usr /opt/homebrew -type f -name "gfortran*" 2>/dev/null
-         
-      - name: Debug gcc
-        run: |
-          echo "Current PATH: $PATH"
-          which gcc-15 || echo "gcc not found in PATH"
-          echo "All gcc binaries found on disk:"
-          sudo find /usr /opt/homebrew -type f -name "gcc*" 2>/dev/null
-           
+          echo "Checking for metis header..."
+          # Search usual Homebrew include directories
+          sudo find /opt/homebrew/include /usr/local/include /usr/include -type f -name "metis.h" 2>/dev/null || echo "metis.h not found"
+
       - name: Configure
         run: |
           cmake -S . -B build \
