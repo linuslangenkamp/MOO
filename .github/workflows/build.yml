@@ -14,7 +14,7 @@ jobs:
       matrix:
         generator: ["Unix Makefiles", "Ninja"]
         compiler-pair:
-          - { c: "gcc", cxx: "g++", fortran: "gfortran" }
+          - { c: "gcc",   cxx: "g++",     fortran: "gfortran" }
           - { c: "clang", cxx: "clang++", fortran: "gfortran" }
 
     steps:
@@ -55,7 +55,7 @@ jobs:
       matrix:
         generator: ["MSYS Makefiles", "Ninja"]
         compiler-pair:
-          - { c: "gcc", cxx: "g++", fortran: "gfortran" }
+          - { c: "gcc",   cxx: "g++",     fortran: "gfortran" }
           - { c: "clang", cxx: "clang++", fortran: "gfortran" }
 
     steps:
@@ -100,4 +100,46 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: install-windows-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
+          path: install/
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        generator: ["Unix Makefiles", "Ninja"]
+        compiler-pair:
+          - { c: "gcc",   cxx: "g++",     fortran: "gfortran" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran" }
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          brew update
+          brew install metis gcc ninja
+          brew link gcc --force --overwrite
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -G "${{ matrix.generator }}"
+
+      - name: Build
+        run: cmake --build build --target install -- -j$(sysctl -n hw.logicalcpu)
+
+      - name: Run test
+        run: ./build/gdopt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-macos-${{ matrix.compiler-pair.c }}
           path: install/
