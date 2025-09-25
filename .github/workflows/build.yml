@@ -12,10 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        generator: ["Unix Makefiles", "Ninja"]
-        compiler-pair:
-          - { c: "gcc",   cxx: "g++",     fortran: "gfortran" }
-          - { c: "clang", cxx: "clang++", fortran: "gfortran" }
+        setup:
+          - { c: "gcc",   cxx: "g++",     fortran: "gfortran", generator: "Unix Makefiles" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran", generator: "Ninja"}
 
     steps:
       - uses: actions/checkout@v5
@@ -31,11 +30,11 @@ jobs:
         run: |
           cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
-            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
-            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
-            -G "${{ matrix.generator }}"
+            -G "${{ matrix.setup.generator }}"
 
       - name: Build
         run: cmake --build build --target install -- -j$(nproc)
@@ -45,7 +44,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: install-linux-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
+          name: install-linux-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
           path: install/
 
   build-windows:
@@ -53,10 +52,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        generator: ["MSYS Makefiles", "Ninja"]
-        compiler-pair:
-          - { c: "gcc",   cxx: "g++",     fortran: "gfortran" }
-          - { c: "clang", cxx: "clang++", fortran: "gfortran" }
+        setup:
+          - { c: "gcc",   cxx: "g++",     fortran: "gfortran", generator: "MSYS Makefiles" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran", generator: "Ninja" }
 
     steps:
       - uses: actions/checkout@v5
@@ -83,11 +81,11 @@ jobs:
           export PATH="/ucrt64/bin:$PATH"
           cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
-            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
-            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
-            -G "${{ matrix.generator }}"
+            -G "${{ matrix.setup.generator }}"
 
       - name: Build
         shell: msys2 {0}
@@ -99,7 +97,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: install-windows-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
+          name: install-windows-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
           path: install/
 
   build-macos:
@@ -107,10 +105,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        generator: ["Unix Makefiles", "Ninja"]
-        compiler-pair:
-          - { c: "clang", cxx: "clang++", fortran: "gfortran-15" }
-          - { c: "gcc-15",   cxx: "g++-15", fortran: "gfortran-15" }
+        setup:
+          - { c: "gcc-15", cxx: "g++-15",  fortran: "gfortran-15", generator: "Unix Makefiles" }
+          - { c: "clang",  cxx: "clang++", fortran: "gfortran-15", generator: "Ninja" }
 
     steps:
       - uses: actions/checkout@v5
@@ -126,11 +123,11 @@ jobs:
         run: |
           cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
-            -DCMAKE_C_COMPILER=${{ matrix.compiler-pair.c }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler-pair.cxx }} \
-            -DCMAKE_Fortran_COMPILER=${{ matrix.compiler-pair.fortran }} \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
-            -G "${{ matrix.generator }}"
+            -G "${{ matrix.setup.generator }}"
 
       - name: Build
         run: cmake --build build --target install -- -j$(sysctl -n hw.logicalcpu)
@@ -140,5 +137,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: install-macos-${{ matrix.generator }}-${{ matrix.compiler-pair.c }}
+          name: install-macos-${{ matrix.generator }}-${{ matrix.setup.c }}
           path: install/
