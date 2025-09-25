@@ -34,6 +34,8 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DCOIN_ENABLE_DOWNLOAD_LAPACK=ON \
+            -DCOIN_USE_SYSTEM_LAPACK=OFF \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${{ matrix.setup.generator }}"
 
@@ -86,6 +88,8 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DCOIN_ENABLE_DOWNLOAD_LAPACK=ON \
+            -DCOIN_USE_SYSTEM_LAPACK=OFF \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${{ matrix.setup.generator }}"
 
@@ -129,6 +133,8 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DCOIN_ENABLE_DOWNLOAD_LAPACK=ON \
+            -DCOIN_USE_SYSTEM_LAPACK=OFF \
             -DMOO_WITH_GDOPT_EXAMPLE=ON \
             -G "${{ matrix.setup.generator }}"
 
