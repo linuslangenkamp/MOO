@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-linux:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -48,6 +49,7 @@ jobs:
           path: install/
 
   build-windows:
+    timeout-minutes: 30
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -101,6 +103,7 @@ jobs:
           path: install/
 
   build-macos:
+    timeout-minutes: 30
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -137,5 +140,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: install-macos-${{ matrix.generator }}-${{ matrix.setup.c }}
+          name: install-macos-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
           path: install/
