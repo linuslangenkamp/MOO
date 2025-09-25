@@ -109,7 +109,8 @@ jobs:
       matrix:
         generator: ["Unix Makefiles", "Ninja"]
         compiler-pair:
-          - { c: "clang", cxx: "clang++", fortran: "gfortran" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran-15" }
+          - { c: "gcc-15",   cxx: "g++-15", fortran: "gfortran-15" }
 
     steps:
       - uses: actions/checkout@v5
@@ -127,7 +128,14 @@ jobs:
           which gfortran-15 || echo "gfortran not found in PATH"
           echo "All gfortran binaries found on disk:"
           sudo find /usr /opt/homebrew -type f -name "gfortran*" 2>/dev/null
-
+         
+      - name: Debug gcc
+        run: |
+          echo "Current PATH: $PATH"
+          which gcc-15 || echo "gcc not found in PATH"
+          echo "All gcc binaries found on disk:"
+          sudo find /usr /opt/homebrew -type f -name "gcc*" 2>/dev/null
+           
       - name: Configure
         run: |
           cmake -S . -B build \
