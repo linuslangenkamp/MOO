@@ -126,7 +126,7 @@ jobs:
         run: |
           echo "Checking for metis header..."
           # Search usual Homebrew include directories
-          sudo find /opt/homebrew/include /usr/local/include /usr/include -type f -name "metis.h" 2>/dev/null || echo "metis.h not found"
+          sudo find / -type f -name "metis.h" 2>/dev/null || echo "metis.h not found"
 
       - name: Configure
         run: |
