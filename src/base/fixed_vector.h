@@ -83,6 +83,16 @@ public:
         other._size = 0;
     }
 
+    FixedVector(std::initializer_list<T> init)
+    : FixedVector(init.size())
+    {
+        if constexpr (std::is_trivially_copyable_v<T>) {
+            std::memcpy(_data, init.begin(), _size * sizeof(T));
+        } else {
+            std::copy(init.begin(), init.end(), _data);
+        }
+    }
+
     explicit FixedVector(const std::vector<T>& vec)
     : FixedVector(vec.size())
     {
