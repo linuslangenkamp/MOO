@@ -109,7 +109,6 @@ jobs:
       matrix:
         generator: ["Unix Makefiles", "Ninja"]
         compiler-pair:
-          - { c: "gcc",   cxx: "g++",     fortran: "gfortran" }
           - { c: "clang", cxx: "clang++", fortran: "gfortran" }
 
     steps:
@@ -120,9 +119,14 @@ jobs:
       - name: Install Dependencies
         run: |
           brew update
-          brew install metis gcc ninja
-          brew link gcc --force --overwrite
-          echo "PATH=$(brew --prefix)/bin:$PATH" >> $GITHUB_ENV
+          brew install metis
+
+      - name: Debug gfortran
+        run: |
+          echo "Current PATH: $PATH"
+          which gfortran || echo "gfortran not found in PATH"
+          echo "All gfortran binaries found on disk:"
+          sudo find /usr /opt/homebrew -type f -name "gfortran*" 2>/dev/null
 
       - name: Configure
         run: |
