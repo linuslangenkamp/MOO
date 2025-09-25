@@ -122,12 +122,6 @@ jobs:
           brew update
           brew install metis
 
-      - name: Debug metis header
-        run: |
-          echo "Checking for metis header..."
-          # Search usual Homebrew include directories
-          sudo find / -type f -name "metis.h" 2>/dev/null || echo "metis.h not found"
-
       - name: Configure
         run: |
           cmake -S . -B build \
