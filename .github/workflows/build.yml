@@ -124,7 +124,7 @@ jobs:
       - name: Debug gfortran
         run: |
           echo "Current PATH: $PATH"
-          which gfortran || echo "gfortran not found in PATH"
+          which gfortran-15 || echo "gfortran not found in PATH"
           echo "All gfortran binaries found on disk:"
           sudo find /usr /opt/homebrew -type f -name "gfortran*" 2>/dev/null
 
