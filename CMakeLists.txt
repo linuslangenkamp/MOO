@@ -3,9 +3,6 @@ project(moo LANGUAGES C CXX Fortran)
 
 set(CMAKE_CXX_STANDARD 17)
 
-### Build command
-# cmake .. -DMOO_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release -DMOO_WITH_GDOPT_EXAMPLE=1 -DMUMPS_USE_METIS=ON / OFF
-
 ### Options
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
