@@ -1,4 +1,4 @@
-[![Build](https://github.com/AMIT-HSBI/MOO/actions/workflows/build.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build.yml)
+[![Build-Linux](https://github.com/AMIT-HSBI/MOO/actions/workflows/build.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux.yml) [![Build-Windows](https://github.com/AMIT-HSBI/MOO/actions/workflows/build.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-windows.yml) [![Build-macOS](https://github.com/AMIT-HSBI/MOO/actions/workflows/build.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-macos.yml)
 
 # **MOO: Modelica / Model Optimizer - A Generic Framework for Dynamic Optimization**
 
