@@ -1,0 +1,61 @@
+name: Build-Windows
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    timeout-minutes: 30
+    runs-on: windows-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        setup:
+          - { c: "gcc", cxx: "g++", fortran: "gfortran", generator: "MSYS Makefiles" }
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: |
+            mingw-w64-ucrt-x86_64-metis
+            mingw-w64-ucrt-x86_64-openblas
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            make
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          export PATH="/ucrt64/bin:$PATH"
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -G "${{ matrix.setup.generator }}"
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --target install -- -j$(nproc)
+
+      - name: Run test
+        shell: msys2 {0}
+        run: ./build/gdopt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-windows-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
+          path: install/
