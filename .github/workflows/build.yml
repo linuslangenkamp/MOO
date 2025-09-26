@@ -36,13 +36,13 @@ jobs:
 
       - name: Configure
         run: |
-          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install ${{ matrix.metis-lib }} ${{ matrix.lapack-lib }} -DMOO_WITH_GDOPT_EXAMPLE=ON -G "${{ matrix.generator }}"
+          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install ${{ matrix.metis-lib }} ${{ matrix.lapack-lib }} -DMOO_TESTS=ON -G "${{ matrix.generator }}"
 
       - name: Build
         run: cmake --build build --target install
 
       - name: Run test
-        run: ./build/gdopt${{ matrix.exe-ext }}
+        run: cmake --build build --target test
 
       - uses: actions/upload-artifact@v4
         with:

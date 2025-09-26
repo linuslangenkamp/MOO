@@ -54,11 +54,11 @@ cmake --build build --parallel <Nr. of cores> --target all
 
 ### Test
 
-Add `-DMOO_WITH_GDOPT_EXAMPLE=ON` to the CMake configuration step.
-After building run the test:
+Add `-DMOO_TESTS=ON` to the CMake configuration step.
+After building run the tests:
 
 ```bash
-./build/gdopt
+cmake --build build --target test
 ```
 
 ### Development
