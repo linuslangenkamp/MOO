@@ -51,7 +51,7 @@ int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
 
     // nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
 
-    auto mesh = Mesh::create_equidistant_fixed_stages(100 /* tf */, 1 /* intervals */, 100 /* stages */);
+    auto mesh = Mesh::create_equidistant_fixed_stages(100 /* tf */, 1000 /* intervals */, 25 /* stages */);
     auto problem = C::Problem::create(c_problem, *mesh);
 
     auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());

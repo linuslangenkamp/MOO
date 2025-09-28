@@ -1,0 +1,48 @@
+name: Build-macOS
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    timeout-minutes: 30
+    runs-on: macos-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        setup:
+          - { c: "clang", cxx: "clang++", fortran: "gfortran-15", generator: "Ninja" }
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          brew update
+          brew install metis
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DMOO_TESTS=ON \
+            -G "${{ matrix.setup.generator }}"
+
+      - name: Build
+        run: cmake --build build --target install --parallel
+
+      - name: Run test
+        run: cmake --build build --target test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-macos-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
+          path: install/
