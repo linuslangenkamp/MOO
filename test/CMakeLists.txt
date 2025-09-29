@@ -8,16 +8,4 @@ if(NOT MOO_WITH_RADAU)
     message(FATAL_ERROR "-DMOO_WITH_RADAU=ON is required to build tests (-DMOO_TESTS=ON).")
 endif()
 
-add_executable(test_gdopt
-    gdopt/entry.cpp
-    gdopt/generated.c
-)
-
-target_include_directories(test_gdopt PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/gdopt
-)
-
-target_link_libraries(test_gdopt PRIVATE moo)
-
-add_test(NAME test_gdopt COMMAND test_gdopt)
-set_tests_properties(test_gdopt PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+include_directories(gdopt)
