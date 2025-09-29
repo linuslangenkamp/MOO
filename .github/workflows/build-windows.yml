@@ -44,16 +44,16 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
-            -DMOO_WITH_GDOPT_EXAMPLE=ON \
+            -DMOO_TESTS=ON \
             -G "${{ matrix.setup.generator }}"
 
       - name: Build
         shell: msys2 {0}
-        run: cmake --build build --target install -- -j$(nproc)
+        run: cmake --build build --target install --parallel
 
       - name: Run test
         shell: msys2 {0}
-        run: ./build/gdopt
+        run: cmake --build build --target test
 
       - uses: actions/upload-artifact@v4
         with:

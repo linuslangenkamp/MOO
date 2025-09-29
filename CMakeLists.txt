@@ -7,7 +7,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_GDOPT "Build MOO with GDOPT support" ON)
-option(MOO_WITH_GDOPT_EXAMPLE "Build MOO with GDOPT example executable" OFF)
+
+option(MOO_TESTS "Build MOO with test executables" OFF)
 
 ##### START setup
 
@@ -174,12 +175,10 @@ install(TARGETS moo
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
-if(MOO_WITH_GDOPT_EXAMPLE)
-    add_executable(gdopt src/runner/entry.cpp src/runner/generated.c)
-    target_include_directories(gdopt PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-    target_link_libraries(gdopt PRIVATE moo)
-    message(STATUS "Building example executable ./gdopt")
+# Tests
+
+if(MOO_TESTS)
+    enable_testing()
+    message(STATUS "CTest enabled")
+    add_subdirectory(test)
 endif()

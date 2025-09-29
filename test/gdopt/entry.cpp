@@ -18,8 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <runner/generated.h>
 #include <simulation/radau/test.h>
+#include <generated.h>
 
 #include <base/log.h>
 
