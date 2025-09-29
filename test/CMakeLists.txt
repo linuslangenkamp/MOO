@@ -20,3 +20,4 @@ target_include_directories(test_gdopt PRIVATE
 target_link_libraries(test_gdopt PRIVATE moo)
 
 add_test(NAME test_gdopt COMMAND test_gdopt)
+set_tests_properties(test_gdopt PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
