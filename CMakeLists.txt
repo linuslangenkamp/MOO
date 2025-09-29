@@ -180,18 +180,5 @@ install(TARGETS moo
 if(MOO_TESTS)
     enable_testing()
     message(STATUS "CTest enabled")
-endif()
-
-if(MOO_WITH_GDOPT AND MOO_TESTS)
-    add_executable(test_gdopt
-        src/runner/entry.cpp src/runner/generated.c
-    )
-
-    target_include_directories(test_gdopt PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-    target_link_libraries(test_gdopt PRIVATE moo)
-
-    add_test(NAME test_gdopt COMMAND test_gdopt)
+    add_subdirectory(test)
 endif()

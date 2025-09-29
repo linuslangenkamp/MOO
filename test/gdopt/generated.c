@@ -20,7 +20,7 @@
 
 #include <interfaces/c/structures.h>
 #include <interfaces/gdopt/main_gdopt.h>
-#include <runner/generated.h>
+#include <generated.h>
 
 // === problem sizes (compile const) ===
 
