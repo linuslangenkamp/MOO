@@ -122,18 +122,9 @@ if(MOO_WITH_RADAU)
     target_link_libraries(moo PRIVATE radau)
 endif()
 
-# hide symbols
+# DLL export
 if(WIN32)
     target_compile_definitions(moo PRIVATE MOO_DLL_EXPORT)
-elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-    target_link_libraries(moo PRIVATE dl)
-    target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/bin)
-    target_link_options(moo PRIVATE -Wl,-hidden-ldmumps -Wl,-hidden-lipopt)
-    target_compile_options(moo PRIVATE -fvisibility=hidden )
-else()
-    target_link_libraries(moo PRIVATE dl)
-    target_link_options(moo PRIVATE -Wl,--exclude-libs,ALL)
-    target_compile_options(moo PRIVATE -fvisibility=hidden)
 endif()
 
 install(TARGETS moo
