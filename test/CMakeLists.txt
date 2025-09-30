@@ -8,4 +8,4 @@ if(NOT MOO_WITH_RADAU)
     message(FATAL_ERROR "-DMOO_WITH_RADAU=ON is required to build tests (-DMOO_TESTS=ON).")
 endif()
 
-include_directories(gdopt)
+add_subdirectory(gdopt)
