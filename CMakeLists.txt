@@ -21,7 +21,7 @@ else()
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "")
-    message(WARNING "CMAKE_BUILD_TYPE not defined: defaulting to Debug - MOO will be slow.")
+    message(WARNING "CMAKE_BUILD_TYPE not defined - MOO will be slow.")
 else()
     message(STATUS "Using build type: ${CMAKE_BUILD_TYPE}")
 endif()
@@ -104,9 +104,18 @@ if(MOO_WITH_RADAU)
     target_link_libraries(moo PRIVATE radau)
 endif()
 
-# DLL export
+# DLL export / hide symbols
 if(WIN32)
     target_compile_definitions(moo PRIVATE MOO_DLL_EXPORT)
+elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    target_link_libraries(moo PRIVATE dl)
+    target_link_directories(moo PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/bin)
+    target_link_options(moo PRIVATE -Wl,-hidden-ldmumps -Wl,-hidden-lipopt)
+    target_compile_options(moo PRIVATE -fvisibility=hidden )
+else()
+    target_link_libraries(moo PRIVATE dl)
+    target_link_options(moo PRIVATE -Wl,--exclude-libs,ALL)
+    target_compile_options(moo PRIVATE -fvisibility=hidden)
 endif()
 
 install(TARGETS moo
