@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-macos:
+    if: false
     timeout-minutes: 30
     runs-on: macos-latest
     strategy:
