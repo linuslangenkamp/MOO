@@ -1,0 +1,49 @@
+name: Build-Linux-Arm
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux-arm:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: true
+      matrix:
+        setup:
+          - { c: "gcc", cxx: "g++", fortran: "gfortran", generator: "Unix Makefiles" }
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get -qqy install libmetis-dev liblapack-dev gfortran
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
+            -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
+            -DIPOPT_BUILD_EXAMPLES=ON \
+            -DMOO_TESTS=ON \
+            -G "${{ matrix.setup.generator }}"
+
+      - name: Build
+        run: cmake --build build --target install --parallel
+
+      - name: Run test
+        run: cmake --build build --target test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-linux-arm-${{ matrix.setup.c }}-${{ matrix.setup.generator }}
+          path: install/
