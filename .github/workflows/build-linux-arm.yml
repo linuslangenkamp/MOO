@@ -1,4 +1,4 @@
-name: Build-Linux-Arm
+name: Build-Linux-ARM
 
 on:
   push:

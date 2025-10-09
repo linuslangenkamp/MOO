@@ -1,5 +1,5 @@
 [![Build-Linux-x86_64](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux.yml)
-[![Build-Linux-Arm](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux-arm.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux-arm.yml)
+[![Build-Linux-ARM](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux-arm.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-linux-arm.yml)
 [![Build-Windows](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-windows.yml)
 [![Build-macOS](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-macos.yml)
 
@@ -27,15 +27,17 @@ git clone --recurse-submodules git@github.com:AMIT-HSBI/MOO.git
 
 ### Dependencies
 
-Install with your favorit package manager
+Install with your favorite package manager
 
-- metis
+- METIS
 
-  - Debian / Ubuntu `apt install metis`
+  - Debian / Ubuntu `apt install libmetis-dev`
+  - No from source build is supported right now
 
 - LAPACK
 
-  - Debian / Ubuntu `apt install libblas-dev liblapack-dev gfortran`
+  - Debian / Ubuntu `apt install liblapack-dev gfortran`
+  - Latest OpenBLAS build from source `-DUSE_SYSTEM_LAPACK=OFF -DDOWNLOAD_LAPACK=ON`.
 
 ### Configure
 
@@ -45,9 +47,8 @@ cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install
 
 Possible configuration arguments:
 
-- `MOO_METIS_LIB`: Location of metis
-- `MOO_LAPACK_LIB`: Location of LAPACK
-- `MOO_GFORTRAN_LIB`: Location of GNU Fortran
+- `MOO_WITH_RADAU`: Build with RADAU fortran code to perform simulations (default: `ON`)
+- `MOO_WITH_GDOPT`: Build with GDOPT interface (default: `ON`, WIP)
 
 ### Build
 
