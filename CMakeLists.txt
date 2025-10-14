@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_GDOPT "Build MOO with GDOPT support" ON)
+option(MOO_WITH_PYBIND "Build MOO with Python bindings" ON)
 option(MOO_TESTS "Build MOO with test executables" OFF)
 
 message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
@@ -122,6 +123,17 @@ install(TARGETS moo
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+# Python bindings
+if(MOO_WITH_PYBIND)
+    message(STATUS "Building MOO with Python bindings")
+
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    find_package(pybind11 REQUIRED)
+
+    pybind11_add_module(moopy bindings/python/base/linalg.cpp)
+    target_link_libraries(moopy PRIVATE moo)
+endif()
 
 # Tests
 
