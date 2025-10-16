@@ -184,41 +184,41 @@ static inline std::string format_row(const FixedTableFormat<N>& ftf, Args&&... a
 }
 
 struct TableFormat {
-    std::vector<int> widths;
+    std::vector<int> col_widths;
     std::vector<Align> aligns;
 
     TableFormat(std::initializer_list<int> w, std::initializer_list<Align> a)
-        : widths(w.begin(), w.end()), aligns(a.begin(), a.end())
+        : col_widths(w.begin(), w.end()), aligns(a.begin(), a.end())
     {
-        if (widths.size() != aligns.size()) {
+        if (col_widths.size() != aligns.size()) {
             throw std::invalid_argument("Widths and aligns must have the same size");
         }
     }
 
     TableFormat(const std::vector<int>& w, const std::vector<Align>& a)
-        : widths(w), aligns(a)
+        : col_widths(w), aligns(a)
     {
-        if (widths.size() != aligns.size()) {
+        if (col_widths.size() != aligns.size()) {
             throw std::invalid_argument("Widths and aligns must have the same size");
         }
     }
 
     std::vector<std::string> fmt_strings() const {
         std::vector<std::string> fs;
-        for (size_t i = 0; i < widths.size(); i++)
-            fs.push_back(fmt::format("{{:{}{}}}", align_to_char(aligns[i]), widths[i]));
+        for (size_t i = 0; i < col_widths.size(); i++)
+            fs.push_back(fmt::format("{{:{}{}}}", align_to_char(aligns[i]), col_widths[i]));
         return fs;
     }
 
     int total_width() const {
         int total = -1;
-        for (auto w : widths) total += w + 3;
+        for (auto w : col_widths) total += w + 3;
         return total;
     }
 };
 
 static inline std::string format_row(const TableFormat& tf, const std::vector<std::string>& cols) {
-    if (cols.size() != tf.widths.size()) {
+    if (cols.size() != tf.col_widths.size()) {
         return "[LOG ERROR] Column count does not match table format!";
     }
 

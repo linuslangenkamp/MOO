@@ -19,10 +19,13 @@
 //
 
 #include "orchestrator.h"
+#include <base/timing.h>
 
 namespace GDOP {
 
 void MeshRefinementOrchestrator::optimize() {
+    ScopedTimer optimize{"MeshRefinementOrchestrator::optimize"};
+
     strategies->reset(gdop);
 
     auto initial_guess = strategies->get_initial_guess(gdop);

@@ -22,6 +22,7 @@
 #include <nlp/solvers/ipopt/solver.h>
 #include <nlp/instances/gdop/strategies.h>
 #include <base/log.h>
+#include <base/timing.h>
 
 #include <interfaces/c/problem.h>
 #include <interfaces/gdopt/main_gdopt.h>
@@ -70,6 +71,8 @@ int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
     auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), ipopt_solver);
 
     orchestrator.optimize();
+
+    TimingTree::instance().print_tree_table();
 
     return 0;
 }
