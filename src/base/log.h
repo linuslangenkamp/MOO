@@ -74,19 +74,19 @@ struct LogFormatter {
     // format variants
     template <typename... Args>
     static std::string info_string(const char* fmtstr, Args&&... args) {
-        return fmt::format(fmtstr, std::forward<Args>(args)...);
+        return fmt::format(fmt::runtime(fmtstr), std::forward<Args>(args)...);
     }
     template <typename... Args>
     static std::string success_string(const char* fmtstr, Args&&... args) {
-        return fmt::format(fmtstr, std::forward<Args>(args)...);
+        return fmt::format(fmt::runtime(fmtstr), std::forward<Args>(args)...);
     }
     template <typename... Args>
     static std::string warning_string(const char* fmtstr, Args&&... args) {
-        return fmt::format(fmtstr, std::forward<Args>(args)...);
+        return fmt::format(fmt::runtime(fmtstr), std::forward<Args>(args)...);
     }
     template <typename... Args>
     static std::string error_string(const char* fmtstr, Args&&... args) {
-        return fmt::format(fmtstr, std::forward<Args>(args)...);
+        return fmt::format(fmt::runtime(fmtstr), std::forward<Args>(args)...);
     }
 };
 
@@ -104,7 +104,7 @@ static inline std::string format_with_indent(int tabs, const std::string& s) {
 
 template <typename... Args>
 static inline std::string format_with_prefix(char c, const char* fmtstr, Args&&... args) {
-    std::string msg = fmt::format(fmtstr, std::forward<Args>(args)...);
+    std::string msg = fmt::format(fmt::runtime(fmtstr), std::forward<Args>(args)...);
     return fmt::format("{} {}", c, msg);
 }
 static inline std::string format_with_prefix(char c, const std::string& s) {
@@ -179,7 +179,7 @@ static inline std::string format_row(const FixedTableFormat<N>& ftf, Args&&... a
     size_t i = 0;
     const char* sep = "";
     std::string row;
-    ((row += fmt::format("{}{}", sep, fmt::format(ftf.fmt_strings[i++], args)), sep = " | "), ...);
+    ((row += fmt::format("{}{}", sep, fmt::format(fmt::runtime(ftf.fmt_strings[i++]), args)), sep = " | "), ...);
     return row;
 }
 
@@ -226,7 +226,7 @@ static inline std::string format_row(const TableFormat& tf, const std::vector<st
     const char* sep = "";
     std::string row;
     for (size_t i = 0; i < cols.size(); i++) {
-        row += fmt::format("{}{}", sep, fmt::format(fs[i], cols[i]));
+        row += fmt::format("{}{}", sep, fmt::format(fmt::runtime(fs[i]), cols[i]));
         sep = " | ";
     }
     return row;
