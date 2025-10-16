@@ -27,6 +27,8 @@
 #include <interfaces/c/problem.h>
 #include <interfaces/gdopt/main_gdopt.h>
 
+#include <string>
+
 // create config for the algorithm (for now basic) not here, this is actually a generic GDOP stuff
 class Config {
 
