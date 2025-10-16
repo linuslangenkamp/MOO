@@ -24,6 +24,7 @@
 #include <IpIpoptApplication.hpp>
 #include <IpSolveStatistics.hpp>
 #include <IpJournalist.hpp>
+#include <IpOrigIpoptNLP.hpp>
 
 #include <base/nlp_structs.h>
 #include <base/log.h>
@@ -127,6 +128,8 @@ IpoptSolver::~IpoptSolver() {
 
 // simple wrapper to adapter
 void IpoptSolver::optimize() {
+    ScopedTimer<IpoptTimingNode, IpoptSolver*> timer("IpoptSolver::optimize", this);
+
     set_settings();
 
     Ipopt::ApplicationReturnStatus status = ipdata->app->OptimizeTNLP(ipdata->adapter);
@@ -295,6 +298,60 @@ void IpoptSolver::set_settings() {
         ipdata->app->Options()->SetStringValue("derivative_test", "second-order");
         ipdata->app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
         ipdata->app->Options()->SetNumericValue("point_perturbation_radius", 0);
+    }
+}
+
+IpoptTimingNode::IpoptTimingNode(std::string n, TimingNode* p, IpoptSolver* ipopt_solver)
+    : TimingNode(n, p), ipopt_solver(ipopt_solver) {}
+
+void IpoptTimingNode::finalize() {
+    auto& app = ipopt_solver->ipdata->app;
+    auto data = app->IpoptDataObject();
+    auto& ip_timing = data->TimingStats();
+    auto orig_nlp = static_cast<Ipopt::OrigIpoptNLP*>(GetRawPtr(app->IpoptNLPObject()));
+
+    f64 wall_total = ip_timing.OverallAlgorithm().TotalWallclockTime();
+    f64 wall_func = ip_timing.TotalFunctionEvaluationWallclockTime();
+    f64 wall_ipopt_self = wall_total - wall_func;
+
+    total_iterations = data->iter_count();
+
+    VirtualTimer timer_wall_total("Ipopt::total", s_to_nano(wall_total));
+    {
+        {
+            VirtualTimer timer_wall_ipopt_self("Ipopt::self", s_to_nano(wall_ipopt_self));
+        }
+        {
+            VirtualTimer timer_wall_func("Ipopt::callback", s_to_nano(wall_func));
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_f("objective",
+                    s_to_nano(ip_timing.f_eval_time().TotalWallclockTime()), orig_nlp->f_evals());
+            }
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_grad_f("objective_gradient",
+                    s_to_nano(ip_timing.grad_f_eval_time().TotalWallclockTime()), orig_nlp->grad_f_evals());
+            }
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_g_eq("equality_constraints",
+                    s_to_nano(ip_timing.c_eval_time().TotalWallclockTime()), orig_nlp->c_evals());
+            }
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_g_ineq("inequality_constraints",
+                    s_to_nano(ip_timing.d_eval_time().TotalWallclockTime()), orig_nlp->d_evals());
+            }
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_eq("jacobian_equality_constraints",
+                    s_to_nano(ip_timing.jac_c_eval_time().TotalWallclockTime()), orig_nlp->jac_c_evals());
+            }
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_ineq("jacobian_inequality_constraints",
+                    s_to_nano(ip_timing.jac_d_eval_time().TotalWallclockTime()), orig_nlp->jac_d_evals());
+            }
+            {
+                VirtualTimer<CountedTimingNode, int> timer_wall_lag_hes("lagrangian_hessian",
+                    s_to_nano(ip_timing.h_eval_time().TotalWallclockTime()), orig_nlp->h_evals());
+            }
+        }
     }
 }
 

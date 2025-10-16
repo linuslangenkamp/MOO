@@ -25,12 +25,16 @@
 
 #include <nlp/nlp_solver.h>
 #include <base/export.h>
+#include <base/timing.h>
 
 namespace IpoptSolver {
 
 struct IpoptSolverData;
+class IpoptTimingNode;
 
 class MOO_EXPORT IpoptSolver : public NLP::NLPSolver {
+    friend IpoptTimingNode;
+
 public:
     IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings);
 
@@ -42,6 +46,18 @@ public:
 
 private:
    IpoptSolverData* ipdata;
+};
+
+class IpoptTimingNode : public TimingNode {
+    IpoptSolver* ipopt_solver;
+    int total_iterations = 0;
+
+    // TODO: maybe more here in the future?
+
+public:
+    IpoptTimingNode(std::string n, TimingNode* p = nullptr, IpoptSolver* ipopt_solver = nullptr);
+
+    void finalize() override;
 };
 
 } // namespace IpoptSolver

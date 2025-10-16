@@ -33,6 +33,7 @@ target_sources(moo PRIVATE
     src/base/fLGR.cpp
     src/base/trajectory.cpp
     src/base/mesh.cpp
+    src/base/timing.cpp
     src/base/log.cpp
     src/base/linalg.cpp
 
@@ -88,7 +89,7 @@ target_include_directories(moo PUBLIC src)
 # add_link_options(-fsanitize=undefined -fsanitize=address -fstack-protector-strong)
 
 # TODO: Make it a clean build with -Wextra
-set(MOO_COMPILE_OPTIONS -Wall -fno-rtti -Wnon-virtual-dtor -pedantic)
+set(MOO_COMPILE_OPTIONS -Wall -Wnon-virtual-dtor -pedantic)
 
 if(IS_GCC)
     list(APPEND MOO_COMPILE_OPTIONS -fno-var-tracking-assignments)

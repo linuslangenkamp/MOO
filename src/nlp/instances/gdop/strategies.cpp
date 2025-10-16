@@ -20,6 +20,7 @@
 
 #include "strategies.h"
 #include "gdop.h"
+#include <base/timing.h>
 
 // TODO: add doxygen everywhere
 
@@ -667,5 +668,67 @@ Strategies Strategies::default_strategies() {
                                             InterpolationRefinedInitialization(strategies.interpolation, true, true, true));
     return strategies;
 };
+
+std::unique_ptr<PrimalDualTrajectory> Strategies::get_initial_guess(const GDOP& gdop) {
+    ScopedTimer scope{"Strategies::get_initial_guess"};
+    return (*initialization)(gdop);
+}
+
+std::unique_ptr<PrimalDualTrajectory> Strategies::get_refined_initial_guess(const Mesh& old_mesh, const Mesh& new_mesh, const PrimalDualTrajectory& trajectory) {
+    ScopedTimer scope{"Strategies::get_refined_initial_guess"};
+    return (*refined_initialization)(old_mesh, new_mesh, trajectory);
+}
+
+std::unique_ptr<Trajectory> Strategies::simulate(const ControlTrajectory& controls, const FixedVector<f64>& parameters,
+                                                 int num_steps, f64 start_time, f64 stop_time, f64* x_start_values) {
+    ScopedTimer scope{"Strategies::simulate"};
+    return (*simulation)(controls, parameters, num_steps, start_time, stop_time, x_start_values);
+}
+
+void Strategies::simulate_step_activate(const ControlTrajectory& controls, const FixedVector<f64>& parameters) {
+    ScopedTimer scope{"Strategies::simulate_step_activate"};
+    return simulation_step->activate(controls, parameters);
+}
+
+std::unique_ptr<Trajectory> Strategies::simulate_step(f64* x_start_values, f64 start_time, f64 stop_time) {
+    ScopedTimer scope{"Strategies::simulate_step"};
+    return (*simulation_step)(x_start_values, start_time, stop_time);
+}
+
+void Strategies::simulate_step_reset() {
+    ScopedTimer scope{"Strategies::simulate_step_reset"};
+    return simulation_step->reset();
+}
+
+std::unique_ptr<MeshUpdate> Strategies::detect(const Mesh& mesh, const PrimalDualTrajectory& trajectory) {
+    ScopedTimer scope{"Strategies::detect"};
+    return (*mesh_refinement)(mesh, trajectory);
+}
+
+std::vector<f64> Strategies::interpolate(const Mesh& old_mesh, const Mesh& new_mesh, const std::vector<f64>& values) {
+    ScopedTimer scope{"Strategies::interpolate"};
+    return (*interpolation)(old_mesh, new_mesh, values);
+}
+
+int Strategies::emit(const PrimalDualTrajectory& trajectory) {
+    ScopedTimer scope{"Strategies::emit"};
+    return (*emitter)(trajectory);
+}
+
+bool Strategies::verify(const GDOP& gdop, const PrimalDualTrajectory& trajectory) {
+    ScopedTimer scope{"Strategies::verify"};
+    return (*verifier)(gdop, trajectory);
+}
+
+std::shared_ptr<NLP::Scaling> Strategies::create_scaling(const GDOP& gdop) {
+    ScopedTimer scope{"Strategies::create_scaling"};
+    return (*scaling_factory)(gdop);
+}
+
+// add others if we have an internal state that changes during optimization (e.g. mesh refinement iteration count)
+void Strategies::reset(const GDOP& gdop) {
+    ScopedTimer scope{"Strategies::reset"};
+    mesh_refinement->reset(gdop);
+}
 
 } // namespace GDOP
