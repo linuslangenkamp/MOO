@@ -33,7 +33,14 @@
 constexpr f64 s_to_nano(f64 seconds) { return seconds * 1e9; }
 constexpr f64 nano_to_ms(f64 seconds) { return seconds * 1e-6; }
 
-class TimingNode {
+class TimingNode;
+class TimingTree;
+
+using visitor_fn = std::function<void(const TimingNode* node, const TimingNode* parent, const TimingNode* next)>;
+
+class MOO_EXPORT TimingNode {
+    friend TimingTree;
+
 public:
     std::string name;
     f64 duration_nano = 0.0;
@@ -50,10 +57,11 @@ public:
     // use it to insert VirtualTimer's (e.g. for 3rdParty libs)
     virtual void finalize();
 
+private:
     void print_table_tree(const FixedTableFormat<4>& tf, const std::string& prefix = "", bool is_last  = true) const;
 };
 
-class TimingTree {
+class MOO_EXPORT TimingTree {
 public:
     static TimingTree& instance();
     TimingTree(const TimingTree&) = delete;
@@ -64,16 +72,22 @@ public:
     TimingNode* add_child(std::unique_ptr<TimingNode> child);
 
     void print_tree_table() const;
+    void traverse(visitor_fn visitor) const;
 
 private:
     TimingTree();
 
     std::unique_ptr<TimingNode> root;
     TimingNode* current;
+
+    void traverse_node(const TimingNode* node,
+                       const TimingNode* parent,
+                       const TimingNode* next,
+                       visitor_fn& visitor) const;
 };
 
 template <typename NodeType = TimingNode, typename... Args>
-class ScopedTimer {
+class MOO_EXPORT ScopedTimer {
 public:
     ScopedTimer(const std::string& name, Args&&... args)
         : start(std::chrono::high_resolution_clock::now())
@@ -98,7 +112,7 @@ private:
 };
 
 template <typename NodeType = TimingNode, typename... Args>
-class VirtualTimer {
+class MOO_EXPORT VirtualTimer {
 public:
     VirtualTimer(const std::string& name, f64 duration_nano, Args&&... args)
     {
@@ -118,11 +132,19 @@ private:
     TimingNode* node;
 };
 
-class CountedTimingNode : public TimingNode {
+class MOO_EXPORT CountedTimingNode : public TimingNode {
 public:
     int cnt = 0;
 
     CountedTimingNode(std::string n, TimingNode* p, int cnt);
 };
+
+namespace Timing {
+
+std::unordered_map<std::string, f64> accumulate_prefix(std::string prefix);
+std::vector<f64> accumulate_blocks(const std::string& prefix_start,
+                                   const std::string& prefix_break);
+
+} // namespace Timing
 
 #endif // MOO_TIMING_H

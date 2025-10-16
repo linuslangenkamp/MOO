@@ -57,9 +57,81 @@ TimingTree::TimingTree() {
     current = root.get();
 }
 
+void TimingTree::traverse(visitor_fn visitor) const {
+    if (!root) return;
+    traverse_node(root.get(), nullptr, nullptr, visitor);
+}
+
+void TimingTree::traverse_node(
+    const TimingNode* node,
+    const TimingNode* parent,
+    const TimingNode* next,
+    visitor_fn& visitor) const
+{
+    visitor(node, parent, next);
+
+    const auto& children = node->children;
+    for (size_t i = 0; i < children.size(); ++i) {
+        const TimingNode* next_sibling = (i + 1 < children.size()) ? children[i + 1].get() : nullptr;
+        traverse_node(children[i].get(), node, next_sibling, visitor);
+    }
+}
+
 CountedTimingNode::CountedTimingNode(std::string n, TimingNode* p, int cnt)
     : TimingNode(n, p), cnt(cnt) {}
 
+// ==== Common Queries ====
+
+namespace Timing {
+
+// Traverse the entire TimingTree and accumulate the total duration of all nodes
+// whose names start with the given prefix. The resulting map contains one entry
+// per matching node name (full name), where the value is the summed duration (in nanoseconds).
+std::unordered_map<std::string, f64> accumulate_prefix(std::string prefix) {
+    std::unordered_map<std::string, f64> mapping{};
+
+    TimingTree::instance().traverse([&](const TimingNode* node, const TimingNode*, const TimingNode*) {
+        if (node->name.rfind("Strategies::", 0) == 0) {
+            mapping[node->name] += node->duration_nano;
+        }
+    });
+
+    return mapping;
+}
+
+// Traverse the TimingTree and accumulate contiguous blocks of timing entries
+// whose names start with `prefix_start`. A block is finalized and stored
+// whenever a subsequent node name starts with `prefix_break`.
+// Each entry in the returned vector represents the total time (in nanoseconds)
+// spent in one contiguous block of `prefix_start` entries before the next `prefix_break`.
+std::vector<f64> accumulate_blocks(const std::string& prefix_start,
+                                   const std::string& prefix_break)
+{
+    std::vector<f64> blocks;
+    f64 current_sum = 0.0;
+
+    TimingTree::instance().traverse(
+        [&](const TimingNode* node, const TimingNode*, const TimingNode* next) {
+            if (node->name.rfind(prefix_start, 0) == 0) {
+                current_sum += node->duration_nano;
+            }
+
+            if (next && next->name.rfind(prefix_break, 0) == 0 && current_sum > 0.0) {
+                blocks.push_back(current_sum);
+                current_sum = 0.0;
+            }
+        }
+    );
+
+    // push last accumulated block (if no break node followed)
+    if (current_sum > 0.0) {
+        blocks.push_back(current_sum);
+    }
+
+    return blocks;
+}
+
+} // namespace Timing
 
 // ==== printing ====
 
