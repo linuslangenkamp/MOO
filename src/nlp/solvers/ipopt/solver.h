@@ -44,6 +44,11 @@ public:
     void init_application();
     void set_settings();
 
+    int get_iterations() const override;
+    f64 get_total_time() const override;
+    f64 get_solver_time() const override;
+    f64 get_callback_time() const override;
+
 private:
    IpoptSolverData* ipdata;
 };

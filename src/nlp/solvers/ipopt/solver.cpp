@@ -301,6 +301,22 @@ void IpoptSolver::set_settings() {
     }
 }
 
+int IpoptSolver::get_iterations() const {
+    return ipdata->app->IpoptDataObject()->iter_count();
+}
+
+f64 IpoptSolver::get_total_time() const {
+    return Timing::s_to_nano(ipdata->app->IpoptDataObject()->TimingStats().OverallAlgorithm().TotalWallclockTime());
+}
+
+f64 IpoptSolver::get_callback_time() const {
+    return Timing::s_to_nano(ipdata->app->IpoptDataObject()->TimingStats().TotalFunctionEvaluationWallclockTime());
+}
+
+f64 IpoptSolver::get_solver_time() const {
+    return get_total_time() - get_callback_time();
+}
+
 IpoptTimingNode::IpoptTimingNode(std::string n, TimingNode* p, IpoptSolver* ipopt_solver)
     : TimingNode(n, p), ipopt_solver(ipopt_solver) {}
 
@@ -316,40 +332,40 @@ void IpoptTimingNode::finalize() {
 
     total_iterations = data->iter_count();
 
-    VirtualTimer timer_wall_total("Ipopt Total", s_to_nano(wall_total));
+    VirtualTimer timer_wall_total("Ipopt Total", Timing::s_to_nano(wall_total));
     {
         {
-            VirtualTimer timer_wall_ipopt_self("Ipopt Internal", s_to_nano(wall_ipopt_self));
+            VirtualTimer timer_wall_ipopt_self("Ipopt Internal", Timing::s_to_nano(wall_ipopt_self));
         }
         {
-            VirtualTimer timer_wall_func("Ipopt Callbacks", s_to_nano(wall_func));
+            VirtualTimer timer_wall_func("Ipopt Callbacks", Timing::s_to_nano(wall_func));
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_f("Objective",
-                    s_to_nano(ip_timing.f_eval_time().TotalWallclockTime()), orig_nlp->f_evals());
+                    Timing::s_to_nano(ip_timing.f_eval_time().TotalWallclockTime()), orig_nlp->f_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_grad_f("Objective Gradient",
-                    s_to_nano(ip_timing.grad_f_eval_time().TotalWallclockTime()), orig_nlp->grad_f_evals());
+                    Timing::s_to_nano(ip_timing.grad_f_eval_time().TotalWallclockTime()), orig_nlp->grad_f_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_g_eq("Equality Constraints",
-                    s_to_nano(ip_timing.c_eval_time().TotalWallclockTime()), orig_nlp->c_evals());
+                    Timing::s_to_nano(ip_timing.c_eval_time().TotalWallclockTime()), orig_nlp->c_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_g_ineq("Inequality Constraints",
-                    s_to_nano(ip_timing.d_eval_time().TotalWallclockTime()), orig_nlp->d_evals());
+                    Timing::s_to_nano(ip_timing.d_eval_time().TotalWallclockTime()), orig_nlp->d_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_eq("Jacobian Equality Constraints",
-                    s_to_nano(ip_timing.jac_c_eval_time().TotalWallclockTime()), orig_nlp->jac_c_evals());
+                    Timing::s_to_nano(ip_timing.jac_c_eval_time().TotalWallclockTime()), orig_nlp->jac_c_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_ineq("Jacobian Inequality Constraints",
-                    s_to_nano(ip_timing.jac_d_eval_time().TotalWallclockTime()), orig_nlp->jac_d_evals());
+                    Timing::s_to_nano(ip_timing.jac_d_eval_time().TotalWallclockTime()), orig_nlp->jac_d_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_lag_hes("Lagrangian Hessian",
-                    s_to_nano(ip_timing.h_eval_time().TotalWallclockTime()), orig_nlp->h_evals());
+                    Timing::s_to_nano(ip_timing.h_eval_time().TotalWallclockTime()), orig_nlp->h_evals());
             }
         }
     }

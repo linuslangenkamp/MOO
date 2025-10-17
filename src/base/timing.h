@@ -30,16 +30,12 @@
 #include <chrono>
 #include <unordered_map>
 
-constexpr f64 s_to_nano(f64 seconds) { return seconds * 1e9; }
-constexpr f64 nano_to_ms(f64 seconds) { return seconds * 1e-6; }
-
 class TimingNode;
-class TimingTree;
 
 using visitor_fn = std::function<void(const TimingNode* node, const TimingNode* parent, const TimingNode* next)>;
 
 class MOO_EXPORT TimingNode {
-    friend TimingTree;
+    friend class TimingTree;
 
 public:
     std::string name;
@@ -141,6 +137,10 @@ public:
 
 namespace Timing {
 
+constexpr f64 s_to_nano(f64 seconds) { return seconds * 1e9; }
+constexpr f64 nano_to_ms(f64 seconds) { return seconds * 1e-6; }
+
+// TODO: remove strings and make these type-safe - via enum or so?
 std::unordered_map<std::string, f64> accumulate_prefix(std::string prefix);
 std::vector<f64> accumulate_blocks(const std::string& prefix_start,
                                    const std::string& prefix_break);

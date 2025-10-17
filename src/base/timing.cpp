@@ -136,7 +136,7 @@ std::vector<f64> accumulate_blocks(const std::string& prefix_start,
 // ==== printing ====
 
 void TimingNode::print_table_tree(const FixedTableFormat<4>& ftf, const std::string& prefix, bool is_last) const {
-    f64 duration_ms = nano_to_ms(duration_nano);
+    f64 duration_ms = Timing::nano_to_ms(duration_nano);
 
     std::string count_str = "-";
     std::string avg_str = "-";
