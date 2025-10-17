@@ -504,6 +504,11 @@ public:
         const f64* solver_z_lb,
         const f64* solver_z_ub);
 
+    /**
+     * @brief Allows the user to access the value of the objective function \f$f(x)\f$.
+     */
+    f64 get_objective_value() const;
+
 private:
 
     // ============ NLP Structures and Info ============

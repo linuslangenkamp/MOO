@@ -46,6 +46,7 @@ target_sources(moo PRIVATE
     # generic NLP
     src/nlp/solvers/nlp_solver_settings.cpp
     src/nlp/nlp_scaling.cpp
+    src/nlp/nlp_solver.cpp
     src/nlp/nlp.cpp
 
     # Ipopt Interface for generic NLP
