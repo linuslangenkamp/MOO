@@ -60,7 +60,7 @@ void MeshRefinementOrchestrator::optimize() {
         if (!mesh_update) { break; }
 
         // 2. create refined Mesh
-        auto refined_mesh = Mesh::create_from_mesh_update(std::move(mesh_update));
+        auto refined_mesh = gdop.get_mesh().create_from_mesh_update(std::move(mesh_update));
 
         // 3. interpolate (x*, lambda*, z*) to new mesh -> new initial guess
         initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), *refined_mesh, *gdop.get_optimal_solution());

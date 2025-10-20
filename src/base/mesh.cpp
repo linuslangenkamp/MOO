@@ -20,6 +20,51 @@
 
 #include "mesh.h"
 
+Mesh::Mesh(int intervals,
+           f64 t0,
+           f64 tf,
+           FixedVector<f64>&& grid,
+           FixedVector<f64>&& delta_t,
+           FixedField<f64, 2>&& t,
+           FixedVector<int>&& nodes,
+           FixedField<int, 2>&& acc_nodes,
+           int node_count)
+    : intervals(intervals),
+      node_count(node_count),
+      t0(t0),
+      tf(tf),
+      grid(std::move(grid)),
+      delta_t(std::move(delta_t)),
+      t(std::move(t)),
+      nodes(std::move(nodes)),
+      acc_nodes(std::move(acc_nodes)) {}
+
+std::shared_ptr<Mesh> Mesh::create_same_type(
+    int intervals,
+    f64 t0,
+    f64 tf,
+    FixedVector<f64>&& grid,
+    FixedVector<f64>&& delta_t,
+    FixedField<f64, 2>&& t,
+    FixedVector<int>&& nodes,
+    FixedField<int, 2>&& acc_nodes,
+    int node_count) const
+{
+    return std::shared_ptr<Mesh>(
+        new Mesh(
+            intervals,
+            t0,
+            tf,
+            std::move(grid),
+            std::move(delta_t),
+            std::move(t),
+            std::move(nodes),
+            std::move(acc_nodes),
+            node_count
+        )
+    );
+}
+
 /** 
  * @brief Create a mesh with fixed (h, p) for final time tf
  *
@@ -28,7 +73,7 @@
  * @param stages     Number of Nodes for each Interval
  * @return Mesh      Mesh
  */
-std::shared_ptr<const Mesh> Mesh::create_equidistant_fixed_stages(f64 tf, int intervals, int stages) {
+std::shared_ptr<Mesh> Mesh::create_equidistant_fixed_stages(f64 t0, f64 tf, int intervals, int stages, MeshType creation_type) {
     FixedVector<f64> grid(intervals + 1);
     FixedVector<f64> delta_t(intervals);
     FixedVector<int> nodes(intervals);
@@ -37,7 +82,7 @@ std::shared_ptr<const Mesh> Mesh::create_equidistant_fixed_stages(f64 tf, int in
 
     f64 h = tf / intervals;
     for (int i = 0; i < intervals; i++) {
-        grid[i] = i * h;
+        grid[i] = t0 + i * h;
     }
     grid[intervals] = tf;
 
@@ -50,62 +95,93 @@ std::shared_ptr<const Mesh> Mesh::create_equidistant_fixed_stages(f64 tf, int in
         }
     }
     int node_count = stages * intervals;
-    return std::shared_ptr<const Mesh>(
-        new Mesh(
-            intervals,
-            tf,
-            std::move(grid),
-            std::move(delta_t),
-            std::move(t),
-            std::move(nodes),
-            std::move(acc_nodes),
-            node_count
-        )
-    );
+
+    switch (creation_type) {
+        case MeshType::Spectral:
+        {
+            FixedVector<f64> spectral_grid(grid.size());
+            f64 invT = 1.0 / (tf - t0);
+
+            for (size_t i = 0; i < grid.size(); i++) {
+                spectral_grid[i] = invT * (grid[i] - t0);
+            }
+
+            return std::shared_ptr<SpectralMesh>(
+                new SpectralMesh(
+                    intervals,
+                    t0,
+                    tf,
+                    std::move(grid),
+                    std::move(delta_t),
+                    std::move(t),
+                    std::move(nodes),
+                    std::move(acc_nodes),
+                    node_count,
+                    std::move(spectral_grid)
+                )
+            );
+        }
+        case MeshType::Physical:
+        default:
+            return std::shared_ptr<Mesh>(
+                new Mesh(
+                    intervals,
+                    t0,
+                    tf,
+                    std::move(grid),
+                    std::move(delta_t),
+                    std::move(t),
+                    std::move(nodes),
+                    std::move(acc_nodes),
+                    node_count
+                )
+            );
+    }
 }
 
-std::shared_ptr<const Mesh> Mesh::create_from_mesh_update(std::unique_ptr<MeshUpdate> mesh_update) {
-    FixedVector<f64> grid = std::move(mesh_update->new_grid);
-    FixedVector<int> nodes = std::move(mesh_update->new_nodes_per_interval);
+std::shared_ptr<Mesh> Mesh::create_from_mesh_update(std::unique_ptr<MeshUpdate> mesh_update) const {
+    FixedVector<f64> new_grid = std::move(mesh_update->new_grid);
+    FixedVector<int> new_nodes = std::move(mesh_update->new_nodes_per_interval);
 
-    int intervals = nodes.int_size();
-    f64 tf = grid.back();
+    int new_intervals = new_nodes.int_size();
+    f64 new_t0 = new_grid[0];
+    f64 new_tf = new_grid.back();
 
-    FixedVector<f64> delta_t(intervals);
-    for (int i = 0; i < intervals; i++) {
-        delta_t[i] = grid[i + 1] - grid[i];
+    FixedVector<f64> new_delta_t(intervals);
+    for (int i = 0; i < new_intervals; i++) {
+        new_delta_t[i] = new_grid[i + 1] - new_grid[i];
     }
 
-    int node_count = std::accumulate(nodes.begin(), nodes.end(), 0);
+    int new_node_count = std::accumulate(new_nodes.begin(), new_nodes.end(), 0);
 
-    FixedField<f64, 2> t(intervals);
-    FixedField<int, 2> acc_nodes(intervals);
+    FixedField<f64, 2> new_t(new_intervals);
+    FixedField<int, 2> new_acc_nodes(new_intervals);
 
     int global_index = 0;
-    for (int i = 0; i < intervals; ++i) {
-        int p = nodes[i];
-        f64 h = delta_t[i];
+    for (int i = 0; i < new_intervals; i++) {
+        int p = new_nodes[i];
+        f64 h = new_delta_t[i];
 
-        t[i] = FixedVector<f64>(p);
-        acc_nodes[i] = FixedVector<int>(p);
+        new_t[i] = FixedVector<f64>(p);
+        new_acc_nodes[i] = FixedVector<int>(p);
 
-        for (int j = 0; j < p; ++j) {
-            t[i][j] = grid[i] + h * fLGR::get_c(p, j);
-            acc_nodes[i][j] = global_index++;
+        for (int j = 0; j < p; j++) {
+            new_t[i][j] = new_grid[i] + h * fLGR::get_c(p, j);
+            new_acc_nodes[i][j] = global_index++;
         }
     }
 
-    return std::shared_ptr<const Mesh>(
-        new Mesh(
-            intervals,
-            tf,
-            std::move(grid),
-            std::move(delta_t),
-            std::move(t),
-            std::move(nodes),
-            std::move(acc_nodes),
-            node_count
-        )
+    // let polymorphism handle the type
+    return create_same_type(
+        new_intervals,
+        new_t0,
+        new_tf,
+        std::move(new_grid),
+        std::move(new_delta_t),
+        std::move(new_t),
+        std::move(new_nodes),
+        std::move(new_acc_nodes),
+        new_node_count
     );
 }
 
@@ -113,8 +189,7 @@ std::vector<f64> Mesh::get_flat_t() const {
     std::vector<f64> flat_t;
 
     flat_t.reserve(node_count + 1);
-
-    flat_t.push_back(0.0);
+    flat_t.push_back(t0);
 
     for (int i = 0; i < intervals; i++) {
         for (int j = 0; j < nodes[i]; j++) {
@@ -123,4 +198,59 @@ std::vector<f64> Mesh::get_flat_t() const {
     }
 
     return flat_t;
+}
+
+SpectralMesh::SpectralMesh(int intervals,
+                           f64 t0,
+                           f64 tf,
+                           FixedVector<f64>&& grid,
+                           FixedVector<f64>&& delta_t,
+                           FixedField<f64, 2>&& t,
+                           FixedVector<int>&& nodes,
+                           FixedField<int, 2>&& acc_nodes,
+                           int node_count,
+                           FixedVector<f64>&& spectral_grid)
+    : Mesh(intervals,
+           t0,
+           tf,
+           std::move(grid),
+           std::move(delta_t),
+           std::move(t),
+           std::move(nodes),
+           std::move(acc_nodes),
+           node_count),
+      spectral_grid(std::move(spectral_grid)) {}
+
+std::shared_ptr<Mesh> SpectralMesh::create_same_type(
+    int intervals,
+    f64 t0,
+    f64 tf,
+    FixedVector<f64>&& grid,
+    FixedVector<f64>&& delta_t,
+    FixedField<f64, 2>&& t,
+    FixedVector<int>&& nodes,
+    FixedField<int, 2>&& acc_nodes,
+    int node_count) const
+{
+    FixedVector<f64> spectral_grid(grid.size());
+    f64 invT = 1.0 / (tf - t0);
+
+    for (size_t i = 0; i < grid.size(); i++) {
+        spectral_grid[i] = invT * (grid[i] - t0);
+    }
+
+    return std::shared_ptr<SpectralMesh>(
+        new SpectralMesh(
+            intervals,
+            t0,
+            tf,
+            std::move(grid),
+            std::move(delta_t),
+            std::move(t),
+            std::move(nodes),
+            std::move(acc_nodes),
+            node_count,
+            std::move(spectral_grid)
+        )
+    );
 }
