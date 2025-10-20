@@ -31,11 +31,30 @@ FixedVector<Bounds> create_bounds(bounds_t* c_bounds, int size) {
     return to_fill;
 }
 
+std::array<Bounds, 2> create_time_bounds(bounds_t c_bounds[2]) {
+    std::array<Bounds, 2> to_fill;
+    for (int i = 0; i < 2; i++) {
+        to_fill[i].lb = c_bounds[i].lb;
+        to_fill[i].ub = c_bounds[i].ub;
+    }
+    return to_fill;
+}
+
 FixedVector<std::optional<f64>> create_fixed(optional_value_t* c_optional, int size) {
     FixedVector<std::optional<f64>> to_fill(size);
     for (int idx = 0; idx < size; idx++) {
         if (c_optional[idx].is_set) {
             to_fill[idx] = c_optional[idx].value;
+        }
+    }
+    return to_fill;
+}
+
+std::array<std::optional<f64>, 2> create_time_fixed(bounds_t c_bounds[2]) {
+    std::array<std::optional<f64>, 2> to_fill{};
+    for (int i = 0; i < 2; i++) {
+        if (c_bounds[i].lb == c_bounds[i].ub) {
+            to_fill[i] = c_bounds[i].lb;
         }
     }
     return to_fill;
@@ -260,7 +279,9 @@ void FullSweep::callback_hes(
 void BoundarySweep::callback_eval(
     const f64* x0_nlp,
     const f64* xuf_nlp,
-    const f64* p)
+    const f64* p,
+    f64 t0,
+    f64 tf)
 {
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
@@ -271,7 +292,9 @@ void BoundarySweep::callback_eval(
 void BoundarySweep::callback_jac(
     const f64* x0_nlp,
     const f64* xuf_nlp,
-    const f64* p)
+    const f64* p,
+    f64 t0,
+    f64 tf)
 {
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
@@ -283,6 +306,8 @@ void BoundarySweep::callback_hes(
     const f64* x0_nlp,
     const f64* xuf_nlp,
     const f64* p,
+    f64 t0,
+    f64 tf,
     const f64 mayer_factor,
     const f64* lambda)
 {
@@ -359,15 +384,25 @@ void Dynamics::jac(const f64* x, const f64* u, const f64* p, f64 t, f64* dfdx, v
     c_callbacks->ode_jac_f(x, u, p, t, get_data(t), dfdx, user_data);
 }
 
-GDOP::Problem create_gdop_problem(c_problem_t* c_problem, const Mesh& mesh, std::shared_ptr<Trajectory[]> raw_data) {
+GDOP::Problem create_gdop_problem(c_problem_t* c_problem, std::shared_ptr<Trajectory[]> raw_data) {
     auto x_bounds = create_bounds(c_problem->x_bounds, c_problem->x_size);
     auto u_bounds = create_bounds(c_problem->u_bounds, c_problem->u_size);
     auto p_bounds = create_bounds(c_problem->p_bounds, c_problem->p_size);
+    auto T_bounds = create_time_bounds(c_problem->T_bounds);
     auto g_bounds = create_bounds(c_problem->g_bounds, c_problem->g_size);
     auto r_bounds = create_bounds(c_problem->r_bounds, c_problem->r_size);
 
     auto x0_fixed = create_fixed(c_problem->x0_fixed, c_problem->x_size);
     auto xf_fixed = create_fixed(c_problem->xf_fixed, c_problem->x_size);
+    auto T_fixed = create_time_fixed(c_problem->T_bounds);
+
+    auto mesh = Mesh::create_equidistant_fixed_stages(
+        /* t0 */        T_fixed[0] ? *T_fixed[0] : 0.5 * (T_bounds[0].lb + T_bounds[0].ub),
+        /* tf */        T_fixed[1] ? *T_fixed[1] : 0.5 * (T_bounds[1].lb + T_bounds[1].ub),
+        /* intervals */ 25, // TODO: add to C struct
+        /* stages */     7, // TODO: add to C struct
+        /* type */      (T_fixed[0] && T_fixed[1]) ? MeshType::Physical : MeshType::Spectral
+    );
 
     auto pc = std::make_unique<GDOP::ProblemConstants>(
         c_problem->has_mayer,
@@ -375,11 +410,13 @@ GDOP::Problem create_gdop_problem(c_problem_t* c_problem, const Mesh& mesh, std:
         std::move(x_bounds),
         std::move(u_bounds),
         std::move(p_bounds),
+        T_bounds,
         std::move(x0_fixed),
         std::move(xf_fixed),
+        T_fixed,
         std::move(r_bounds),
         std::move(g_bounds),
-        mesh
+        *mesh
     );
 
     auto fs  = std::make_unique<FullSweep>(create_fullsweep_layout(c_problem), *pc, c_problem);
@@ -458,19 +495,20 @@ void Problem::fill_data(const Mesh& mesh) {
     }
 }
 
-Problem::Problem(c_problem_t* c_problem, const Mesh& mesh, std::shared_ptr<Trajectory[]> raw_data)
-    : GDOP::Problem(create_gdop_problem(c_problem, mesh, raw_data)),
+Problem::Problem(c_problem_t* c_problem, std::shared_ptr<Trajectory[]> raw_data)
+    : GDOP::Problem(create_gdop_problem(c_problem, raw_data)),
       c_callbacks(c_problem->callbacks),
       c_problem(c_problem),
       raw_data(raw_data),
       interpolated_data(std::make_unique<Trajectory[]>(c_problem->data_file_count))
 {
     fill_runtime_parameters();
-    fill_data(mesh);
+    fill_data(*pc->mesh);
 }
 
-Problem Problem::create(c_problem_t* c_problem, const Mesh& mesh) {
-    return Problem(c_problem, mesh, create_raw_data(c_problem));
+Problem Problem::create(c_problem_t* c_problem) {
+    // TODO: check validity
+    return Problem(c_problem, create_raw_data(c_problem));
 }
 
 

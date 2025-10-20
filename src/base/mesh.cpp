@@ -254,3 +254,31 @@ std::shared_ptr<Mesh> SpectralMesh::create_same_type(
         )
     );
 }
+
+// updates t0, tf, grid, delta_t and t from base Mesh object
+void SpectralMesh::update_physical_from_spectral(f64 new_t0, f64 new_tf) {
+    if (new_t0 == t0 && new_tf == tf) {
+        return;
+    }
+
+    t0 = new_t0;
+    tf = new_tf;
+
+    f64 len = tf - t0;
+
+    assert(grid.size() == spectral_grid.size());
+    for (int i = 0; i < grid.size(); i++) {
+        grid[i] = t0 + len * spectral_grid[i];
+    }
+
+    for (int i = 0; i < intervals; i++) {
+        delta_t[i] = grid[i + 1] - grid[i];
+    }
+
+    for (int i = 0; i < intervals; i++) {
+        int p = nodes[i];
+        for (int j = 0; j < p; j++) {
+            t[i][j] = grid[i] + delta_t[i] * fLGR::get_c(p, j);
+        }
+    }
+}

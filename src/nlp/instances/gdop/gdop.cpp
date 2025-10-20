@@ -24,7 +24,19 @@
 
 namespace GDOP {
 
-void GDOP::update(std::shared_ptr<const Mesh> new_mesh) {
+GDOP::GDOP(Problem& problem)
+    : NLP::NLP(),
+      mesh(problem.pc->mesh),
+      spectral_mesh(problem.pc->free_time ? dynamic_cast<SpectralMesh*>(mesh.get()) : nullptr),
+      problem(problem)
+{
+    if (problem.pc->free_time && spectral_mesh == nullptr) {
+        Log::error("Problem has variable initial or final time, but provided Mesh is not SpectralMesh.");
+        std::abort();
+    }
+}
+
+void GDOP::update(std::shared_ptr<Mesh> new_mesh) {
     // update mesh
     mesh = new_mesh;
 
@@ -725,14 +737,14 @@ void GDOP::check_new_lambda(bool new_lambda) {
 
 void GDOP::callback_evaluation(const FixedVector<f64>& curr_x) {
     problem.full->callback_eval(get_x_xu(curr_x), get_x_p(curr_x));
-    problem.boundary->callback_eval(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x));
+    problem.boundary->callback_eval(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x), mesh->t0, mesh->tf);
     evaluation_state.eval_f = true;
     evaluation_state.eval_g = true;
 }
 
 void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
     problem.full->callback_jac(get_x_xu(curr_x), get_x_p(curr_x));
-    problem.boundary->callback_jac(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x));
+    problem.boundary->callback_jac(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x), mesh->t0, mesh->tf);
     evaluation_state.grad_f = true;
     evaluation_state.jac_g = true;
 }
@@ -758,7 +770,7 @@ void GDOP::callback_hessian(const FixedVector<f64> x, const FixedVector<f64>& cu
     update_curr_lambda_obj_factors(curr_lambda, curr_sigma_f);
 
     problem.full->callback_hes(get_x_xu(x), get_x_p(x), lagrange_obj_factors, get_lmbd_fg(transformed_lambda));
-    problem.boundary->callback_hes(get_x_x0(x), get_x_xuf(x), get_x_p(x), curr_sigma_f, get_lmbd_r(transformed_lambda));
+    problem.boundary->callback_hes(get_x_x0(x), get_x_xuf(x), get_x_p(x), mesh->t0, mesh->tf, curr_sigma_f, get_lmbd_r(transformed_lambda));
     evaluation_state.hes = true;
 }
 

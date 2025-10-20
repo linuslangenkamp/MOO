@@ -95,6 +95,8 @@ protected:
 class MOO_EXPORT SpectralMesh : public Mesh {
     friend Mesh;
 
+    void update_physical_from_spectral(f64 new_t0, f64 new_tf);
+
 protected:
     FixedVector<f64> spectral_grid;  // nominal grid [t0 = 0, ..., tf = 1]
 

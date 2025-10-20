@@ -86,6 +86,7 @@ typedef struct c_problem_t {
     bounds_t* x_bounds;
     bounds_t* u_bounds;
     bounds_t* p_bounds;
+    bounds_t* T_bounds;
 
     bounds_t* r_bounds;
     bounds_t* g_bounds;

@@ -42,15 +42,11 @@ using NLP::Scaling;
 
 class MOO_EXPORT GDOP : public NLP::NLP {
 public:
-    GDOP(Problem& problem)
-        : NLP::NLP(),
-          mesh(problem.pc->mesh),
-          problem(problem) {}
-
+    GDOP(Problem& problem);
 
     // === API + external calls ===
 
-    void update(std::shared_ptr<const Mesh> new_mesh);
+    void update(std::shared_ptr<Mesh> new_mesh);
 
     void set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory);
 
@@ -145,17 +141,18 @@ public:
         FixedVector<f64>& curr_hes) override;
 
     void finalize_solution(
-        f64 MOO_obj,
-        const FixedVector<f64>& MOO_x,
-        const FixedVector<f64>& MOO_lambda,
-        const FixedVector<f64>& MOO_z_lb,
-        const FixedVector<f64>& MOO_z_ub) override;
+        f64 opt_obj,
+        const FixedVector<f64>& opt_x,
+        const FixedVector<f64>& opt_lambda,
+        const FixedVector<f64>& opt_z_lb,
+        const FixedVector<f64>& opt_z_ub) override;
 
 private:
 
     // === private structures ===
 
-    std::shared_ptr<const Mesh> mesh; // grid / mesh
+    std::shared_ptr<Mesh> mesh;       // stndard physical grid / mesh with interval [t0, tf]
+    SpectralMesh* spectral_mesh;      // extended grid / mesh including the nominal interval [0, 1] (necessary for free t0, tf optimizations)
     Problem& problem;                 // continuous GDOP
     NLPState evaluation_state;        // simple state to check which callbacks are performed for an iteration
 

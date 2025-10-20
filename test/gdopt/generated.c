@@ -44,6 +44,7 @@
 bounds_t globl_x_bounds[X_SIZE] = { { -DBL_MAX, DBL_MAX } };
 bounds_t globl_u_bounds[U_SIZE] = { { -DBL_MAX, DBL_MAX } };
 bounds_t globl_p_bounds[P_SIZE] = { { -DBL_MAX, DBL_MAX } };
+bounds_t globl_T_bounds[2]      = { { 5.0, 5.0 }, { 10005.0, 10005.0 } };
 
 bounds_t globl_g_bounds[G_SIZE];
 bounds_t globl_r_bounds[R_SIZE];
@@ -219,6 +220,7 @@ c_problem_t globl_c_problem = {
     .x_bounds = globl_x_bounds,
     .u_bounds = globl_u_bounds,
     .p_bounds = globl_p_bounds,
+    .T_bounds = globl_T_bounds,
     .r_bounds = globl_r_bounds,
     .g_bounds = globl_g_bounds,
     .x0_fixed = globl_x0_fixed,
