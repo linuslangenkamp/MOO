@@ -84,7 +84,7 @@ std::unique_ptr<PrimalDualTrajectory> ConstantInitialization::operator()(const G
     const int p_size = problem.pc->p_size;
 
     // time vector with start and end times
-    std::vector<f64> t = { 0.0, gdop.get_mesh().tf };
+    std::vector<f64> t = { gdop.get_mesh().t0, gdop.get_mesh().tf };
 
     std::vector<std::vector<f64>> x_guess(x_size);
     std::vector<std::vector<f64>> u_guess(u_size);
@@ -366,7 +366,7 @@ std::unique_ptr<PrimalDualTrajectory> SimulationInitialization::operator()(const
     auto extracted_parameters = FixedVector<f64>(simple_guess_primal->p);
     auto exctracted_x0        = simple_guess_primal->extract_initial_states();                       // extract x(t_0) from the guess
     auto simulated_guess      = (*simulation)(extracted_controls, extracted_parameters,              // perform simulation using the controls and gdop config
-                                              gdop.get_mesh().node_count, 0.0,
+                                              gdop.get_mesh().node_count, gdop.get_mesh().t0,
                                               gdop.get_mesh().tf, exctracted_x0.raw());
     auto interpolated_sim     = simulated_guess->interpolate_onto_mesh(gdop.get_mesh()); // interpolate simulation to current mesh + collocation
     return std::make_unique<PrimalDualTrajectory>(std::make_unique<Trajectory>(interpolated_sim));
@@ -398,7 +398,7 @@ bool SimulationVerifier::operator()(const GDOP& gdop, const PrimalDualTrajectory
     int  high_node_count    = 1 * gdop.get_mesh().node_count;
 
     auto simulation_result  = (*simulation)(extracted_controls, extracted_parameters, high_node_count,
-                                            0.0, gdop.get_mesh().tf, exctracted_x0.raw());
+                                            gdop.get_mesh().t0, gdop.get_mesh().tf, exctracted_x0.raw());
 
     // result of high resolution simulation is interpolated onto lower resolution mesh
     auto interpolated_opt   = trajectory_primal->interpolate_polynomial_onto_grid(simulation_result->t);

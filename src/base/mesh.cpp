@@ -80,7 +80,7 @@ std::shared_ptr<Mesh> Mesh::create_equidistant_fixed_stages(f64 t0, f64 tf, int 
     FixedField<int, 2> acc_nodes(intervals, stages);
     FixedField<f64, 2> t(intervals, stages);
 
-    f64 h = tf / intervals;
+    f64 h = (tf - t0) / intervals;
     for (int i = 0; i < intervals; i++) {
         grid[i] = t0 + i * h;
     }

@@ -1105,11 +1105,11 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        f64 u0 = fLGR::interpolate(mesh->nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh->t[0][0], mesh->grid[1], 0.0);
+        f64 u0 = fLGR::interpolate(mesh->nodes[0], false, &opt_x[2 * off_x + u_index], off_xu, mesh->t[0][0], mesh->grid[1], mesh->t0);
         optimal_primals->u[u_index].push_back(u0);
     }
 
-    optimal_primals->t.push_back(0.0);
+    optimal_primals->t.push_back(mesh->t0);
 
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
@@ -1200,16 +1200,16 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
     const int inp_stride = f_size + g_size;
 
     for (int f_index = 0; f_index < f_size; f_index++) {
-        f64 lambda_f_0 = fLGR::interpolate(mesh->nodes[0], false, &costates[f_index], inp_stride, mesh->t[0][0], mesh->grid[1], 0.0);
+        f64 lambda_f_0 = fLGR::interpolate(mesh->nodes[0], false, &costates[f_index], inp_stride, mesh->t[0][0], mesh->grid[1], mesh->t0);
         optimal_costates->costates_f[f_index].push_back(lambda_f_0);
     }
 
     for (int g_index = 0; g_index < g_size; g_index++) {
-        f64 lambda_g_0 = fLGR::interpolate(mesh->nodes[0], false, &costates[f_size + g_index], inp_stride, mesh->t[0][0], mesh->grid[1], 0.0);
+        f64 lambda_g_0 = fLGR::interpolate(mesh->nodes[0], false, &costates[f_size + g_index], inp_stride, mesh->t[0][0], mesh->grid[1], mesh->t0);
         optimal_costates->costates_g[g_index].push_back(lambda_g_0);
     }
 
-    optimal_costates->t.push_back(0.0);
+    optimal_costates->t.push_back(mesh->t0);
 
     // use exact values for the others
     for (int i = 0; i < mesh->intervals; i++) {
@@ -1327,11 +1327,11 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
         }
 
         for (int u_index = 0; u_index < off_u; u_index++) {
-            f64 u0 = fLGR::interpolate(mesh->nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh->t[0][0], mesh->grid[1], 0.0);
+            f64 u0 = fLGR::interpolate(mesh->nodes[0], false, &z_dual[2 * off_x + u_index], off_xu, mesh->t[0][0], mesh->grid[1], mesh->t0);
             traj.u[u_index].push_back(u0);
         }
 
-        traj.t.push_back(0.0);
+        traj.t.push_back(mesh->t0);
 
         for (int i = 0; i < mesh->intervals; i++) {
             for (int j = 0; j < mesh->nodes[i]; j++) {

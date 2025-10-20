@@ -265,7 +265,7 @@ void BoundarySweep::callback_eval(
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
     f64* eval_buf = get_eval_buffer();
-    c_callbacks->eval_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, data_t0, data_tf, eval_buf, c_problem->user_data);
+    c_callbacks->eval_mr(x0_nlp, xuf_nlp, p, pc.mesh->t0, pc.mesh->tf, data_t0, data_tf, eval_buf, c_problem->user_data);
 };
 
 void BoundarySweep::callback_jac(
@@ -276,7 +276,7 @@ void BoundarySweep::callback_jac(
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
     f64* jac_buf = get_jac_buffer();
-    c_callbacks->jac_mr(x0_nlp, xuf_nlp, p, 0, pc.mesh->tf, data_t0, data_tf, jac_buf, c_problem->user_data);
+    c_callbacks->jac_mr(x0_nlp, xuf_nlp, p, pc.mesh->t0, pc.mesh->tf, data_t0, data_tf, jac_buf, c_problem->user_data);
 };
 
 void BoundarySweep::callback_hes(
@@ -289,7 +289,7 @@ void BoundarySweep::callback_hes(
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
     f64* hes_buf = get_hes_buffer();
-    c_callbacks->hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor, 0, pc.mesh->tf, data_t0, data_tf, hes_buf, c_problem->user_data);
+    c_callbacks->hes_mr(x0_nlp, xuf_nlp, p, lambda, mayer_factor, pc.mesh->t0, pc.mesh->tf, data_t0, data_tf, hes_buf, c_problem->user_data);
 };
 
 f64* Dynamics::get_data(f64 t) {
