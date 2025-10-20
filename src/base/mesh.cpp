@@ -147,7 +147,7 @@ std::shared_ptr<Mesh> Mesh::create_from_mesh_update(std::unique_ptr<MeshUpdate> 
     f64 new_t0 = new_grid[0];
     f64 new_tf = new_grid.back();
 
-    FixedVector<f64> new_delta_t(intervals);
+    FixedVector<f64> new_delta_t(new_intervals);
     for (int i = 0; i < new_intervals; i++) {
         new_delta_t[i] = new_grid[i + 1] - new_grid[i];
     }
