@@ -106,6 +106,11 @@ std::shared_ptr<Mesh> Mesh::create_equidistant_fixed_stages(f64 t0, f64 tf, int 
                 spectral_grid[i] = invT * (grid[i] - t0);
             }
 
+            FixedVector<f64> spectral_delta_t(intervals);
+            for (int i = 0; i < intervals; i++) {
+                spectral_delta_t[i] = spectral_grid[i + 1] - spectral_grid[i];
+            }
+
             return std::shared_ptr<SpectralMesh>(
                 new SpectralMesh(
                     intervals,
@@ -117,7 +122,8 @@ std::shared_ptr<Mesh> Mesh::create_equidistant_fixed_stages(f64 t0, f64 tf, int 
                     std::move(nodes),
                     std::move(acc_nodes),
                     node_count,
-                    std::move(spectral_grid)
+                    std::move(spectral_grid),
+                    std::move(spectral_delta_t)
                 )
             );
         }
@@ -209,7 +215,8 @@ SpectralMesh::SpectralMesh(int intervals,
                            FixedVector<int>&& nodes,
                            FixedField<int, 2>&& acc_nodes,
                            int node_count,
-                           FixedVector<f64>&& spectral_grid)
+                           FixedVector<f64>&& spectral_grid,
+                           FixedVector<f64>&& spectral_delta_t)
     : Mesh(intervals,
            t0,
            tf,
@@ -219,7 +226,8 @@ SpectralMesh::SpectralMesh(int intervals,
            std::move(nodes),
            std::move(acc_nodes),
            node_count),
-      spectral_grid(std::move(spectral_grid)) {}
+      spectral_grid(std::move(spectral_grid)),
+      spectral_delta_t(std::move(spectral_delta_t)) {}
 
 std::shared_ptr<Mesh> SpectralMesh::create_same_type(
     int intervals,
@@ -232,11 +240,18 @@ std::shared_ptr<Mesh> SpectralMesh::create_same_type(
     FixedField<int, 2>&& acc_nodes,
     int node_count) const
 {
+    assert(intervals == spectral_grid.int_size() - 1);
+
     FixedVector<f64> spectral_grid(grid.size());
     f64 invT = 1.0 / (tf - t0);
 
     for (size_t i = 0; i < grid.size(); i++) {
         spectral_grid[i] = invT * (grid[i] - t0);
+    }
+
+    FixedVector<f64> spectral_delta_t(intervals);
+    for (int i = 0; i < intervals; i++) {
+        spectral_delta_t[i] = spectral_grid[i + 1] - spectral_grid[i];
     }
 
     return std::shared_ptr<SpectralMesh>(
@@ -250,7 +265,8 @@ std::shared_ptr<Mesh> SpectralMesh::create_same_type(
             std::move(nodes),
             std::move(acc_nodes),
             node_count,
-            std::move(spectral_grid)
+            std::move(spectral_grid),
+            std::move(spectral_delta_t)
         )
     );
 }
@@ -267,7 +283,7 @@ void SpectralMesh::update_physical_from_spectral(f64 new_t0, f64 new_tf) {
     f64 len = tf - t0;
 
     assert(grid.size() == spectral_grid.size());
-    for (int i = 0; i < grid.size(); i++) {
+    for (int i = 0; i < grid.int_size(); i++) {
         grid[i] = t0 + len * spectral_grid[i];
     }
 

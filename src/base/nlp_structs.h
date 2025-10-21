@@ -61,6 +61,8 @@ struct MOO_EXPORT JacobianLFG {
     }
 };
 
+// TODO: if these do not work all too good, add dT_* to this
+
 struct MOO_EXPORT HessianLFG {
     // coordinate format hessian for LFG functions
     std::vector<HessianSparsity> dx_dx;
@@ -101,6 +103,14 @@ struct MOO_EXPORT JacobianMR {
     inline int nnz() const {
         return dx0.size() + dxf.size() + duf.size() + dp.size() + dT.size();
     }
+
+    inline int nnz_time() const {
+        return dT.size();
+    }
+
+    inline int nnz_no_time() const {
+        return dx0.size() + dxf.size() + duf.size() + dp.size();
+    }
 };
 
 struct MOO_EXPORT HessianMR {
@@ -127,6 +137,17 @@ struct MOO_EXPORT HessianMR {
              + duf_dx0.size() + duf_dxf.size() + duf_duf.size()
              + dp_dx0.size()  + dp_dxf.size()  + dp_duf.size() + dp_dp.size()
              + dT_dx0.size()  + dT_dxf.size()  + dT_duf.size() + dT_dp.size() + dT_dT.size();
+    }
+
+    inline int nnz_time() const {
+        return dT_dx0.size()  + dT_dxf.size()  + dT_duf.size() + dT_dp.size() + dT_dT.size();
+    }
+
+    inline int nnz_no_time() const {
+        return dx0_dx0.size()
+             + dxf_dx0.size() + dxf_dxf.size()
+             + duf_dx0.size() + duf_dxf.size() + duf_duf.size()
+             + dp_dx0.size()  + dp_dxf.size()  + dp_duf.size() + dp_dp.size();
     }
 };
 

@@ -123,7 +123,7 @@ void diagmat_vec_inplace(const f64* D, bool invD, f64* x, int size) {
  * @param invD      Invert Matrix D
  * @param out       Vector to fill
  */
-void dsaxpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
+void diag_scaled_axpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
     int i;
 
     if (invD) {
@@ -149,7 +149,7 @@ void dsaxpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool i
  * @param invD      Invert Matrix D
  * @param out       Vector to fill
  */
-void dgmv(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
+void diag_matrix_vector(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
     int i;
 
     if (invD) {

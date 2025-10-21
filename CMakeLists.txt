@@ -37,6 +37,7 @@ target_sources(moo PRIVATE
     # base sources for GDOP and similar problems
     src/base/fLGR.cpp
     src/base/trajectory.cpp
+    src/base/block_sparsity.cpp
     src/base/mesh.cpp
     src/base/timing.cpp
     src/base/log.cpp

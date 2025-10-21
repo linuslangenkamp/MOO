@@ -27,11 +27,11 @@ namespace GDOP {
 GDOP::GDOP(Problem& problem)
     : NLP::NLP(),
       mesh(problem.pc->mesh),
-      spectral_mesh(problem.pc->free_time ? dynamic_cast<SpectralMesh*>(mesh.get()) : nullptr),
+      spectral_mesh(problem.pc->free_time ? std::dynamic_pointer_cast<SpectralMesh>(mesh) : nullptr),
       problem(problem)
 {
     if (problem.pc->free_time && spectral_mesh == nullptr) {
-        Log::error("Problem has variable initial or final time, but provided Mesh is not SpectralMesh.");
+        Log::error("Problem has free initial or final time, but provided Mesh is not SpectralMesh.");
         std::abort();
     }
 }
@@ -39,6 +39,13 @@ GDOP::GDOP(Problem& problem)
 void GDOP::update(std::shared_ptr<Mesh> new_mesh) {
     // update mesh
     mesh = new_mesh;
+
+    // update spectral mesh
+    spectral_mesh = problem.pc->free_time ? std::dynamic_pointer_cast<SpectralMesh>(mesh) : nullptr;
+    if (problem.pc->free_time && spectral_mesh == nullptr) {
+        Log::error("Problem has free initial or final time, but provided Mesh is not SpectralMesh.");
+        std::abort();
+    }
 
     // set the new mesh and update the callback buffers with new sizes
     problem.update_mesh(new_mesh);
@@ -78,7 +85,8 @@ void GDOP::get_sizes(
     create_acc_offset_xu(off_x, off_xu);                           // variables  x_ij offset
     off_last_xu = off_acc_xu.back().back();                        // variables final grid point x_ij
     off_xu_total = off_last_xu + off_xu;                           // first parameter
-    number_vars = off_xu_total + problem.pc->p_size;
+    off_xup_total = off_xu_total + off_p;                          // first time variable
+    number_vars = off_xup_total + (spectral_mesh ? 2 : 0);         // if free time -> += 2 for t0 and tf
     create_acc_offset_fg(problem.pc->fg_size);                     // constraint f_ij offset
     off_fg_total = mesh->node_count * problem.pc->fg_size;         // constraint r_0 offset
     number_constraints = problem.pc->r_size + off_fg_total;
@@ -134,6 +142,13 @@ void GDOP::get_bounds(
     for (int p_index = 0; p_index < off_p; p_index++) {
         x_lb[off_xu_total + p_index] = problem.pc->p_bounds[p_index].lb;
         x_ub[off_xu_total + p_index] = problem.pc->p_bounds[p_index].ub;
+    }
+
+    if (spectral_mesh) {
+        for (int t_index = 0; t_index < 2; t_index++) {
+            x_lb[off_xup_total + t_index] = problem.pc->T_bounds[t_index].lb;
+            x_ub[off_xup_total + t_index] = problem.pc->T_bounds[t_index].ub;
+        }
     }
 
     // standard constraint bounds
@@ -261,6 +276,10 @@ void GDOP::init_jacobian_nonzeros(int& nnz_jac) {
             }
         }
         nnz_f += problem.full->layout.f[f_index].jac.nnz();
+
+        if (spectral_mesh) {
+            nnz_f += 2; // every dynamic constraint has non-zero derivative w.r.t. t0 and tf, since D * x - deltaT * f() = 0 depends on deltaT
+        }
     }
     for (int g_index = 0; g_index < problem.pc->g_size; g_index++) {
             nnz_g += problem.full->layout.g[g_index].jac.nnz();
@@ -273,7 +292,20 @@ void GDOP::init_jacobian_nonzeros(int& nnz_jac) {
     }
 
     for (int r_index = 0; r_index < problem.pc->r_size; r_index++) {
-        nnz_r += problem.boundary->layout.r[r_index].jac.nnz();
+        nnz_r += problem.boundary->layout.r[r_index].jac.nnz_no_time();
+
+        /**
+         * @note 1 - Information about fixed time optimizations, when dM_dT or dr_dT have non-zero elements
+         *
+         * @attention: if the problem is optimized on a fixed time horizon, but the Boundary (Mayer M + Boundary Constraint r) is time-dependent,
+         *             then we simply ignore these constraints, as the time variables (t0, tf) are not included / relevant for the NLP
+         * @note: the callback buffers may still contain these derivatives since the user may supply these, therefore the buffers
+         *        must be sufficiently large but are not used further
+         *        thus, we guard every place that assumes / uses the time derivatives / time variables with if (spectral_mesh) == if (free time optimization)
+         */
+        if (spectral_mesh) {
+            nnz_r += problem.boundary->layout.r[r_index].jac.nnz_time();
+        }
     }
 
     nnz_jac = off_acc_jac_fg.back() + nnz_r;
@@ -295,9 +327,23 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     hes_g_block = BlockSparsity::create_rectangular(problem.pc->p_size, problem.pc->x_size + problem.pc->u_size, BlockType::Exact);
     hes_h_block = BlockSparsity::create_lower_triangular(problem.pc->p_size, BlockType::Exact);
 
+    if (spectral_mesh) {
+        hes_i_block = BlockSparsity::create_rectangular(2, problem.pc->x_size, BlockType::Exact);
+        hes_j_block = DenseRectangularBlockSparsity::create(2, problem.pc->x_size + problem.pc->u_size);
+        hes_k_block = BlockSparsity::create_rectangular(2, problem.pc->p_size, BlockType::Exact);
+        hes_l_block = BlockSparsity::create_lower_triangular(2, BlockType::Exact);
+    }
+
     // clear previous sparsity (may be reused)
     hes_A_set.clear(); hes_B_set.clear(); hes_C_set.clear(); hes_D_set.clear();
     hes_E_set.clear(); hes_F_set.clear(); hes_G_set.clear(); hes_H_set.clear();
+
+    if (spectral_mesh) {
+        hes_I_set.clear();
+        // J is dense
+        hes_K_set.clear();
+        hes_L_set.clear();
+    }
 
     auto& boundary_hes = problem.boundary->layout.hes;
     auto& full_hes     = problem.full->layout.hes;
@@ -315,6 +361,12 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     hes_G_set.insert_sparsity(boundary_hes.dp_duf,      0, off_x);
     hes_H_set.insert_sparsity(boundary_hes.dp_dp,       0,     0);
 
+    if (spectral_mesh) {
+        hes_I_set.insert_sparsity(boundary_hes.dT_dx0,      0,     0);
+        hes_K_set.insert_sparsity(boundary_hes.dT_dp,       0,     0);
+        hes_L_set.insert_sparsity(boundary_hes.dT_dT,       0,     0);
+    }
+
     hes_B_set.insert_sparsity(full_hes.dx_dx,           0,     0);
     hes_B_set.insert_sparsity(full_hes.du_dx,       off_x,     0);
     hes_B_set.insert_sparsity(full_hes.du_du,       off_x, off_x);
@@ -327,9 +379,34 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
     hes_G_set.insert_sparsity(full_hes.dp_du,           0, off_x);
     hes_H_set.insert_sparsity(full_pp_hes.dp_dp,        0,     0);
 
+    /**
+     * @note K block can be defined as struct(K) = [0, 1] X [struct(L_p) + \sum_{f \in Dynamics} struct(f_p)]
+     *       these stem from the dynamic constraints (same for Lagrange term): F = D * x - deltat * f(x, u, p)
+     *        -> writing it with functions we get L_1(x) - L_2(tf, t0) * f(x, u, p), where L denotes a linear function.
+     *        Because of the product rule, we get nabla² F_{(t0, tf), p} = dL_2(tf, t0) / d{t0, tf} * df(x, u, p) / dp
+     *        -> for the Lagrangian Hessian we sum over all these f and L, so we get the above formula for the sparsity struct
+     * @note we assume that dL_2(tf, t0) / d{t0, tf} * df(x, u, p) / d{x, u} is fully dense anyway,
+     *       so derivatives w.r.t. x and u are not inserted into a block sparsity and are given by a DenseRectangularBlockSparsity (Block J)
+     */
+    if (spectral_mesh) {
+        std::vector<int> rows = { 0, 1 };
+
+        if (problem.pc->has_lagrange) {
+            hes_K_set.insert_sparsity(rows, problem.full->layout.L->jac.dp, 0, 0);
+        }
+
+        for (auto const& f : problem.full->layout.f) {
+            hes_K_set.insert_sparsity(rows, f.jac.dp, 0, 0);
+        }
+    }
+
     // calculate nnz from block sparsity
     nnz_hes = (hes_B_set.size() + hes_F_set.size()) * (mesh->node_count - 1)
-             + hes_A_set.size() + hes_C_set.size() + hes_D_set.size() + hes_E_set.size() + hes_G_set.size() + hes_H_set.size();
+              + hes_A_set.size() + hes_C_set.size() + hes_D_set.size() + hes_E_set.size() + hes_G_set.size() + hes_H_set.size();
+
+    if (spectral_mesh) {
+        nnz_hes += hes_I_set.size() + (2 * off_xu) * mesh->node_count + hes_K_set.size() + hes_L_set.size();
+    }
 }
 
 // === overload ===
@@ -418,6 +495,19 @@ void GDOP::get_jac_sparsity(
                     j_col_jac[nnz_index] = off_xu_total + df_dp.col;
                     nnz_index++;
                 }
+
+                // df / dT
+                if (spectral_mesh) {
+                    // df / dt0
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_xup_total;
+                    nnz_index++;
+
+                    // df / dtf
+                    i_row_jac[nnz_index] = eqn_index;
+                    j_col_jac[nnz_index] = off_xup_total + 1;
+                    nnz_index++;
+                }
             }
 
             for (int g_index = 0; g_index < problem.pc->g_size; g_index++) {
@@ -478,6 +568,16 @@ void GDOP::get_jac_sparsity(
             i_row_jac[nnz_index] = eqn_index;
             j_col_jac[nnz_index] = off_xu_total + dr_dp.col;
             nnz_index++;
+        }
+
+        // dr / dT
+        if (spectral_mesh) {
+            // only use the derivative w.r.t. time if free time optimization (see "@note 1")
+            for (auto& dr_dT: problem.boundary->layout.r[r_index].jac.dT) {
+                i_row_jac[nnz_index] = eqn_index;
+                j_col_jac[nnz_index] = off_xup_total + dr_dT.col;
+                nnz_index++;
+            }
         }
     }
     assert(nnz_index == get_nnz_jac());
@@ -579,7 +679,7 @@ void GDOP::get_hes_sparsity(
             hes_f_block.insert(F_flat[f_index].first, F_flat[f_index].second, row_f_nnz++);
             f_index++;
         }
-        /* F_{p_index, :} size -> offset for next F blocks */
+        /* F_{p_index, :} size -> offset for next F blocks in same row of full sparsity */
         hes_f_block.row_size[p_index] = row_f_nnz;
         hes_nnz_counter += (mesh->node_count - 1) * row_f_nnz;
 
@@ -591,8 +691,8 @@ void GDOP::get_hes_sparsity(
         }
 
         while (h_index < H_flat.int_size() && H_flat[h_index].first == p_index) {
-            i_row_hes[hes_nnz_counter] = off_xu_total + G_flat[h_index].first;  // p
-            j_col_hes[hes_nnz_counter] = off_xu_total + G_flat[h_index].second; // p
+            i_row_hes[hes_nnz_counter] = off_xu_total + H_flat[h_index].first;  // p
+            j_col_hes[hes_nnz_counter] = off_xu_total + H_flat[h_index].second; // p
             hes_h_block.insert(H_flat[h_index].first, H_flat[h_index].second, hes_nnz_counter++);
             h_index++;
         }
@@ -609,6 +709,47 @@ void GDOP::get_hes_sparsity(
                 }
             }
         }
+    }
+
+    if (spectral_mesh) {
+        // I, J, K, L: partially exact (all except J) with dense row dependence
+        int i_index = 0;
+        int k_index = 0;
+        int l_index = 0;
+        FixedVector<std::pair<int, int>> I_flat(hes_I_set.set.begin(), hes_I_set.set.end());
+        FixedVector<std::pair<int, int>> K_flat(hes_K_set.set.begin(), hes_K_set.set.end());
+        FixedVector<std::pair<int, int>> L_flat(hes_L_set.set.begin(), hes_L_set.set.end());
+        for (int t_index = 0; t_index < 2; t_index++) {
+            while (i_index < I_flat.int_size() && I_flat[i_index].first == t_index) {
+                i_row_hes[hes_nnz_counter] = off_xup_total + I_flat[i_index].first; // T
+                j_col_hes[hes_nnz_counter] = I_flat[i_index].second;                // x_0
+                hes_i_block.insert(I_flat[i_index].first, I_flat[i_index].second, hes_nnz_counter++);
+                i_index++;
+            }
+
+            // init J hessian pattern O(node_count * (#x + #u))
+            hes_j_block.row_offset_prev[t_index] = hes_nnz_counter; // I_{t_index, :} offset
+            const int len = off_xu * mesh->node_count;
+            std::fill(&i_row_hes[hes_nnz_counter], &i_row_hes[hes_nnz_counter + len], off_xup_total + t_index);
+            std::iota(&j_col_hes[hes_nnz_counter], &j_col_hes[hes_nnz_counter + len], off_x);
+            hes_nnz_counter += len;
+
+            while (k_index < K_flat.int_size() && K_flat[k_index].first == t_index) {
+                i_row_hes[hes_nnz_counter] = off_xup_total + K_flat[k_index].first; // T
+                j_col_hes[hes_nnz_counter] = off_xu_total + K_flat[k_index].second; // p
+                hes_k_block.insert(K_flat[k_index].first, K_flat[k_index].second, hes_nnz_counter++);
+                k_index++;
+            }
+
+            while (l_index < L_flat.int_size() && L_flat[l_index].first == t_index) {
+                i_row_hes[hes_nnz_counter] = off_xup_total + L_flat[l_index].first;  // T
+                j_col_hes[hes_nnz_counter] = off_xup_total + L_flat[l_index].second; // T
+                hes_l_block.insert(L_flat[l_index].first, L_flat[l_index].second, hes_nnz_counter++);
+                l_index++;
+            }
+        }
+
+        assert(hes_nnz_counter == get_nnz_hes());
     }
 }
 
@@ -629,13 +770,20 @@ void GDOP::get_hes_sparsity(
  *
  * Callback overview:
  *
- *            | Function      | `new_x` | `new_lambda` | Triggers Callback       | Needs Jacobian |
- *            | ------------- | ------- | ------------ | ----------------------- | -------------- |
- *            | `eval_f`      | +       | -            | `callback_evaluation()` | -              |
- *            | `eval_g`      | +       | -            | `callback_evaluation()` | -              |
- *            | `eval_grad_f` | +       | -            | `callback_jacobian()`   | +              |
- *            | `eval_jac_g`  | +       | -            | `callback_jacobian()`   | +              |
- *            | `eval_hes`    | +       | +            | `callback_hessian()`    | +              |
+ *   | Function      | `new_x` | `new_lambda` | Triggers Callback       | Needs callback_jacobian | Needs callback_evaluation |
+ *   | ------------- | ------- | ------------ | ----------------------- | ------------------------| --------------------------|
+ *   | `eval_f`      | +       | -            | `callback_evaluation()` | -                       | +                         |
+ *   | `eval_g`      | +       | -            | `callback_evaluation()` | -                       | +                         |
+ *   | `eval_grad_f` | +       | -            | `callback_jacobian()`   | +                       | +                         |
+ *   | `eval_jac_g`  | +       | -            | `callback_jacobian()`   | +                       | +                         |
+ *   | `eval_hes`    | +       | +            | `callback_hessian()`    | +                       | +  (transitive)           |
+ *
+ *  Because of free time optimizations and possible user numerical evaluations of callback functions, the solver callbacks
+ *  eval_f, eval_g, eval_grad_f, eval_jac_g and eval_hes do not only require the evaluation itself, but also all prior callbacks to be available.
+ *                - eval_f and eval_g only require callback_evaluation()
+ *                - eval_grad_f and eval_jac_g require callback_evaluation() and callback_jacobian()
+ *                - eval_hes requires callback_jacobian() (and thus transitively callback_evaluation()) and callback_hessian() (so all)
+ *
  */
 
 // ========= virtuals in NLP =========
@@ -647,7 +795,7 @@ void GDOP::eval_f(
     const FixedVector<f64>& curr_x,
     f64& curr_obj)
 {
-    check_new_x(new_x);
+    check_new_x(new_x, curr_x);
     if (!evaluation_state.eval_f) {
         callback_evaluation(curr_x);
     }
@@ -661,7 +809,7 @@ void GDOP::eval_g(
     const FixedVector<f64>& curr_x,
     FixedVector<f64>& curr_g)
 {
-    check_new_x(new_x);
+    check_new_x(new_x, curr_x);
     if (!evaluation_state.eval_g) {
         callback_evaluation(curr_x);
     }
@@ -675,7 +823,11 @@ void GDOP::eval_grad_f(
     const FixedVector<f64>& curr_x,
     FixedVector<f64>& curr_grad_f)
 {
-    check_new_x(new_x);
+    check_new_x(new_x, curr_x);
+    if (!(evaluation_state.eval_f)) {
+        callback_evaluation(curr_x);
+    }
+
     if (!evaluation_state.grad_f) {
         callback_jacobian(curr_x);
     }
@@ -691,7 +843,11 @@ void GDOP::eval_jac_g(
     const FixedVector<int>& j_col_jac,
     FixedVector<f64>& curr_jac)
 {
-    check_new_x(new_x);
+    check_new_x(new_x, curr_x);
+    if (!(evaluation_state.eval_g)) {
+        callback_evaluation(curr_x);
+    }
+
     if (!evaluation_state.jac_g) {
         callback_jacobian(curr_x);
     }
@@ -710,24 +866,30 @@ void GDOP::eval_hes(
     const FixedVector<int>& j_col_hes,
     FixedVector<f64>& curr_hes)
 {
-    check_new_x(new_x);
+    check_new_x(new_x, curr_x);
     check_new_lambda(new_lambda);
 
+    // ensure Jacobian is available (which itself needs the evaluation) (required for numerical Hessian and esp. free time optimization)
     if (!evaluation_state.hes) {
-        // ensure Jacobian is available (required for numerical Hessian)
-        if (!evaluation_state.jac_g) {
+        if (!(evaluation_state.jac_g || !evaluation_state.grad_f)) {
+            if (!(evaluation_state.eval_f || evaluation_state.eval_g)) {
+                callback_evaluation(curr_x);
+            }
             callback_jacobian(curr_x);
         }
         callback_hessian(curr_x, curr_lambda, curr_obj_factor);
     }
-    eval_hes_internal(curr_hes);
+    eval_hes_internal(curr_hes, curr_lambda, curr_obj_factor);
 }
 
 // ========= callbacks and internal evaluation =========
 
-// check if a new x was received; if so, reset evaluation state and update current x.
-void GDOP::check_new_x(bool new_x) {
+// check if a new x was received; if so, reset evaluation state and update time variables for spectral meshes
+void GDOP::check_new_x(bool new_x, const FixedVector<f64>& curr_x) {
     evaluation_state.check_reset_x(new_x);
+    if (problem.pc->free_time) {
+        spectral_mesh->update_physical_from_spectral(*get_x_t0(curr_x),*get_x_tf(curr_x));
+    }
 }
 
 // similar check for lambda (dual variables).
@@ -750,14 +912,14 @@ void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
 }
 
 // perform update of dual variables, such that callback can use the exact multiplier
-void GDOP::update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
+void GDOP::update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_obj_factor) {
     transformed_lambda = curr_lambda; // copy curr_lambda
 
     for (int i = 0; i < mesh->intervals; i++) {
         f64 delta_t = mesh->delta_t[i];
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (problem.pc->has_lagrange) {
-                lagrange_obj_factors[i][j] = curr_sigma_f * fLGR::get_b(mesh->nodes[i], j) * delta_t;
+                lagrange_obj_factors[i][j] = curr_obj_factor * fLGR::get_b(mesh->nodes[i], j) * delta_t;
             }
             for (int f = 0; f < problem.pc->f_size; f++) {
                 transformed_lambda[off_acc_fg[i][j] + f] *= -delta_t;
@@ -766,11 +928,11 @@ void GDOP::update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f
     }
 }
 
-void GDOP::callback_hessian(const FixedVector<f64> x, const FixedVector<f64>& curr_lambda, f64 curr_sigma_f) {
-    update_curr_lambda_obj_factors(curr_lambda, curr_sigma_f);
+void GDOP::callback_hessian(const FixedVector<f64> x, const FixedVector<f64>& curr_lambda, f64 curr_obj_factor) {
+    update_curr_lambda_obj_factors(curr_lambda, curr_obj_factor);
 
     problem.full->callback_hes(get_x_xu(x), get_x_p(x), lagrange_obj_factors, get_lmbd_fg(transformed_lambda));
-    problem.boundary->callback_hes(get_x_x0(x), get_x_xuf(x), get_x_p(x), mesh->t0, mesh->tf, curr_sigma_f, get_lmbd_r(transformed_lambda));
+    problem.boundary->callback_hes(get_x_x0(x), get_x_xuf(x), get_x_p(x), mesh->t0, mesh->tf, curr_obj_factor, get_lmbd_r(transformed_lambda));
     evaluation_state.hes = true;
 }
 
@@ -806,6 +968,12 @@ void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
                 for (auto& dL_dp : problem.full->layout.L->jac.dp) {
                     curr_grad[off_xu_total + dL_dp.col] += mesh->delta_t[i] * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_jac(dL_dp.buf_index, i, j);
                 }
+
+                // guard see "@note 1"
+                if (spectral_mesh) {
+                    curr_grad[off_xup_total]     -= spectral_mesh->delta_tau(i) * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_eval_L(i, j);
+                    curr_grad[off_xup_total + 1] += spectral_mesh->delta_tau(i) * fLGR::get_b(mesh->nodes[i], j) * problem.lfg_eval_L(i, j);
+                }
             }
         }
     }
@@ -822,6 +990,13 @@ void GDOP::eval_grad_f_internal(FixedVector<f64>& curr_grad) {
         for (auto& dM_dp : problem.boundary->layout.M->jac.dp) {
             curr_grad[off_xu_total + dM_dp.col] += problem.mr_jac(dM_dp.buf_index);
         }
+
+        // guard see "@note 1"
+        if (spectral_mesh) {
+            for (auto& dM_dT : problem.boundary->layout.M->jac.dT) {
+                curr_grad[off_xup_total + dM_dT.col] += problem.mr_jac(dM_dT.buf_index);
+            }
+        }
     }
 };
 
@@ -829,9 +1004,9 @@ void GDOP::eval_g_internal(const FixedVector<f64>& curr_x, FixedVector<f64>& cur
     curr_g.fill_zero();
     for (int i = 0; i < mesh->intervals; i++) {
         fLGR::diff_matrix_multiply_block_strided(mesh->nodes[i], off_x, off_xu, problem.pc->fg_size,
-                                                       &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
-                                                       &curr_x[off_acc_xu[i][0]],                                       // collocation point states
-                                                       &curr_g[off_acc_fg[i][0]]);                                      // constraint start index 
+                                                 &curr_x[i == 0 ? 0 : off_acc_xu[i - 1][mesh->nodes[i - 1] - 1]],  // x_{i-1, m_{i-1}} base point states
+                                                 &curr_x[off_acc_xu[i][0]],                                        // collocation point states
+                                                 &curr_g[off_acc_fg[i][0]]);                                       // constraint start index
         for (int j = 0; j < mesh->nodes[i]; j++) {
             for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
                 curr_g[off_acc_fg[i][j] + f_index] -= mesh->delta_t[i] * problem.lfg_eval_f(f_index, i, j);
@@ -891,6 +1066,15 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
                 for (auto& df_dp : problem.full->layout.f[f_index].jac.dp) {
                     curr_jac[nnz_index++] = -mesh->delta_t[i] * problem.lfg_jac(df_dp.buf_index, i, j);
                 }
+
+                // df / dT
+                if (spectral_mesh) {
+                    // df / dt0
+                    curr_jac[nnz_index++] = spectral_mesh->delta_tau(i) * problem.lfg_eval_f(f_index, i, j);
+
+                    // df / dtf
+                    curr_jac[nnz_index++] = -spectral_mesh->delta_tau(i) * problem.lfg_eval_f(f_index, i, j);
+                }
             }
 
             for (int g_index = 0; g_index < problem.pc->g_size; g_index++) {
@@ -935,11 +1119,19 @@ void GDOP::eval_jac_g_internal(FixedVector<f64>& curr_jac) {
         for (auto& dr_dp: problem.boundary->layout.r[r_index].jac.dp) {
             curr_jac[nnz_index++] = problem.mr_jac(dr_dp.buf_index);
         }
+
+        // dr / dT
+        if (spectral_mesh) {
+            // only use the derivative w.r.t. time if free time optimization (see "@note 1")
+            for (auto& dr_dT: problem.boundary->layout.r[r_index].jac.dT) {
+                curr_jac[nnz_index++] = problem.mr_jac(dr_dT.buf_index);
+            }
+        }
     }
     assert(nnz_index == get_nnz_jac());
 };
 
-void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
+void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes, const FixedVector<f64>& curr_lambda, f64 curr_obj_factor) {
     curr_hes.fill_zero();
 
     for (int i = 0; i < mesh->intervals; i++) {
@@ -947,41 +1139,41 @@ void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             // make sure to be in the right ptr_map region, B and F are only valid for i,j != n,m
             //                                              D and G are only valid for i,j == n,m
-            const BlockSparsity* ptr_map_xu_xu;
-            const BlockSparsity* ptr_map_p_xu;
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
-                ptr_map_xu_xu = &hes_b_block;
-                ptr_map_p_xu  = &hes_f_block;
+                update_hessian_lfg(problem.full->layout.hes, i, j, hes_b_block, hes_f_block, curr_hes);
+
+            } else {
+                update_hessian_lfg(problem.full->layout.hes, i, j, hes_d_block, hes_g_block, curr_hes);
             }
-            else {
-                ptr_map_xu_xu = &hes_d_block;
-                ptr_map_p_xu  = &hes_g_block;
+
+            if (spectral_mesh) {
+                // d{Lf} / { d{t0, tf} d{x_ij, u_ij, p}}
+                update_hessian_lagrangian_gradient_lf(i, j, curr_hes, curr_lambda, curr_obj_factor);
             }
-            update_hessian_lfg(problem.full->layout.hes, i, j, ptr_map_xu_xu, ptr_map_p_xu, curr_hes);
         }
     }
     update_parameter_hessian_lfg(problem.full->layout.pp_hes, curr_hes);
     update_hessian_mr(problem.boundary->layout.hes, curr_hes);
 }
 
-void GDOP::update_hessian_lfg(const HessianLFG& hes, const int i, const int j,
-                                        const BlockSparsity* ptr_map_xu_xu, const BlockSparsity* ptr_map_p_xu,
-                                        FixedVector<f64>& curr_hes) {
-    const int block_count = mesh->acc_nodes[i][j];
+void GDOP::update_hessian_lfg(const HessianLFG& hes, int interval_i, int node_j,
+                              const BlockSparsity& ptr_map_xu_xu, const BlockSparsity& ptr_map_p_xu,
+                              FixedVector<f64>& curr_hes) {
+    const int block_count = mesh->acc_nodes[interval_i][node_j];
     for (const auto& dx_dx : hes.dx_dx) {
-        curr_hes[ptr_map_xu_xu->access(dx_dx.row, dx_dx.col, block_count)] += problem.lfg_hes(dx_dx.buf_index, i, j);
+        curr_hes[ptr_map_xu_xu.access(dx_dx.row, dx_dx.col, block_count)] += problem.lfg_hes(dx_dx.buf_index, interval_i, node_j);
     }
     for (const auto& du_dx : hes.du_dx) {
-        curr_hes[ptr_map_xu_xu->access(off_x + du_dx.row, du_dx.col, block_count)] += problem.lfg_hes(du_dx.buf_index, i, j);
+        curr_hes[ptr_map_xu_xu.access(off_x + du_dx.row, du_dx.col, block_count)] += problem.lfg_hes(du_dx.buf_index, interval_i, node_j);
     }
     for (const auto& du_du : hes.du_du) {
-        curr_hes[ptr_map_xu_xu->access(off_x + du_du.row, off_x + du_du.col, block_count)] += problem.lfg_hes(du_du.buf_index, i, j);
+        curr_hes[ptr_map_xu_xu.access(off_x + du_du.row, off_x + du_du.col, block_count)] += problem.lfg_hes(du_du.buf_index, interval_i, node_j);
     }
     for (const auto& dp_dx : hes.dp_dx) {
-        curr_hes[ptr_map_p_xu->access(dp_dx.row, dp_dx.col, block_count)] += problem.lfg_hes(dp_dx.buf_index, i, j);
+        curr_hes[ptr_map_p_xu.access(dp_dx.row, dp_dx.col, block_count)] += problem.lfg_hes(dp_dx.buf_index, interval_i, node_j);
     }
     for (const auto& dp_du : hes.dp_du) {
-        curr_hes[ptr_map_p_xu->access(dp_du.row, off_x + dp_du.col, block_count)] += problem.lfg_hes(dp_du.buf_index, i, j);
+        curr_hes[ptr_map_p_xu.access(dp_du.row, off_x + dp_du.col, block_count)] += problem.lfg_hes(dp_du.buf_index, interval_i, node_j);
     }
 }
 
@@ -1011,19 +1203,88 @@ void GDOP::update_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes) {
         curr_hes[hes_d_block.access(off_x + duf_duf.row, off_x + duf_duf.col)] += problem.mr_hes(duf_duf.buf_index);
     }
     for (const auto& dp_dx0 : hes.dp_dx0) {
-        curr_hes[hes_e_block.access(dp_dx0.row, dp_dx0.col)]  += problem.mr_hes(dp_dx0.buf_index);
+        curr_hes[hes_e_block.access(dp_dx0.row, dp_dx0.col)] += problem.mr_hes(dp_dx0.buf_index);
     }
     for (const auto& dp_dxf : hes.dp_dxf) {
-        curr_hes[hes_g_block.access(dp_dxf.row, dp_dxf.col)]  += problem.mr_hes(dp_dxf.buf_index);
+        curr_hes[hes_g_block.access(dp_dxf.row, dp_dxf.col)] += problem.mr_hes(dp_dxf.buf_index);
     }
     for (const auto& dp_duf : hes.dp_duf) {
-        curr_hes[hes_g_block.access(dp_duf.row, off_x + dp_duf.col)]  += problem.mr_hes(dp_duf.buf_index);
+        curr_hes[hes_g_block.access(dp_duf.row, off_x + dp_duf.col)] += problem.mr_hes(dp_duf.buf_index);
     }
     for (const auto& dp_dp : hes.dp_dp) {
-        curr_hes[hes_h_block.access(dp_dp.row, dp_dp.col)]   += problem.mr_hes(dp_dp.buf_index);
+        curr_hes[hes_h_block.access(dp_dp.row, dp_dp.col)] += problem.mr_hes(dp_dp.buf_index);
+    }
+
+    if (spectral_mesh) {
+        for (const auto& dT_dx0 : hes.dT_dx0) {
+            curr_hes[hes_i_block.access(dT_dx0.row, dT_dx0.col)] += problem.mr_hes(dT_dx0.buf_index);
+        }
+        for (const auto& dT_dxf : hes.dT_dxf) {
+            curr_hes[hes_k_block.access(dT_dxf.row, dT_dxf.col)] += problem.mr_hes(dT_dxf.buf_index);
+        }
+        for (const auto& dT_duf : hes.dT_duf) {
+            curr_hes[hes_k_block.access(dT_duf.row, off_x + dT_duf.col)] += problem.mr_hes(dT_duf.buf_index);
+        }
+        for (const auto& dT_dT : hes.dT_dT) {
+            curr_hes[hes_l_block.access(dT_dT.row, dT_dT.col)] += problem.mr_hes(dT_dT.buf_index);
+        }
     }
 }
 
+/**
+ * @brief Adds the cross terms (d{t0, tf} d{x, u, p}) of the dynamic constraints + Lagrange term to the Lagrangian Hessian
+ *
+ * @note The GDOP contains L and f that have the structure: some_constant * deltaT * {L, f}(x, u, p),
+ *       we get the cross term Hessian of these constraints as sum_{phi_i = all functions f and L} dual_i * constant_i * delta_T' * d{phi_i} / d_{x, u, p}
+ *       So w.r.t. tf and t0 we get: sum_{phi_i = all functions f and L} +- dual_i * tau_i * constant_i * d{phi_i} / d_{x, u, p}
+ *       Clearly, this is a scaled gradient of the (we call) `partial Lagrangian`: obj_factor * L(x, u, p) + lambda^T * f(x, u, p)!
+ * @note g is not multiplied with deltaT, so it doesnt appear in this partial Lagrangian
+ */
+void GDOP::update_hessian_lagrangian_gradient_lf(int interval_i,
+                                                 int node_j,
+                                                 FixedVector<f64>& curr_hes,
+                                                 const FixedVector<f64>& curr_lambda,
+                                                 f64 curr_obj_factor)
+{
+    const int block_count = mesh->acc_nodes[interval_i][node_j];
+    const auto& layout = problem.full->layout;
+
+    if (problem.pc->has_lagrange) {
+        f64 factor_tf = curr_obj_factor * spectral_mesh->delta_tau(interval_i) * fLGR::get_b(mesh->nodes[interval_i], node_j); // must be without minus sign!!
+        update_hessian_lagrangian_gradient_lf_jac(block_count, interval_i, node_j, factor_tf, layout.L->jac, curr_hes);
+    }
+
+    for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
+        f64 factor_tf = -curr_lambda[off_acc_fg[interval_i][node_j] + f_index] * spectral_mesh->delta_tau(interval_i); // must be with minus sign!!
+        update_hessian_lagrangian_gradient_lf_jac(block_count, interval_i, node_j, factor_tf, layout.f[f_index].jac, curr_hes);
+    }
+}
+
+void GDOP::update_hessian_lagrangian_gradient_lf_jac(int block_count,
+                                                     int interval_i,
+                                                     int node_j,
+                                                     f64 factor_tf, // factor_t0 = -factor_tf
+                                                     const JacobianLFG& jac,
+                                                     FixedVector<f64>& curr_hes)
+{
+    for (auto& ddx : jac.dx) {
+        f64 res_tf = factor_tf * problem.lfg_jac(ddx.buf_index, interval_i, node_j);
+        curr_hes[hes_j_block.access(/* t0 */ 0, ddx.col, block_count)] -= res_tf;
+        curr_hes[hes_j_block.access(/* tf */ 1, ddx.col, block_count)] += res_tf;
+    }
+
+    for (auto& ddu : jac.du) {
+        f64 res_tf = factor_tf * problem.lfg_jac(ddu.buf_index, interval_i, node_j);
+        curr_hes[hes_j_block.access(/* t0 */ 0, ddu.col + off_x, block_count)] -= res_tf;
+        curr_hes[hes_j_block.access(/* tf */ 1, ddu.col + off_x, block_count)] += res_tf;
+    }
+
+    for (auto& ddp : jac.dp) {
+        f64 res_tf = factor_tf * problem.lfg_jac(ddp.buf_index, interval_i, node_j);
+        curr_hes[hes_k_block.access(/* t0 */ 0, ddp.col, block_count)] -= res_tf;
+        curr_hes[hes_k_block.access(/* tf */ 1, ddp.col, block_count)] += res_tf;
+    }
+}
 
 // === Optimal Solution Retrieval and Costate Estimations ===
 
@@ -1079,8 +1340,14 @@ void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVecto
             index++;
         }
     }
+
     for (int p_index = 0; p_index < off_p; p_index++) {
         flat_buffer[off_xu_total + p_index] = trajectory.p[p_index];
+    }
+
+    if (spectral_mesh) {
+        flat_buffer[off_xup_total] = trajectory.t.front();
+        flat_buffer[off_xup_total + 1] = trajectory.t.back();
     }
 }
 

@@ -399,7 +399,7 @@ GDOP::Problem create_gdop_problem(c_problem_t* c_problem, std::shared_ptr<Trajec
     auto mesh = Mesh::create_equidistant_fixed_stages(
         /* t0 */        T_fixed[0] ? *T_fixed[0] : 0.5 * (T_bounds[0].lb + T_bounds[0].ub),
         /* tf */        T_fixed[1] ? *T_fixed[1] : 0.5 * (T_bounds[1].lb + T_bounds[1].ub),
-        /* intervals */ 25, // TODO: add to C struct
+        /* intervals */  50, // TODO: add to C struct
         /* stages */     7, // TODO: add to C struct
         /* type */      (T_fixed[0] && T_fixed[1]) ? MeshType::Physical : MeshType::Spectral
     );
@@ -410,10 +410,10 @@ GDOP::Problem create_gdop_problem(c_problem_t* c_problem, std::shared_ptr<Trajec
         std::move(x_bounds),
         std::move(u_bounds),
         std::move(p_bounds),
-        T_bounds,
+        std::move(T_bounds),
         std::move(x0_fixed),
         std::move(xf_fixed),
-        T_fixed,
+        std::move(T_fixed),
         std::move(r_bounds),
         std::move(g_bounds),
         *mesh

@@ -261,7 +261,7 @@ public:
     virtual void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf) = 0;
 
    /* lambdas are exact multipliers (no transform needed) to [r]
-    * mayer_factor is eact multiplier (no transform needed) of M */
+    * mayer_factor is exact multiplier (no transform needed) of M */
     virtual void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf, const f64 mayer_factor, const f64* lambda) = 0;
 
     inline f64* get_eval_buffer() {

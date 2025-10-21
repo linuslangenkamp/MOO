@@ -95,10 +95,13 @@ protected:
 class MOO_EXPORT SpectralMesh : public Mesh {
     friend Mesh;
 
+public:
     void update_physical_from_spectral(f64 new_t0, f64 new_tf);
+    inline f64 delta_tau(int interval_i) { return spectral_delta_t[interval_i]; };
 
-protected:
-    FixedVector<f64> spectral_grid;  // nominal grid [t0 = 0, ..., tf = 1]
+private:
+    FixedVector<f64> spectral_grid;    // nominal grid [t0 = 0, ..., tf = 1]
+    FixedVector<f64> spectral_delta_t; // step size h = delta tau for each interval
 
     SpectralMesh(int intervals,
                  f64 t0,
@@ -109,7 +112,8 @@ protected:
                  FixedVector<int>&& nodes,
                  FixedField<int, 2>&& acc_nodes,
                  int node_count,
-                 FixedVector<f64>&& spectral_grid);
+                 FixedVector<f64>&& spectral_grid,
+                 FixedVector<f64>&& spectral_delta_t);
 
     // virtual static constructor
     std::shared_ptr<Mesh> create_same_type(
