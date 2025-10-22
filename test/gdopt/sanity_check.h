@@ -18,17 +18,17 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef MOO_C_GDOPT_GENERATED
-#define MOO_C_GDOPT_GENERATED
+#ifndef MOO_C_SANITY_CHECK
+#define MOO_C_SANITY_CHECK
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int main_generated(int argc, char** argv);
+int main_sanity_check(int argc, char** argv);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // MOO_C_GDOPT_GENERATED
+#endif // MOO_C_SANITY_CHECK

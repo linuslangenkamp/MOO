@@ -173,50 +173,124 @@ void layout_mr_init_jac(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_pro
         else if (col < 2 * c_problem->x_size + c_problem->u_size) {
             fn.jac.duf.push_back(JacobianSparsity{col - 2 * c_problem->x_size, buf_index});
         }
-        else {
+        else if (col < 2 * c_problem->x_size + c_problem->u_size + c_problem->p_size) {
             fn.jac.dp.push_back(JacobianSparsity{col - (2 * c_problem->x_size + c_problem->u_size), buf_index});
+        }
+        else {
+            fn.jac.dT.push_back(JacobianSparsity{col - (2 * c_problem->x_size + c_problem->u_size + c_problem->p_size), buf_index});
         }
     }
 }
 
+// TODO: add safety check :: check validty of provided c_problem!!
+// TODO: add a representive test example that has every constraint available + free / fixed time!
+
 void layout_mr_init_hes(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem){
-    for (int nz = 0; nz < c_problem->lfg_lt_hes->nnz; nz++) {
-        int row = c_problem->lfg_lt_hes->row[nz];
-        int col = c_problem->lfg_lt_hes->col[nz];
-        int buf_index = c_problem->lfg_lt_hes->buf_index[nz];
+    const int xs = c_problem->x_size;
+    const int us = c_problem->u_size;
+    const int ps = c_problem->p_size;
+    const int Ts = 2;
+
+    // offsets for each block in the flat variable ordering x0, xf, uf, p, T
+    const int off_x0 = 0;
+    const int off_xf = off_x0 + xs;
+    const int off_uf = off_xf + xs;
+    const int off_p  = off_uf + us;
+    const int off_T  = off_p + ps;
+
+    const int total_vars = off_T + Ts;
+
+    for (int nz = 0; nz < c_problem->mr_lt_hes->nnz; nz++) {
+        int row = c_problem->mr_lt_hes->row[nz];
+        int col = c_problem->mr_lt_hes->col[nz];
+        int buf_index = c_problem->mr_lt_hes->buf_index[nz];
         auto& hes = layout_mr.hes;
 
-        assert(row >= col && " Hessian must be supplied in lower triangular form: row >= col index.");
+        if (row < col) {
+            Log::error("Hessian must be supplied in lower triangular form: row >= col.");
+            std::abort();
+        }
 
-        if (row < c_problem->x_size && col < c_problem->x_size) {
-            hes.dx0_dx0.push_back({row, col, buf_index});
+        if (!(row >= 0 && row < total_vars)) {
+            Log::error("Hessian row out of range.");
+            std::abort();
         }
-        else if (row < 2 * c_problem->x_size && col < c_problem->x_size) {
-            hes.dxf_dx0.push_back({row - c_problem->x_size, col, buf_index});
+
+        if (!(col >= 0 && col < total_vars)) {
+            Log::error("Hessian col out of range.");
+            std::abort();
         }
-        else if (row < 2 * c_problem->x_size + c_problem->u_size && col < c_problem->x_size) {
-            hes.duf_dx0.push_back({row - 2 * c_problem->x_size, col, buf_index});
+
+        enum Region {
+            X0 = 0,
+            XF = 1,
+            UF = 2,
+            P  = 3,
+            T  = 4
+        };
+
+        auto region_of = [&](int idx) -> Region {
+            if (idx < off_xf) return X0;
+            if (idx < off_uf) return XF;
+            if (idx < off_p ) return UF;
+            if (idx < off_T ) return P;
+            return T;
+        };
+
+        int row_reg = region_of(row);
+        int col_reg = region_of(col);
+
+        if (row_reg == X0 && col_reg == X0) {
+            hes.dx0_dx0.push_back({row - off_x0, col - off_x0, buf_index});
         }
-        else if (col < c_problem->x_size) {
-            hes.dp_dx0.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col, buf_index});
+
+        else if (row_reg == XF && col_reg == X0) {
+            hes.dxf_dx0.push_back({row - off_xf, col - off_x0, buf_index});
         }
-        else if (row < 2 * c_problem->x_size && col < 2 * c_problem->x_size) {
-            hes.dxf_dxf.push_back({row - c_problem->x_size, col - c_problem->x_size, buf_index});
+        else if (row_reg == XF && col_reg == XF) {
+            hes.dxf_dxf.push_back({row - off_xf, col - off_xf, buf_index});
         }
-        else if (row < 2 * c_problem->x_size + c_problem->u_size && col < 2 * c_problem->x_size) {
-            hes.duf_dxf.push_back({row - 2 * c_problem->x_size, col - c_problem->x_size, buf_index});
+
+        else if (row_reg == UF && col_reg == X0) {
+            hes.duf_dx0.push_back({row - off_uf, col - off_x0, buf_index});
         }
-        else if (col < 2 * c_problem->x_size) {
-            hes.dp_dxf.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - c_problem->x_size, buf_index});
+        else if (row_reg == UF && col_reg == XF) {
+            hes.duf_dxf.push_back({row - off_uf, col - off_xf, buf_index});
         }
-        else if (row < 2 * c_problem->x_size + c_problem->u_size && col < 2 * c_problem->x_size + c_problem->u_size) {
-            hes.duf_duf.push_back({row - 2 * c_problem->x_size, col - 2 * c_problem->x_size, buf_index});
+        else if (row_reg == UF && col_reg == UF) {
+            hes.duf_duf.push_back({row - off_uf, col - off_uf, buf_index});
         }
-        else if (col < 2 * c_problem->x_size + c_problem->u_size) {
-            hes.dp_duf.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - 2 * c_problem->x_size, buf_index});
+
+        else if (row_reg == P && col_reg == X0) {
+            hes.dp_dx0.push_back({row - off_p, col - off_x0, buf_index});
+        }
+        else if (row_reg == P && col_reg == XF) {
+            hes.dp_dxf.push_back({row - off_p, col - off_xf, buf_index});
+        }
+        else if (row_reg == P && col_reg == UF) {
+            hes.dp_duf.push_back({row - off_p, col - off_uf, buf_index});
+        }
+        else if (row_reg == P && col_reg == P) {
+            hes.dp_dp.push_back({row - off_p, col - off_p, buf_index});
+        }
+
+        else if (row_reg == T && col_reg == X0) {
+            hes.dT_dx0.push_back({row - off_T, col - off_x0, buf_index});
+        }
+        else if (row_reg == T && col_reg == XF) {
+            hes.dT_dxf.push_back({row - off_T, col - off_xf, buf_index});
+        }
+        else if (row_reg == T && col_reg == UF) {
+            hes.dT_duf.push_back({row - off_T, col - off_uf, buf_index});
+        }
+        else if (row_reg == T && col_reg == P) {
+            hes.dT_dp.push_back({row - off_T, col - off_p, buf_index});
+        }
+        else if (row_reg == T && col_reg == T) {
+            hes.dT_dT.push_back({row - off_T, col - off_T, buf_index});
         }
         else {
-            hes.dp_dp.push_back({row - (2 * c_problem->x_size + c_problem->u_size), col - (2 * c_problem->x_size + c_problem->u_size), buf_index});
+            Log::error("Unhandled Hessian block case. This error should be inaccessible.");
         }
     }
 }
@@ -265,13 +339,15 @@ void FullSweep::callback_hes(
     const FixedField<f64, 2>& lagrange_factors,
     const f64* lambda)
 {
+    const bool has_lagr = c_problem->has_lagrange;
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             const f64* data_ij = get_data_ij(i, j);
             const f64* lmbd_ij = get_lambda_ij(lambda, i, j);
             f64* hes_buffer = get_hes_buffer(i, j);
-            c_callbacks->hes_lfg(xu_ij, p, lmbd_ij, lagrange_factors[i][j], pc.mesh->t[i][j], data_ij, hes_buffer, c_problem->user_data);
+            c_callbacks->hes_lfg(xu_ij, p, lmbd_ij, has_lagr ? lagrange_factors[i][j] : 0,
+                                 pc.mesh->t[i][j], data_ij, hes_buffer, c_problem->user_data);
         }
     }
 }
@@ -399,8 +475,8 @@ GDOP::Problem create_gdop_problem(c_problem_t* c_problem, std::shared_ptr<Trajec
     auto mesh = Mesh::create_equidistant_fixed_stages(
         /* t0 */        T_fixed[0] ? *T_fixed[0] : 0.5 * (T_bounds[0].lb + T_bounds[0].ub),
         /* tf */        T_fixed[1] ? *T_fixed[1] : 0.5 * (T_bounds[1].lb + T_bounds[1].ub),
-        /* intervals */  50, // TODO: add to C struct
-        /* stages */     7, // TODO: add to C struct
+        /* intervals */ c_problem->mesh_ctx->initial_intervals,
+        /* stages */    c_problem->mesh_ctx->nodes_per_interval,
         /* type */      (T_fixed[0] && T_fixed[1]) ? MeshType::Physical : MeshType::Spectral
     );
 

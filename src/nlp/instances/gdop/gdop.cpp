@@ -752,8 +752,8 @@ void GDOP::get_hes_sparsity(
             // init J hessian pattern O(node_count * (#x + #u))
             hes_j_block.row_offset_prev[t_index] = hes_nnz_counter; // I_{t_index, :} offset
             const int len = off_xu * mesh->node_count;
-            std::fill(&i_row_hes[hes_nnz_counter], &i_row_hes[hes_nnz_counter + len], off_xup_total + t_index);
-            std::iota(&j_col_hes[hes_nnz_counter], &j_col_hes[hes_nnz_counter + len], off_x);
+            std::fill(&i_row_hes[hes_nnz_counter], /* care: too far ptr */ &i_row_hes[hes_nnz_counter] + len, off_xup_total + t_index);
+            std::iota(&j_col_hes[hes_nnz_counter], /* care: too far ptr */ &j_col_hes[hes_nnz_counter] + len, off_x);
             hes_nnz_counter += len;
 
             while (k_index < K_flat.int_size() && K_flat[k_index].first == t_index) {

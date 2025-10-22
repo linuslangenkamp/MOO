@@ -51,6 +51,16 @@ typedef struct coo_t {
     int nnz;         // total nnz
 } coo_t;
 
+// TODO: refactor how we supply information: YAML or is this C-interface just a blueprint for python callbacks?
+// context the mesh refinement procedure (for now)
+typedef struct mesh_ref_ctx_t {
+    int initial_intervals;
+    int nodes_per_interval;
+    int l2bn_p1_it;
+    int l2bn_p2_it;
+    f64 l2bn_p2_lvl;
+} mesh_ref_ctx_t;
+
 typedef struct c_callbacks_t {
     void (*eval_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
     void (*jac_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
@@ -115,6 +125,10 @@ typedef struct c_problem_t {
     coo_t* ode_jac;
 
     c_callbacks_t* callbacks;
+
+    // make this more general
+    mesh_ref_ctx_t* mesh_ctx;
+
     void* user_data;
 
 // private

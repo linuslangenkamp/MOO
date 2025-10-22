@@ -65,7 +65,7 @@ int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
     strategies->initialization = std::make_shared<GDOP::SimulationInitialization>(strategies->initialization, strategies->simulation);
     strategies->verifier = std::make_shared<GDOP::SimulationVerifier>(GDOP::SimulationVerifier(strategies->simulation, Linalg::Norm::NORM_INF, std::move(tolerances)));
     strategies->emitter = std::make_shared<GDOP::CSVEmitter>("optimal_solution.csv", false);
-    strategies->mesh_refinement = std::make_shared<GDOP::L2BoundaryNorm>(0, 10, 0.0);
+    strategies->mesh_refinement = std::make_shared<GDOP::L2BoundaryNorm>(c_problem->mesh_ctx->l2bn_p1_it, c_problem->mesh_ctx->l2bn_p2_it, c_problem->mesh_ctx->l2bn_p2_lvl);
 
     auto gdop = GDOP::GDOP(problem);
 
