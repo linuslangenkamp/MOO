@@ -226,15 +226,15 @@ private:
     void update_curr_lambda_obj_factors(const FixedVector<f64>& curr_lambda, f64 curr_obj_factor);
 
     // hessian updates
-    void update_hessian_lfg(const HessianLFG& hes, int interval_i, int node_j,
-                            const BlockSparsity& ptr_map_xu_xu, const BlockSparsity& ptr_map_p_xu,
-                            FixedVector<f64>& curr_hes);
-    void update_parameter_hessian_lfg(const ParameterHessian& pp_hes, FixedVector<f64>& curr_hes); // sum of all weighted Hessian(Lfg)_pp
-    void update_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes);
-    void update_hessian_lagrangian_gradient_lf(int interval_i, int node_j, FixedVector<f64>& curr_hes,
-                                               const FixedVector<f64>& curr_lambda, f64 curr_obj_factor);
-    void update_hessian_lagrangian_gradient_lf_jac(int block_count, int interval_i, int node_j,
-                                                   f64 factor_tf, const JacobianLFG& jac, FixedVector<f64>& curr_hes);
+    void accumulate_hessian_lfg(const HessianLFG& hes, int interval_i, int node_j,
+                                const BlockSparsity& ptr_map_xu_xu, const BlockSparsity& ptr_map_p_xu,
+                                FixedVector<f64>& curr_hes);
+    void accumulate_hessian_parameter_lfg(const ParameterHessian& pp_hes, FixedVector<f64>& curr_hes); // sum of all weighted Hessian(Lfg)_pp
+    void accumulate_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes);
+    void accumulate_hessian_from_lagrangian_gradient_lf(int interval_i, int node_j, FixedVector<f64>& curr_hes,
+                                                        const FixedVector<f64>& curr_lambda, f64 curr_obj_factor);
+    void accumulate_hessian_from_lagrangian_gradient_lf_jac(int block_count, int interval_i, int node_j,
+                                                            f64 factor_tf, const JacobianLFG& jac, FixedVector<f64>& curr_hes);
     // === callbacks to continuous problem (fill problem buffers) ===
 
     void callback_evaluation(const FixedVector<f64>& curr_x);
