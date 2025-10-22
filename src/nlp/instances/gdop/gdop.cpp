@@ -1162,25 +1162,25 @@ void GDOP::eval_hes_internal(FixedVector<f64>& curr_hes, const FixedVector<f64>&
             // make sure to be in the right ptr_map region, B and F are only valid for i,j != n,m
             //                                              D and G are only valid for i,j == n,m
             if (!(i == mesh->intervals - 1 && j == mesh->nodes[mesh->intervals - 1] - 1)) {
-                update_hessian_lfg(problem.full->layout.hes, i, j, hes_b_block, hes_f_block, curr_hes);
+                accumulate_hessian_lfg(problem.full->layout.hes, i, j, hes_b_block, hes_f_block, curr_hes);
 
             } else {
-                update_hessian_lfg(problem.full->layout.hes, i, j, hes_d_block, hes_g_block, curr_hes);
+                accumulate_hessian_lfg(problem.full->layout.hes, i, j, hes_d_block, hes_g_block, curr_hes);
             }
 
             if (spectral_mesh) {
                 // d{Lf} / { d{t0, tf} d{x_ij, u_ij, p}}
-                update_hessian_lagrangian_gradient_lf(i, j, curr_hes, curr_lambda, curr_obj_factor);
+                accumulate_hessian_from_lagrangian_gradient_lf(i, j, curr_hes, curr_lambda, curr_obj_factor);
             }
         }
     }
-    update_parameter_hessian_lfg(problem.full->layout.pp_hes, curr_hes);
-    update_hessian_mr(problem.boundary->layout.hes, curr_hes);
+    accumulate_hessian_parameter_lfg(problem.full->layout.pp_hes, curr_hes);
+    accumulate_hessian_mr(problem.boundary->layout.hes, curr_hes);
 }
 
-void GDOP::update_hessian_lfg(const HessianLFG& hes, int interval_i, int node_j,
-                              const BlockSparsity& ptr_map_xu_xu, const BlockSparsity& ptr_map_p_xu,
-                              FixedVector<f64>& curr_hes) {
+void GDOP::accumulate_hessian_lfg(const HessianLFG& hes, int interval_i, int node_j,
+                                  const BlockSparsity& ptr_map_xu_xu, const BlockSparsity& ptr_map_p_xu,
+                                  FixedVector<f64>& curr_hes) {
     const int block_count = mesh->acc_nodes[interval_i][node_j];
     for (const auto& dx_dx : hes.dx_dx) {
         curr_hes[ptr_map_xu_xu.access(dx_dx.row, dx_dx.col, block_count)] += problem.lfg_hes(dx_dx.buf_index, interval_i, node_j);
@@ -1199,13 +1199,13 @@ void GDOP::update_hessian_lfg(const HessianLFG& hes, int interval_i, int node_j,
     }
 }
 
-void GDOP::update_parameter_hessian_lfg(const ParameterHessian& pp_hes, FixedVector<f64>& curr_hes) {
+void GDOP::accumulate_hessian_parameter_lfg(const ParameterHessian& pp_hes, FixedVector<f64>& curr_hes) {
     for (const auto& dp_dp : pp_hes.dp_dp) {
         curr_hes[hes_h_block.access(dp_dp.row, dp_dp.col)] += problem.lfg_pp_hes(dp_dp.buf_index);
     }
 }
 
-void GDOP::update_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes) {
+void GDOP::accumulate_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes) {
     for (const auto& dx0_dx0 : hes.dx0_dx0) {
         curr_hes[hes_a_block.access(dx0_dx0.row, dx0_dx0.col)] += problem.mr_hes(dx0_dx0.buf_index);
     }
@@ -1262,32 +1262,32 @@ void GDOP::update_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_hes) {
  *       Clearly, this is a scaled gradient of the (we call) `partial Lagrangian`: obj_factor * L(x, u, p) + lambda^T * f(x, u, p)!
  * @note g is not multiplied with deltaT, so it doesnt appear in this partial Lagrangian
  */
-void GDOP::update_hessian_lagrangian_gradient_lf(int interval_i,
-                                                 int node_j,
-                                                 FixedVector<f64>& curr_hes,
-                                                 const FixedVector<f64>& curr_lambda,
-                                                 f64 curr_obj_factor)
+void GDOP::accumulate_hessian_from_lagrangian_gradient_lf(int interval_i,
+                                                          int node_j,
+                                                          FixedVector<f64>& curr_hes,
+                                                          const FixedVector<f64>& curr_lambda,
+                                                          f64 curr_obj_factor)
 {
     const int block_count = mesh->acc_nodes[interval_i][node_j];
     const auto& layout = problem.full->layout;
 
     if (problem.pc->has_lagrange) {
         f64 factor_tf = curr_obj_factor * spectral_mesh->delta_tau(interval_i) * fLGR::get_b(mesh->nodes[interval_i], node_j); // must be without minus sign!!
-        update_hessian_lagrangian_gradient_lf_jac(block_count, interval_i, node_j, factor_tf, layout.L->jac, curr_hes);
+        accumulate_hessian_from_lagrangian_gradient_lf_jac(block_count, interval_i, node_j, factor_tf, layout.L->jac, curr_hes);
     }
 
     for (int f_index = 0; f_index < problem.pc->f_size; f_index++) {
         f64 factor_tf = -curr_lambda[off_acc_fg[interval_i][node_j] + f_index] * spectral_mesh->delta_tau(interval_i); // must be with minus sign!!
-        update_hessian_lagrangian_gradient_lf_jac(block_count, interval_i, node_j, factor_tf, layout.f[f_index].jac, curr_hes);
+        accumulate_hessian_from_lagrangian_gradient_lf_jac(block_count, interval_i, node_j, factor_tf, layout.f[f_index].jac, curr_hes);
     }
 }
 
-void GDOP::update_hessian_lagrangian_gradient_lf_jac(int block_count,
-                                                     int interval_i,
-                                                     int node_j,
-                                                     f64 factor_tf, // factor_t0 = -factor_tf
-                                                     const JacobianLFG& jac,
-                                                     FixedVector<f64>& curr_hes)
+void GDOP::accumulate_hessian_from_lagrangian_gradient_lf_jac(int block_count,
+                                                              int interval_i,
+                                                              int node_j,
+                                                              f64 factor_tf, // factor_t0 = -factor_tf
+                                                              const JacobianLFG& jac,
+                                                              FixedVector<f64>& curr_hes)
 {
     for (auto& ddx : jac.dx) {
         f64 res_tf = factor_tf * problem.lfg_jac(ddx.buf_index, interval_i, node_j);
