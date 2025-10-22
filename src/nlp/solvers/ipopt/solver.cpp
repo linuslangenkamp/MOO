@@ -297,7 +297,7 @@ void IpoptSolver::set_settings() {
     if (solver_settings.option_is_true(NLP::Option::IpoptDerivativeTest)) {
         ipdata->app->Options()->SetStringValue("derivative_test", "second-order");
         ipdata->app->Options()->SetNumericValue("derivative_test_tol", 1e-2);
-        ipdata->app->Options()->SetNumericValue("point_perturbation_radius", 0);
+        ipdata->app->Options()->SetNumericValue("point_perturbation_radius", 1e-6);
     }
 }
 

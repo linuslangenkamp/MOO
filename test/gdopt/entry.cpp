@@ -20,10 +20,12 @@
 
 #include <simulation/radau/test.h>
 #include <generated.h>
+#include <sanity_check.h>
 
 #include <base/log.h>
 
 int main(int argc, char** argv) {
     Simulation::radau_wrapper_test();
     main_generated(argc, argv);
+    main_sanity_check(argc, argv);
 }

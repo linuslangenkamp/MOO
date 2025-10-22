@@ -286,10 +286,10 @@ public:
      */
     virtual void finalize_solution(
         f64 MOO_obj,
-        const FixedVector<f64>& MOO_x,
-        const FixedVector<f64>& MOO_lambda,
-        const FixedVector<f64>& MOO_z_lb,
-        const FixedVector<f64>& MOO_z_ub) = 0;
+        const FixedVector<f64>& opt_x,
+        const FixedVector<f64>& opt_lambda,
+        const FixedVector<f64>& opt_z_lb,
+        const FixedVector<f64>& opt_z_ub) = 0;
 
     // ============ Solver API ============
 

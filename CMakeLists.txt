@@ -4,6 +4,7 @@ project(moo LANGUAGES C CXX Fortran)
 set(CMAKE_CXX_STANDARD 17)
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
+option(MOO_WITH_C_INTERFACE "Build MOO with C-interface support" ON)
 option(MOO_WITH_GDOPT "Build MOO with GDOPT support" ON)
 option(MOO_TESTS "Build MOO with test executables" OFF)
 
@@ -26,12 +27,17 @@ else()
     message(STATUS "Using build type: ${CMAKE_BUILD_TYPE}")
 endif()
 
+if (MOO_WITH_GDOPT AND NOT MOO_WITH_C_INTERFACE)
+    message(FATAL_ERROR "Can't build MOO_WITH_GDOPT without MOO_WITH_C_INTERFACE.")
+endif()
+
 add_library(moo SHARED)
 
 target_sources(moo PRIVATE
     # base sources for GDOP and similar problems
     src/base/fLGR.cpp
     src/base/trajectory.cpp
+    src/base/block_sparsity.cpp
     src/base/mesh.cpp
     src/base/timing.cpp
     src/base/log.cpp
@@ -53,9 +59,6 @@ target_sources(moo PRIVATE
     src/nlp/solvers/ipopt/adapter.cpp
     src/nlp/solvers/ipopt/solver.cpp
 
-    # C interface
-    src/interfaces/c/problem.cpp
-
     # Sources to call simulations for C interface
     src/simulation/integrator/integrator_util.cpp
     src/simulation/integrator/integrator.cpp
@@ -63,6 +66,12 @@ target_sources(moo PRIVATE
     src/simulation/radau/radau_integrator.cpp
     src/simulation/radau/test.cpp
 )
+
+if (MOO_WITH_C_INTERFACE)
+    message(STATUS "Building MOO with C interface")
+    # C interface
+    target_sources(moo PRIVATE src/interfaces/c/problem.cpp )
+endif ()
 
 if (MOO_WITH_GDOPT)
     message(STATUS "Building MOO with GDOPT support")
