@@ -229,6 +229,8 @@ SpectralMesh::SpectralMesh(int intervals,
       spectral_grid(std::move(spectral_grid)),
       spectral_delta_t(std::move(spectral_delta_t)) {}
 
+// virtual (pseudo static) SpectralMesh factory
+// is non static for override with derived SpectralMesh
 std::shared_ptr<Mesh> SpectralMesh::create_same_type(
     int intervals,
     f64 t0,
@@ -240,19 +242,21 @@ std::shared_ptr<Mesh> SpectralMesh::create_same_type(
     FixedField<int, 2>&& acc_nodes,
     int node_count) const
 {
-    assert(intervals == spectral_grid.int_size() - 1);
+    assert(intervals == grid.int_size() - 1);
 
-    FixedVector<f64> spectral_grid(grid.size());
+    FixedVector<f64> new_spectral_grid(grid.size());
     f64 invT = 1.0 / (tf - t0);
 
     for (size_t i = 0; i < grid.size(); i++) {
-        spectral_grid[i] = invT * (grid[i] - t0);
+        new_spectral_grid[i] = invT * (grid[i] - t0);
     }
 
-    FixedVector<f64> spectral_delta_t(intervals);
+    FixedVector<f64> new_spectral_delta_t(intervals);
     for (int i = 0; i < intervals; i++) {
-        spectral_delta_t[i] = spectral_grid[i + 1] - spectral_grid[i];
+        new_spectral_delta_t[i] = new_spectral_grid[i + 1] - new_spectral_grid[i];
     }
+
+    assert(new_spectral_delta_t.size() == new_spectral_grid.size() - 1);
 
     return std::shared_ptr<SpectralMesh>(
         new SpectralMesh(
@@ -265,14 +269,17 @@ std::shared_ptr<Mesh> SpectralMesh::create_same_type(
             std::move(nodes),
             std::move(acc_nodes),
             node_count,
-            std::move(spectral_grid),
-            std::move(spectral_delta_t)
+            std::move(new_spectral_grid),
+            std::move(new_spectral_delta_t)
         )
     );
 }
 
 // updates t0, tf, grid, delta_t and t from base Mesh object
 void SpectralMesh::update_physical_from_spectral(f64 new_t0, f64 new_tf) {
+    assert(grid.size() == spectral_grid.size());
+    assert(delta_t.size() == spectral_delta_t.size());
+
     if (new_t0 == t0 && new_tf == tf) {
         return;
     }
@@ -282,7 +289,6 @@ void SpectralMesh::update_physical_from_spectral(f64 new_t0, f64 new_tf) {
 
     f64 len = tf - t0;
 
-    assert(grid.size() == spectral_grid.size());
     for (int i = 0; i < grid.int_size(); i++) {
         grid[i] = t0 + len * spectral_grid[i];
     }

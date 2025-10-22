@@ -197,7 +197,14 @@ void GDOP::get_initial_guess(
         if (initial_guess_primal->inducing_mesh.get() != mesh.get()) {
             initial_guess_primal = std::make_unique<Trajectory>(initial_guess_primal->interpolate_onto_mesh(*mesh));
         }
-        assert(check_time_compatibility(initial_guess_primal->t, {initial_guess_primal->x, initial_guess_primal->u}, *mesh)); // debug only
+
+        /**
+         * debug only: first check tests if traj has inducing mesh, then the provided mesh should be equal to it
+         *            second check tests if time grid are compatible
+         * @note one of both should succeed, else we have a problem!
+         */
+        assert((!initial_guess_primal->inducing_mesh || initial_guess_primal->inducing_mesh == mesh)
+                || check_time_compatibility(initial_guess_primal->t, {initial_guess_primal->x, initial_guess_primal->u}, *mesh));
 
         flatten_trajectory_to_layout(*initial_guess_primal, x_init);
     }
@@ -210,7 +217,14 @@ void GDOP::get_initial_guess(
         if (initial_guess_costate->inducing_mesh.get() != mesh.get()) {
             initial_guess_costate = std::make_unique<CostateTrajectory>(initial_guess_costate->interpolate_onto_mesh(*mesh));
         }
-        assert(check_time_compatibility(initial_guess_costate->t, {initial_guess_costate->costates_f, initial_guess_costate->costates_g}, *mesh)); // debug only
+
+        /**
+         * debug only: first check tests if traj has inducing mesh, then the provided mesh should be equal to it
+         *            second check tests if time grid are compatible
+         * @note one of both should succeed, else we have a problem!
+         */
+        assert((!initial_guess_costate->inducing_mesh || initial_guess_costate->inducing_mesh == mesh)
+                || check_time_compatibility(initial_guess_costate->t, {initial_guess_costate->costates_f, initial_guess_costate->costates_g}, *mesh));
 
         int index = 1; // ignore interpolated costates at t = 0
         for (int i = 0; i < mesh->intervals; i++) {
@@ -245,8 +259,16 @@ void GDOP::get_initial_guess(
             initial_guess_upper_costates = std::make_unique<Trajectory>(initial_guess_upper_costates->interpolate_onto_mesh(*mesh));
         }
 
-        assert(check_time_compatibility(initial_guess_lower_costates->t, {initial_guess_lower_costates->x, initial_guess_lower_costates->u}, *mesh));
-        assert(check_time_compatibility(initial_guess_lower_costates->t, {initial_guess_lower_costates->x, initial_guess_lower_costates->u}, *mesh));
+        /**
+         * debug only: first check tests if traj has inducing mesh, then the provided mesh should be equal to it
+         *            second check tests if time grid are compatible
+         * @note one of both should succeed, else we have a problem!
+         */
+        assert((!initial_guess_lower_costates->inducing_mesh || initial_guess_lower_costates->inducing_mesh == mesh)
+                || check_time_compatibility(initial_guess_lower_costates->t, {initial_guess_lower_costates->x, initial_guess_lower_costates->u}, *mesh));
+
+        assert((!initial_guess_upper_costates->inducing_mesh || initial_guess_upper_costates->inducing_mesh == mesh)
+                || check_time_compatibility(initial_guess_upper_costates->t, {initial_guess_upper_costates->x, initial_guess_upper_costates->u}, *mesh));
 
         flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb_init);
         flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub_init);
