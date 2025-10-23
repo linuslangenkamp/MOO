@@ -247,6 +247,8 @@ void IpoptSolver::set_settings() {
     ipdata->app->Options()->SetStringValue("adaptive_mu_globalization", "kkt-error");
     ipdata->app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
     ipdata->app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
+    ipdata->app->Options()->SetIntegerValue("mumps_print_level", 0); // 2 gives ICNTL options
+    ipdata->app->Options()->SetIntegerValue("mumps_scaling", 77); // -2 during analysis, 0 no, 4 row/col inf norms, 7 equilibrium, 8 stronger equilibrium, 77 automatic
 
     // --- hessian options ---
     NLP::HessianOption hess_opt = solver_settings.get_or_default<NLP::HessianOption>(NLP::Option::Hessian);

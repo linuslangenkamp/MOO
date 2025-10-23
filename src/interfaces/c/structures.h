@@ -64,7 +64,7 @@ typedef struct mesh_ref_ctx_t {
 typedef struct c_callbacks_t {
     void (*eval_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
     void (*jac_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
-    void (*hes_lfg)(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, void* user_data);
+    void (*hes_lfg)(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, f64* out_pp, void* user_data);
     void (*eval_mr)(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,
                     const f64* data_t0, const f64* data_tf, f64* out, void* user_data);
     void (*jac_mr)(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,

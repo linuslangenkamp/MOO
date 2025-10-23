@@ -131,6 +131,7 @@ void layout_lfg_init_hes(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_probl
             hes.dp_du.push_back({row - c_problem->xu_size, col - c_problem->x_size, buf_index});
         }
         else {
+            // Attention: special case -> seperate buffer for pp as we save some memory in this way
             hes_pp.dp_dp.push_back({row - c_problem->xu_size, col - c_problem->xu_size, buf_index});
         }
     }
@@ -309,6 +310,8 @@ void FullSweep::callback_eval(
     const f64* xu_nlp,
     const f64* p)
 {
+    fill_zero_eval_buffer();
+
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
@@ -323,6 +326,8 @@ void FullSweep::callback_jac(
     const f64* xu_nlp,
     const f64* p)
 {
+    fill_zero_jac_buffer();
+
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
@@ -339,6 +344,9 @@ void FullSweep::callback_hes(
     const FixedField<f64, 2>& lagrange_factors,
     const f64* lambda)
 {
+    fill_zero_hes_buffer();
+    fill_zero_pp_hes_buffer();
+
     const bool has_lagr = c_problem->has_lagrange;
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
@@ -346,8 +354,9 @@ void FullSweep::callback_hes(
             const f64* data_ij = get_data_ij(i, j);
             const f64* lmbd_ij = get_lambda_ij(lambda, i, j);
             f64* hes_buffer = get_hes_buffer(i, j);
+            f64* pp_hes_buffer = get_pp_hes_buffer();
             c_callbacks->hes_lfg(xu_ij, p, lmbd_ij, has_lagr ? lagrange_factors[i][j] : 0,
-                                 pc.mesh->t[i][j], data_ij, hes_buffer, c_problem->user_data);
+                                 pc.mesh->t[i][j], data_ij, hes_buffer, pp_hes_buffer, c_problem->user_data);
         }
     }
 }
@@ -359,6 +368,8 @@ void BoundarySweep::callback_eval(
     f64 t0,
     f64 tf)
 {
+    fill_zero_eval_buffer();
+
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
     f64* eval_buf = get_eval_buffer();
@@ -372,6 +383,8 @@ void BoundarySweep::callback_jac(
     f64 t0,
     f64 tf)
 {
+    fill_zero_jac_buffer();
+
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
     f64* jac_buf = get_jac_buffer();
@@ -387,6 +400,8 @@ void BoundarySweep::callback_hes(
     const f64 mayer_factor,
     const f64* lambda)
 {
+    fill_zero_hes_buffer();
+
     const f64* data_t0 = get_data_t0();
     const f64* data_tf = get_data_tf();
     f64* hes_buf = get_hes_buffer();

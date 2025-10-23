@@ -122,6 +122,9 @@ struct MOO_EXPORT OrderedIndexSet {
 
     std::set<std::pair<int, int>, Compare> set;
 
+    // set to true if the block is on the diagonal (e.g. xu + xu, but not p with xu) => enforces row >= col
+    bool is_diag_block = false;
+
     // standard Hessian insertion
     void insert_sparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off);
 
@@ -133,7 +136,8 @@ struct MOO_EXPORT OrderedIndexSet {
         return set.size();
     }
 
-    inline void clear() {
+    inline void clear(bool is_diag) {
+        is_diag_block = is_diag;
         set.clear();
     }
 };

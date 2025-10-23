@@ -18,23 +18,17 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <simulation/radau/test.h>
-#include <generated.h>
-#include <sanity_check.h>
-#include <full_functionality_check.h>
+#ifndef MOO_C_FULL_FUNCTIONALITY
+#define MOO_C_FULL_FUNCTIONALITY
 
-#include <base/log.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-int main(int argc, char** argv) {
-    // simulation test
-    Simulation::radau_wrapper_test();
+int main_full_functionality(int argc, char** argv);
 
-    // test for future generated code
-    //main_generated(argc, argv);
-
-    // sanity check, testing time optimization
-    // main_sanity_check(argc, argv);
-
-    // full functionality test, including all types of constraints + variables + derivative test
-    main_full_functionality(argc, argv);
+#ifdef __cplusplus
 }
+#endif
+
+#endif // MOO_C_FULL_FUNCTIONALITY

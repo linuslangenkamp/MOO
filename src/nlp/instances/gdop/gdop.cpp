@@ -356,15 +356,15 @@ void GDOP::init_hessian_nonzeros(int& nnz_hes) {
         hes_l_block = BlockSparsity::create_lower_triangular(2, BlockType::Exact);
     }
 
-    // clear previous sparsity (may be reused)
-    hes_A_set.clear(); hes_B_set.clear(); hes_C_set.clear(); hes_D_set.clear();
-    hes_E_set.clear(); hes_F_set.clear(); hes_G_set.clear(); hes_H_set.clear();
+    // clear previous sparsity (may be reused) + setting boolean for lower triangular violation asserts
+    hes_A_set.clear(true); hes_B_set.clear(true); hes_C_set.clear(false); hes_D_set.clear(true);
+    hes_E_set.clear(false); hes_F_set.clear(false); hes_G_set.clear(false); hes_H_set.clear(true);
 
     if (spectral_mesh) {
-        hes_I_set.clear();
+        hes_I_set.clear(false);
         // J is dense
-        hes_K_set.clear();
-        hes_L_set.clear();
+        hes_K_set.clear(false);
+        hes_L_set.clear(true);
     }
 
     auto& boundary_hes = problem.boundary->layout.hes;
@@ -1241,11 +1241,14 @@ void GDOP::accumulate_hessian_mr(const HessianMR& hes, FixedVector<f64>& curr_he
         for (const auto& dT_dx0 : hes.dT_dx0) {
             curr_hes[hes_i_block.access(dT_dx0.row, dT_dx0.col)] += problem.mr_hes(dT_dx0.buf_index);
         }
-        for (const auto& dT_dxf : hes.dT_dxf) {
-            curr_hes[hes_k_block.access(dT_dxf.row, dT_dxf.col)] += problem.mr_hes(dT_dxf.buf_index);
+        for (auto& dT_dxf : hes.dT_dxf) {
+            curr_hes[hes_j_block.access(dT_dxf.row, dT_dxf.col, mesh->node_count - 1)] += problem.mr_hes(dT_dxf.buf_index);
         }
         for (const auto& dT_duf : hes.dT_duf) {
-            curr_hes[hes_k_block.access(dT_duf.row, off_x + dT_duf.col)] += problem.mr_hes(dT_duf.buf_index);
+            curr_hes[hes_j_block.access(dT_duf.row, dT_duf.col + off_x, mesh->node_count - 1)] += problem.mr_hes(dT_duf.buf_index);
+        }
+        for (const auto& dT_dp : hes.dT_dp) {
+            curr_hes[hes_k_block.access(dT_dp.row, dT_dp.col)] += problem.mr_hes(dT_dp.buf_index);
         }
         for (const auto& dT_dT : hes.dT_dT) {
             curr_hes[hes_l_block.access(dT_dT.row, dT_dT.col)] += problem.mr_hes(dT_dT.buf_index);
