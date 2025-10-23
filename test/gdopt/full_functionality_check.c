@@ -18,22 +18,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-/**
- * @minimize tf
- *
- * s.t.   x' = -x + u
- *
- * fixed:
- *        x(t0) = 1.5
- *        x(tf) = 1.0
- *           t0 = -0.5
- *
- * variable:
- *     -inf <= x  <= inf
- *     -1.0 <= u  <= 1.0
- *     -0.5 <= tf <= 5.0
- */
-
 #include <interfaces/c/structures.h>
 #include <interfaces/gdopt/main_gdopt.h>
 #include <generated.h>
@@ -42,15 +26,15 @@
 
 #define X_SIZE 1
 #define U_SIZE 1
-#define P_SIZE 0
+#define P_SIZE 1
 
-#define RP_SIZE 0
+#define RP_SIZE 1
 
-#define R_SIZE 0
-#define G_SIZE 0
+#define R_SIZE 1
+#define G_SIZE 1
 
 #define HAS_MAYER true
-#define HAS_LAGRANGE false
+#define HAS_LAGRANGE true
 
 
 #define FILE_COUNT 0
@@ -70,16 +54,16 @@
 
 // === declare global variables (values can be influenced by runtime parameters) ===
 
-static bounds_t globl_x_bounds[X_SIZE] = { { -DBL_MAX, DBL_MAX } };
+static bounds_t globl_x_bounds[X_SIZE] = { { -1, 1 } };
 static bounds_t globl_u_bounds[U_SIZE] = { { -1, 1} };
-static bounds_t globl_p_bounds[P_SIZE];
-static bounds_t globl_T_bounds[2]      = { { -0.5, -0.5 }, { -0.5, 5.0 } };
+static bounds_t globl_p_bounds[P_SIZE] = { { -1, 1} };
+static bounds_t globl_T_bounds[2]      = { { -1.0, -0.5 }, { -0.2, 1.0 } };
 
-static bounds_t globl_g_bounds[G_SIZE];
-static bounds_t globl_r_bounds[R_SIZE];
+static bounds_t globl_g_bounds[G_SIZE] = { {  -5, 5} };
+static bounds_t globl_r_bounds[R_SIZE] = { { -10, 10}};
 
-static optional_value_t globl_x0_fixed[X_SIZE] = { {1.5, true} };
-static optional_value_t globl_xf_fixed[X_SIZE] = { {1,   true} };
+static optional_value_t globl_x0_fixed[X_SIZE] = { {0, false} };
+static optional_value_t globl_xf_fixed[X_SIZE] = { {0, false} };
 
 static f64 globl_x_nominal[X_SIZE];
 static f64 globl_u_nominal[U_SIZE];
@@ -90,7 +74,7 @@ static f64 globl_f_nominal[X_SIZE];
 static f64 globl_g_nominal[G_SIZE];
 static f64 globl_r_nominal[R_SIZE];
 
-static f64 globl_rp[RP_SIZE];
+static f64 globl_rp[RP_SIZE] = { 0.1 };
 
 // === include data from csv-like files ===
 
@@ -99,39 +83,39 @@ static const char* data[FILE_COUNT]; // = { "inputpath.csv" };
 // === optimization sparsity and evaluation structures (compile const) ===
 
 static eval_structure_t globl_lfg_eval = {
-    .buf_index = (int[]){0}
+    .buf_index = (int[]){0, 1, 2}
 };
 
 static coo_t globl_lfg_jac = {
-    .row = (int[]){0, 0},
-    .col = (int[]){X_LFG_IDX(0), U_LFG_IDX(0)},
-    .buf_index = (int[]){0, 1},
-    .nnz = 2
+    .row = (int[]){0, 0, 0, 1, 1, 1, 2, 2, 2},
+    .col = (int[]){0, 1, 2, 0, 1, 2, 0, 1, 2},
+    .buf_index = (int[]){0, 1, 2, 3, 4, 5, 6, 7, 8},
+    .nnz = 9
 };
 
 static coo_t globl_lfg_lt_hes = {
-    .row = (int[]){},
-    .col = (int[]){},
-    .buf_index = (int[]){},
-    .nnz = 0
+    .row = (int[]){      0, 1, 1, 2, 2,                2},
+    .col = (int[]){      0, 0, 1, 0, 1,                2},
+    .buf_index = (int[]){0, 1, 2, 3, 4, /* pp block */ 0},
+    .nnz = 6
 };
 
 static eval_structure_t globl_mr_eval = {
-    .buf_index = (int[]){0}
+    .buf_index = (int[]){0, 1}
 };
 
 static coo_t globl_mr_jac = {
-    .row = (int[]){0},
-    .col = (int[]){TF_MR_IDX},
-    .buf_index = (int[]){},
-    .nnz = 1
+    .row = (int[]){0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1},
+    .col = (int[]){0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,},
+    .buf_index = (int[]){0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+    .nnz = 12
 };
 
 static coo_t globl_mr_lt_hes = {
-    .row = (int[]){},
-    .col = (int[]){},
-    .buf_index = (int[]){},
-    .nnz = 0
+    .row = (int[]){0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5},
+    .col = (int[]){0, 0, 1, 0, 1, 2, 0, 1, 2, 3, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 5},
+    .buf_index = (int[]){0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+    .nnz = 21
 };
 
 // === simulation sparsity & functions ===
@@ -143,35 +127,112 @@ static coo_t globl_ode_jac = {
     .nnz = 1
 };
 
+static f64 lfg_arr[] = { 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9 };
+static f64 mr_arr[] = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1 };
+
 static void ode_eval_f(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* f, void* user_data) {
-    f[0] = -x[0] + u[0];
+    const f64 v[] = { x[0], u[0], p[0] };
+
+    int i = 1;
+    int var_size = 3;
+
+    f64 val = globl_rp[0];
+    for (int j = 0; j < var_size; j++) {
+        for (int k = 0; k < var_size; k++) {
+            val += lfg_arr[i * var_size * var_size + j * var_size + k] * v[j] * v[k];
+        }
+    }
+
+    f[0] = val;
 }
 
-static void ode_jac_f(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* dfdx, void* user_data) {
-    dfdx[0] = -1;
+static void ode_jac_f(const f64* x, const f64* u, const f64* p, f64 t,
+                      const f64* data, f64* dfdx, void* user_data) {
+    const f64 v[] = { x[0], u[0], p[0] };
+
+    int i = 1;
+    int k = 0;
+
+    f64 val = 0.0;
+    for (int j = 0; j < 3; j++) {
+        val += lfg_arr[i * 3 + j] * v[j];
+        val += lfg_arr[j * 3 + k] * v[j];
+    }
+
+    dfdx[0] = val;
 }
 
 // optimization functions
+
+static void fill_eval(const f64* v, f64* out, const f64* buf, int var_size, int func_size) {
+    for (int i = 0; i < func_size; i++) {
+        out[i] = globl_rp[0];
+        for (int j = 0; j < var_size; j++) {
+            for (int k = 0; k < var_size; k++) {
+                out[i] += buf[i * var_size * var_size + j * var_size + k] * v[j] * v[k];
+            }
+        }
+    }
+}
+
+static void fill_jac(const f64* v, f64* out, const f64* buf, int var_size, int func_size) {
+    for (int i = 0; i < func_size; i++) {
+        for (int k = 0; k < var_size; k++) {
+            f64 val = 0.0;
+            for (int j = 0; j < var_size; j++) {
+                val += buf[i * var_size * var_size + j * var_size + k] * v[j];
+                val += buf[i * var_size * var_size + k * var_size + j] * v[j];
+            }
+            out[i * var_size + k] = val;
+        }
+    }
+}
+
+static void fill_hes(const f64* v, const f64* lambda, f64* out, f64* out_pp, const f64* buf,
+                     int var_size, int func_size, int p_idx) {
+    int idx = 0;
+    for (int k = 0; k < var_size; k++) {
+        for (int l = 0; l <= k; l++) {
+            f64 val = 0.0;
+            for (int i = 0; i < func_size; i++) {
+                val += lambda[i] * (buf[i * var_size * var_size + k * var_size + l] +
+                                     buf[i * var_size * var_size + l * var_size + k]);
+            }
+            if (k == p_idx && l == p_idx) {
+                if (out_pp) *out_pp += val;
+            } else {
+                out[idx++] = val;
+            }
+        }
+    }
+}
 
 // [L, f, g]
 static void eval_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data) {
     const f64* x = xu;
     const f64* u = xu + X_SIZE;
+    f64 v[] = { x[0], u[0], p[0] };
 
-    out[0] /* f */ = -x[0] + u[0];
+    fill_eval(v, out, lfg_arr, 3, 3);
 }
 
 // ∇ [L, f, g]
 static void jac_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data) {
     const f64* x = xu;
     const f64* u = xu + X_SIZE;
+    f64 v[] = { x[0], u[0], p[0] };
 
-    out[0] = -1; /* f_x  */
-    out[1] = 1; /* f_u */
+    fill_jac(v, out, lfg_arr, 3, 3);
 }
 
 // σ ∇² L + λ^T ∇² [f, g] (lower triangle)
 static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, f64* out_pp, void* user_data) {
+    const f64* x = xu;
+    const f64* u = xu + X_SIZE;
+    f64 v[] = { x[0], u[0], p[0] };
+    f64 mu[] = { obj_factor, lambda[0], lambda[1] };
+
+    fill_hes(v, mu, out, out_pp, lfg_arr, 3, 3, 2);
 }
 
 // [M, r]
@@ -179,19 +240,30 @@ static void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,
     const f64* xf = xuf;
     const f64* uf = xuf + X_SIZE;
 
-    out[0] = tf;
+    f64 v[] = { x0[0], xf[0], uf[0], p[0], t0, tf };
+
+    fill_eval(v, out, mr_arr, 6, 2);
 }
 
 // ∇ [M, r]
 static void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,
             const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
-    out[0] = 1.0;
+    const f64* xf = xuf;
+    const f64* uf = xuf + X_SIZE;
+
+    f64 v[] = { x0[0], xf[0], uf[0], p[0], t0, tf };
+    fill_jac(v, out, mr_arr, 6, 2);
 }
 
 // σ ∇² M + λ^T ∇² r (lower triangle)
 static void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf,
             const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
+    const f64* xf = xuf;
+    const f64* uf = xuf + X_SIZE;
+    f64 mu[] = { obj_factor, lambda[0] };
 
+    f64 v[] = { x0[0], xf[0], uf[0], p[0], t0, tf };
+    fill_hes(v, mu, out, (void*)0, mr_arr, 6, 2, -1);
 }
 
 // === objects ===
@@ -209,7 +281,7 @@ static c_callbacks_t globl_callbacks = {
 };
 
 static mesh_ref_ctx_t globl_mesh_ctx = {
-    .initial_intervals = 10,
+    .initial_intervals = 3,
     .nodes_per_interval = 3,
     .l2bn_p1_it = 1,
     .l2bn_p2_it = 0,
@@ -257,6 +329,6 @@ static c_problem_t globl_c_problem = {
 };
 
 
-int main_sanity_check(int argc, char** argv) {
+int main_full_functionality(int argc, char** argv) {
     return main_gdopt(argc, argv, &globl_c_problem);
 }

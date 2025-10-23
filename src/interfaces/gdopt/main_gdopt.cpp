@@ -52,7 +52,7 @@ int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
     auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);
     nlp_solver_settings.print();
 
-    // nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
+    nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
 
     // move this into the problem creation!
     auto problem = C::Problem::create(c_problem);

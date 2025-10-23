@@ -14,7 +14,7 @@ jobs:
       fail-fast: true
       matrix:
         setup:
-          - { c: "gcc", cxx: "g++", fortran: "flang-new", generator: "Unix Makefiles" }
+          - { c: "clang", cxx: "clang++", fortran: "flang-new", generator: "Unix Makefiles" }
 
     steps:
       - uses: actions/checkout@v5

@@ -128,6 +128,7 @@ struct MOO_EXPORT FullSweepBuffers {
     const int eval_size = 0;
     const int jac_size = 0;
     const int hes_size = 0;
+    const int pp_hes_size = 0;
 
     FixedVector<f64> eval;
     FixedVector<f64> jac;
@@ -138,10 +139,12 @@ struct MOO_EXPORT FullSweepBuffers {
 
     FullSweepBuffers(FullSweepLayout& layout_lfg,
                      HessianLFG& hes,
+                     ParameterHessian& pp_hes,
                      const ProblemConstants& pc) :
         eval_size(layout_lfg.size()),
         jac_size(layout_lfg.compute_jac_nnz()),
-        hes_size(hes.nnz())
+        hes_size(hes.nnz()),
+        pp_hes_size(pp_hes.nnz())
     {
         resize(*pc.mesh);
     }
@@ -157,7 +160,7 @@ public:
               const ProblemConstants& pc_in)
     : layout(std::move(layout_in)),
       pc(pc_in),
-      buffers(layout, layout.hes, pc) {}
+      buffers(layout, layout.hes, layout.pp_hes, pc) {}
 
     virtual ~FullSweep() = default;
 
@@ -198,6 +201,42 @@ public:
 
     inline f64* get_hes_buffer(int i, int j) {
         return buffers.hes.raw() + buffers.hes_size * pc.mesh->acc_nodes[i][j];
+    }
+
+    inline f64* get_pp_hes_buffer() {
+        return buffers.pp_hes.raw();
+    }
+
+    inline size_t get_eval_buffer_size() {
+        return buffers.eval.size();
+    }
+
+    inline size_t get_jac_buffer_size() {
+        return buffers.jac.size();
+    }
+
+    inline size_t get_hes_buffer_size() {
+        return buffers.hes.size();
+    }
+
+    inline size_t get_hes_pp_buffer_size() {
+        return buffers.pp_hes.size();
+    }
+
+    inline void fill_zero_eval_buffer() {
+        buffers.eval.fill_zero();
+    }
+
+    inline void fill_zero_jac_buffer() {
+        buffers.jac.fill_zero();
+    }
+
+    inline void fill_zero_hes_buffer() {
+        buffers.hes.fill_zero();
+    }
+
+    inline void fill_zero_pp_hes_buffer() {
+        buffers.pp_hes.fill_zero();
     }
 
     void print_jacobian_sparsity_pattern();
@@ -274,6 +313,26 @@ public:
 
     inline f64* get_hes_buffer() {
         return buffers.hes.raw();
+    }
+
+    inline size_t get_eval_buffer_size() {
+        return buffers.eval.size();
+    }
+
+    inline size_t get_jac_buffer_size() {
+        return buffers.jac.size();
+    }
+
+    inline size_t get_hes_buffer_size() {
+        return buffers.hes.size();
+    }
+
+    inline void fill_zero_eval_buffer() {
+        buffers.eval.fill_zero();
+    }
+
+    inline void fill_zero_jac_buffer() {
+        buffers.jac.fill_zero();
     }
 
     inline void fill_zero_hes_buffer() {
