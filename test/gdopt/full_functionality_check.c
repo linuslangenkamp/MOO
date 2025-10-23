@@ -62,8 +62,8 @@ static bounds_t globl_T_bounds[2]      = { { -1.0, -0.5 }, { -0.2, 1.0 } };
 static bounds_t globl_g_bounds[G_SIZE] = { {  -5, 5} };
 static bounds_t globl_r_bounds[R_SIZE] = { { -10, 10}};
 
-static optional_value_t globl_x0_fixed[X_SIZE] = { {0, false} };
-static optional_value_t globl_xf_fixed[X_SIZE] = { {0, false} };
+static optional_value_t globl_x0_fixed[X_SIZE] = { {0.0, false} };
+static optional_value_t globl_xf_fixed[X_SIZE] = { {0.0, false} };
 
 static f64 globl_x_nominal[X_SIZE];
 static f64 globl_u_nominal[U_SIZE];
@@ -130,33 +130,51 @@ static coo_t globl_ode_jac = {
 static f64 lfg_arr[] = { 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9 };
 static f64 mr_arr[] = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1 };
 
-static void ode_eval_f(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* f, void* user_data) {
+static inline int lt_index(int i, int j) {
+    return i * (i + 1) / 2 + j;
+}
+
+static void ode_eval_f(const f64* x, const f64* u, const f64* p, f64 t,
+                       const f64* data, f64* f, void* user_data)
+{
+    const int var_size = 3;
+    const int func_idx = 1;
     const f64 v[] = { x[0], u[0], p[0] };
 
-    int i = 1;
-    int var_size = 3;
+    int terms_per_func = var_size * (var_size + 1) / 2;
+    const f64* b = lfg_arr + func_idx * terms_per_func;
 
-    f64 val = globl_rp[0];
-    for (int j = 0; j < var_size; j++) {
-        for (int k = 0; k < var_size; k++) {
-            val += lfg_arr[i * var_size * var_size + j * var_size + k] * v[j] * v[k];
+    f64 sum = 0.0;
+    for (int i = 0; i < var_size; i++) {
+        int row_off = i * (i + 1) / 2;
+        for (int j = 0; j <= i; j++) {
+            f64 c = b[row_off + j];
+            sum += c * v[i] * v[j];
         }
     }
 
-    f[0] = val;
+    f[0] = sum;
 }
 
-static void ode_jac_f(const f64* x, const f64* u, const f64* p, f64 t,
-                      const f64* data, f64* dfdx, void* user_data) {
+static void ode_jac_f(const f64* x, const f64* u, const f64* p,
+                      f64 t, const f64* data, f64* dfdx, void* user_data)
+{
+    const int func_idx = 1;
+    const int col_idx  = 0;
+    const int var_size = 3;
     const f64 v[] = { x[0], u[0], p[0] };
 
-    int i = 1;
-    int k = 0;
+    const int terms_per_func = var_size * (var_size + 1) / 2;
+    const f64* b = lfg_arr + func_idx * terms_per_func;
 
     f64 val = 0.0;
-    for (int j = 0; j < 3; j++) {
-        val += lfg_arr[i * 3 + j] * v[j];
-        val += lfg_arr[j * 3 + k] * v[j];
+    for (int i = 0; i < var_size; i++) {
+        int row_off = i * (i + 1) / 2;
+        for (int j = 0; j <= i; j++) {
+            f64 c = b[row_off + j];
+            if (i == col_idx) val += c * v[j];
+            if (j == col_idx) val += c * v[i];
+        }
     }
 
     dfdx[0] = val;
@@ -164,40 +182,65 @@ static void ode_jac_f(const f64* x, const f64* u, const f64* p, f64 t,
 
 // optimization functions
 
-static void fill_eval(const f64* v, f64* out, const f64* buf, int var_size, int func_size) {
-    for (int i = 0; i < func_size; i++) {
-        out[i] = globl_rp[0];
-        for (int j = 0; j < var_size; j++) {
-            for (int k = 0; k < var_size; k++) {
-                out[i] += buf[i * var_size * var_size + j * var_size + k] * v[j] * v[k];
+static void fill_eval(const f64* v, f64* out,
+                      const f64* buf, int var_size, int func_size)
+{
+    int terms_per_func = var_size * (var_size + 1) / 2;
+    for (int f = 0; f < func_size; f++) {
+        const f64* b = buf + f * terms_per_func;
+        f64 sum = 0.0;
+        for (int i = 0; i < var_size; i++) {
+            int row_off = i * (i + 1) / 2;
+            for (int j = 0; j <= i; j++) {
+                f64 c = b[row_off + j];
+                sum += c * v[i] * v[j];
             }
         }
+        out[f] = sum;
     }
 }
 
-static void fill_jac(const f64* v, f64* out, const f64* buf, int var_size, int func_size) {
-    for (int i = 0; i < func_size; i++) {
+static void fill_jac(const f64* v, f64* out,
+                     const f64* buf, int var_size, int func_size)
+{
+    int terms_per_func = var_size * (var_size + 1) / 2;
+    for (int f = 0; f < func_size; f++) {
+        const f64* b = buf + f * terms_per_func;
         for (int k = 0; k < var_size; k++) {
             f64 val = 0.0;
-            for (int j = 0; j < var_size; j++) {
-                val += buf[i * var_size * var_size + j * var_size + k] * v[j];
-                val += buf[i * var_size * var_size + k * var_size + j] * v[j];
+            for (int i = 0; i < var_size; ++i) {
+                int row_off = i * (i + 1) / 2;
+                for (int j = 0; j <= i; j++) {
+                    f64 c = b[row_off + j];
+                    if (i == k) val += c * v[j];
+                    if (j == k) val += c * v[i];
+                }
             }
-            out[i * var_size + k] = val;
+            out[f * var_size + k] = val;
         }
     }
 }
 
-static void fill_hes(const f64* v, const f64* lambda, f64* out, f64* out_pp, const f64* buf,
-                     int var_size, int func_size, int p_idx) {
+static void fill_hes(const f64* v, const f64* lambda,
+                     f64* out, f64* out_pp, const f64* buf,
+                     int var_size, int func_size, int p_idx)
+{
+    int terms_per_func = var_size * (var_size + 1) / 2;
     int idx = 0;
     for (int k = 0; k < var_size; k++) {
         for (int l = 0; l <= k; l++) {
             f64 val = 0.0;
-            for (int i = 0; i < func_size; i++) {
-                val += lambda[i] * (buf[i * var_size * var_size + k * var_size + l] +
-                                     buf[i * var_size * var_size + l * var_size + k]);
+            for (int f = 0; f < func_size; f++) {
+                const f64* b = buf + f * terms_per_func;
+                int pos = k * (k + 1) / 2 + l;
+                f64 c = b[pos];
+                if (k == l) {
+                    val += lambda[f] * (2.0 * c);
+                } else {
+                    val += lambda[f] * c;
+                }
             }
+
             if (k == p_idx && l == p_idx) {
                 if (out_pp) *out_pp += val;
             } else {

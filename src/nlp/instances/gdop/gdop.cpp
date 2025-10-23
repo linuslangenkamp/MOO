@@ -125,7 +125,7 @@ void GDOP::get_bounds(
                     x_lb[off_acc_xu[i][j] + x_index] = problem.pc->xf_fixed[x_index] ? *problem.pc->xf_fixed[x_index] : problem.pc->x_bounds[x_index].lb;
                     x_ub[off_acc_xu[i][j] + x_index] = problem.pc->xf_fixed[x_index] ? *problem.pc->xf_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
                 }
-            } 
+            }
             else {
                 for (int x_index = 0; x_index < off_x; x_index++) {
                     x_lb[off_acc_xu[i][j] + x_index] = problem.pc->x_bounds[x_index].lb;
