@@ -60,8 +60,8 @@ f64 dot(int size, const f64* x, const f64* y) {
  * @param vector  Pointer to input vector (size)
  * @param out     Pointer to output vector (size)
  */
-void matrix_vector(int size, char format, const double* matrix,
-                   const double* vector, double* out)
+void matrix_vector(int size, char format, const f64* matrix,
+                   const f64* vector, f64* out)
 {
     std::memset(out, 0, size * sizeof(f64));
 
