@@ -79,6 +79,8 @@ FixedVector<f64> assign_or_one(f64* c_array, int size) {
 }
 
 void layout_lfg_init_eval(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_problem) {
+    const int total_eqns = (c_problem->has_lagrange ? 1 : 0) + c_problem->x_size + c_problem->g_size;
+
     if (layout_lfg.L) {
         layout_lfg.L->buf_index = c_problem->lfg_eval->buf_index[0];
     }
@@ -86,19 +88,45 @@ void layout_lfg_init_eval(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_prob
     int offset = (layout_lfg.L ? 1 : 0);
     for (int f_idx = 0; f_idx < c_problem->x_size; f_idx++) {
         layout_lfg.f[f_idx].buf_index = c_problem->lfg_eval->buf_index[offset + f_idx];
+        if (total_eqns <= layout_lfg.f[f_idx].buf_index) {
+            Log::error("LFG Evaluation buf_index out of range.");
+            std::abort();
+        }
     }
 
     offset += c_problem->x_size;
     for (int g_idx = 0; g_idx < c_problem->g_size; g_idx++) {
         layout_lfg.g[g_idx].buf_index = c_problem->lfg_eval->buf_index[offset + g_idx];
+        if (total_eqns <= layout_lfg.g[g_idx].buf_index) {
+            Log::error("LFG Evaluation buf_index out of range.");
+            std::abort();
+        }
     }
 }
 
 void layout_lfg_init_jac(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_problem){
+    const int total_vars = c_problem->x_size + c_problem->u_size + c_problem->p_size;
+    const int total_eqns = (c_problem->has_lagrange ? 1 : 0) + c_problem->x_size + c_problem->g_size;
+
     for (int nz = 0; nz < c_problem->lfg_jac->nnz; nz++) {
         int row = c_problem->lfg_jac->row[nz];
         int col = c_problem->lfg_jac->col[nz];
         int buf_index = c_problem->lfg_jac->buf_index[nz];
+
+        if (!(row >= 0 && row < total_eqns)) {
+            Log::error("LFG Jacobian row out of range.");
+            std::abort();
+        }
+
+        if (!(col >= 0 && col < total_vars)) {
+            Log::error("LFG Jacobian col out of range.");
+            std::abort();
+        }
+
+        if (total_vars * total_eqns <= buf_index) {
+            Log::error("LFG Jacobian buf_index out of range.");
+            std::abort();
+        }
 
         auto& fn = GDOP::access_Lfg_from_row(layout_lfg, row);
         if (col < c_problem->x_size) {
@@ -114,6 +142,8 @@ void layout_lfg_init_jac(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_probl
 }
 
 void layout_lfg_init_hes(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_problem){
+    const int total_vars = c_problem->x_size + c_problem->u_size + c_problem->p_size;
+
     for (int nz = 0; nz < c_problem->lfg_lt_hes->nnz; nz++) {
         int row = c_problem->lfg_lt_hes->row[nz];
         int col = c_problem->lfg_lt_hes->col[nz];
@@ -121,20 +151,23 @@ void layout_lfg_init_hes(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_probl
         auto& hes = layout_lfg.hes;
         auto& hes_pp = layout_lfg.pp_hes;
 
-        int total_vars = c_problem->x_size + c_problem->u_size + c_problem->p_size;
-
         if (row < col) {
             Log::error("Hessian must be supplied in lower triangular form: row >= col.");
             std::abort();
         }
 
         if (!(row >= 0 && row < total_vars)) {
-            Log::error("Hessian row out of range.");
+            Log::error("LFG Hessian row out of range.");
             std::abort();
         }
 
         if (!(col >= 0 && col < total_vars)) {
-            Log::error("Hessian col out of range.");
+            Log::error("LFG Hessian col out of range.");
+            std::abort();
+        }
+
+        if (total_vars * (total_vars + 1) / 2 <= buf_index) {
+            Log::error("LFG Hessian buf_index out of range.");
             std::abort();
         }
 
@@ -171,21 +204,46 @@ GDOP::FullSweepLayout create_fullsweep_layout(c_problem_t* c_problem) {
 }
 
 void layout_mr_init_eval(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem) {
+    const int total_eqns = (c_problem->has_mayer ? 1 : 0) + c_problem->r_size;
+
     if (layout_mr.M) {
         layout_mr.M->buf_index = c_problem->mr_eval->buf_index[0];
     }
 
     int offset = (layout_mr.M ? 1 : 0);
     for (int r_idx = 0; r_idx < c_problem->r_size; r_idx++) {
+        if (total_eqns <= layout_mr.r[r_idx].buf_index) {
+            Log::error("MR Evaluation buf_index out of range.");
+            std::abort();
+        }
+
         layout_mr.r[r_idx].buf_index = c_problem->mr_eval->buf_index[offset + r_idx];
     }
 }
 
 void layout_mr_init_jac(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem){
+    const int total_vars = 2 * c_problem->x_size + c_problem->u_size + c_problem->p_size + 2;
+    const int total_eqns = (c_problem->has_mayer ? 1 : 0) + c_problem->r_size;
+
     for (int nz = 0; nz < c_problem->mr_jac->nnz; nz++) {
         int row = c_problem->mr_jac->row[nz];
         int col = c_problem->mr_jac->col[nz];
         int buf_index = c_problem->mr_jac->buf_index[nz];
+
+        if (!(row >= 0 && row < total_eqns)) {
+            Log::error("MR Jacobian row out of range.");
+            std::abort();
+        }
+
+        if (!(col >= 0 && col < total_vars)) {
+            Log::error("MR Jacobian col out of range.");
+            std::abort();
+        }
+
+        if (total_vars * total_eqns <= buf_index) {
+            Log::error("MR Jacobian buf_index out of range.");
+            std::abort();
+        }
 
         auto& fn = (layout_mr.M && row == 0 ? *layout_mr.M : layout_mr.r[row - (layout_mr.M ? 1 : 0)]);
         if (col < c_problem->x_size) {
@@ -235,12 +293,17 @@ void layout_mr_init_hes(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_pro
         }
 
         if (!(row >= 0 && row < total_vars)) {
-            Log::error("Hessian row out of range.");
+            Log::error("MR Hessian row out of range.");
             std::abort();
         }
 
         if (!(col >= 0 && col < total_vars)) {
-            Log::error("Hessian col out of range.");
+            Log::error("MR Hessian col out of range.");
+            std::abort();
+        }
+
+        if (total_vars * (total_vars + 1) / 2 <= buf_index) {
+            Log::error("MR Hessian buf_index out of range.");
             std::abort();
         }
 
