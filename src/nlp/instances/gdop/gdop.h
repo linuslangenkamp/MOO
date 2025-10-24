@@ -317,7 +317,6 @@ Block Sparsity Patterns: A - H
 Incl. SpectralMesh: I - K
     where I=rect(T, x), J=rect_dense(T, xu), K=rect(T, p), L=triang(T, T) (sizeof(T) == 2)
     and   J are fully dense blocks
-
                                             {n,m-1}
      | x00 | x01 u01 | x02 u02 | x** u** | xnm1 unm1 | xnm unm |  p  | t0 tf |
 ---------------------------------------------------------------------|-------|

@@ -212,6 +212,10 @@ static mesh_ref_ctx_t globl_mesh_ctx = {
     .l2bn_p2_lvl = 0.0
 };
 
+static solver_ctx_t globl_solver_ctx = {
+    .derivative_test = false
+};
+
 static c_problem_t globl_c_problem = {
     .x_size = X_SIZE,
     .u_size = U_SIZE,
@@ -249,6 +253,7 @@ static c_problem_t globl_c_problem = {
     .ode_jac = &globl_ode_jac,
     .callbacks = &globl_callbacks,
     .mesh_ctx = &globl_mesh_ctx,
+    .solver_ctx = &globl_solver_ctx,
     .user_data = (void*)0
 };
 

@@ -710,7 +710,7 @@ int write_csv(
         abort();
     }
 
-    file << std::fixed << std::setprecision(std::numeric_limits<double>::max_digits10);
+    file << std::fixed << std::setprecision(std::numeric_limits<f64>::max_digits10);
 
     if (write_header) {
         // --- sections / header ---

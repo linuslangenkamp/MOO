@@ -324,11 +324,15 @@ static c_callbacks_t globl_callbacks = {
 };
 
 static mesh_ref_ctx_t globl_mesh_ctx = {
-    .initial_intervals = 3,
+    .initial_intervals = 1,
     .nodes_per_interval = 3,
     .l2bn_p1_it = 1,
     .l2bn_p2_it = 0,
     .l2bn_p2_lvl = 0.0
+};
+
+static solver_ctx_t globl_solver_ctx = {
+    .derivative_test = true
 };
 
 static c_problem_t globl_c_problem = {
@@ -368,6 +372,7 @@ static c_problem_t globl_c_problem = {
     .ode_jac = &globl_ode_jac,
     .callbacks = &globl_callbacks,
     .mesh_ctx = &globl_mesh_ctx,
+    .solver_ctx = &globl_solver_ctx,
     .user_data = (void*)0
 };
 

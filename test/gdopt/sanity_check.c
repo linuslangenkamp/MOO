@@ -19,10 +19,12 @@
 //
 
 /**
+ * A simple DAE example
+ *
  * @minimize tf
  *
- * s.t.   x' = -x + u
- *
+ * s.t.   x' = -x + y + u
+ *        0  = u² - sin(y) - x/4
  * fixed:
  *        x(t0) = 1.5
  *        x(tf) = 1.0
@@ -30,6 +32,7 @@
  *
  * variable:
  *     -inf <= x  <= inf
+ *     -inf <= y  <= inf
  *     -1.0 <= u  <= 1.0
  *     -0.5 <= tf <= 5.0
  */
@@ -38,16 +41,18 @@
 #include <interfaces/gdopt/main_gdopt.h>
 #include <generated.h>
 
+#include <math.h>
+
 // === problem sizes (compile const) ===
 
 #define X_SIZE 1
-#define U_SIZE 1
+#define U_SIZE 2
 #define P_SIZE 0
 
 #define RP_SIZE 0
 
 #define R_SIZE 0
-#define G_SIZE 0
+#define G_SIZE 1
 
 #define HAS_MAYER true
 #define HAS_LAGRANGE false
@@ -71,11 +76,11 @@
 // === declare global variables (values can be influenced by runtime parameters) ===
 
 static bounds_t globl_x_bounds[X_SIZE] = { { -DBL_MAX, DBL_MAX } };
-static bounds_t globl_u_bounds[U_SIZE] = { { -1, 1} };
+static bounds_t globl_u_bounds[U_SIZE] = { { -1, 1}, {-5, 5 } };
 static bounds_t globl_p_bounds[P_SIZE];
 static bounds_t globl_T_bounds[2]      = { { -0.5, -0.5 }, { -0.5, 5.0 } };
 
-static bounds_t globl_g_bounds[G_SIZE];
+static bounds_t globl_g_bounds[G_SIZE] = { { 0, 0 } };
 static bounds_t globl_r_bounds[R_SIZE];
 
 static optional_value_t globl_x0_fixed[X_SIZE] = { {1.5, true} };
@@ -99,21 +104,21 @@ static const char* data[FILE_COUNT]; // = { "inputpath.csv" };
 // === optimization sparsity and evaluation structures (compile const) ===
 
 static eval_structure_t globl_lfg_eval = {
-    .buf_index = (int[]){0}
+    .buf_index = (int[]){0, 1}
 };
 
 static coo_t globl_lfg_jac = {
-    .row = (int[]){0, 0},
-    .col = (int[]){X_LFG_IDX(0), U_LFG_IDX(0)},
-    .buf_index = (int[]){0, 1},
-    .nnz = 2
+    .row = (int[]){0, 0, 0, 1, 1, 1},
+    .col = (int[]){X_LFG_IDX(0), U_LFG_IDX(0), U_LFG_IDX(1), X_LFG_IDX(0), U_LFG_IDX(0), U_LFG_IDX(1)},
+    .buf_index = (int[]){0, 1, 2, 3, 4, 5},
+    .nnz = 6
 };
 
 static coo_t globl_lfg_lt_hes = {
-    .row = (int[]){},
-    .col = (int[]){},
-    .buf_index = (int[]){},
-    .nnz = 0
+    .row = (int[]){U_LFG_IDX(0), U_LFG_IDX(1)},
+    .col = (int[]){U_LFG_IDX(0), U_LFG_IDX(1)},
+    .buf_index = (int[]){0, 1},
+    .nnz = 2
 };
 
 static eval_structure_t globl_mr_eval = {
@@ -144,7 +149,7 @@ static coo_t globl_ode_jac = {
 };
 
 static void ode_eval_f(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* f, void* user_data) {
-    f[0] = -x[0] + u[0];
+    f[0] = -x[0] + u[0] + u[1];
 }
 
 static void ode_jac_f(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* dfdx, void* user_data) {
@@ -158,7 +163,8 @@ static void eval_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* o
     const f64* x = xu;
     const f64* u = xu + X_SIZE;
 
-    out[0] /* f */ = -x[0] + u[0];
+    out[0] /* f */ = -x[0] + u[0] + u[1];
+    out[1] /* g */ = u[0] * u[0] - sin(u[1]) - 0.25 * x[0];
 }
 
 // ∇ [L, f, g]
@@ -168,10 +174,19 @@ static void jac_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* ou
 
     out[0] = -1; /* f_x  */
     out[1] = 1; /* f_u */
+    out[2] = 1; /* f_y */
+    out[3] = -0.25; /* g_x */
+    out[4] = 2 * u[0]; /* g_u */
+    out[5] = -cos(u[1]); /* g_y */
 }
 
 // σ ∇² L + λ^T ∇² [f, g] (lower triangle)
 static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, f64* out_pp, void* user_data) {
+    const f64* x = xu;
+    const f64* u = xu + X_SIZE;
+
+    out[0] = 2 * lambda[1];
+    out[1] = lambda[1] * sin(u[1]);
 }
 
 // [M, r]
@@ -216,6 +231,10 @@ static mesh_ref_ctx_t globl_mesh_ctx = {
     .l2bn_p2_lvl = 0.0
 };
 
+static solver_ctx_t globl_solver_ctx = {
+    .derivative_test = false
+};
+
 static c_problem_t globl_c_problem = {
     .x_size = X_SIZE,
     .u_size = U_SIZE,
@@ -253,6 +272,7 @@ static c_problem_t globl_c_problem = {
     .ode_jac = &globl_ode_jac,
     .callbacks = &globl_callbacks,
     .mesh_ctx = &globl_mesh_ctx,
+    .solver_ctx = &globl_solver_ctx,
     .user_data = (void*)0
 };
 

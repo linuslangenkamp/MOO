@@ -27,15 +27,23 @@ FixedVector<Bounds> create_bounds(bounds_t* c_bounds, int size) {
     for (int idx = 0; idx < size; idx++) {
         to_fill[idx].lb = c_bounds[idx].lb;
         to_fill[idx].ub = c_bounds[idx].ub;
+        if (to_fill[idx].lb > to_fill[idx].ub) {
+            Log::error("Invalid bounds detected: {} > {}.", to_fill[idx].lb , to_fill[idx].ub);
+            std::abort();
+        }
     }
     return to_fill;
 }
 
 std::array<Bounds, 2> create_time_bounds(bounds_t c_bounds[2]) {
     std::array<Bounds, 2> to_fill;
-    for (int i = 0; i < 2; i++) {
-        to_fill[i].lb = c_bounds[i].lb;
-        to_fill[i].ub = c_bounds[i].ub;
+    for (int idx = 0; idx < 2; idx++) {
+        to_fill[idx].lb = c_bounds[idx].lb;
+        to_fill[idx].ub = c_bounds[idx].ub;
+        if (to_fill[idx].lb > to_fill[idx].ub) {
+            Log::error("Invalid bounds detected: {} > {}.", to_fill[idx].lb , to_fill[idx].ub);
+            std::abort();
+        }
     }
     return to_fill;
 }
@@ -113,7 +121,22 @@ void layout_lfg_init_hes(GDOP::FullSweepLayout& layout_lfg, c_problem_t* c_probl
         auto& hes = layout_lfg.hes;
         auto& hes_pp = layout_lfg.pp_hes;
 
-        assert(row >= col && "Hessian must be supplied in lower triangular form: row >= col index.");
+        int total_vars = c_problem->x_size + c_problem->u_size + c_problem->p_size;
+
+        if (row < col) {
+            Log::error("Hessian must be supplied in lower triangular form: row >= col.");
+            std::abort();
+        }
+
+        if (!(row >= 0 && row < total_vars)) {
+            Log::error("Hessian row out of range.");
+            std::abort();
+        }
+
+        if (!(col >= 0 && col < total_vars)) {
+            Log::error("Hessian col out of range.");
+            std::abort();
+        }
 
         if (row < c_problem->x_size && col < c_problem->x_size) {
             hes.dx_dx.push_back({row, col, buf_index});
@@ -184,7 +207,6 @@ void layout_mr_init_jac(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_pro
 }
 
 // TODO: add safety check :: check validty of provided c_problem!!
-// TODO: add a representive test example that has every constraint available + free / fixed time!
 
 void layout_mr_init_hes(GDOP::BoundarySweepLayout& layout_mr, c_problem_t* c_problem){
     const int xs = c_problem->x_size;
@@ -598,7 +620,6 @@ Problem::Problem(c_problem_t* c_problem, std::shared_ptr<Trajectory[]> raw_data)
 }
 
 Problem Problem::create(c_problem_t* c_problem) {
-    // TODO: check validity
     return Problem(c_problem, create_raw_data(c_problem));
 }
 

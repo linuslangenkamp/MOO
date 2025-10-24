@@ -30,10 +30,10 @@ int main(int argc, char** argv) {
     Simulation::radau_wrapper_test();
 
     // test for future generated code
-    //main_generated(argc, argv);
+    main_generated(argc, argv);
 
-    // sanity check, testing time optimization
-    // main_sanity_check(argc, argv);
+    // sanity check, testing time optimization for a minimal DAE example
+    main_sanity_check(argc, argv);
 
     // full functionality test, including all types of constraints + variables + derivative test
     main_full_functionality(argc, argv);

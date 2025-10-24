@@ -61,6 +61,10 @@ typedef struct mesh_ref_ctx_t {
     f64 l2bn_p2_lvl;
 } mesh_ref_ctx_t;
 
+typedef struct solver_ctx_t {
+    bool derivative_test;
+} solver_ctx_t;
+
 typedef struct c_callbacks_t {
     void (*eval_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
     void (*jac_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
@@ -128,6 +132,7 @@ typedef struct c_problem_t {
 
     // make this more general
     mesh_ref_ctx_t* mesh_ctx;
+    solver_ctx_t* solver_ctx;
 
     void* user_data;
 
