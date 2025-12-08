@@ -175,6 +175,11 @@ void GDOP::get_bounds(
         g_lb[off_fg_total + r_index] = problem.pc->r_bounds[r_index].lb;
         g_ub[off_fg_total + r_index] = problem.pc->r_bounds[r_index].ub;
     }
+
+    for (int a_index = 0; a_index < off_u; a_index++) {
+        g_lb[off_fgr_total + a_index] = 0;
+        g_ub[off_fgr_total + a_index] = 0;
+    }
 }
 
 void GDOP::set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_trajectory) {
@@ -218,6 +223,7 @@ void GDOP::get_initial_guess(
         Log::error("No primal initial guess supplied in GDOP::init_starting_point().");
     }
 
+    // TODO: check this re-init
     if (initial_guess_costate) {
         // check compatibility
         if (initial_guess_costate->inducing_mesh.get() != mesh.get()) {
@@ -1615,7 +1621,7 @@ std::unique_ptr<CostateTrajectory> GDOP::finalize_optimal_costates(const FixedVe
         }
     }
 
-    optimal_costates->costates_r.resize(problem.pc->r_size);
+    optimal_costates->costates_r.resize(problem.pc->r_size + off_u);
 
     for (int r_index = 0; r_index < problem.pc->r_size; r_index++) {
         optimal_costates->costates_r[r_index] = costates[off_fg_total + r_index];
