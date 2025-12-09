@@ -105,8 +105,8 @@ typedef struct c_problem_t {
     bounds_t* r_bounds;
     bounds_t* g_bounds;
 
-    optional_value_t* x0_fixed;
-    optional_value_t* xf_fixed;
+    optional_value_t* xu0_fixed;
+    optional_value_t* xuf_fixed;
 
     f64* x_nominal;
     f64* u_nominal;

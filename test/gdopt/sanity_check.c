@@ -73,6 +73,8 @@
 #define T0_MR_IDX     (2 * X_SIZE + U_SIZE + P_SIZE)
 #define TF_MR_IDX     (2 * X_SIZE + U_SIZE + P_SIZE + 1)
 
+#define XU_SIZE (X_SIZE + U_SIZE)
+
 // === declare global variables (values can be influenced by runtime parameters) ===
 
 static bounds_t globl_x_bounds[X_SIZE] = { { -DBL_MAX, DBL_MAX } };
@@ -83,8 +85,8 @@ static bounds_t globl_T_bounds[2]      = { { -0.5, -0.5 }, { -0.5, 5.0 } };
 static bounds_t globl_g_bounds[G_SIZE] = { { 0, 0 } };
 static bounds_t globl_r_bounds[R_SIZE];
 
-static optional_value_t globl_x0_fixed[X_SIZE] = { {1.5, true} };
-static optional_value_t globl_xf_fixed[X_SIZE] = { {1,   true} };
+static optional_value_t globl_xu0_fixed[XU_SIZE] = { {1.5, true}, {0, false}, {0, false} };
+static optional_value_t globl_xuf_fixed[XU_SIZE] = { {1,   true}, {0, false}, {0, false} };
 
 static f64 globl_x_nominal[X_SIZE];
 static f64 globl_u_nominal[U_SIZE];
@@ -254,8 +256,8 @@ static c_problem_t globl_c_problem = {
     .T_bounds = globl_T_bounds,
     .r_bounds = globl_r_bounds,
     .g_bounds = globl_g_bounds,
-    .x0_fixed = globl_x0_fixed,
-    .xf_fixed = globl_xf_fixed,
+    .xu0_fixed = globl_xu0_fixed,
+    .xuf_fixed = globl_xuf_fixed,
     .x_nominal = globl_x_nominal,
     .u_nominal = globl_u_nominal,
     .p_nominal = globl_p_nominal,

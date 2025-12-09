@@ -60,8 +60,8 @@ struct MOO_EXPORT ProblemConstants {
     const std::array<Bounds, 2> T_bounds;
 
     // fixed initial and final states
-    const FixedVector<std::optional<f64>> x0_fixed;
-    const FixedVector<std::optional<f64>> xf_fixed;
+    const FixedVector<std::optional<f64>> xu0_fixed;
+    const FixedVector<std::optional<f64>> xuf_fixed;
     const std::array<std::optional<f64>, 2> T_fixed;
 
     const bool free_time;
@@ -80,8 +80,8 @@ struct MOO_EXPORT ProblemConstants {
         FixedVector<Bounds>&& u_bounds,
         FixedVector<Bounds>&& p_bounds,
         std::array<Bounds, 2> T_bounds,
-        FixedVector<std::optional<f64>> x0_fixed,
-        FixedVector<std::optional<f64>> xf_fixed,
+        FixedVector<std::optional<f64>> xu0_fixed,
+        FixedVector<std::optional<f64>> xuf_fixed,
         std::array<std::optional<f64>, 2> T_fixed,
         FixedVector<Bounds>&& r_bounds,
         FixedVector<Bounds>&& g_bounds,

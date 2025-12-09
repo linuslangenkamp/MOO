@@ -113,23 +113,30 @@ void GDOP::get_bounds(
     FixedVector<f64>& g_lb,
     FixedVector<f64>& g_ub)
 {
-    // standard bounds, but checking for x0_fixed or xf_fixed
+    // standard bounds, but checking for xu0_fixed or xuf_fixed
     for (int x_index = 0; x_index < off_x; x_index++) {
-        x_lb[x_index] = problem.pc->x0_fixed[x_index] ? *problem.pc->x0_fixed[x_index] : problem.pc->x_bounds[x_index].lb;
-        x_ub[x_index] = problem.pc->x0_fixed[x_index] ? *problem.pc->x0_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
+        x_lb[x_index] = problem.pc->xu0_fixed[x_index] ? *problem.pc->xu0_fixed[x_index] : problem.pc->x_bounds[x_index].lb;
+        x_ub[x_index] = problem.pc->xu0_fixed[x_index] ? *problem.pc->xu0_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        x_lb[off_x + u_index] = problem.pc->u_bounds[u_index].lb; // problem.pc->u0_fixed[u_index] ? *problem.pc->u0_fixed[u_index] : problem.pc->u_bounds[u_index].lb; TODO!
-        x_ub[off_x + u_index] = problem.pc->u_bounds[u_index].ub; //problem.pc->u0_fixed[u_index] ? *problem.pc->u0_fixed[u_index] : problem.pc->u_bounds[u_index].ub;
+        int xu_idx = off_x + u_index;
+        x_lb[xu_idx] = problem.pc->xu0_fixed[xu_idx] ? *problem.pc->xu0_fixed[xu_idx] : problem.pc->u_bounds[u_index].lb;
+        x_ub[xu_idx] = problem.pc->xu0_fixed[xu_idx] ? *problem.pc->xu0_fixed[xu_idx] : problem.pc->u_bounds[u_index].ub;
     }
 
     for (int i = 0; i < mesh->intervals; i++) {
         for (int j = 0; j < mesh->nodes[i]; j++) {
             if (i == mesh->intervals - 1 && j == mesh->nodes[i] - 1) {
                 for (int x_index = 0; x_index < off_x; x_index++) {
-                    x_lb[off_acc_xu[i][j] + x_index] = problem.pc->xf_fixed[x_index] ? *problem.pc->xf_fixed[x_index] : problem.pc->x_bounds[x_index].lb;
-                    x_ub[off_acc_xu[i][j] + x_index] = problem.pc->xf_fixed[x_index] ? *problem.pc->xf_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
+                    x_lb[off_acc_xu[i][j] + x_index] = problem.pc->xuf_fixed[x_index] ? *problem.pc->xuf_fixed[x_index] : problem.pc->x_bounds[x_index].lb;
+                    x_ub[off_acc_xu[i][j] + x_index] = problem.pc->xuf_fixed[x_index] ? *problem.pc->xuf_fixed[x_index] : problem.pc->x_bounds[x_index].ub;
+                }
+
+                for (int u_index = 0; u_index < off_u; u_index++) {
+                    int xu_idx = off_x + u_index;
+                    x_lb[off_acc_xu[i][j] + xu_idx] = problem.pc->xuf_fixed[xu_idx] ? *problem.pc->xuf_fixed[xu_idx] : problem.pc->u_bounds[u_index].lb;
+                    x_ub[off_acc_xu[i][j] + xu_idx] = problem.pc->xuf_fixed[xu_idx] ? *problem.pc->xuf_fixed[xu_idx] : problem.pc->u_bounds[u_index].ub;
                 }
             }
             else {
@@ -137,10 +144,11 @@ void GDOP::get_bounds(
                     x_lb[off_acc_xu[i][j] + x_index] = problem.pc->x_bounds[x_index].lb;
                     x_ub[off_acc_xu[i][j] + x_index] = problem.pc->x_bounds[x_index].ub;
                 }
-            }
-            for (int u_index = 0; u_index < off_u; u_index++) {
-                x_lb[off_acc_xu[i][j] + off_x + u_index] = problem.pc->u_bounds[u_index].lb;
-                x_ub[off_acc_xu[i][j] + off_x + u_index] = problem.pc->u_bounds[u_index].ub;
+
+                for (int u_index = 0; u_index < off_u; u_index++) {
+                    x_lb[off_acc_xu[i][j] + off_x + u_index] = problem.pc->u_bounds[u_index].lb;
+                    x_ub[off_acc_xu[i][j] + off_x + u_index] = problem.pc->u_bounds[u_index].ub;
+                }
             }
         }
     }

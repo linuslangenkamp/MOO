@@ -568,8 +568,8 @@ GDOP::Problem create_gdop_problem(c_problem_t* c_problem, std::shared_ptr<Trajec
     auto g_bounds = create_bounds(c_problem->g_bounds, c_problem->g_size);
     auto r_bounds = create_bounds(c_problem->r_bounds, c_problem->r_size);
 
-    auto x0_fixed = create_fixed(c_problem->x0_fixed, c_problem->x_size);
-    auto xf_fixed = create_fixed(c_problem->xf_fixed, c_problem->x_size);
+    auto xu0_fixed = create_fixed(c_problem->xu0_fixed, c_problem->xu_size);
+    auto xuf_fixed = create_fixed(c_problem->xuf_fixed, c_problem->xu_size);
     auto T_fixed = create_time_fixed(c_problem->T_bounds);
 
     auto mesh = Mesh::create_equidistant_fixed_stages(
@@ -587,8 +587,8 @@ GDOP::Problem create_gdop_problem(c_problem_t* c_problem, std::shared_ptr<Trajec
         std::move(u_bounds),
         std::move(p_bounds),
         std::move(T_bounds),
-        std::move(x0_fixed),
-        std::move(xf_fixed),
+        std::move(xu0_fixed),
+        std::move(xuf_fixed),
         std::move(T_fixed),
         std::move(r_bounds),
         std::move(g_bounds),
