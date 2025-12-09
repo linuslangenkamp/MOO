@@ -975,14 +975,14 @@ void GDOP::check_new_lambda(bool new_lambda) {
 
 void GDOP::callback_evaluation(const FixedVector<f64>& curr_x) {
     problem.full->callback_eval(get_x_xu(curr_x), get_x_p(curr_x));
-    problem.boundary->callback_eval(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x), mesh->t0, mesh->tf);
+    problem.boundary->callback_eval(get_x_xu0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x), mesh->t0, mesh->tf);
     evaluation_state.eval_f = true;
     evaluation_state.eval_g = true;
 }
 
 void GDOP::callback_jacobian(const FixedVector<f64>& curr_x) {
     problem.full->callback_jac(get_x_xu(curr_x), get_x_p(curr_x));
-    problem.boundary->callback_jac(get_x_x0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x), mesh->t0, mesh->tf);
+    problem.boundary->callback_jac(get_x_xu0(curr_x), get_x_xuf(curr_x), get_x_p(curr_x), mesh->t0, mesh->tf);
     evaluation_state.grad_f = true;
     evaluation_state.jac_g = true;
 }
@@ -1008,7 +1008,7 @@ void GDOP::callback_hessian(const FixedVector<f64> x, const FixedVector<f64>& cu
     update_curr_lambda_obj_factors(curr_lambda, curr_obj_factor);
 
     problem.full->callback_hes(get_x_xu(x), get_x_p(x), lagrange_obj_factors, get_lmbd_fg(transformed_lambda));
-    problem.boundary->callback_hes(get_x_x0(x), get_x_xuf(x), get_x_p(x), mesh->t0, mesh->tf, curr_obj_factor, get_lmbd_r(transformed_lambda));
+    problem.boundary->callback_hes(get_x_xu0(x), get_x_xuf(x), get_x_p(x), mesh->t0, mesh->tf, curr_obj_factor, get_lmbd_r(transformed_lambda));
     evaluation_state.hes = true;
 }
 
@@ -1099,7 +1099,7 @@ void GDOP::eval_g_internal(const FixedVector<f64>& curr_x, FixedVector<f64>& cur
         curr_g[off_fg_total + r_index] = problem.mr_eval_r(r_index);
     }
 
-    const f64 *u0 = get_x_u0(curr_x);
+    const f64 *u0 = &get_x_xu0(curr_x)[off_x];
     for (int a_index = 0; a_index < off_u; a_index++) {
         for (int j = 0; j < mesh->nodes[0] + 1; j++) {
             if (j == 0) {

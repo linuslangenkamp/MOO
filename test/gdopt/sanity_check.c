@@ -67,11 +67,12 @@
 #define P_LFG_IDX(i)  (X_SIZE + U_SIZE + (i))
 
 #define X0_MR_IDX(i)  (0 + (i))
-#define XF_MR_IDX(i)  (X_SIZE + (i))
-#define UF_MR_IDX(i)  (2 * X_SIZE + (i))
-#define P_MR_IDX(i)   (2 * X_SIZE + U_SIZE + (i))
-#define T0_MR_IDX     (2 * X_SIZE + U_SIZE + P_SIZE)
-#define TF_MR_IDX     (2 * X_SIZE + U_SIZE + P_SIZE + 1)
+#define U0_MR_IDX(i)  (X_SIZE + (i))
+#define XF_MR_IDX(i)  (X_SIZE + U_SIZE + (i))
+#define UF_MR_IDX(i)  (2 * X_SIZE + U_SIZE + (i))
+#define P_MR_IDX(i)   (2 * (X_SIZE + U_SIZE) + (i))
+#define T0_MR_IDX     (2 * (X_SIZE + U_SIZE) + P_SIZE)
+#define TF_MR_IDX     (2 * (X_SIZE + U_SIZE) + P_SIZE + 1)
 
 #define XU_SIZE (X_SIZE + U_SIZE)
 
@@ -192,7 +193,7 @@ static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 ob
 }
 
 // [M, r]
-static void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
+static void eval_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
     const f64* xf = xuf;
     const f64* uf = xuf + X_SIZE;
 
@@ -200,13 +201,13 @@ static void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,
 }
 
 // ∇ [M, r]
-static void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,
+static void jac_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf,
             const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
     out[0] = 1.0;
 }
 
 // σ ∇² M + λ^T ∇² r (lower triangle)
-static void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf,
+static void hes_mr(const f64* xu0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf,
             const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
 
 }

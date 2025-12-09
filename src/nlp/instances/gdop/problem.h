@@ -59,7 +59,7 @@ struct MOO_EXPORT ProblemConstants {
     const FixedVector<Bounds> p_bounds;
     const std::array<Bounds, 2> T_bounds;
 
-    // fixed initial and final states
+    // fixed initial and final states, controls and time
     const FixedVector<std::optional<f64>> xu0_fixed;
     const FixedVector<std::optional<f64>> xuf_fixed;
     const std::array<std::optional<f64>, 2> T_fixed;
@@ -295,13 +295,13 @@ public:
     // stores all the relevant constants such as dimensions, bounds, offsets and mesh
     const ProblemConstants& pc;
 
-    virtual void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf) = 0;
+    virtual void callback_eval(const f64* xu0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf) = 0;
 
-    virtual void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf) = 0;
+    virtual void callback_jac(const f64* xu0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf) = 0;
 
    /* lambdas are exact multipliers (no transform needed) to [r]
     * mayer_factor is exact multiplier (no transform needed) of M */
-    virtual void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf, const f64 mayer_factor, const f64* lambda) = 0;
+    virtual void callback_hes(const f64* xu0_nlp, const f64* xuf_nlp, const f64* p, const f64 t0, const f64 tf, const f64 mayer_factor, const f64* lambda) = 0;
 
     inline f64* get_eval_buffer() {
         return buffers.eval.raw();

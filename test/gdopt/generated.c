@@ -175,19 +175,19 @@ static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 ob
 }
 
 // [M, r]
-static void eval_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
+static void eval_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
     const f64* xf = xuf;
     const f64* uf = xuf + X_SIZE;
 
 }
 
 // ∇ [M, r]
-static void jac_mr(const f64* x0, const f64* xuf, const f64* p, f64 t0, f64 tf,
+static void jac_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf,
             const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
 }
 
 // σ ∇² M + λ^T ∇² r (lower triangle)
-static void hes_mr(const f64* x0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf,
+static void hes_mr(const f64* xu0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf,
             const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {
 
 }

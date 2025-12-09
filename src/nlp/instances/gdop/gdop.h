@@ -207,8 +207,7 @@ private:
 
     // inline methods for getting and providing current variable / dual addresses in callback
     // x0 => x(t0), u0 => u(t0), xu => xu(t_01), xuf => xu(t_f), p => p, lamb_fg => fg(t_01), lamb_r => r
-    inline const f64* get_x_x0(const FixedVector<f64>& x)  { return off_x        != 0 ?  x.raw()              : nullptr; }
-    inline const f64* get_x_u0(const FixedVector<f64>& x)  { return off_u        != 0 ? &x[off_x]             : nullptr; }
+    inline const f64* get_x_xu0(const FixedVector<f64>& x) { return off_x        != 0 ?  x.raw()              : nullptr; }
     inline const f64* get_x_xu(const FixedVector<f64>& x)  { return off_xu       != 0 ? &x[off_xu]            : nullptr; }
     inline const f64* get_x_xuf(const FixedVector<f64>& x) { return off_xu       != 0 ? &x[off_last_xu]       : nullptr; }
     inline const f64* get_x_p(const FixedVector<f64>& x)   { return off_p        != 0 ? &x[off_xu_total]      : nullptr; }
