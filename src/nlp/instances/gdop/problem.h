@@ -240,6 +240,7 @@ public:
     }
 
     void print_jacobian_sparsity_pattern();
+    void print_flat_jacobian_sparsity_pattern();
 
 private:
     // buffers to write to in callbacks
@@ -340,6 +341,7 @@ public:
     }
 
     void print_jacobian_sparsity_pattern();
+    void print_flat_jacobian_sparsity_pattern();
 
 private:
     // buffers to write to in callbacks
