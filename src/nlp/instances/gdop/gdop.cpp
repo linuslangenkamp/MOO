@@ -194,8 +194,6 @@ void GDOP::set_initial_guess(std::unique_ptr<PrimalDualTrajectory> initial_traje
     initial_guess = std::move(initial_trajectory);
 }
 
-// TODO: add flag: with apply_threshold_floor() or without - should be in the new yaml config file where strategies and stuff are given
-
 // === overload ===
 void GDOP::get_initial_guess(
       bool init_x,
@@ -225,13 +223,12 @@ void GDOP::get_initial_guess(
         assert((!initial_guess_primal->inducing_mesh || initial_guess_primal->inducing_mesh == mesh)
                 || check_time_compatibility(initial_guess_primal->t, {initial_guess_primal->x, initial_guess_primal->u}, *mesh));
 
-        flatten_trajectory_to_layout(*initial_guess_primal, x_init);
+        flatten_trajectory_to_layout(*initial_guess_primal, x_init, false);
     }
     else {
         Log::error("No primal initial guess supplied in GDOP::init_starting_point().");
     }
 
-    // TODO: check this re-init
     if (initial_guess_costate) {
         // check compatibility
         if (initial_guess_costate->inducing_mesh.get() != mesh.get()) {
@@ -253,9 +250,6 @@ void GDOP::get_initial_guess(
                     lambda_init[off_acc_fg[i][j] + f_index] = initial_guess_costate->costates_f[f_index][index];
                 }
                 for (int g_index = 0; g_index < problem.pc->g_size; g_index++) {
-                    // apply threshold below 1e-10 to prevent oscillations
-                    // lambda_init[off_acc_fg[i][j] + problem.pc->f_size + g_index] = apply_threshold_floor(value, 1e-10, 1e-12);
-
                     lambda_init[off_acc_fg[i][j] + problem.pc->f_size + g_index] = initial_guess_costate->costates_g[g_index][index];
 
                 }
@@ -295,17 +289,12 @@ void GDOP::get_initial_guess(
         assert((!initial_guess_upper_costates->inducing_mesh || initial_guess_upper_costates->inducing_mesh == mesh)
                 || check_time_compatibility(initial_guess_upper_costates->t, {initial_guess_upper_costates->x, initial_guess_upper_costates->u}, *mesh));
 
-        flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb_init);
-        flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub_init);
+        // get lower and upper costates (assume that if free time optimization -> guess contains duals for time vars at end of parameter vector!)
+        flatten_trajectory_to_layout(*initial_guess_lower_costates, z_lb_init, true);
+        flatten_trajectory_to_layout(*initial_guess_upper_costates, z_ub_init, true);
 
         transform_duals_costates_bounds(z_lb_init, false);
         transform_duals_costates_bounds(z_ub_init, false);
-
-        // apply threshold below 1e-10 to prevent oscillations
-        // for (int idx = 0; idx < get_number_vars(); idx++) {
-        //     z_lb_init[idx] = apply_threshold_floor(z_lb_init[idx], 1e-10, 1e-12);
-        //     z_ub_init[idx] = apply_threshold_floor(z_ub_init[idx], 1e-10, 1e-12);
-        // }
     }
 }
 
@@ -1444,7 +1433,7 @@ void GDOP::accumulate_hessian_from_lagrangian_gradient_lf_jac(int block_count,
  *          if the corresponding bound constraint is active over a full collocation interval.
  */
 
-void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVector<f64>& flat_buffer) {
+void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVector<f64>& flat_buffer, bool from_costates) {
     for (int x_index = 0; x_index < off_x; x_index++) {
         flat_buffer[x_index] = trajectory.x[x_index][0];
     }
@@ -1470,9 +1459,18 @@ void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVecto
         flat_buffer[off_xu_total + p_index] = trajectory.p[p_index];
     }
 
-    if (spectral_mesh) {
+    if (!from_costates)
+    {
         flat_buffer[off_xup_total] = trajectory.t.front();
         flat_buffer[off_xup_total + 1] = trajectory.t.back();
+    }
+    else if (from_costates && spectral_mesh) {
+        /** @note we include the z-duals of the time variables in the parameter vector at the end
+         * so duals are still nicely visible in the CSV export
+         * and we can use the real time variables for trajectory.t */
+        assert(int_size(trajectory.p) == off_p + 2);
+        flat_buffer[off_xup_total] = trajectory.p[off_p];
+        flat_buffer[off_xup_total + 1] = trajectory.p[off_p + 1];
     }
 }
 
@@ -1530,6 +1528,12 @@ std::unique_ptr<Trajectory> GDOP::finalize_optimal_primals(const FixedVector<f64
 
     if (off_p > 0) {
         optimal_primals->p = std::vector(get_x_p(opt_x), opt_x.end());
+    }
+
+    if (spectral_mesh) {
+        // also write t0 and tf to parameter array
+        optimal_primals->p.push_back(*get_x_t0(opt_x));
+        optimal_primals->p.push_back(*get_x_tf(opt_x));
     }
 
     return optimal_primals;
@@ -1723,7 +1727,7 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
         traj.t.reserve(mesh->node_count + 1);
         traj.x.resize(off_x);
         traj.u.resize(off_u);
-        traj.p.resize(off_p);
+        traj.p.resize(off_p + (spectral_mesh ? 2 : 0));
         traj.inducing_mesh = mesh->shared_from_this();
         traj.interpolation = InterpolationMethod::POLYNOMIAL;
 
@@ -1757,6 +1761,12 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
 
         for (int p_idx = 0; p_idx < off_p; p_idx++) {
             traj.p[p_idx] = z_dual[off_xu_total + p_idx];
+        }
+
+        // include duals of time variables in the parameter vector for latter reinit from costates
+        if (spectral_mesh) {
+            traj.p[off_p] = z_dual[off_xup_total];
+            traj.p[off_p + 1] = z_dual[off_xup_total + 1];
         }
     }
 

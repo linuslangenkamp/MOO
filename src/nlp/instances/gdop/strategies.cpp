@@ -388,9 +388,24 @@ std::unique_ptr<PrimalDualTrajectory> SimulationInitialization::operator()(const
 }
 
 // csv emit
-CSVEmitter::CSVEmitter(std::string filename, bool write_header) : filename(filename), write_header(write_header) {}
+CSVEmitter::CSVEmitter(std::string filename,
+                       bool write_header,
+                       bool emit_costates)
+    : filename(filename),
+      write_header(write_header),
+      emit_costates(emit_costates) {}
 
-int CSVEmitter::operator()(const PrimalDualTrajectory& trajectory) { return trajectory.primals->to_csv(filename, write_header); }
+int CSVEmitter::operator()(const PrimalDualTrajectory& trajectory) {
+    int ret = trajectory.primals->to_csv("primals_" + filename, write_header); if (ret < 0) return ret;
+
+    if (emit_costates) {
+        ret = trajectory.costates->to_csv("costates_" + filename, write_header);             if (ret < 0) return ret;
+        ret = trajectory.lower_costates->to_csv("lower_costates_" + filename, write_header); if (ret < 0) return ret;
+        ret = trajectory.upper_costates->to_csv("upper_costates_" + filename, write_header);
+    }
+
+    return ret;
+}
 
 // print emit
 int PrintEmitter::operator()(const PrimalDualTrajectory& trajectory) { trajectory.primals->print_table(); return 0; }

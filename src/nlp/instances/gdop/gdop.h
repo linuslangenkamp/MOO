@@ -206,7 +206,7 @@ private:
     // === private / internal methods ===
 
     // inline methods for getting and providing current variable / dual addresses in callback
-    // x0 => x(t0), u0 => u(t0), xu => xu(t_01), xuf => xu(t_f), p => p, lamb_fg => fg(t_01), lamb_r => r
+    // xu0 => xu(t0), xu => xu(t_01), xuf => xu(t_f), p => p, lamb_fg => fg(t_01), lamb_r => r
     inline const f64* get_x_xu0(const FixedVector<f64>& x) { return off_x        != 0 ?  x.raw()              : nullptr; }
     inline const f64* get_x_xu(const FixedVector<f64>& x)  { return off_xu       != 0 ? &x[off_xu]            : nullptr; }
     inline const f64* get_x_xuf(const FixedVector<f64>& x) { return off_xu       != 0 ? &x[off_last_xu]       : nullptr; }
@@ -257,7 +257,8 @@ private:
 
     void flatten_trajectory_to_layout(
         const Trajectory& Trajectory,
-        FixedVector<f64>& flat_buffer);
+        FixedVector<f64>& flat_buffer,
+        bool from_costates);
 
     void transform_duals_costates(
         FixedVector<f64>& lambda,
