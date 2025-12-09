@@ -225,7 +225,7 @@ static c_callbacks_t globl_callbacks = {
 
 static mesh_ref_ctx_t globl_mesh_ctx = {
     .initial_intervals = 10,
-    .nodes_per_interval = 3,
+    .nodes_per_interval = 5,
     .l2bn_p1_it = 1,
     .l2bn_p2_it = 0,
     .l2bn_p2_lvl = 0.0

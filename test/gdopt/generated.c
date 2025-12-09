@@ -213,7 +213,7 @@ static mesh_ref_ctx_t globl_mesh_ctx = {
 };
 
 static solver_ctx_t globl_solver_ctx = {
-    .derivative_test = true
+    .derivative_test = false
 };
 
 static c_problem_t globl_c_problem = {

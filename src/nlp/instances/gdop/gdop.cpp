@@ -120,8 +120,8 @@ void GDOP::get_bounds(
     }
 
     for (int u_index = 0; u_index < off_u; u_index++) {
-        x_lb[off_x + u_index] = 0; // problem.pc->u0_fixed[u_index] ? *problem.pc->u0_fixed[u_index] : problem.pc->u_bounds[u_index].lb; TODO!
-        x_ub[off_x + u_index] = 0; //problem.pc->u0_fixed[u_index] ? *problem.pc->u0_fixed[u_index] : problem.pc->u_bounds[u_index].ub;
+        x_lb[off_x + u_index] = problem.pc->u_bounds[u_index].lb; // problem.pc->u0_fixed[u_index] ? *problem.pc->u0_fixed[u_index] : problem.pc->u_bounds[u_index].lb; TODO!
+        x_ub[off_x + u_index] = problem.pc->u_bounds[u_index].ub; //problem.pc->u0_fixed[u_index] ? *problem.pc->u0_fixed[u_index] : problem.pc->u_bounds[u_index].ub;
     }
 
     for (int i = 0; i < mesh->intervals; i++) {
@@ -641,7 +641,7 @@ void GDOP::get_jac_sparsity(
 
         for (int j = 0; j < mesh->nodes[0] + 1; j++) {
             i_row_jac[nnz_index] = eqn_index;
-            j_col_jac[nnz_index] = off_x + j * off_xu;
+            j_col_jac[nnz_index] = off_x + a_index + j * off_xu;
             // This interpolation identity somehow holds: u(t0) = sum_(j >= 1) c[j] * D[0, j] * u(t_0j)
             const_der_jac[nnz_index] = (j == 0) ? 1.0 : -1.0 * fLGR::get_c0(mesh->nodes[0], j) * fLGR::get_D(mesh->nodes[0], 0, j);
             nnz_index++;
