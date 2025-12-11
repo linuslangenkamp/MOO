@@ -1459,18 +1459,19 @@ void GDOP::flatten_trajectory_to_layout(const Trajectory& trajectory, FixedVecto
         flat_buffer[off_xu_total + p_index] = trajectory.p[p_index];
     }
 
-    if (!from_costates)
-    {
-        flat_buffer[off_xup_total] = trajectory.t.front();
-        flat_buffer[off_xup_total + 1] = trajectory.t.back();
-    }
-    else if (from_costates && spectral_mesh) {
-        /** @note we include the z-duals of the time variables in the parameter vector at the end
-         * so duals are still nicely visible in the CSV export
-         * and we can use the real time variables for trajectory.t */
-        assert(int_size(trajectory.p) == off_p + 2);
-        flat_buffer[off_xup_total] = trajectory.p[off_p];
-        flat_buffer[off_xup_total + 1] = trajectory.p[off_p + 1];
+    if (spectral_mesh) {
+        if (!from_costates) {
+            flat_buffer[off_xup_total] = trajectory.t.front();
+            flat_buffer[off_xup_total + 1] = trajectory.t.back();
+        }
+        else {
+            /** @note we include the z-duals of the time variables in the parameter vector at the end
+             * so duals are still nicely visible in the CSV export
+             * and we can use the real time variables for trajectory.t */
+            assert(int_size(trajectory.p) == off_p + 2);
+            flat_buffer[off_xup_total] = trajectory.p[off_p];
+            flat_buffer[off_xup_total + 1] = trajectory.p[off_p + 1];
+        }
     }
 }
 

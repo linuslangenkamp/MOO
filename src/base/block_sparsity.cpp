@@ -145,7 +145,7 @@ bool OrderedIndexSet::Compare::operator()(const std::pair<int, int>& a, const st
 // standard Hessian insertion
 void OrderedIndexSet::insert_sparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off) {
     for (const auto& coo : hes) {
-        assert(!is_diag_block || coo.row + row_off >= coo.col + col_off); // Hessian must be lower triangular!
+        assert((!is_diag_block || coo.row + row_off >= coo.col + col_off) && "Hessian must be lower triangular!");
         set.insert({coo.row + row_off, coo.col + col_off});
     }
 }
@@ -155,7 +155,7 @@ void OrderedIndexSet::insert_sparsity(const std::vector<HessianSparsity>& hes, i
 void OrderedIndexSet::insert_sparsity(std::vector<int>& rows, const std::vector<JacobianSparsity>& jac, int row_off, int col_off) {
     for (const auto row : rows) {
         for (const auto& jac_elem : jac) {
-            assert(!is_diag_block || row + row_off >= jac_elem.col + col_off); // Hessian must be lower triangular!
+            assert((!is_diag_block || row + row_off >= jac_elem.col + col_off) && "Hessian must be lower triangular!");
             set.insert({row + row_off, jac_elem.col + col_off});
         }
     }
