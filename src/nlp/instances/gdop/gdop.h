@@ -67,6 +67,7 @@ public:
     inline int                       get_off_last_xu()    const { return off_last_xu; }
     inline int                       get_off_xu_total()   const { return off_xu_total; }
     inline int                       get_off_fg_total()   const { return off_fg_total; }
+    inline int                       get_off_fgr_total()  const { return off_fgr_total; }
     inline const FixedField<int, 2>& get_off_acc_xu()     const { return off_acc_xu; }
     inline const FixedField<int, 2>& get_off_acc_fg()     const { return off_acc_fg; }
     inline const FixedVector<int>&   get_off_acc_jac_fg() const { return off_acc_jac_fg; }
