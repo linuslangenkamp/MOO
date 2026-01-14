@@ -575,10 +575,10 @@ std::unique_ptr<MeshUpdate> L2BoundaryNorm::operator()(const Mesh& mesh, const P
 
         // p'_i(t_{i+1}) and p''_i(t_{i+1}) for boundary condition
         bool has_last_boundary = false;
-        f64 p_boundary_1_last_end;
-        f64 p_boundary_2_last_end;
-        f64 p_boundary_1_this_end;
-        f64 p_boundary_2_this_end;
+        f64 p_boundary_1_last_end{};
+        f64 p_boundary_2_last_end{};
+        f64 p_boundary_1_this_end{};
+        f64 p_boundary_2_this_end{};
 
         for (size_t u_idx = 0; u_idx < trajectory_primal->u.size(); u_idx++) {
             auto const& u_vec = trajectory_primal->u[u_idx];
