@@ -83,6 +83,11 @@ target_include_directories(moo
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# fmi4c
+set(FMI4C_BUILD_SHARED OFF)
+set(FMI4C_USE_SYSTEM_ZIP ON)
+add_subdirectory(third-party/fmi4c)
+
 add_subdirectory(third-party/fmt)
 target_compile_options(fmt PRIVATE -fPIC)
 
@@ -109,6 +114,7 @@ target_compile_options(moo PRIVATE ${MOO_COMPILE_OPTIONS})
 message(STATUS "Additional MOO compile options: ${MOO_COMPILE_OPTIONS}")
 
 target_link_libraries(moo PUBLIC fmt)
+target_link_libraries(moo PUBLIC fmi4c)
 target_link_libraries(moo PRIVATE Ipopt::Ipopt)
 
 if(MOO_WITH_RADAU)
