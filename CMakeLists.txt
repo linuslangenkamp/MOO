@@ -5,8 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_C_INTERFACE "Build MOO with C-interface support" ON)
+option(MOO_WITH_FMI_INTERFACE "Build MOO with FMI-interface support" ON)
 option(MOO_WITH_GDOPT "Build MOO with GDOPT support" ON)
-option(MOO_TESTS "Build MOO with test executables" OFF)
+option(MOO_TESTS "Build MOO with test executables" ON)
 
 message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER}")
@@ -69,8 +70,17 @@ target_sources(moo PRIVATE
 
 if (MOO_WITH_C_INTERFACE)
     message(STATUS "Building MOO with C interface")
-    # C interface
     target_sources(moo PRIVATE src/interfaces/c/problem.cpp )
+endif ()
+
+if (MOO_WITH_FMI_INTERFACE)
+    message(STATUS "Building MOO with FMI interface and FMI4C")
+
+    set(FMI4C_BUILD_SHARED OFF)
+    set(FMI4C_USE_SYSTEM_ZIP ON)
+    add_subdirectory(third-party/fmi4c)
+
+    target_sources(moo PRIVATE src/interfaces/fmi/problem.cpp )
 endif ()
 
 if (MOO_WITH_GDOPT)
@@ -82,11 +92,6 @@ target_include_directories(moo
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
-
-# fmi4c
-set(FMI4C_BUILD_SHARED OFF)
-set(FMI4C_USE_SYSTEM_ZIP ON)
-add_subdirectory(third-party/fmi4c)
 
 add_subdirectory(third-party/fmt)
 target_compile_options(fmt PRIVATE -fPIC)

@@ -1,3 +1,4 @@
+# FMI sanity check
 add_executable(fmi_sanity_check sanity_check.c)
 
 target_link_libraries(fmi_sanity_check PRIVATE fmi4c)
@@ -20,3 +21,14 @@ if(DEFINED ENV{SIMPLE_DAE_FMU})
 else()
     message(FATAL_ERROR "SIMPLE_DAE_FMU not set - skipping lsdae_sanity_check")
 endif()
+
+# FMI ls-dae test
+add_executable(fmi_ls_dae ls_dae.cpp)
+
+target_link_libraries(fmi_ls_dae PRIVATE fmi4c moo)
+
+target_compile_definitions(fmi_ls_dae PRIVATE
+    SIMPLE_DAE_FMU_PATH="$ENV{SIMPLE_DAE_FMU}"
+)
+
+add_test(NAME fmi_ls_dae COMMAND fmi_ls_dae)
