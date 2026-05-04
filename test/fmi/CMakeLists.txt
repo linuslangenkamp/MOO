@@ -7,3 +7,16 @@ target_compile_definitions(fmi_sanity_check PRIVATE
 )
 
 add_test(NAME fmi_sanity_check COMMAND fmi_sanity_check)
+
+# fmi-ls-dae sanity check - references an FMU that is not redistributable,
+# so the path is supplied via the SIMPLE_DAE_FMU environment variable.
+if(DEFINED ENV{SIMPLE_DAE_FMU})
+    add_executable(lsdae_sanity_check lsdae_sanity_check.c)
+    target_link_libraries(lsdae_sanity_check PRIVATE fmi4c)
+    target_compile_definitions(lsdae_sanity_check PRIVATE
+        SIMPLE_DAE_FMU_PATH="$ENV{SIMPLE_DAE_FMU}"
+    )
+    add_test(NAME lsdae_sanity_check COMMAND lsdae_sanity_check)
+else()
+    message(FATAL_ERROR "SIMPLE_DAE_FMU not set - skipping lsdae_sanity_check")
+endif()

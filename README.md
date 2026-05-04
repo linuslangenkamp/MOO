@@ -42,7 +42,12 @@ Install with your favorite package manager
   - Debian / Ubuntu: `apt install liblapack-dev`
   - Latest OpenBLAS build from source: add `-DUSE_SYSTEM_LAPACK=OFF -DDOWNLOAD_LAPACK=ON` to the CMake configure command
 
+- [AnHeuermann/fmi4c fmi-ls-dae](https://github.com/AnHeuermann/fmi4c/tree/fmi-ls-dae)
+
+  - Set environment variable `SIMPLE_DAE_FMU` pointing to `fmi-ls-dae-sandbox/Dymola/SimpleDAE.fmu`.
+
 #### Optional
+
 - METIS
 
   - Debian / Ubuntu `apt install libmetis-dev`
