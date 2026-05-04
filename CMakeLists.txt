@@ -77,7 +77,7 @@ if (MOO_WITH_FMI_INTERFACE)
     message(STATUS "Building MOO with FMI interface and FMI4C")
 
     set(FMI4C_BUILD_SHARED OFF)
-    set(FMI4C_USE_SYSTEM_ZIP ON)
+    set(FMI4C_USE_SYSTEM_ZIP OFF)
     add_subdirectory(third-party/fmi4c)
 
     target_sources(moo PRIVATE src/interfaces/fmi/problem.cpp )
