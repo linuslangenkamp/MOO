@@ -51,13 +51,15 @@ public:
 
 class BoundarySweep : public GDOP::BoundarySweep {
 public:
-    BoundarySweep() = default;
     BoundarySweep(GDOP::BoundarySweepLayout&& layout_in,
-                  const GDOP::ProblemConstants& pc);
+                  const GDOP::ProblemConstants& pc,
+                  FMIData& fmi_data);
 
     void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf) override;
     void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf) override;
     void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf, const f64 mayer_factor, const f64* lambda) override;
+
+    FMIData& fmi_data;
 };
 
 class Problem : public GDOP::Problem {

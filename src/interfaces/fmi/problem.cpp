@@ -107,12 +107,12 @@ FMIData::FMIData(const char* path, const char* modelname)
 
     Log::info("FMI version  : {}", static_cast<int>(fmi4c_getFmiVersion(priv->fmu)));
     Log::info("Model name   : {}", fmi3_modelName(priv->fmu));
-    Log::info("  nx   = {}  (states)",      priv->state_vrefs.size());
-    Log::info("  ndx  = {}  (derivatives)", priv->deriv_vrefs.size());
-    Log::info("  nu   = {}  (inputs)",      priv->input_vrefs.size());
-    Log::info("  nw   = {}  (algebraics)",  priv->alg_vrefs.size());
-    Log::info("  nres = {}  (residuals)",   priv->res_vrefs.size());
-    Log::info("  ny   = {}  (outputs)",     priv->output_vrefs.size());
+    Log::info("  #x      = {}  (states)",      priv->state_vrefs.size());
+    Log::info("  #der(x) = {}  (derivatives)", priv->deriv_vrefs.size());
+    Log::info("  #u      = {}  (inputs)",      priv->input_vrefs.size());
+    Log::info("  #z      = {}  (algebraics)",  priv->alg_vrefs.size());
+    Log::info("  #g      = {}  (residuals)",   priv->res_vrefs.size());
+    Log::info("  #y      = {}  (outputs)",     priv->output_vrefs.size());
 
     Log::info("--- Value References ---");
 
@@ -145,51 +145,6 @@ FMIData::FMIData(const char* path, const char* modelname)
     for (auto const& vref : priv->output_vrefs) {
         Log::info("  {}", vref);
     }
-}
-
-void FMIData::eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
-{
-    // evaluate (L, f, g)(x, u, w, p, time)
-}
-
-void FMIData::jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
-{
-    // evaluate d(L, f, g) / d(x, u, w, p) (x, u, w, p, time)
-}
-
-void FullSweep::callback_eval(
-    const f64* xu_nlp,
-    const f64* p)
-{
-    fill_zero_eval_buffer();
-
-    for (int i = 0; i < pc.mesh->intervals; i++) {
-        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
-            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
-            f64* eval_buf_ij = get_eval_buffer(i, j);
-            fmi_data.eval_point_lfg(xu_ij, p, pc.mesh->t[i][j], eval_buf_ij);
-        }
-    }
-}
-
-void FullSweep::callback_jac(
-    const f64* xu_nlp,
-    const f64* p)
-{
-    fill_zero_jac_buffer();
-
-    for (int i = 0; i < pc.mesh->intervals; i++) {
-        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
-            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
-            f64* jac_buf_ij = get_jac_buffer(i, j);
-            fmi_data.eval_point_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
-        }
-    }
-}
-
-void FullSweep::callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda)
-{
-    // not yet implemented
 }
 
 GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
@@ -269,15 +224,122 @@ GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
         std::move(g_bounds),
         *mesh
     );
-};
+}
+
+FullSweep::FullSweep(GDOP::FullSweepLayout&& layout_in,
+                     const GDOP::ProblemConstants& pc,
+                     FMIData& fmi_data)
+    : GDOP::FullSweep(std::move(layout_in), pc),
+      fmi_data(fmi_data)
+{}
+
+BoundarySweep::BoundarySweep(GDOP::BoundarySweepLayout&& layout_in,
+                             const GDOP::ProblemConstants& pc,
+                             FMIData& fmi_data)
+    : GDOP::BoundarySweep(std::move(layout_in), pc),
+      fmi_data(fmi_data)
+{}
+
+
+void FMIData::eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
+{
+    // evaluate (L, f, g)(x, u, w, p, time)
+}
+
+void FMIData::jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
+{
+    // evaluate d(L, f, g) / d(x, u, w, p) (x, u, w, p, time)
+}
+
+void FullSweep::callback_eval(
+    const f64* xu_nlp,
+    const f64* p)
+{
+    fill_zero_eval_buffer();
+
+    for (int i = 0; i < pc.mesh->intervals; i++) {
+        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
+            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
+            f64* eval_buf_ij = get_eval_buffer(i, j);
+            fmi_data.eval_point_lfg(xu_ij, p, pc.mesh->t[i][j], eval_buf_ij);
+        }
+    }
+}
+
+void FullSweep::callback_jac(
+    const f64* xu_nlp,
+    const f64* p)
+{
+    fill_zero_jac_buffer();
+
+    for (int i = 0; i < pc.mesh->intervals; i++) {
+        for (int j = 0; j < pc.mesh->nodes[i]; j++) {
+            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
+            f64* jac_buf_ij = get_jac_buffer(i, j);
+            fmi_data.eval_point_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
+        }
+    }
+}
+
+void FullSweep::callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda)
+{
+    // not yet implemented
+}
+
+void BoundarySweep::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf)
+{
+    // not yet implemented
+}
+
+void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf)
+{
+    // not yet implemented
+}
+
+void BoundarySweep::callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf, const f64 mayer_factor, const f64* lambda)
+{
+    // not yet implemented
+}
+
+// we just fill the buffer in order (L, f1, ..., fn, g1, ..., gn) <- buffer layout
+void layout_lfg_init_eval(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP::ProblemConstants& pc)
+{
+    if (layout.L) {
+        layout.L->buf_index = 0;
+    }
+
+    int offset = (layout.L ? 1 : 0);
+    for (int f_idx = 0; f_idx < pc.x_size; f_idx++) {
+        layout.f[f_idx].buf_index = offset + f_idx;
+    }
+
+    offset += pc.x_size;
+    for (int g_idx = 0; g_idx < pc.g_size; g_idx++) {
+        layout.g[g_idx].buf_index = offset + g_idx;
+    }
+}
+
+void layout_lfg_init_jac(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP::ProblemConstants& pc)
+{
+
+}
+
+GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc) {
+    auto layout_lfg = GDOP::FullSweepLayout(pc.has_lagrange, pc.x_size, pc.g_size);
+
+    layout_lfg_init_eval(layout_lfg, fmi_data, pc);
+    layout_lfg_init_jac(layout_lfg, fmi_data, pc);
+
+    return layout_lfg;
+}
 
 GDOP::Problem create_gdop_problem(FMIData& fmi_data)
 {
-    // create ProblemConstants
-    auto problem_constants = std::make_unique<GDOP::ProblemConstants>(create_problem_constants(fmi_data));
-    // create bounds
-    // create sparsity
-    return GDOP::Problem(nullptr, nullptr, nullptr, nullptr);
+    auto pc = std::make_unique<GDOP::ProblemConstants>(create_problem_constants(fmi_data));
+    auto fs = std::make_unique<FullSweep>(create_fullsweep_layout(fmi_data, *pc), *pc, fmi_data); 
+    auto empty_bs = std::make_unique<BoundarySweep>(GDOP::BoundarySweepLayout(false, 0), *pc, fmi_data);
+
+    return GDOP::Problem(std::move(fs), std::move(empty_bs), std::move(pc), nullptr);
 }
 
 Problem::Problem(FMIData& fmi_data)
@@ -291,6 +353,6 @@ void main_fmi(const char* path, const char* modelname)
 
     auto fmi_data = FMIData(path, modelname);
     auto problem = Problem(fmi_data);
-};
+}
 
 } // namespace FMI
