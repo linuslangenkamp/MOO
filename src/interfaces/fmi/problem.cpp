@@ -321,7 +321,9 @@ void layout_lfg_init_eval(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP
 
 void layout_lfg_init_jac(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP::ProblemConstants& pc)
 {
-
+    // TODO: read in sparsity => fill layout
+    // TODO: read in start values for states
+    // TODO: create GDOP + Strategies => optimize()
 }
 
 GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc) {
