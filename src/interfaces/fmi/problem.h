@@ -33,14 +33,6 @@ public:
     void eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
     void jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
 
-    int nx()   const;
-    int ndx()  const;
-    int nu()   const;
-    int nw()   const;
-    int nres() const;
-    int ny()   const;
-
-private:
     std::unique_ptr<struct FMIData_priv> priv;
 };
 

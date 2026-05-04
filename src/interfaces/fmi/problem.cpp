@@ -45,13 +45,6 @@ FMIData_priv::FMIData_priv(const char* path, const char* modelname)
       instance(fmi3_instantiateModelExchange(fmu, true, true, nullptr, nullptr))
 {}
 
-int FMIData::nx()   const { return priv->state_vrefs.size(); }
-int FMIData::ndx()  const { return priv->deriv_vrefs.size(); }
-int FMIData::nu()   const { return priv->input_vrefs.size(); }
-int FMIData::nw()   const { return priv->alg_vrefs.size(); }
-int FMIData::nres() const { return priv->res_vrefs.size(); }
-int FMIData::ny()   const { return priv->output_vrefs.size(); }
-
 FMIData::FMIData(const char* path, const char* modelname)
     : priv(std::make_unique<FMIData_priv>(path, modelname))
 {
@@ -65,75 +58,62 @@ FMIData::FMIData(const char* path, const char* modelname)
         throw std::runtime_error("Missing fmi-ls-dae manifest");
     }
 
+    // there should be some better / a single variant:
+    //     1. one big loop over all variables => split into disjoint sets we need, i.e. x, derx, u, p, alg, residuals
+    //     2. immediately get their number and value references
+
     {
-        size_t count;
-        fmi3_getNumberOfContinuousStates(priv->instance, &count);
-        priv->deriv_vrefs.resize(count);
-        priv->state_vrefs.resize(count);
-
-        for (int idx = 1; idx < static_cast<int>(count) + 1; idx++) {
+        int nVars = fmi3_getNumberOfVariables(priv->fmu);
+        for (int idx = 1; idx < nVars + 1; idx++) {
             fmi3VariableHandle* var = fmi3_getVariableByIndex(priv->fmu, idx);
-            int der = fmi3_getVariableDerivativeIndex(var);
-            if (der != 0) {
-                priv->state_vrefs[idx - 1] = (fmi3_getVariableValueReference(var));
+            int derx_ref = fmi3_getVariableValueReference(var);
+            int x_ref = fmi3_getVariableDerivativeIndex(fmi3_getVariableByValueReference(priv->fmu, derx_ref));
 
-                fmi3VariableHandle* der_var = fmi3_getVariableByIndex(priv->fmu, der);
-                priv->state_vrefs[idx - 1] = (fmi3_getVariableValueReference(der_var));
+            if (fmi3_getVariableCausality(var) == fmi3CausalityInput) {
+                priv->input_vrefs.push_back(derx_ref);
+            } else if (x_ref != 0) {
+                priv->state_vrefs.push_back(x_ref);
+                priv->deriv_vrefs.push_back(derx_ref);
             }
         }
     }
 
     {
         int count = fmiLsDae_getNumberOfAlgebraicVariables(priv->fmu);
-        priv->alg_vrefs.resize(count);
+        priv->alg_vrefs.reserve(count);
         for (int idx = 1; idx < count + 1; idx++) {
             fmiLsDaeAlgebraicVariableHandle* h = fmiLsDae_getAlgebraicVariableByIndex(priv->fmu, idx - 1);
-            priv->alg_vrefs[idx - 1] = fmiLsDae_getAlgebraicVariableValueReference(h);
+            priv->alg_vrefs.push_back(fmiLsDae_getAlgebraicVariableValueReference(h));
         }
     }
 
     {
         int count = fmiLsDae_getNumberOfResiduals(priv->fmu);
-        priv->res_vrefs.resize(count);
+        priv->res_vrefs.reserve(count);
         for (int idx = 1; idx < count + 1; idx++) {
             fmiLsDaeModelStructureHandle* h = fmiLsDae_getResidualByIndex(priv->fmu, idx - 1);
-            priv->res_vrefs[idx - 1] = fmiLsDae_getValueReference(h);
+            priv->res_vrefs.push_back(fmiLsDae_getValueReference(h));
         }
     }
 
     {
         int count = fmiLsDae_getNumberOfOutputs(priv->fmu);
-        priv->output_vrefs.resize(count);
+        priv->output_vrefs.reserve(count);
         for (int idx = 1; idx < count + 1; idx++) {
             fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(priv->fmu, idx - 1);
-            priv->output_vrefs[idx + 1] = fmiLsDae_getValueReference(h);
-        }
-    }
-
-    {
-        int nVars = fmi3_getNumberOfVariables(priv->fmu);
-        for (int idx = 1; idx < nVars + 1; idx++) {
-            fmi3VariableHandle* var = fmi3_getVariableByIndex(priv->fmu, idx);
-            if (fmi3_getVariableCausality(var) == fmi3CausalityInput) {
-                priv->input_vrefs.push_back(fmi3_getVariableValueReference(var));
-            }
+            priv->output_vrefs.reserve(fmiLsDae_getValueReference(h));
         }
     }
 
     Log::info("FMI version  : {}", static_cast<int>(fmi4c_getFmiVersion(priv->fmu)));
     Log::info("Model name   : {}", fmi3_modelName(priv->fmu));
-    Log::info("  nx   = {}  (states)",      nx());
-    Log::info("  ndx  = {}  (derivatives)", ndx());
-    Log::info("  nu   = {}  (inputs)",      nu());
-    Log::info("  nw   = {}  (algebraics)",  nw());
-    Log::info("  nres = {}  (residuals)",   nres());
-    Log::info("  ny   = {}  (outputs)",     ny());
+    Log::info("  nx   = {}  (states)",      priv->state_vrefs.size());
+    Log::info("  ndx  = {}  (derivatives)", priv->deriv_vrefs.size());
+    Log::info("  nu   = {}  (inputs)",      priv->input_vrefs.size());
+    Log::info("  nw   = {}  (algebraics)",  priv->alg_vrefs.size());
+    Log::info("  nres = {}  (residuals)",   priv->res_vrefs.size());
+    Log::info("  ny   = {}  (outputs)",     priv->output_vrefs.size());
 
-    // ... [previous code] ...
-
-    Log::info("  ny   = {}  (outputs)",     ny());
-
-    // Completing your partial loop and adding the rest
     Log::info("--- Value References ---");
 
     Log::info("State Value References:");
@@ -214,16 +194,58 @@ void FullSweep::callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f
 
 GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
 {
-    auto x_bounds = FixedVector<Bounds>(2);
-    auto u_bounds = FixedVector<Bounds>(4);
+    auto x_bounds = FixedVector<Bounds>(fmi_data.priv->state_vrefs.size());
+    auto u_bounds = FixedVector<Bounds>(fmi_data.priv->input_vrefs.size() + fmi_data.priv->alg_vrefs.size());
     auto p_bounds = FixedVector<Bounds>(0);
     auto T_bounds = std::array<Bounds, 2>{};
-    auto g_bounds = FixedVector<Bounds>(2);
+    auto g_bounds = FixedVector<Bounds>(fmi_data.priv->res_vrefs.size());
+    for (auto i = 0; i < g_bounds.int_size(); i++)
+    {
+        g_bounds[i].lb = 0.0;
+        g_bounds[i].ub = 0.0;
+    }
+
     auto r_bounds = FixedVector<Bounds>(0);
 
-    auto xu0_fixed = FixedVector<std::optional<f64>>(6);
-    auto xuf_fixed = FixedVector<std::optional<f64>>(6);
+    auto xu0_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
+    auto xuf_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
     auto T_fixed = std::array<std::optional<f64>, 2>{};
+
+    Log::info("=== Problem Bounds ===");
+
+    Log::info("State bounds (x):");
+    for (size_t i = 0; i < x_bounds.size(); ++i) {
+        const auto& b = x_bounds[i];
+        Log::info("  x[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
+    }
+
+    Log::info("Input bounds (u):");
+    size_t nu = fmi_data.priv->input_vrefs.size();
+
+    for (size_t i = 0; i < nu; ++i) {
+        const auto& b = u_bounds[i];
+        Log::info("  u[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
+    }
+
+    Log::info("Algebraic bounds (z):");
+    for (size_t i = nu; i < u_bounds.size(); ++i) {
+        const auto& b = u_bounds[i];
+        Log::info("  z[{}]: lb = {}, ub = {}", i - nu, b.lb, b.ub);
+    }
+
+    Log::info("Parameter bounds (p):");
+    for (size_t i = 0; i < p_bounds.size(); ++i) {
+        const auto& b = p_bounds[i];
+        Log::info("  p[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
+    }
+
+    Log::info("Residual bounds (g):");
+    for (size_t i = 0; i < g_bounds.size(); ++i) {
+        const auto& b = g_bounds[i];
+        Log::info("  g[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
+    }
+
+    Log::info("================================");
 
     auto mesh = Mesh::create_equidistant_fixed_stages(
         /* t0 */        0.0,
@@ -264,10 +286,11 @@ Problem::Problem(FMIData& fmi_data)
 
 void main_fmi(const char* path, const char* modelname)
 {
+    Log::info("Hi from the FMI-LS-DAE interface.");
+    Log::info("Path {}, Name {}", path, modelname);
+
     auto fmi_data = FMIData(path, modelname);
     auto problem = Problem(fmi_data);
-
-    Log::info("Hi from the FMI-LS-DAE interface.");
 };
 
 } // namespace FMI

@@ -19,7 +19,7 @@ if(DEFINED ENV{SIMPLE_DAE_FMU})
     )
     add_test(NAME lsdae_sanity_check COMMAND lsdae_sanity_check)
 else()
-    message(FATAL_ERROR "SIMPLE_DAE_FMU not set - skipping lsdae_sanity_check")
+    message(WARNING "SIMPLE_DAE_FMU not set - skipping lsdae_sanity_check")
 endif()
 
 # FMI ls-dae test
