@@ -26,6 +26,26 @@
 
 namespace FMI {
 
+enum class VarCategory {
+    State,      // x
+    Input,      // u
+    Algebraic,  // z
+    Parameter,  // p
+    Unknown
+};
+
+struct VarIndex {
+    VarCategory category;
+    int local_index;  // index inside strictly x, u, or z
+    int semi_local;   // index inside x or concatenated (u+z)
+    int xu_index;     // index inside fully concatenated (x, u+z)
+};
+
+struct Dependency {
+    fmi3ValueReference vref;
+    VarIndex var;
+};
+
 struct FMIData_priv {
     fmuHandle* fmu;
     fmi3InstanceHandle* instance;
@@ -37,6 +57,10 @@ struct FMIData_priv {
     std::vector<fmi3ValueReference> res_vrefs;
     std::vector<fmi3ValueReference> output_vrefs;
 
+    std::unordered_map<fmi3ValueReference, VarIndex> vref_map;
+    std::vector<std::vector<Dependency>> deriv_dependencies;
+    std::vector<std::vector<Dependency>> res_dependencies;
+
     FMIData_priv(const char* path, const char* modelname);
 };
 
@@ -45,6 +69,87 @@ FMIData_priv::FMIData_priv(const char* path, const char* modelname)
       instance(fmi3_instantiateModelExchange(fmu, true, true, nullptr, nullptr))
 {}
 
+void FMIData::print() {
+    Log::info("\n=== FMI Model Metadata ===");
+    Log::info("FMI version  : {}", static_cast<int>(fmi4c_getFmiVersion(priv->fmu)));
+    Log::info("Model name   : {}", fmi3_modelName(priv->fmu));
+
+    FixedTableFormat<4> summary_fmt = {{15, 8, 25, 10}, {Align::Center, Align::Center, Align::Center, Align::Center}};
+    Log::start_module(summary_fmt, "Variable Counts & Preview");
+    Log::row(summary_fmt, "Category", "Count", "First 2 VRefs", "Symbol");
+    Log::dashes(summary_fmt);
+
+    auto get_preview = [](const std::vector<fmi3ValueReference>& vrefs) -> std::string {
+        if (vrefs.empty()) return "-";
+
+        std::string s;
+        size_t take = std::min<size_t>(vrefs.size(), 2);
+        for (size_t i = 0; i < take; ++i) {
+            s += std::to_string(vrefs[i]) + (i < take - 1 ? ", " : "");
+        }
+        if (vrefs.size() > 2) s += "...";
+        return s;
+    };
+
+    Log::row(summary_fmt, "States",      priv->state_vrefs.size(),  get_preview(priv->state_vrefs),  "x");
+    Log::row(summary_fmt, "Derivatives", priv->deriv_vrefs.size(),  get_preview(priv->deriv_vrefs),  "der(x)");
+    Log::row(summary_fmt, "Inputs",      priv->input_vrefs.size(),  get_preview(priv->input_vrefs),  "u");
+    Log::row(summary_fmt, "Algebraics",  priv->alg_vrefs.size(),   get_preview(priv->alg_vrefs),    "z");
+    Log::row(summary_fmt, "Residuals",   priv->res_vrefs.size(),    get_preview(priv->res_vrefs),    "g");
+    Log::row(summary_fmt, "Outputs",     priv->output_vrefs.size(), get_preview(priv->output_vrefs), "y");
+    Log::dashes(summary_fmt);
+
+    FixedTableFormat<5> map_fmt = {{15, 10, 10, 12, 12}, {Align::Center, Align::Center, Align::Center, Align::Center, Align::Center}};
+    Log::start_module(map_fmt, "Index Mapping");
+    Log::row(map_fmt, "Category", "VRef", "Local (L)", "Semi-Loc (SL)", "Global (G)");
+    Log::dashes(map_fmt);
+
+    auto print_map_rows = [&](const std::string& cat, const std::vector<fmi3ValueReference>& vrefs) {
+        for (auto vref : vrefs) {
+            auto it = priv->vref_map.find(vref);
+            if (it != priv->vref_map.end()) {
+                Log::row(map_fmt, cat, vref, it->second.local_index, it->second.semi_local, it->second.xu_index);
+            }
+        }
+    };
+
+    print_map_rows("State (x)", priv->state_vrefs);
+    print_map_rows("Input (u)", priv->input_vrefs);
+    print_map_rows("Algebraic (z)", priv->alg_vrefs);
+    Log::dashes(map_fmt);
+
+    FixedTableFormat<3> dep_fmt = {{20, 15, 45}, {Align::Center, Align::Center, Align::Center}};
+    Log::start_module(dep_fmt, "System Sparsity (Global Jacobian Indices)");
+    Log::row(dep_fmt, "Equation", "VRef", "Global Column Indices (G)");
+    Log::dashes(dep_fmt);
+
+    auto print_deps = [&](const std::string& prefix,
+                          const std::vector<fmi3ValueReference>& vrefs,
+                          const std::vector<std::vector<Dependency>>& deps_list) {
+        for (size_t i = 0; i < vrefs.size(); ++i) {
+            std::string indices_str;
+            for (const auto& d : deps_list[i]) {
+                if (d.var.category == VarCategory::Unknown) {
+                    indices_str += "??, ";
+                } else {
+                    indices_str += std::to_string(d.var.xu_index) + ", ";
+                }
+            }
+
+            if (!indices_str.empty()) {
+                indices_str.erase(indices_str.length() - 2);
+            }
+
+            Log::row(dep_fmt, fmt::format("{}[{}]", prefix, i), i, indices_str.empty() ? "none" : indices_str);
+        }
+    };
+
+    print_deps("der(x)", priv->deriv_vrefs, priv->deriv_dependencies);
+    Log::dashes(dep_fmt);
+    print_deps("Residual g", priv->res_vrefs, priv->res_dependencies);
+    Log::dashes(dep_fmt);
+}
+
 FMIData::FMIData(const char* path, const char* modelname)
     : priv(std::make_unique<FMIData_priv>(path, modelname))
 {
@@ -52,6 +157,7 @@ FMIData::FMIData(const char* path, const char* modelname)
         Log::error("fmi4c_loadFmu failed");
         throw std::runtime_error("Failed to load FMU");
     }
+
     if (!fmiLsDae_isPresent(priv->fmu)) {
         Log::error("fmi-ls-dae manifest not found in FMU");
         fmi4c_freeFmu(priv->fmu);
@@ -105,46 +211,89 @@ FMIData::FMIData(const char* path, const char* modelname)
         }
     }
 
-    Log::info("FMI version  : {}", static_cast<int>(fmi4c_getFmiVersion(priv->fmu)));
-    Log::info("Model name   : {}", fmi3_modelName(priv->fmu));
-    Log::info("  #x      = {}  (states)",      priv->state_vrefs.size());
-    Log::info("  #der(x) = {}  (derivatives)", priv->deriv_vrefs.size());
-    Log::info("  #u      = {}  (inputs)",      priv->input_vrefs.size());
-    Log::info("  #z      = {}  (algebraics)",  priv->alg_vrefs.size());
-    Log::info("  #g      = {}  (residuals)",   priv->res_vrefs.size());
-    Log::info("  #y      = {}  (outputs)",     priv->output_vrefs.size());
+    // build the Variable Index Map (Concatenated xu = [x, u, z])
+    {
+        int xu_offset = 0;
+        int u_size = static_cast<int>(priv->input_vrefs.size());
 
-    Log::info("--- Value References ---");
+        for (size_t i = 0; i < priv->state_vrefs.size(); ++i) {
+            priv->vref_map[priv->state_vrefs[i]] = {
+                VarCategory::State, static_cast<int>(i), static_cast<int>(i), xu_offset++
+            };
+        }
 
-    Log::info("State Value References:");
-    for (auto const& vref : priv->state_vrefs) {
-        Log::info("  {}", vref);
+        for (size_t i = 0; i < priv->input_vrefs.size(); ++i) {
+            priv->vref_map[priv->input_vrefs[i]] = {
+                VarCategory::Input, static_cast<int>(i), static_cast<int>(i), xu_offset++
+            };
+        }
+
+        for (size_t i = 0; i < priv->alg_vrefs.size(); ++i) {
+            priv->vref_map[priv->alg_vrefs[i]] = {
+                VarCategory::Algebraic, static_cast<int>(i), u_size + static_cast<int>(i), xu_offset++
+            };
+        }
     }
 
-    Log::info("Derivative Value References:");
-    for (auto const& vref : priv->deriv_vrefs) {
-        Log::info("  {}", vref);
+    // build dependency structure
+
+    {
+        int count = static_cast<int>(priv->state_vrefs.size());
+        priv->deriv_dependencies.reserve(count);
+
+        for (int idx = 0; idx < count; idx++) {
+            fmiLsDaeModelStructureHandle* h = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, idx);
+
+            int n_deps = fmiLsDae_getNumberOfDependencies(h);
+            std::vector<fmi3ValueReference> raw_deps(n_deps);
+            std::vector<Dependency> deps;
+            deps.reserve(n_deps);
+
+            if (n_deps > 0) {
+                fmiLsDae_getDependencies(h, raw_deps.data(), n_deps);
+                for (auto vref : raw_deps) {
+                    auto it = priv->vref_map.find(vref);
+                    if (it != priv->vref_map.end()) {
+                        deps.push_back({vref, it->second});
+                    } else {
+                        // unmapped e.g. parameters?
+                        deps.push_back({vref, {VarCategory::Unknown, -1, -1, -1}});
+                    }
+                }
+            }
+            priv->deriv_dependencies.push_back(std::move(deps));
+        }
     }
 
-    Log::info("Input Value References:");
-    for (auto const& vref : priv->input_vrefs) {
-        Log::info("  {}", vref);
+    {
+        int count = static_cast<int>(priv->res_vrefs.size());
+        priv->res_dependencies.reserve(count);
+
+        for (int idx = 0; idx < count; idx++) {
+            fmiLsDaeModelStructureHandle* h = fmiLsDae_getResidualByIndex(priv->fmu, idx);
+
+            int n_deps = fmiLsDae_getNumberOfDependencies(h);
+            std::vector<fmi3ValueReference> raw_deps(n_deps);
+            std::vector<Dependency> deps;
+            deps.reserve(n_deps);
+
+            if (n_deps > 0) {
+                fmiLsDae_getDependencies(h, raw_deps.data(), n_deps);
+                for (auto vref : raw_deps) {
+                    auto it = priv->vref_map.find(vref);
+                    if (it != priv->vref_map.end()) {
+                        deps.push_back({vref, it->second});
+                    } else {
+                        // unmapped e.g. parameters?
+                        deps.push_back({vref, {VarCategory::Unknown, -1, -1, -1}});
+                    }
+                }
+            }
+            priv->res_dependencies.push_back(std::move(deps));
+        }
     }
 
-    Log::info("Algebraic Value References:");
-    for (auto const& vref : priv->alg_vrefs) {
-        Log::info("  {}", vref);
-    }
-
-    Log::info("Residual Value References:");
-    for (auto const& vref : priv->res_vrefs) {
-        Log::info("  {}", vref);
-    }
-
-    Log::info("Output Value References:");
-    for (auto const& vref : priv->output_vrefs) {
-        Log::info("  {}", vref);
-    }
+    print();
 }
 
 GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
@@ -166,7 +315,7 @@ GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
     auto xuf_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
     auto T_fixed = std::array<std::optional<f64>, 2>{};
 
-    Log::info("=== Problem Bounds ===");
+    Log::info("\n=== Problem Bounds ===");
 
     Log::info("State bounds (x):");
     for (size_t i = 0; i < x_bounds.size(); ++i) {
@@ -321,9 +470,47 @@ void layout_lfg_init_eval(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP
 
 void layout_lfg_init_jac(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP::ProblemConstants& pc)
 {
-    // TODO: read in sparsity => fill layout
-    // TODO: read in start values for states
-    // TODO: create GDOP + Strategies => optimize()
+    int jac_offset = 0;
+
+    if (layout.L) {
+        // TODO: add an output here
+    }
+
+    for (int i = 0; i < pc.x_size; i++) {
+        auto& current_f_jac = layout.f[i].jac;
+        const auto& fmi_deps = fmi_data.priv->deriv_dependencies[i];
+
+        for (const auto& dep : fmi_deps) {
+            if (dep.var.category == VarCategory::State) {
+                current_f_jac.dx.push_back({dep.var.semi_local, jac_offset++});
+            }
+            else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
+                current_f_jac.du.push_back({dep.var.semi_local, jac_offset++});
+            }
+            else if (dep.var.category == VarCategory::Parameter) {
+                current_f_jac.dp.push_back({dep.var.local_index, jac_offset++});
+            }
+        }
+    }
+
+    for (int i = 0; i < pc.g_size; i++) {
+        auto& current_g_jac = layout.g[i].jac;
+        const auto& fmi_deps = fmi_data.priv->res_dependencies[i];
+
+        for (const auto& dep : fmi_deps) {
+            if (dep.var.category == VarCategory::State) {
+                current_g_jac.dx.push_back({dep.var.semi_local, jac_offset++});
+            }
+            else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
+                current_g_jac.du.push_back({dep.var.semi_local, jac_offset++});
+            }
+            else if (dep.var.category == VarCategory::Parameter) {
+                current_g_jac.dp.push_back({dep.var.local_index, jac_offset++});
+            }
+        }
+    }
+
+    Log::info("Jacobian sparsity initialized. Total NNZ per node: {}", jac_offset);
 }
 
 GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc) {
@@ -338,8 +525,11 @@ GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemCo
 GDOP::Problem create_gdop_problem(FMIData& fmi_data)
 {
     auto pc = std::make_unique<GDOP::ProblemConstants>(create_problem_constants(fmi_data));
-    auto fs = std::make_unique<FullSweep>(create_fullsweep_layout(fmi_data, *pc), *pc, fmi_data); 
+    auto fs = std::make_unique<FullSweep>(create_fullsweep_layout(fmi_data, *pc), *pc, fmi_data);
     auto empty_bs = std::make_unique<BoundarySweep>(GDOP::BoundarySweepLayout(false, 0), *pc, fmi_data);
+
+    // test sparsity of the fullsweep
+    fs->print_jacobian_sparsity_pattern();
 
     return GDOP::Problem(std::move(fs), std::move(empty_bs), std::move(pc), nullptr);
 }

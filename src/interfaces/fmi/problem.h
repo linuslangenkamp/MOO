@@ -30,6 +30,7 @@ class FMIData {
 public:
     FMIData(const char* path, const char* modelname);
 
+    void print();
     void eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
     void jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
 
