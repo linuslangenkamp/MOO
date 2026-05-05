@@ -28,9 +28,12 @@ namespace FMI {
 
 class FMIData {
 public:
-    FMIData(const char* path, const char* modelname);
+    FMIData(const char* path, const char* modelname, int* lagrange_vref=nullptr);
 
     void print();
+    void initialize(f64 t_start, f64 t_stop);
+    std::vector<f64> get_initial_states();
+
     void eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
     void jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
 

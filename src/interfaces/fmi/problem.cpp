@@ -21,6 +21,10 @@
 #include <base/log.h>
 #include <interfaces/fmi/problem.h>
 
+#include <nlp/instances/gdop/orchestrator.h>
+#include <nlp/solvers/ipopt/solver.h>
+#include <nlp/instances/gdop/strategies.h>
+
 #include <fmi4c.h>
 #include <fmi4c_lsdae.h>
 
@@ -50,6 +54,7 @@ struct FMIData_priv {
     fmuHandle* fmu;
     fmi3InstanceHandle* instance;
 
+    std::vector<fmi3ValueReference> lagrange_vrefs;
     std::vector<fmi3ValueReference> state_vrefs;
     std::vector<fmi3ValueReference> deriv_vrefs;
     std::vector<fmi3ValueReference> input_vrefs;
@@ -58,8 +63,12 @@ struct FMIData_priv {
     std::vector<fmi3ValueReference> output_vrefs;
 
     std::unordered_map<fmi3ValueReference, VarIndex> vref_map;
+    std::vector<std::vector<Dependency>> lagr_dependencies;
     std::vector<std::vector<Dependency>> deriv_dependencies;
     std::vector<std::vector<Dependency>> res_dependencies;
+
+    std::vector<fmi3ValueReference> Lfg_vrefs; // value references of the (L, f1, ..., fn, g1, ..., gm) vector
+    std::vector<fmi3ValueReference> xuz_vrefs; // value references of the (x1, ..., xn, u1, ..., uk, z1, ..., zl) vector
 
     FMIData_priv(const char* path, const char* modelname);
 };
@@ -144,13 +153,15 @@ void FMIData::print() {
         }
     };
 
+    print_deps("L", priv->lagrange_vrefs, priv->lagr_dependencies);
+    Log::dashes(dep_fmt);
     print_deps("der(x)", priv->deriv_vrefs, priv->deriv_dependencies);
     Log::dashes(dep_fmt);
     print_deps("Residual g", priv->res_vrefs, priv->res_dependencies);
     Log::dashes(dep_fmt);
 }
 
-FMIData::FMIData(const char* path, const char* modelname)
+FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
     : priv(std::make_unique<FMIData_priv>(path, modelname))
 {
     if (priv->fmu == nullptr) {
@@ -207,8 +218,18 @@ FMIData::FMIData(const char* path, const char* modelname)
         priv->output_vrefs.reserve(count);
         for (int idx = 1; idx < count + 1; idx++) {
             fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(priv->fmu, idx - 1);
-            priv->output_vrefs.reserve(fmiLsDae_getValueReference(h));
+            priv->output_vrefs.push_back(fmiLsDae_getValueReference(h));
         }
+    }
+
+    if (lagrange_vref != nullptr)
+    {
+        auto it = std::find(priv->output_vrefs.begin(), priv->output_vrefs.end(), static_cast<fmi3ValueReference>(*lagrange_vref));
+        if (it == priv->output_vrefs.end()) {
+            Log::error("Provided Lagrange term value reference does not exist.");
+            throw;
+        }
+        priv->lagrange_vrefs.push_back(static_cast<int32_t>(*lagrange_vref));
     }
 
     // build the Variable Index Map (Concatenated xu = [x, u, z])
@@ -236,6 +257,36 @@ FMIData::FMIData(const char* path, const char* modelname)
     }
 
     // build dependency structure
+
+    if (priv->lagrange_vrefs.size() != 0)
+    {
+        int count = static_cast<int>(priv->output_vrefs.size());
+        priv->lagr_dependencies.reserve(1);
+
+        for (int idx = 0; idx < count; idx++) {
+            fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(priv->fmu, idx);
+            if (h->valueReference != static_cast<fmi3ValueReference>(*lagrange_vref)) continue;
+
+            int n_deps = fmiLsDae_getNumberOfDependencies(h);
+            std::vector<fmi3ValueReference> raw_deps(n_deps);
+            std::vector<Dependency> deps;
+            deps.reserve(n_deps);
+
+            if (n_deps > 0) {
+                fmiLsDae_getDependencies(h, raw_deps.data(), n_deps);
+                for (auto vref : raw_deps) {
+                    auto it = priv->vref_map.find(vref);
+                    if (it != priv->vref_map.end()) {
+                        deps.push_back({vref, it->second});
+                    } else {
+                        // unmapped e.g. parameters?
+                        deps.push_back({vref, {VarCategory::Unknown, -1, -1, -1}});
+                    }
+                }
+            }
+            priv->lagr_dependencies.push_back(std::move(deps));
+        }
+    }
 
     {
         int count = static_cast<int>(priv->state_vrefs.size());
@@ -293,7 +344,88 @@ FMIData::FMIData(const char* path, const char* modelname)
         }
     }
 
+    // create vectors of variable references as in our sorted MOO structures
+
+    if (lagrange_vref != nullptr)
+    {
+        priv->Lfg_vrefs.push_back(priv->lagrange_vrefs[0]);
+    }
+
+    for (auto f : priv->deriv_vrefs) {
+        priv->Lfg_vrefs.push_back(f);
+    }
+
+    for (auto g : priv->res_vrefs) {
+        priv->Lfg_vrefs.push_back(g);
+    }
+
+    for (auto x : priv->state_vrefs) {
+        priv->xuz_vrefs.push_back(x);
+    }
+
+    for (auto u : priv->input_vrefs) {
+        priv->xuz_vrefs.push_back(u);
+    }
+
+    for (auto z : priv->alg_vrefs) {
+        priv->xuz_vrefs.push_back(z);
+    }
+
     print();
+}
+
+void FMIData::initialize(f64 t_start, f64 t_stop) {
+    auto* inst = priv->instance;
+
+    fmi3Status status = fmi3_enterInitializationMode(
+        inst,
+        fmi3False, 0.0,     // toleranceDefined, tolerance
+        t_start,            // startTime
+        fmi3True, t_stop    // stopTimeDefined, stopTime
+    );
+
+    if (status != fmi3OK) {
+        throw std::runtime_error("FMU: Failed to enter initialization mode");
+    }
+
+    status = fmi3_exitInitializationMode(inst);
+    if (status != fmi3OK) {
+        throw std::runtime_error("FMU: Failed to exit initialization mode");
+    }
+
+    /* TODO: What do we need to do here?
+
+    status = fmi3_enterEventMode(inst);
+    if (status != fmi3OK) {
+        throw std::runtime_error("FMU: Failed to enter event mode");
+    }
+
+    status = fmi3_enterStepMode(inst);
+    if (status != fmi3OK) {
+        throw std::runtime_error("FMU: Failed to enter step time mode");
+    }
+
+    */
+
+    Log::info("FMU is now in Continuous-Time Mode (ready for simulation).");
+}
+
+std::vector<f64> FMIData::get_initial_states() {
+    if (priv->state_vrefs.empty()) return {};
+
+    std::vector<f64> states(priv->state_vrefs.size());
+
+    fmi3Status status = fmi3_getFloat64(priv->instance,
+                                        priv->state_vrefs.data(),
+                                        priv->state_vrefs.size(),
+                                        states.data(),
+                                        states.size());
+
+    if (status != fmi3OK) {
+        Log::error("Failed to retrieve initial states from FMU");
+    }
+
+    return states;
 }
 
 GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
@@ -314,6 +446,24 @@ GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
     auto xu0_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
     auto xuf_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
     auto T_fixed = std::array<std::optional<f64>, 2>{};
+
+    // get and fix start values for state variables
+    auto x0 = fmi_data.get_initial_states();
+
+    for (size_t i = 0; i < x0.size(); ++i) {
+        xu0_fixed[i] = x0[i];
+    }
+
+    for (size_t i = 0; i < fmi_data.priv->input_vrefs.size(); ++i) {
+        u_bounds[i].lb = -1;
+        u_bounds[i].ub = 1;
+    }
+
+
+    Log::info("\n=== Start values for States x(0.0) ===");
+    for (size_t i = 0; i < x0.size(); ++i) {
+        Log::info("  x[{}](0.0) = {}", i, x0[i]);
+    }
 
     Log::info("\n=== Problem Bounds ===");
 
@@ -353,15 +503,18 @@ GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
 
     auto mesh = Mesh::create_equidistant_fixed_stages(
         /* t0 */        0.0,
-        /* tf */        1.0,
-        /* intervals */ 25,
+        /* tf */        0.5,
+        /* intervals */ 15,
         /* stages */    3,
         /* type */      MeshType::Physical
     );
 
+    T_fixed[0] = mesh->t0;
+    T_fixed[1] = mesh->tf;
+
     return GDOP::ProblemConstants(
         /* mayer */ false,
-        /* lagrange */ false,
+        /* lagrange */ !fmi_data.priv->lagrange_vrefs.empty(),
         std::move(x_bounds),
         std::move(u_bounds),
         std::move(p_bounds),
@@ -389,15 +542,73 @@ BoundarySweep::BoundarySweep(GDOP::BoundarySweepLayout&& layout_in,
       fmi_data(fmi_data)
 {}
 
-
+// evaluate (L, f, g)(x, u, w, p, time)
 void FMIData::eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
 {
-    // evaluate (L, f, g)(x, u, w, p, time)
+    fmi3_setTime(priv->instance, time);
+
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(),
+                    priv->xuz_vrefs.size(),
+                    xu,
+                    priv->xuz_vrefs.size());
+
+    fmi3_getContinuousStateDerivatives(priv->instance, out, priv->state_vrefs.size());
+
+    fmi3_getFloat64(priv->instance,
+                    priv->Lfg_vrefs.data(),
+                    priv->Lfg_vrefs.size(),
+                    out,
+                    priv->Lfg_vrefs.size());
 }
 
+// evaluate d(L, f, g) / d(x, u, z, p) (x, u, z, p, time)
 void FMIData::jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
 {
-    // evaluate d(L, f, g) / d(x, u, w, p) (x, u, w, p, time)
+    fmi3InstanceHandle* inst = priv->instance;
+
+    fmi3_setTime(inst, time);
+    fmi3_setFloat64(inst,
+                    priv->xuz_vrefs.data(),
+                    priv->xuz_vrefs.size(),
+                    xu,
+                    priv->xuz_vrefs.size());
+
+    int out_idx = 0;
+
+    auto get_partial = [&](fmi3ValueReference value_vref, fmi3ValueReference independent_vref) -> f64 {
+        f64 delta = 1.0;
+        f64 partial_derivative = 0.0;
+
+        fmi3Status status = fmi3_getDirectionalDerivative(inst,
+                                                          &value_vref, 1,
+                                                          &independent_vref, 1,
+                                                          &delta, 1,
+                                                          &partial_derivative, 1);
+
+        return (status == fmi3OK) ? partial_derivative : 0.0;
+    };
+
+    for (size_t i = 0; i < priv->lagrange_vrefs.size(); ++i) {
+        fmi3ValueReference L_vref = priv->lagrange_vrefs[i];
+        for (const auto& dep : priv->lagr_dependencies[i]) {
+            out[out_idx++] = get_partial(L_vref, dep.vref);
+        }
+    }
+
+    for (size_t i = 0; i < priv->deriv_vrefs.size(); ++i) {
+        fmi3ValueReference f_vref = priv->deriv_vrefs[i];
+        for (const auto& dep : priv->deriv_dependencies[i]) {
+            out[out_idx++] = get_partial(f_vref, dep.vref);
+        }
+    }
+
+    for (size_t i = 0; i < priv->res_vrefs.size(); ++i) {
+        fmi3ValueReference g_vref = priv->res_vrefs[i];
+        for (const auto& dep : priv->res_dependencies[i]) {
+            out[out_idx++] = get_partial(g_vref, dep.vref);
+        }
+    }
 }
 
 void FullSweep::callback_eval(
@@ -425,7 +636,7 @@ void FullSweep::callback_jac(
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
             const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
             f64* jac_buf_ij = get_jac_buffer(i, j);
-            fmi_data.eval_point_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
+            fmi_data.jac_point_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
         }
     }
 }
@@ -473,7 +684,20 @@ void layout_lfg_init_jac(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP:
     int jac_offset = 0;
 
     if (layout.L) {
-        // TODO: add an output here
+        auto& L_jac = layout.L->jac;
+        const auto& fmi_deps = fmi_data.priv->lagr_dependencies[0];
+
+        for (const auto& dep : fmi_deps) {
+            if (dep.var.category == VarCategory::State) {
+                L_jac.dx.push_back({dep.var.semi_local, jac_offset++});
+            }
+            else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
+                L_jac.du.push_back({dep.var.semi_local, jac_offset++});
+            }
+            else if (dep.var.category == VarCategory::Parameter) {
+                L_jac.dp.push_back({dep.var.local_index, jac_offset++});
+            }
+        }
     }
 
     for (int i = 0; i < pc.x_size; i++) {
@@ -543,8 +767,31 @@ void main_fmi(const char* path, const char* modelname)
     Log::info("Hi from the FMI-LS-DAE interface.");
     Log::info("Path {}, Name {}", path, modelname);
 
-    auto fmi_data = FMIData(path, modelname);
+    int lagr = 603979776;
+    auto fmi_data = FMIData(path, modelname, &lagr);
+    fmi_data.initialize(0.0, 0.0);
     auto problem = Problem(fmi_data);
+
+    auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());
+    strategies->emitter = std::make_shared<GDOP::CSVEmitter>("optimal_solution.csv", false);
+
+    auto gdop = GDOP::GDOP(problem);
+
+    auto nlp_solver_settings = NLP::NLPSolverSettings(0, nullptr);
+    nlp_solver_settings.set(NLP::Option::Hessian, NLP::HessianOption::LBFGS);
+    nlp_solver_settings.set(NLP::Option::Jacobian, NLP::JacobianOption::Exact);
+    nlp_solver_settings.set(NLP::Option::Gradient, NLP::GradientOption::Exact);
+    // nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
+    nlp_solver_settings.set(NLP::Option::Tolerance, 1e-8);
+    nlp_solver_settings.print();
+
+    IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_settings);
+
+    auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), ipopt_solver);
+
+    orchestrator.optimize();
+
+    TimingTree::instance().print_tree_table();
 }
 
 } // namespace FMI
