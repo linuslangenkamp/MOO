@@ -28,7 +28,7 @@ namespace FMI {
 
 class FMIData {
 public:
-    FMIData(const char* path, const char* modelname, int* lagrange_vref=nullptr);
+    FMIData(struct FMISettings& settings);
 
     void print();
     void initialize(f64 t_start, f64 t_stop);
@@ -71,7 +71,15 @@ public:
     Problem(FMIData& fmi_data);
 };
 
-MOO_EXPORT void main_fmi(const char* path, const char* modelname);
+struct FMISettings {
+    const char* path;
+    const char* modelname;
+    uint32_t* lagrange_vref = nullptr;
+    std::vector<uint32_t> parameter_vrefs;
+};
+
+MOO_EXPORT void main_fmi(FMISettings& settings);
+
 
 } // namespace FMI
 

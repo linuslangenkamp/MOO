@@ -61,6 +61,7 @@ struct FMIData_priv {
     std::vector<fmi3ValueReference> alg_vrefs;
     std::vector<fmi3ValueReference> res_vrefs;
     std::vector<fmi3ValueReference> output_vrefs;
+    std::vector<fmi3ValueReference> parameter_vrefs;
 
     std::unordered_map<fmi3ValueReference, VarIndex> vref_map;
     std::vector<std::vector<Dependency>> lagr_dependencies;
@@ -106,6 +107,7 @@ void FMIData::print() {
     Log::row(summary_fmt, "Algebraics",  priv->alg_vrefs.size(),   get_preview(priv->alg_vrefs),    "z");
     Log::row(summary_fmt, "Residuals",   priv->res_vrefs.size(),    get_preview(priv->res_vrefs),    "g");
     Log::row(summary_fmt, "Outputs",     priv->output_vrefs.size(), get_preview(priv->output_vrefs), "y");
+    Log::row(summary_fmt, "Parameter",   priv->parameter_vrefs.size(), get_preview(priv->parameter_vrefs), "p");
     Log::dashes(summary_fmt);
 
     FixedTableFormat<5> map_fmt = {{15, 10, 10, 12, 12}, {Align::Center, Align::Center, Align::Center, Align::Center, Align::Center}};
@@ -161,8 +163,8 @@ void FMIData::print() {
     Log::dashes(dep_fmt);
 }
 
-FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
-    : priv(std::make_unique<FMIData_priv>(path, modelname))
+FMIData::FMIData(FMISettings& settings)
+    : priv(std::make_unique<FMIData_priv>(settings.path, settings.modelname))
 {
     if (priv->fmu == nullptr) {
         Log::error("fmi4c_loadFmu failed");
@@ -179,18 +181,24 @@ FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
     //     1. one big loop over all variables => split into disjoint sets we need, i.e. x, derx, u, p, alg, residuals
     //     2. immediately get their number and value references
 
+    int states = fmiLsDae_getNumberOfContinuousStateDerivatives(priv->fmu);
+    for (int s = 0; s < states; s++)
+    {
+        auto structure = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, s);
+        auto der_ref = fmiLsDae_getValueReference(structure);
+        auto x_ref = fmi3_getVariableDerivativeIndex(fmi3_getVariableByValueReference(priv->fmu, der_ref));
+        priv->state_vrefs.push_back(x_ref);
+        priv->deriv_vrefs.push_back(der_ref);
+    }
+
     {
         int nVars = fmi3_getNumberOfVariables(priv->fmu);
         for (int idx = 1; idx < nVars + 1; idx++) {
             fmi3VariableHandle* var = fmi3_getVariableByIndex(priv->fmu, idx);
-            int derx_ref = fmi3_getVariableValueReference(var);
-            int x_ref = fmi3_getVariableDerivativeIndex(fmi3_getVariableByValueReference(priv->fmu, derx_ref));
+            int ref = fmi3_getVariableValueReference(var);
 
             if (fmi3_getVariableCausality(var) == fmi3CausalityInput) {
-                priv->input_vrefs.push_back(derx_ref);
-            } else if (x_ref != 0) {
-                priv->state_vrefs.push_back(x_ref);
-                priv->deriv_vrefs.push_back(derx_ref);
+                priv->input_vrefs.push_back(ref);
             }
         }
     }
@@ -222,14 +230,27 @@ FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
         }
     }
 
-    if (lagrange_vref != nullptr)
+    for (auto& ref : settings.parameter_vrefs)
     {
-        auto it = std::find(priv->output_vrefs.begin(), priv->output_vrefs.end(), static_cast<fmi3ValueReference>(*lagrange_vref));
-        if (it == priv->output_vrefs.end()) {
-            Log::error("Provided Lagrange term value reference does not exist.");
+        auto handle = fmi3_getVariableByValueReference(priv->fmu, ref);
+        auto variability = fmi3_getVariableVariability(handle);
+        if (variability == fmi3VariabilityTunable) {
+            priv->parameter_vrefs.push_back(ref);
+        }
+        else {
+            Log::error("Provided parameter value reference {} is not tunable.", ref);
             throw;
         }
-        priv->lagrange_vrefs.push_back(static_cast<int32_t>(*lagrange_vref));
+    }
+
+    if (settings.lagrange_vref != nullptr)
+    {
+        auto it = std::find(priv->output_vrefs.begin(), priv->output_vrefs.end(), static_cast<fmi3ValueReference>(*settings.lagrange_vref));
+        if (it == priv->output_vrefs.end()) {
+            Log::error("Provided Lagrange term value reference {} does not exist.", *settings.lagrange_vref);
+            throw;
+        }
+        priv->lagrange_vrefs.push_back(*settings.lagrange_vref);
     }
 
     // build the Variable Index Map (Concatenated xu = [x, u, z])
@@ -254,6 +275,12 @@ FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
                 VarCategory::Algebraic, static_cast<int>(i), u_size + static_cast<int>(i), xu_offset++
             };
         }
+
+        for (size_t i = 0; i < priv->parameter_vrefs.size(); ++i) {
+            priv->vref_map[priv->parameter_vrefs[i]] = {
+                VarCategory::Parameter, static_cast<int>(i), static_cast<int>(i), static_cast<int>(i)
+            };
+        }
     }
 
     // build dependency structure
@@ -265,7 +292,7 @@ FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
 
         for (int idx = 0; idx < count; idx++) {
             fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(priv->fmu, idx);
-            if (h->valueReference != static_cast<fmi3ValueReference>(*lagrange_vref)) continue;
+            if (h->valueReference != static_cast<fmi3ValueReference>(priv->lagrange_vrefs[0])) continue;
 
             int n_deps = fmiLsDae_getNumberOfDependencies(h);
             std::vector<fmi3ValueReference> raw_deps(n_deps);
@@ -295,7 +322,7 @@ FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
         for (int idx = 0; idx < count; idx++) {
             fmiLsDaeModelStructureHandle* h = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, idx);
 
-            int n_deps = fmiLsDae_getNumberOfDependencies(h);
+            int n_deps = (h == nullptr) ? 0 : fmiLsDae_getNumberOfDependencies(h);
             std::vector<fmi3ValueReference> raw_deps(n_deps);
             std::vector<Dependency> deps;
             deps.reserve(n_deps);
@@ -346,7 +373,7 @@ FMIData::FMIData(const char* path, const char* modelname, int *lagrange_vref)
 
     // create vectors of variable references as in our sorted MOO structures
 
-    if (lagrange_vref != nullptr)
+    if (settings.lagrange_vref != nullptr)
     {
         priv->Lfg_vrefs.push_back(priv->lagrange_vrefs[0]);
     }
@@ -762,13 +789,11 @@ Problem::Problem(FMIData& fmi_data)
     : GDOP::Problem(create_gdop_problem(fmi_data))
 {}
 
-void main_fmi(const char* path, const char* modelname)
-{
+void main_fmi(FMISettings& settings) {
     Log::info("Hi from the FMI-LS-DAE interface.");
-    Log::info("Path {}, Name {}", path, modelname);
+    Log::info("Path {}, Name {}", settings.path, settings.modelname);
 
-    int lagr = 603979776;
-    auto fmi_data = FMIData(path, modelname, &lagr);
+    auto fmi_data = FMIData(settings);
     fmi_data.initialize(0.0, 0.0);
     auto problem = Problem(fmi_data);
 

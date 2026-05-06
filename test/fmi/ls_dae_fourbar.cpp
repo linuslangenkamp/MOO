@@ -22,7 +22,13 @@
 
 int main() {
 
-    FMI::main_fmi(SIMPLE_DAE_FMU_PATH, "SimpleDAE");
+    FMI::FMISettings settings;
+    settings.path = FOURBAR_FMU_PATH;
+    settings.modelname = "Fourbar1";
+    settings.lagrange_vref = nullptr;
+    settings.parameter_vrefs = {16777236};
+
+    FMI::main_fmi(settings);
 
     return EXIT_SUCCESS;
 }
