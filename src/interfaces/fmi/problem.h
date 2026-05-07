@@ -26,18 +26,59 @@
 
 namespace FMI {
 
+// user-facing configuration / problem formulation
+struct FMISettings {
+    const char* path;
+    const char* modelname;
+
+    f64 t0 = 0.0;
+    f64 tf = 0.5;
+    int intervals = 15;
+    int stage = 3;
+
+    // bounded output constraints
+    struct BoundedVRef {
+        uint32_t vref;
+        f64 lb;
+        f64 ub;
+    };
+
+    // objective terms (output vrefs)
+    uint32_t* lagrange_vref = nullptr; // L(x, u, z, p, t)
+    uint32_t* mayer_vref = nullptr;    // M(xf, uf, zf, p, tf)
+
+    // p^L <= p <= p^U tunable parameters to include
+    std::vector<BoundedVRef> parameter_vrefs;
+
+    // u^L <= u <= u^U tunable controls to include
+    std::vector<BoundedVRef> control_vrefs;
+
+    // c^L <= c(x, u, z, p, t) <= c^U (appended to Lfg after residuals)
+    std::vector<BoundedVRef> path_constraint_vrefs;
+
+    // rf^L <= rf(xf, uf, zf, p, tf) <= rf^U (appended to Mrf after Mayer)
+    std::vector<BoundedVRef> final_constraint_vrefs;
+};
+
 class FMIData {
 public:
-    FMIData(struct FMISettings& settings);
+    FMIData(FMISettings& settings);
 
     void print();
     void initialize(f64 t_start, f64 t_stop);
     std::vector<f64> get_initial_states();
 
+    // pointwise evaluation / Jacobian (L?, f, g, c)
     void eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
-    void jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
+    void jac_point_lfg (const f64* xu, const f64* p, f64 time, f64* out);
 
+    // boundary evaluation / Jacobian (M?, rf)  at final time
+    void eval_point_mrf(const f64* xuf, const f64* p, f64 tf, f64* out);
+    void jac_point_mrf (const f64* xuf, const f64* p, f64 tf, f64* out);
+
+    FMISettings& settings;
     std::unique_ptr<struct FMIData_priv> priv;
+    std::vector<double> work;
 };
 
 class FullSweep : public GDOP::FullSweep {
@@ -47,8 +88,8 @@ public:
               FMIData& fmi_data);
 
     void callback_eval(const f64* xu_nlp, const f64* p) override;
-    void callback_jac(const f64* xu_nlp, const f64* p) override;
-    void callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) override;
+    void callback_jac (const f64* xu_nlp, const f64* p) override;
+    void callback_hes (const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda) override;
 
     FMIData& fmi_data;
 };
@@ -59,9 +100,9 @@ public:
                   const GDOP::ProblemConstants& pc,
                   FMIData& fmi_data);
 
-    void callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf) override;
-    void callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf) override;
-    void callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf, const f64 mayer_factor, const f64* lambda) override;
+    void callback_eval(const f64* xu0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf) override;
+    void callback_jac (const f64* xu0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf) override;
+    void callback_hes (const f64* xu0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf, const f64 mayer_factor, const f64* lambda) override;
 
     FMIData& fmi_data;
 };
@@ -71,15 +112,7 @@ public:
     Problem(FMIData& fmi_data);
 };
 
-struct FMISettings {
-    const char* path;
-    const char* modelname;
-    uint32_t* lagrange_vref = nullptr;
-    std::vector<uint32_t> parameter_vrefs;
-};
-
 MOO_EXPORT void main_fmi(FMISettings& settings);
-
 
 } // namespace FMI
 

@@ -31,10 +31,12 @@
 namespace FMI {
 
 enum class VarCategory {
-    State,      // x
-    Input,      // u
-    Algebraic,  // z
-    Parameter,  // p
+    State,       // x
+    Input,       // u
+    Algebraic,   // z
+    Parameter,   // p
+    InitialTime, // t0
+    FinalTime,   // tf
     Unknown
 };
 
@@ -50,26 +52,70 @@ struct Dependency {
     VarIndex var;
 };
 
+// FMIData_priv is split into two layers:
+//
+//  Layer 1: raw FMU model information, everything needed to classify variables and look up,
+//           value references from the FMU XMLs.
+//
+//  Layer 2: NLP problem structures, exactly the packed vectors and dependency lists that
+//           are handed to the MOO library. Built from Layer 1 during construction and never changed afterwards.
+
 struct FMIData_priv {
-    fmuHandle* fmu;
+    fmuHandle*          fmu;
     fmi3InstanceHandle* instance;
 
-    std::vector<fmi3ValueReference> lagrange_vrefs;
-    std::vector<fmi3ValueReference> state_vrefs;
-    std::vector<fmi3ValueReference> deriv_vrefs;
-    std::vector<fmi3ValueReference> input_vrefs;
-    std::vector<fmi3ValueReference> alg_vrefs;
-    std::vector<fmi3ValueReference> res_vrefs;
-    std::vector<fmi3ValueReference> output_vrefs;
-    std::vector<fmi3ValueReference> parameter_vrefs;
+    // Layer 1: raw FMU variable sets (disjoint, populated first)
 
+    std::vector<fmi3ValueReference> state_vrefs;     // x
+    std::vector<fmi3ValueReference> deriv_vrefs;     // der(x)
+    std::vector<fmi3ValueReference> input_vrefs;     // u  (causality == input)
+    std::vector<fmi3ValueReference> alg_vrefs;       // z  (fmi-ls-dae algebraic)
+    std::vector<fmi3ValueReference> res_vrefs;       // model residuals g = 0
+    std::vector<fmi3ValueReference> output_vrefs;    // all outputs y (superset)
+    std::vector<fmi3ValueReference> parameter_vrefs; // tunable parameters p
+
+    // maps every Layer-1 vref to its VarIndex (NLP) object
     std::unordered_map<fmi3ValueReference, VarIndex> vref_map;
-    std::vector<std::vector<Dependency>> lagr_dependencies;
-    std::vector<std::vector<Dependency>> deriv_dependencies;
-    std::vector<std::vector<Dependency>> res_dependencies;
 
-    std::vector<fmi3ValueReference> Lfg_vrefs; // value references of the (L, f1, ..., fn, g1, ..., gm) vector
-    std::vector<fmi3ValueReference> xuz_vrefs; // value references of the (x1, ..., xn, u1, ..., uk, z1, ..., zl) vector
+    // Layer 2: NLP problem structures
+
+    // [x1,..,xn, u1,..,uk, z1,..,zm]
+    std::vector<fmi3ValueReference> xuz_vrefs;
+
+    // [p1,..,pm]
+    std::vector<fmi3ValueReference> p_vrefs;
+
+    // TODO: [t0, tf]
+    std::vector<fmi3ValueReference> T_vrefs;
+
+    // pointwise functions: (L, f1,..,fn, g1=0,..,gm=0, c1,..,ck)
+    // L   = optional Lagrange integrand  (output vref, may be absent)
+    // fi  = state derivatives            (deriv_vrefs in order)
+    // gi  = model residuals              (res_vrefs in order, lb=ub=0)
+    // ci  = user path constraints        (output vrefs, user bounds)
+    std::vector<fmi3ValueReference> Lfg_vrefs;
+    std::vector<std::vector<Dependency>> Lfg_dependencies;
+
+    bool has_lagrange = false; // true  => Lfg_vrefs[0] is L
+
+    // boundary functions: (M, rf1,..,rfm) at final time
+    // M   = optional Mayer term    (output vref, may be absent)
+    // rfi = user final constraints (output vrefs, user bounds)
+    std::vector<fmi3ValueReference> Mrf_vrefs;
+    std::vector<std::vector<Dependency>> Mrf_dependencies;
+
+    bool has_mayer = false; // true => Mrf_vrefs[0] is M
+
+    // TODO: boundary functions: (r0_1,..,r0_m) at initial time (output vrefs, user bounds)
+    std::vector<fmi3ValueReference> r0_vrefs;
+    std::vector<std::vector<Dependency>> r0_dependencies;
+
+
+    // bounds objects for (g, c) and (rf, r0)
+    std::vector<f64> gc_lb;
+    std::vector<f64> gc_ub;
+    std::vector<f64> rfr0_lb;
+    std::vector<f64> rfr0_ub;
 
     FMIData_priv(const char* path, const char* modelname);
 };
@@ -79,333 +125,327 @@ FMIData_priv::FMIData_priv(const char* path, const char* modelname)
       instance(fmi3_instantiateModelExchange(fmu, true, true, nullptr, nullptr))
 {}
 
+// resolve a dependency vref through the vref_map, returning Unknown if absent
+static Dependency make_dependency(fmi3ValueReference vref,
+                                  const std::unordered_map<fmi3ValueReference, VarIndex>& vref_map)
+{
+    auto it = vref_map.find(vref);
+    if (it != vref_map.end()) return {vref, it->second};
+    return {vref, {VarCategory::Unknown, -1, -1, -1}};
+}
+
+// read dependency list from an fmiLsDaeModelStructureHandle into a Dependency vector
+static std::vector<Dependency> read_dependencies(fmiLsDaeModelStructureHandle* h,
+                                                 const std::unordered_map<fmi3ValueReference, VarIndex>& vref_map)
+{
+    int n = fmiLsDae_getNumberOfDependencies(h);
+    std::vector<Dependency> deps;
+    deps.reserve(n);
+    if (n > 0) {
+        std::vector<fmi3ValueReference> raw(n);
+        fmiLsDae_getDependencies(h, raw.data(), n);
+        for (auto vref : raw)
+            deps.push_back(make_dependency(vref, vref_map));
+    }
+    return deps;
+}
+
+// find the output handle for a given vref
+static fmiLsDaeModelStructureHandle* find_output_handle(fmuHandle* fmu,
+                                                         const std::vector<fmi3ValueReference>& output_vrefs,
+                                                         fmi3ValueReference target)
+{
+    int count = static_cast<int>(output_vrefs.size());
+    for (int idx = 0; idx < count; idx++) {
+        fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(fmu, idx);
+        if (h->valueReference == target) return h;
+    }
+    return nullptr;
+}
+
 void FMIData::print() {
     Log::info("\n=== FMI Model Metadata ===");
     Log::info("FMI version  : {}", static_cast<int>(fmi4c_getFmiVersion(priv->fmu)));
     Log::info("Model name   : {}", fmi3_modelName(priv->fmu));
 
+    // Layer 1 summary
     FixedTableFormat<4> summary_fmt = {{15, 8, 25, 10}, {Align::Center, Align::Center, Align::Center, Align::Center}};
-    Log::start_module(summary_fmt, "Variable Counts & Preview");
+    Log::start_module(summary_fmt, "Layer 1 - FMU Variable Counts & Preview");
     Log::row(summary_fmt, "Category", "Count", "First 2 VRefs", "Symbol");
     Log::dashes(summary_fmt);
 
     auto get_preview = [](const std::vector<fmi3ValueReference>& vrefs) -> std::string {
         if (vrefs.empty()) return "-";
-
         std::string s;
         size_t take = std::min<size_t>(vrefs.size(), 2);
-        for (size_t i = 0; i < take; ++i) {
+        for (size_t i = 0; i < take; i++)
             s += std::to_string(vrefs[i]) + (i < take - 1 ? ", " : "");
-        }
         if (vrefs.size() > 2) s += "...";
         return s;
     };
 
-    Log::row(summary_fmt, "States",      priv->state_vrefs.size(),  get_preview(priv->state_vrefs),  "x");
-    Log::row(summary_fmt, "Derivatives", priv->deriv_vrefs.size(),  get_preview(priv->deriv_vrefs),  "der(x)");
-    Log::row(summary_fmt, "Inputs",      priv->input_vrefs.size(),  get_preview(priv->input_vrefs),  "u");
-    Log::row(summary_fmt, "Algebraics",  priv->alg_vrefs.size(),   get_preview(priv->alg_vrefs),    "z");
-    Log::row(summary_fmt, "Residuals",   priv->res_vrefs.size(),    get_preview(priv->res_vrefs),    "g");
-    Log::row(summary_fmt, "Outputs",     priv->output_vrefs.size(), get_preview(priv->output_vrefs), "y");
-    Log::row(summary_fmt, "Parameter",   priv->parameter_vrefs.size(), get_preview(priv->parameter_vrefs), "p");
+    Log::row(summary_fmt, "States",      priv->state_vrefs.size(),     get_preview(priv->state_vrefs),     "x");
+    Log::row(summary_fmt, "Derivatives", priv->deriv_vrefs.size(),     get_preview(priv->deriv_vrefs),     "der(x)");
+    Log::row(summary_fmt, "Inputs",      priv->input_vrefs.size(),     get_preview(priv->input_vrefs),     "u");
+    Log::row(summary_fmt, "Algebraics",  priv->alg_vrefs.size(),       get_preview(priv->alg_vrefs),       "z");
+    Log::row(summary_fmt, "Residuals",   priv->res_vrefs.size(),       get_preview(priv->res_vrefs),       "g");
+    Log::row(summary_fmt, "Outputs",     priv->output_vrefs.size(),    get_preview(priv->output_vrefs),    "y");
+    Log::row(summary_fmt, "Parameters",  priv->parameter_vrefs.size(), get_preview(priv->parameter_vrefs), "p");
     Log::dashes(summary_fmt);
 
+    // Layer 1 index map
     FixedTableFormat<5> map_fmt = {{15, 10, 10, 12, 12}, {Align::Center, Align::Center, Align::Center, Align::Center, Align::Center}};
-    Log::start_module(map_fmt, "Index Mapping");
+    Log::start_module(map_fmt, "Layer 1 - Index Mapping");
     Log::row(map_fmt, "Category", "VRef", "Local (L)", "Semi-Loc (SL)", "Global (G)");
     Log::dashes(map_fmt);
 
     auto print_map_rows = [&](const std::string& cat, const std::vector<fmi3ValueReference>& vrefs) {
         for (auto vref : vrefs) {
             auto it = priv->vref_map.find(vref);
-            if (it != priv->vref_map.end()) {
+            if (it != priv->vref_map.end())
                 Log::row(map_fmt, cat, vref, it->second.local_index, it->second.semi_local, it->second.xu_index);
-            }
         }
     };
-
-    print_map_rows("State (x)", priv->state_vrefs);
-    print_map_rows("Input (u)", priv->input_vrefs);
+    print_map_rows("State (x)",    priv->state_vrefs);
+    print_map_rows("Input (u)",    priv->input_vrefs);
     print_map_rows("Algebraic (z)", priv->alg_vrefs);
+    print_map_rows("Parameter (p)", priv->parameter_vrefs);
     Log::dashes(map_fmt);
 
-    FixedTableFormat<3> dep_fmt = {{20, 15, 45}, {Align::Center, Align::Center, Align::Center}};
-    Log::start_module(dep_fmt, "System Sparsity (Global Jacobian Indices)");
+    // Layer 2 sparsity
+    FixedTableFormat<3> dep_fmt = {{20, 15, 45},
+        {Align::Center, Align::Center, Align::Center}};
+    Log::start_module(dep_fmt, "Layer 2 - NLP Sparsity (Global Jacobian Column Indices)");
     Log::row(dep_fmt, "Equation", "VRef", "Global Column Indices (G)");
     Log::dashes(dep_fmt);
 
     auto print_deps = [&](const std::string& prefix,
                           const std::vector<fmi3ValueReference>& vrefs,
-                          const std::vector<std::vector<Dependency>>& deps_list) {
-        for (size_t i = 0; i < vrefs.size(); ++i) {
+                          const std::vector<std::vector<Dependency>>& deps_list)
+    {
+        for (size_t i = 0; i < vrefs.size(); i++) {
             std::string indices_str;
             for (const auto& d : deps_list[i]) {
-                if (d.var.category == VarCategory::Unknown) {
+                if (d.var.category == VarCategory::Unknown)
                     indices_str += "??, ";
-                } else {
+                else
                     indices_str += std::to_string(d.var.xu_index) + ", ";
-                }
             }
-
-            if (!indices_str.empty()) {
-                indices_str.erase(indices_str.length() - 2);
-            }
-
-            Log::row(dep_fmt, fmt::format("{}[{}]", prefix, i), i, indices_str.empty() ? "none" : indices_str);
+            if (!indices_str.empty()) indices_str.erase(indices_str.length() - 2);
+            Log::row(dep_fmt, fmt::format("{}[{}]", prefix, i), vrefs[i],
+                     indices_str.empty() ? "none" : indices_str);
         }
     };
 
-    print_deps("L", priv->lagrange_vrefs, priv->lagr_dependencies);
+    print_deps("Lfg", priv->Lfg_vrefs, priv->Lfg_dependencies);
     Log::dashes(dep_fmt);
-    print_deps("der(x)", priv->deriv_vrefs, priv->deriv_dependencies);
-    Log::dashes(dep_fmt);
-    print_deps("Residual g", priv->res_vrefs, priv->res_dependencies);
+
+    print_deps("Mrf", priv->Mrf_vrefs, priv->Mrf_dependencies);
     Log::dashes(dep_fmt);
 }
 
 FMIData::FMIData(FMISettings& settings)
-    : priv(std::make_unique<FMIData_priv>(settings.path, settings.modelname))
+    : settings(settings),
+      priv(std::make_unique<FMIData_priv>(settings.path, settings.modelname))
 {
     if (priv->fmu == nullptr) {
         Log::error("fmi4c_loadFmu failed");
         throw std::runtime_error("Failed to load FMU");
     }
-
     if (!fmiLsDae_isPresent(priv->fmu)) {
         Log::error("fmi-ls-dae manifest not found in FMU");
         fmi4c_freeFmu(priv->fmu);
         throw std::runtime_error("Missing fmi-ls-dae manifest");
     }
 
-    // there should be some better / a single variant:
-    //     1. one big loop over all variables => split into disjoint sets we need, i.e. x, derx, u, p, alg, residuals
-    //     2. immediately get their number and value references
+    // Layer 1: populate raw FMU variable sets
 
-    int states = fmiLsDae_getNumberOfContinuousStateDerivatives(priv->fmu);
-    for (int s = 0; s < states; s++)
+    int nStates = fmiLsDae_getNumberOfContinuousStateDerivatives(priv->fmu);
+
+    // create work buffer with size of states
+    work = std::vector<f64>(nStates);
+
+    // states and their derivatives
     {
-        auto structure = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, s);
-        auto der_ref = fmiLsDae_getValueReference(structure);
-        auto x_ref = fmi3_getVariableDerivativeIndex(fmi3_getVariableByValueReference(priv->fmu, der_ref));
-        priv->state_vrefs.push_back(x_ref);
-        priv->deriv_vrefs.push_back(der_ref);
-    }
-
-    {
-        int nVars = fmi3_getNumberOfVariables(priv->fmu);
-        for (int idx = 1; idx < nVars + 1; idx++) {
-            fmi3VariableHandle* var = fmi3_getVariableByIndex(priv->fmu, idx);
-            int ref = fmi3_getVariableValueReference(var);
-
-            if (fmi3_getVariableCausality(var) == fmi3CausalityInput) {
-                priv->input_vrefs.push_back(ref);
-            }
+        for (int s = 0; s < nStates; s++) {
+            auto* h      = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, s);
+            auto der_ref = fmiLsDae_getValueReference(h);
+            auto x_ref   = fmi3_getVariableDerivativeIndex(fmi3_getVariableByValueReference(priv->fmu, der_ref));
+            priv->state_vrefs.push_back(x_ref);
+            priv->deriv_vrefs.push_back(der_ref);
         }
     }
 
+    // inputs
     {
-        int count = fmiLsDae_getNumberOfAlgebraicVariables(priv->fmu);
-        priv->alg_vrefs.reserve(count);
-        for (int idx = 1; idx < count + 1; idx++) {
-            fmiLsDaeAlgebraicVariableHandle* h = fmiLsDae_getAlgebraicVariableByIndex(priv->fmu, idx - 1);
+        for (auto ref : settings.control_vrefs) {
+            auto* handle = fmi3_getVariableByValueReference(priv->fmu, ref.vref);
+            auto causality = fmi3_getVariableCausality(handle);
+            if (causality != fmi3CausalityInput) {
+                Log::error("Control vref {} is not an input.", ref.vref);
+                throw std::runtime_error("Non-input control vref");
+            }
+            priv->input_vrefs.push_back(ref.vref);
+        }
+    }
+
+    // algebraic variables
+    {
+        int n = fmiLsDae_getNumberOfAlgebraicVariables(priv->fmu);
+        priv->alg_vrefs.reserve(n);
+        for (int i = 0; i < n; i++) {
+            auto* h = fmiLsDae_getAlgebraicVariableByIndex(priv->fmu, i);
             priv->alg_vrefs.push_back(fmiLsDae_getAlgebraicVariableValueReference(h));
         }
     }
 
+    // model residuals
     {
-        int count = fmiLsDae_getNumberOfResiduals(priv->fmu);
-        priv->res_vrefs.reserve(count);
-        for (int idx = 1; idx < count + 1; idx++) {
-            fmiLsDaeModelStructureHandle* h = fmiLsDae_getResidualByIndex(priv->fmu, idx - 1);
+        int n = fmiLsDae_getNumberOfResiduals(priv->fmu);
+        priv->res_vrefs.reserve(n);
+        for (int i = 0; i < n; i++) {
+            auto* h = fmiLsDae_getResidualByIndex(priv->fmu, i);
             priv->res_vrefs.push_back(fmiLsDae_getValueReference(h));
         }
     }
 
+    // all outputs (includes: Lagrange, Mayer, path, final, ...)
     {
-        int count = fmiLsDae_getNumberOfOutputs(priv->fmu);
-        priv->output_vrefs.reserve(count);
-        for (int idx = 1; idx < count + 1; idx++) {
-            fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(priv->fmu, idx - 1);
+        int n = fmiLsDae_getNumberOfOutputs(priv->fmu);
+        priv->output_vrefs.reserve(n);
+        for (int i = 0; i < n; i++) {
+            auto* h = fmiLsDae_getOutputByIndex(priv->fmu, i);
             priv->output_vrefs.push_back(fmiLsDae_getValueReference(h));
         }
     }
 
-    for (auto& ref : settings.parameter_vrefs)
-    {
-        auto handle = fmi3_getVariableByValueReference(priv->fmu, ref);
+    // tunable parameters
+    for (auto ref : settings.parameter_vrefs) {
+        auto* handle     = fmi3_getVariableByValueReference(priv->fmu, ref.vref);
         auto variability = fmi3_getVariableVariability(handle);
-        if (variability == fmi3VariabilityTunable) {
-            priv->parameter_vrefs.push_back(ref);
+        if (variability != fmi3VariabilityTunable) {
+            Log::error("Parameter vref {} is not tunable.", ref.vref);
+            throw std::runtime_error("Non-tunable parameter vref");
         }
-        else {
-            Log::error("Provided parameter value reference {} is not tunable.", ref);
-            throw;
-        }
+        priv->parameter_vrefs.push_back(ref.vref);
     }
 
-    if (settings.lagrange_vref != nullptr)
-    {
-        auto it = std::find(priv->output_vrefs.begin(), priv->output_vrefs.end(), static_cast<fmi3ValueReference>(*settings.lagrange_vref));
+    // validate Lagrange / Mayer / path / final vrefs exist in output_vrefs
+    auto require_output = [&](uint32_t vref, const char* label) {
+        auto it = std::find(priv->output_vrefs.begin(), priv->output_vrefs.end(),
+                            static_cast<fmi3ValueReference>(vref));
         if (it == priv->output_vrefs.end()) {
-            Log::error("Provided Lagrange term value reference {} does not exist.", *settings.lagrange_vref);
-            throw;
+            Log::error("{} vref {} not found in outputs.", label, vref);
+            throw std::runtime_error(std::string(label) + " vref not in outputs");
         }
-        priv->lagrange_vrefs.push_back(*settings.lagrange_vref);
-    }
+    };
 
-    // build the Variable Index Map (Concatenated xu = [x, u, z])
+    if (settings.lagrange_vref) require_output(*settings.lagrange_vref, "Lagrange");
+    if (settings.mayer_vref) require_output(*settings.mayer_vref,    "Mayer");
+    for (auto& bv : settings.path_constraint_vrefs) require_output(bv.vref, "Path constraint");
+    for (auto& bv : settings.final_constraint_vrefs) require_output(bv.vref, "Final constraint");
+
+    // build variable reference map
     {
         int xu_offset = 0;
-        int u_size = static_cast<int>(priv->input_vrefs.size());
+        int u_size    = static_cast<int>(priv->input_vrefs.size());
 
-        for (size_t i = 0; i < priv->state_vrefs.size(); ++i) {
+        for (size_t i = 0; i < priv->state_vrefs.size(); i++)
             priv->vref_map[priv->state_vrefs[i]] = {
-                VarCategory::State, static_cast<int>(i), static_cast<int>(i), xu_offset++
-            };
-        }
+                VarCategory::State, (int)i, (int)i, xu_offset++};
 
-        for (size_t i = 0; i < priv->input_vrefs.size(); ++i) {
+        for (size_t i = 0; i < priv->input_vrefs.size(); i++)
             priv->vref_map[priv->input_vrefs[i]] = {
-                VarCategory::Input, static_cast<int>(i), static_cast<int>(i), xu_offset++
-            };
-        }
+                VarCategory::Input, (int)i, (int)i, xu_offset++};
 
-        for (size_t i = 0; i < priv->alg_vrefs.size(); ++i) {
+        for (size_t i = 0; i < priv->alg_vrefs.size(); i++)
             priv->vref_map[priv->alg_vrefs[i]] = {
-                VarCategory::Algebraic, static_cast<int>(i), u_size + static_cast<int>(i), xu_offset++
-            };
-        }
+                VarCategory::Algebraic, (int)i, u_size + (int)i, xu_offset++};
 
-        for (size_t i = 0; i < priv->parameter_vrefs.size(); ++i) {
+        for (size_t i = 0; i < priv->parameter_vrefs.size(); i++)
             priv->vref_map[priv->parameter_vrefs[i]] = {
-                VarCategory::Parameter, static_cast<int>(i), static_cast<int>(i), static_cast<int>(i)
-            };
+                VarCategory::Parameter, (int)i, (int)i, (int)i};
+    }
+
+    // Layer 2: build NLP problem structures
+
+    // variable vectors
+    for (auto v : priv->state_vrefs)     priv->xuz_vrefs.push_back(v);
+    for (auto v : priv->input_vrefs)     priv->xuz_vrefs.push_back(v);
+    for (auto v : priv->alg_vrefs)       priv->xuz_vrefs.push_back(v);
+    for (auto v : priv->parameter_vrefs) priv->p_vrefs.push_back(v);
+
+    // Lfg: (L?, f1..fn, g1..gm, c1..ck)
+
+    // L: Lagrange term?
+    if (settings.lagrange_vref) {
+        priv->has_lagrange = true;
+        priv->Lfg_vrefs.push_back(static_cast<fmi3ValueReference>(*settings.lagrange_vref));
+
+        auto* h = find_output_handle(priv->fmu, priv->output_vrefs, priv->Lfg_vrefs.back());
+        priv->Lfg_dependencies.push_back(h ? read_dependencies(h, priv->vref_map) : std::vector<Dependency>{});
+    }
+
+    // f: state derivatives
+    {
+        int n = static_cast<int>(priv->state_vrefs.size());
+        for (int i = 0; i < n; i++) {
+            priv->Lfg_vrefs.push_back(priv->deriv_vrefs[i]);
+            auto* h = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, i);
+            priv->Lfg_dependencies.push_back(h ? read_dependencies(h, priv->vref_map) : std::vector<Dependency>{});
         }
     }
 
-    // build dependency structure
-
-    if (priv->lagrange_vrefs.size() != 0)
+    // g: model residuals (lb = ub = 0)
     {
-        int count = static_cast<int>(priv->output_vrefs.size());
-        priv->lagr_dependencies.reserve(1);
-
-        for (int idx = 0; idx < count; idx++) {
-            fmiLsDaeModelStructureHandle* h = fmiLsDae_getOutputByIndex(priv->fmu, idx);
-            if (h->valueReference != static_cast<fmi3ValueReference>(priv->lagrange_vrefs[0])) continue;
-
-            int n_deps = fmiLsDae_getNumberOfDependencies(h);
-            std::vector<fmi3ValueReference> raw_deps(n_deps);
-            std::vector<Dependency> deps;
-            deps.reserve(n_deps);
-
-            if (n_deps > 0) {
-                fmiLsDae_getDependencies(h, raw_deps.data(), n_deps);
-                for (auto vref : raw_deps) {
-                    auto it = priv->vref_map.find(vref);
-                    if (it != priv->vref_map.end()) {
-                        deps.push_back({vref, it->second});
-                    } else {
-                        // unmapped e.g. parameters?
-                        deps.push_back({vref, {VarCategory::Unknown, -1, -1, -1}});
-                    }
-                }
-            }
-            priv->lagr_dependencies.push_back(std::move(deps));
+        int n = static_cast<int>(priv->res_vrefs.size());
+        for (int i = 0; i < n; i++) {
+            priv->Lfg_vrefs.push_back(priv->res_vrefs[i]);
+            auto* h = fmiLsDae_getResidualByIndex(priv->fmu, i);
+            priv->Lfg_dependencies.push_back(read_dependencies(h, priv->vref_map));
+            priv->gc_lb.push_back(0.0);
+            priv->gc_ub.push_back(0.0);
         }
     }
 
-    {
-        int count = static_cast<int>(priv->state_vrefs.size());
-        priv->deriv_dependencies.reserve(count);
-
-        for (int idx = 0; idx < count; idx++) {
-            fmiLsDaeModelStructureHandle* h = fmiLsDae_getContinuousStateDerivativeByIndex(priv->fmu, idx);
-
-            int n_deps = (h == nullptr) ? 0 : fmiLsDae_getNumberOfDependencies(h);
-            std::vector<fmi3ValueReference> raw_deps(n_deps);
-            std::vector<Dependency> deps;
-            deps.reserve(n_deps);
-
-            if (n_deps > 0) {
-                fmiLsDae_getDependencies(h, raw_deps.data(), n_deps);
-                for (auto vref : raw_deps) {
-                    auto it = priv->vref_map.find(vref);
-                    if (it != priv->vref_map.end()) {
-                        deps.push_back({vref, it->second});
-                    } else {
-                        // unmapped e.g. parameters?
-                        deps.push_back({vref, {VarCategory::Unknown, -1, -1, -1}});
-                    }
-                }
-            }
-            priv->deriv_dependencies.push_back(std::move(deps));
-        }
+    // c: user path constraints
+    for (auto& bv : settings.path_constraint_vrefs) {
+        auto vref = static_cast<fmi3ValueReference>(bv.vref);
+        priv->Lfg_vrefs.push_back(vref);
+        auto* h = find_output_handle(priv->fmu, priv->output_vrefs, vref);
+        priv->Lfg_dependencies.push_back(h ? read_dependencies(h, priv->vref_map) : std::vector<Dependency>{});
+        priv->gc_lb.push_back(bv.lb);
+        priv->gc_ub.push_back(bv.ub);
     }
 
-    {
-        int count = static_cast<int>(priv->res_vrefs.size());
-        priv->res_dependencies.reserve(count);
+    // Mrf: (M?, rf1..rfm)
 
-        for (int idx = 0; idx < count; idx++) {
-            fmiLsDaeModelStructureHandle* h = fmiLsDae_getResidualByIndex(priv->fmu, idx);
-
-            int n_deps = fmiLsDae_getNumberOfDependencies(h);
-            std::vector<fmi3ValueReference> raw_deps(n_deps);
-            std::vector<Dependency> deps;
-            deps.reserve(n_deps);
-
-            if (n_deps > 0) {
-                fmiLsDae_getDependencies(h, raw_deps.data(), n_deps);
-                for (auto vref : raw_deps) {
-                    auto it = priv->vref_map.find(vref);
-                    if (it != priv->vref_map.end()) {
-                        deps.push_back({vref, it->second});
-                    } else {
-                        // unmapped e.g. parameters?
-                        deps.push_back({vref, {VarCategory::Unknown, -1, -1, -1}});
-                    }
-                }
-            }
-            priv->res_dependencies.push_back(std::move(deps));
-        }
+    // M: Mayer term?
+    if (settings.mayer_vref) {
+        priv->has_mayer = true;
+        priv->Mrf_vrefs.push_back(static_cast<fmi3ValueReference>(*settings.mayer_vref));
+        auto* h = find_output_handle(priv->fmu, priv->output_vrefs, priv->Mrf_vrefs.back());
+        priv->Mrf_dependencies.push_back(h ? read_dependencies(h, priv->vref_map) : std::vector<Dependency>{});
     }
 
-    // create vectors of variable references as in our sorted MOO structures
-
-    if (settings.lagrange_vref != nullptr)
-    {
-        priv->Lfg_vrefs.push_back(priv->lagrange_vrefs[0]);
+    // rf: user final constraints
+    for (auto& bv : settings.final_constraint_vrefs) {
+        auto vref = static_cast<fmi3ValueReference>(bv.vref);
+        priv->Mrf_vrefs.push_back(vref);
+        auto* h = find_output_handle(priv->fmu, priv->output_vrefs, vref);
+        priv->Mrf_dependencies.push_back(h ? read_dependencies(h, priv->vref_map) : std::vector<Dependency>{});
+        priv->rfr0_lb.push_back(bv.lb);
+        priv->rfr0_ub.push_back(bv.ub);
     }
 
-    for (auto f : priv->deriv_vrefs) {
-        priv->Lfg_vrefs.push_back(f);
-    }
-
-    for (auto g : priv->res_vrefs) {
-        priv->Lfg_vrefs.push_back(g);
-    }
-
-    for (auto x : priv->state_vrefs) {
-        priv->xuz_vrefs.push_back(x);
-    }
-
-    for (auto u : priv->input_vrefs) {
-        priv->xuz_vrefs.push_back(u);
-    }
-
-    for (auto z : priv->alg_vrefs) {
-        priv->xuz_vrefs.push_back(z);
-    }
+    // TODO: r0 initial boundary constraints
 
     print();
 }
 
 void FMIData::initialize(f64 t_start, f64 t_stop) {
-    auto* inst = priv->instance;
-
     fmi3Status status = fmi3_enterInitializationMode(
-        inst,
+        priv->instance,
         fmi3False, 0.0,     // toleranceDefined, tolerance
         t_start,            // startTime
         fmi3True, t_stop    // stopTimeDefined, stopTime
@@ -415,7 +455,7 @@ void FMIData::initialize(f64 t_start, f64 t_stop) {
         throw std::runtime_error("FMU: Failed to enter initialization mode");
     }
 
-    status = fmi3_exitInitializationMode(inst);
+    status = fmi3_exitInitializationMode(priv->instance);
     if (status != fmi3OK) {
         throw std::runtime_error("FMU: Failed to exit initialization mode");
     }
@@ -455,93 +495,180 @@ std::vector<f64> FMIData::get_initial_states() {
     return states;
 }
 
-GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
+// evaluate (L?, f, g, c)(x, u, z, p, time)
+// buffer layout: [L (opt), f0..fn-1, g0..gm-1, c0..ck-1]
+// @note: evaluate the model via fmi3_getContinuousStateDerivatives, before using getFloat64
+void FMIData::eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
 {
-    auto x_bounds = FixedVector<Bounds>(fmi_data.priv->state_vrefs.size());
-    auto u_bounds = FixedVector<Bounds>(fmi_data.priv->input_vrefs.size() + fmi_data.priv->alg_vrefs.size());
-    auto p_bounds = FixedVector<Bounds>(0);
-    auto T_bounds = std::array<Bounds, 2>{};
-    auto g_bounds = FixedVector<Bounds>(fmi_data.priv->res_vrefs.size());
-    for (auto i = 0; i < g_bounds.int_size(); i++)
-    {
-        g_bounds[i].lb = 0.0;
-        g_bounds[i].ub = 0.0;
+    int   n_x    = static_cast<int>(priv->state_vrefs.size());
+    int   n_res  = static_cast<int>(priv->res_vrefs.size());
+    int   n_path = static_cast<int>(priv->gc_lb.size()) - n_res;
+    bool  has_L  = priv->has_lagrange;
+
+    fmi3_setTime(priv->instance, time);
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(), priv->xuz_vrefs.size(),
+                    xu, priv->xuz_vrefs.size());
+
+    int off_L  = 0;
+    int off_f  = has_L ? 1 : 0;
+    int off_gc = off_f + n_x;
+
+    // f, evaluation of model
+    fmi3_getContinuousStateDerivatives(priv->instance, out + off_f, n_x);
+
+    // L
+    if (has_L) {
+        fmi3_getFloat64(priv->instance,
+                        priv->Lfg_vrefs.data(), 1,
+                        out + off_L, 1);
     }
 
-    auto r_bounds = FixedVector<Bounds>(0);
+    // g, c
+    int n_gc = n_res + n_path;
+    if (n_gc > 0) {
+        fmi3_getFloat64(priv->instance,
+                        priv->Lfg_vrefs.data() + off_gc, n_gc,
+                        out + off_gc, n_gc);
+    }
+}
+
+// evaluate sparse Jacobian of Lfg w.r.t. (x, u, z, p)
+// out[] is filled in the same order as Lfg_dependencies
+void FMIData::jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out) {
+    fmi3_setTime(priv->instance, time);
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(), priv->xuz_vrefs.size(),
+                    xu, priv->xuz_vrefs.size());
+
+    int out_idx = 0;
+    auto get_partial = [&](fmi3ValueReference val_vref, fmi3ValueReference indep_vref) -> f64 {
+        f64 delta = 1.0, result = 0.0;
+        fmi3Status s = fmi3_getDirectionalDerivative(priv->instance,
+                                                     &val_vref, 1,
+                                                     &indep_vref, 1,
+                                                     &delta, 1,
+                                                     &result, 1);
+        return (s == fmi3OK) ? result : 0.0;
+    };
+
+    for (size_t row = 0; row < priv->Lfg_vrefs.size(); row++) {
+        fmi3ValueReference row_vref = priv->Lfg_vrefs[row];
+        for (const auto& dep : priv->Lfg_dependencies[row]) {
+            out[out_idx++] = get_partial(row_vref, dep.vref);
+        }
+    }
+}
+
+// evaluate (M?, rf)(xf, uf, zf, p, tf)
+void FMIData::eval_point_mrf(const f64* xuf, const f64* p, f64 tf, f64* out)
+{
+    fmi3_setTime(priv->instance, tf);
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(), priv->xuz_vrefs.size(),
+                    xuf, priv->xuz_vrefs.size());
+
+    // evaluation of model
+    fmi3_getContinuousStateDerivatives(priv->instance, work.data(), work.size());
+
+    fmi3_getFloat64(priv->instance,
+                    priv->Mrf_vrefs.data(), priv->Mrf_vrefs.size(),
+                    out, priv->Mrf_vrefs.size());
+}
+
+// evaluate sparse Jacobian of Mrf w.r.t. (xf, uf, zf, p, tf)
+void FMIData::jac_point_mrf(const f64* xuf, const f64* p, f64 tf, f64* out)
+{
+    fmi3_setTime(priv->instance, tf);
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(), priv->xuz_vrefs.size(),
+                    xuf, priv->xuz_vrefs.size());
+
+    int out_idx = 0;
+    auto get_partial = [&](fmi3ValueReference val_vref, fmi3ValueReference indep_vref) -> f64 {
+        f64 delta = 1.0, result = 0.0;
+        fmi3Status s = fmi3_getDirectionalDerivative(priv->instance,
+                                                     &val_vref, 1,
+                                                     &indep_vref, 1,
+                                                     &delta, 1,
+                                                     &result, 1);
+        return (s == fmi3OK) ? result : 0.0;
+    };
+
+    for (size_t row = 0; row < priv->Mrf_vrefs.size(); row++) {
+        fmi3ValueReference row_vref = priv->Mrf_vrefs[row];
+        for (const auto& dep : priv->Mrf_dependencies[row]) {
+            out[out_idx++] = get_partial(row_vref, dep.vref);
+        }
+    }
+}
+
+GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
+{
+    auto& priv = *fmi_data.priv;
+
+    auto x_bounds = FixedVector<Bounds>(priv.state_vrefs.size());
+    auto u_bounds = FixedVector<Bounds>(priv.input_vrefs.size() + priv.alg_vrefs.size());
+    auto p_bounds = FixedVector<Bounds>(0);
+    auto T_bounds = std::array<Bounds, 2>{};
+
+    auto g_bounds = FixedVector<Bounds>(priv.gc_lb.size());
+    for (int i = 0; i < (int)priv.gc_lb.size(); i++) {
+        g_bounds[i].lb = priv.gc_lb[i];
+        g_bounds[i].ub = priv.gc_ub[i];
+    }
+
+    auto r_bounds = FixedVector<Bounds>(priv.rfr0_lb.size());
+    for (size_t i = 0; i < priv.rfr0_lb.size(); i++) {
+        r_bounds[i].lb = priv.rfr0_lb[i];
+        r_bounds[i].ub = priv.rfr0_ub[i];
+    }
 
     auto xu0_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
     auto xuf_fixed = FixedVector<std::optional<f64>>(x_bounds.size() + u_bounds.size());
-    auto T_fixed = std::array<std::optional<f64>, 2>{};
+    auto T_fixed   = std::array<std::optional<f64>, 2>{};
 
-    // get and fix start values for state variables
     auto x0 = fmi_data.get_initial_states();
-
-    for (size_t i = 0; i < x0.size(); ++i) {
+    for (size_t i = 0; i < x0.size(); i++) {
         xu0_fixed[i] = x0[i];
     }
 
-    for (size_t i = 0; i < fmi_data.priv->input_vrefs.size(); ++i) {
-        u_bounds[i].lb = -1;
-        u_bounds[i].ub = 1;
+    for (size_t i = 0; i < fmi_data.settings.control_vrefs.size(); i++) {
+        auto obj = fmi_data.settings.control_vrefs[i];
+        u_bounds[i].lb = obj.lb;
+        u_bounds[i].ub = obj.ub;
     }
 
-
-    Log::info("\n=== Start values for States x(0.0) ===");
-    for (size_t i = 0; i < x0.size(); ++i) {
-        Log::info("  x[{}](0.0) = {}", i, x0[i]);
-    }
+    Log::info("\n=== Start values for States x(0) ===");
+    for (size_t i = 0; i < x0.size(); i++)
+        Log::info("  x[{}](0) = {}", i, x0[i]);
 
     Log::info("\n=== Problem Bounds ===");
-
-    Log::info("State bounds (x):");
-    for (size_t i = 0; i < x_bounds.size(); ++i) {
-        const auto& b = x_bounds[i];
-        Log::info("  x[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
-    }
-
-    Log::info("Input bounds (u):");
-    size_t nu = fmi_data.priv->input_vrefs.size();
-
-    for (size_t i = 0; i < nu; ++i) {
-        const auto& b = u_bounds[i];
-        Log::info("  u[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
-    }
-
-    Log::info("Algebraic bounds (z):");
-    for (size_t i = nu; i < u_bounds.size(); ++i) {
-        const auto& b = u_bounds[i];
-        Log::info("  z[{}]: lb = {}, ub = {}", i - nu, b.lb, b.ub);
-    }
-
-    Log::info("Parameter bounds (p):");
-    for (size_t i = 0; i < p_bounds.size(); ++i) {
-        const auto& b = p_bounds[i];
-        Log::info("  p[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
-    }
-
-    Log::info("Residual bounds (g):");
-    for (size_t i = 0; i < g_bounds.size(); ++i) {
-        const auto& b = g_bounds[i];
-        Log::info("  g[{}]: lb = {}, ub = {}", i, b.lb, b.ub);
-    }
-
+    for (size_t i = 0; i < x_bounds.size(); i++)
+        Log::info("  x[{}]: [{}, {}]", i, x_bounds[i].lb, x_bounds[i].ub);
+    for (size_t i = 0; i < priv.input_vrefs.size(); i++)
+        Log::info("  u[{}]: [{}, {}]", i, u_bounds[i].lb, u_bounds[i].ub);
+    for (size_t i = priv.input_vrefs.size(); i < u_bounds.size(); i++)
+        Log::info("  z[{}]: [{}, {}]", i - priv.input_vrefs.size(), u_bounds[i].lb, u_bounds[i].ub);
+    for (size_t i = 0; i < g_bounds.size(); i++)
+        Log::info("  g[{}]: [{}, {}]", i, g_bounds[i].lb, g_bounds[i].ub);
+    for (size_t i = 0; i < r_bounds.size(); i++)
+        Log::info("  rf[{}]: [{}, {}]", i, r_bounds[i].lb, r_bounds[i].ub);
     Log::info("================================");
 
     auto mesh = Mesh::create_equidistant_fixed_stages(
-        /* t0 */        0.0,
-        /* tf */        0.5,
-        /* intervals */ 15,
-        /* stages */    3,
-        /* type */      MeshType::Physical
-    );
+        /* t0 */        fmi_data.settings.t0,
+        /* tf */        fmi_data.settings.tf,
+        /* intervals */ fmi_data.settings.intervals,
+        /* stages */    fmi_data.settings.stage,
+        /* type */      MeshType::Physical);
 
     T_fixed[0] = mesh->t0;
     T_fixed[1] = mesh->tf;
 
     return GDOP::ProblemConstants(
-        /* mayer */ false,
-        /* lagrange */ !fmi_data.priv->lagrange_vrefs.empty(),
+        priv.has_mayer,
+        priv.has_lagrange,
         std::move(x_bounds),
         std::move(u_bounds),
         std::move(p_bounds),
@@ -551,8 +678,7 @@ GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
         std::move(T_fixed),
         std::move(r_bounds),
         std::move(g_bounds),
-        *mesh
-    );
+        *mesh);
 }
 
 FullSweep::FullSweep(GDOP::FullSweepLayout&& layout_in,
@@ -569,220 +695,195 @@ BoundarySweep::BoundarySweep(GDOP::BoundarySweepLayout&& layout_in,
       fmi_data(fmi_data)
 {}
 
-// evaluate (L, f, g)(x, u, w, p, time)
-void FMIData::eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
-{
-    fmi3_setTime(priv->instance, time);
-
-    fmi3_setFloat64(priv->instance,
-                    priv->xuz_vrefs.data(),
-                    priv->xuz_vrefs.size(),
-                    xu,
-                    priv->xuz_vrefs.size());
-
-    fmi3_getContinuousStateDerivatives(priv->instance, out, priv->state_vrefs.size());
-
-    fmi3_getFloat64(priv->instance,
-                    priv->Lfg_vrefs.data(),
-                    priv->Lfg_vrefs.size(),
-                    out,
-                    priv->Lfg_vrefs.size());
-}
-
-// evaluate d(L, f, g) / d(x, u, z, p) (x, u, z, p, time)
-void FMIData::jac_point_lfg(const f64* xu, const f64* p, f64 time, f64* out)
-{
-    fmi3InstanceHandle* inst = priv->instance;
-
-    fmi3_setTime(inst, time);
-    fmi3_setFloat64(inst,
-                    priv->xuz_vrefs.data(),
-                    priv->xuz_vrefs.size(),
-                    xu,
-                    priv->xuz_vrefs.size());
-
-    int out_idx = 0;
-
-    auto get_partial = [&](fmi3ValueReference value_vref, fmi3ValueReference independent_vref) -> f64 {
-        f64 delta = 1.0;
-        f64 partial_derivative = 0.0;
-
-        fmi3Status status = fmi3_getDirectionalDerivative(inst,
-                                                          &value_vref, 1,
-                                                          &independent_vref, 1,
-                                                          &delta, 1,
-                                                          &partial_derivative, 1);
-
-        return (status == fmi3OK) ? partial_derivative : 0.0;
-    };
-
-    for (size_t i = 0; i < priv->lagrange_vrefs.size(); ++i) {
-        fmi3ValueReference L_vref = priv->lagrange_vrefs[i];
-        for (const auto& dep : priv->lagr_dependencies[i]) {
-            out[out_idx++] = get_partial(L_vref, dep.vref);
-        }
-    }
-
-    for (size_t i = 0; i < priv->deriv_vrefs.size(); ++i) {
-        fmi3ValueReference f_vref = priv->deriv_vrefs[i];
-        for (const auto& dep : priv->deriv_dependencies[i]) {
-            out[out_idx++] = get_partial(f_vref, dep.vref);
-        }
-    }
-
-    for (size_t i = 0; i < priv->res_vrefs.size(); ++i) {
-        fmi3ValueReference g_vref = priv->res_vrefs[i];
-        for (const auto& dep : priv->res_dependencies[i]) {
-            out[out_idx++] = get_partial(g_vref, dep.vref);
-        }
-    }
-}
-
-void FullSweep::callback_eval(
-    const f64* xu_nlp,
-    const f64* p)
+void FullSweep::callback_eval(const f64* xu_nlp, const f64* p)
 {
     fill_zero_eval_buffer();
-
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
-            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
-            f64* eval_buf_ij = get_eval_buffer(i, j);
-            fmi_data.eval_point_lfg(xu_ij, p, pc.mesh->t[i][j], eval_buf_ij);
+            fmi_data.eval_point_lfg(get_xu_ij(xu_nlp, i, j), p, pc.mesh->t[i][j], get_eval_buffer(i, j));
         }
     }
 }
 
-void FullSweep::callback_jac(
-    const f64* xu_nlp,
-    const f64* p)
+void FullSweep::callback_jac(const f64* xu_nlp, const f64* p)
 {
     fill_zero_jac_buffer();
-
     for (int i = 0; i < pc.mesh->intervals; i++) {
         for (int j = 0; j < pc.mesh->nodes[i]; j++) {
-            const f64* xu_ij = get_xu_ij(xu_nlp, i, j);
-            f64* jac_buf_ij = get_jac_buffer(i, j);
-            fmi_data.jac_point_lfg(xu_ij, p, pc.mesh->t[i][j], jac_buf_ij);
+            fmi_data.jac_point_lfg(get_xu_ij(xu_nlp, i, j), p, pc.mesh->t[i][j], get_jac_buffer(i, j));
         }
     }
 }
 
-void FullSweep::callback_hes(const f64* xu_nlp, const f64* p, const FixedField<f64, 2>& lagrange_factors, const f64* lambda)
+void FullSweep::callback_hes(const f64* xu_nlp, const f64* p,
+                             const FixedField<f64, 2>& lagrange_factors,
+                             const f64* lambda)
 {
     // not yet implemented
 }
 
-void BoundarySweep::callback_eval(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf)
+void BoundarySweep::callback_eval(const f64* x0_nlp, const f64* xuf_nlp,
+                                  const f64* p, f64 t0, f64 tf)
+{
+    fill_zero_eval_buffer();
+    fmi_data.eval_point_mrf(xuf_nlp, p, tf, get_eval_buffer());
+    // TODO: r0 fmi_data.eval_point_r0(x0_nlp, p, t0, get_eval_buffer() + Mrf_size);
+}
+
+void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp,
+                                 const f64* p, f64 t0, f64 tf)
+{
+    fill_zero_jac_buffer();
+    fmi_data.jac_point_mrf(xuf_nlp, p, tf, get_jac_buffer());
+    // TODO: r0 fmi_data.jac_point_r0(x0_nlp, p, t0, get_jac_buffer() + Mrf_jac_nnz);
+}
+
+void BoundarySweep::callback_hes(const f64* x0_nlp, const f64* xuf_nlp,
+                                 const f64* p, f64 t0, f64 tf,
+                                 const f64 mayer_factor, const f64* lambda)
 {
     // not yet implemented
 }
 
-void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf)
+void layout_lfg_init_eval(GDOP::FullSweepLayout& layout, GDOP::ProblemConstants& pc)
 {
-    // not yet implemented
-}
-
-void BoundarySweep::callback_hes(const f64* x0_nlp, const f64* xuf_nlp, const f64* p, f64 t0, f64 tf, const f64 mayer_factor, const f64* lambda)
-{
-    // not yet implemented
-}
-
-// we just fill the buffer in order (L, f1, ..., fn, g1, ..., gn) <- buffer layout
-void layout_lfg_init_eval(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP::ProblemConstants& pc)
-{
-    if (layout.L) {
-        layout.L->buf_index = 0;
-    }
-
-    int offset = (layout.L ? 1 : 0);
-    for (int f_idx = 0; f_idx < pc.x_size; f_idx++) {
-        layout.f[f_idx].buf_index = offset + f_idx;
-    }
-
-    offset += pc.x_size;
-    for (int g_idx = 0; g_idx < pc.g_size; g_idx++) {
-        layout.g[g_idx].buf_index = offset + g_idx;
-    }
-}
-
-void layout_lfg_init_jac(GDOP::FullSweepLayout& layout, FMIData& fmi_data, GDOP::ProblemConstants& pc)
-{
-    int jac_offset = 0;
+    int buf = 0;
 
     if (layout.L) {
-        auto& L_jac = layout.L->jac;
-        const auto& fmi_deps = fmi_data.priv->lagr_dependencies[0];
-
-        for (const auto& dep : fmi_deps) {
-            if (dep.var.category == VarCategory::State) {
-                L_jac.dx.push_back({dep.var.semi_local, jac_offset++});
-            }
-            else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
-                L_jac.du.push_back({dep.var.semi_local, jac_offset++});
-            }
-            else if (dep.var.category == VarCategory::Parameter) {
-                L_jac.dp.push_back({dep.var.local_index, jac_offset++});
-            }
-        }
+        layout.L->buf_index = buf++;
     }
 
     for (int i = 0; i < pc.x_size; i++) {
-        auto& current_f_jac = layout.f[i].jac;
-        const auto& fmi_deps = fmi_data.priv->deriv_dependencies[i];
-
-        for (const auto& dep : fmi_deps) {
-            if (dep.var.category == VarCategory::State) {
-                current_f_jac.dx.push_back({dep.var.semi_local, jac_offset++});
-            }
-            else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
-                current_f_jac.du.push_back({dep.var.semi_local, jac_offset++});
-            }
-            else if (dep.var.category == VarCategory::Parameter) {
-                current_f_jac.dp.push_back({dep.var.local_index, jac_offset++});
-            }
-        }
+        layout.f[i].buf_index = buf++;
     }
 
     for (int i = 0; i < pc.g_size; i++) {
-        auto& current_g_jac = layout.g[i].jac;
-        const auto& fmi_deps = fmi_data.priv->res_dependencies[i];
-
-        for (const auto& dep : fmi_deps) {
-            if (dep.var.category == VarCategory::State) {
-                current_g_jac.dx.push_back({dep.var.semi_local, jac_offset++});
-            }
-            else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
-                current_g_jac.du.push_back({dep.var.semi_local, jac_offset++});
-            }
-            else if (dep.var.category == VarCategory::Parameter) {
-                current_g_jac.dp.push_back({dep.var.local_index, jac_offset++});
-            }
-        }
+        layout.g[i].buf_index = buf++;
     }
-
-    Log::info("Jacobian sparsity initialized. Total NNZ per node: {}", jac_offset);
 }
 
-GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc) {
-    auto layout_lfg = GDOP::FullSweepLayout(pc.has_lagrange, pc.x_size, pc.g_size);
+void layout_lfg_init_jac(GDOP::FullSweepLayout& layout,
+                         FMIData& fmi_data,
+                         GDOP::ProblemConstants& pc)
+{
+    auto& priv     = *fmi_data.priv;
+    int jac_offset = 0;
+    int lfg_row    = 0;
 
-    layout_lfg_init_eval(layout_lfg, fmi_data, pc);
-    layout_lfg_init_jac(layout_lfg, fmi_data, pc);
+    auto push_dep = [&](auto& jac_entry, const Dependency& dep) {
+        if (dep.var.category == VarCategory::State) {
+            jac_entry.dx.push_back({dep.var.semi_local, jac_offset++});
+        }
+        else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
+            jac_entry.du.push_back({dep.var.semi_local, jac_offset++});
+        }
+        else if (dep.var.category == VarCategory::Parameter) {
+            jac_entry.dp.push_back({dep.var.local_index, jac_offset++});
+        }
+        // Unknown / time: skip for now
+    };
 
-    return layout_lfg;
+    if (layout.L) {
+        for (const auto& dep : priv.Lfg_dependencies[lfg_row]) {
+            push_dep(layout.L->jac, dep);
+        }
+        lfg_row++;
+    }
+
+    for (int i = 0; i < pc.x_size; i++) {
+        for (const auto& dep : priv.Lfg_dependencies[lfg_row]) {
+            push_dep(layout.f[i].jac, dep);
+        }
+        lfg_row++;
+    }
+
+    for (int i = 0; i < pc.g_size; i++) {
+        for (const auto& dep : priv.Lfg_dependencies[lfg_row]) {
+            push_dep(layout.g[i].jac, dep);
+        }
+        lfg_row++;
+    }
+    Log::info("FullSweep Jacobian sparsity: total NNZ per node = {}", jac_offset);
+}
+
+void layout_mrf_init_eval(GDOP::BoundarySweepLayout& layout)
+{
+    int buf = 0;
+
+    if (layout.M)
+        layout.M->buf_index = buf++;
+
+    for (size_t i = 0; i < layout.r.size(); i++)
+        layout.r[i].buf_index = buf++;
+}
+
+void layout_mrf_init_jac(GDOP::BoundarySweepLayout& layout,
+                          FMIData& fmi_data,
+                          GDOP::ProblemConstants& pc)
+{
+    auto& priv     = *fmi_data.priv;
+    int jac_offset = 0;
+    int mrf_row    = 0;
+
+    auto push_dep = [&](auto& jac_entry, const Dependency& dep) {
+        if (dep.var.category == VarCategory::State) {
+            jac_entry.dxf.push_back({dep.var.semi_local, jac_offset++});
+        }
+        else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
+            jac_entry.duf.push_back({dep.var.semi_local, jac_offset++});
+        }
+        else if (dep.var.category == VarCategory::Parameter) {
+            jac_entry.dp.push_back({dep.var.local_index, jac_offset++});
+        }
+        else if (dep.var.category == VarCategory::FinalTime) {
+            jac_entry.dT.push_back({1, jac_offset++});
+        }
+        // Unknown / InitialTime: skip for now
+    };
+
+    if (layout.M) {
+        for (const auto& dep : priv.Mrf_dependencies[mrf_row]) {
+            push_dep(layout.M->jac, dep);
+        }
+        mrf_row++;
+    }
+
+    for (size_t i = 0; i < layout.r.size(); i++) {
+        for (const auto& dep : priv.Mrf_dependencies[mrf_row]) {
+            push_dep(layout.r[i].jac, dep);
+        }
+        mrf_row++;
+    }
+
+    Log::info("BoundarySweep Jacobian sparsity: total NNZ = {}", jac_offset);
+}
+
+GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc)
+{
+    auto layout = GDOP::FullSweepLayout(pc.has_lagrange, pc.x_size, pc.g_size);
+    layout_lfg_init_eval(layout, pc);
+    layout_lfg_init_jac(layout, fmi_data, pc);
+    return layout;
+}
+
+GDOP::BoundarySweepLayout create_boundarysweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc)
+{
+    auto layout = GDOP::BoundarySweepLayout(pc.has_mayer, pc.r_size);
+    layout_mrf_init_eval(layout);
+    layout_mrf_init_jac(layout, fmi_data, pc);
+    return layout;
 }
 
 GDOP::Problem create_gdop_problem(FMIData& fmi_data)
 {
     auto pc = std::make_unique<GDOP::ProblemConstants>(create_problem_constants(fmi_data));
     auto fs = std::make_unique<FullSweep>(create_fullsweep_layout(fmi_data, *pc), *pc, fmi_data);
-    auto empty_bs = std::make_unique<BoundarySweep>(GDOP::BoundarySweepLayout(false, 0), *pc, fmi_data);
+    auto bs = std::make_unique<BoundarySweep>(create_boundarysweep_layout(fmi_data, *pc), *pc, fmi_data);
 
-    // test sparsity of the fullsweep
     fs->print_jacobian_sparsity_pattern();
+    bs->print_jacobian_sparsity_pattern();
 
-    return GDOP::Problem(std::move(fs), std::move(empty_bs), std::move(pc), nullptr);
+    return GDOP::Problem(std::move(fs), std::move(bs), std::move(pc), nullptr);
 }
 
 Problem::Problem(FMIData& fmi_data)

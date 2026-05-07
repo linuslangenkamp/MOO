@@ -26,9 +26,19 @@ int main() {
     settings.path = SIMPLE_DAE_FMU_PATH;
     settings.modelname = "SimpleDAE";
 
-    uint32_t lagrange = 603979776;
-    settings.lagrange_vref = &lagrange;
+    // optimize these parameters
+    settings.control_vrefs.push_back( { 620756992, -1, 1 } );
+    settings.control_vrefs.push_back( { 620756993, -1, 1 } );
+
     settings.parameter_vrefs = {};
+
+    uint32_t mayer = 603979777;
+    uint32_t lagrange = 603979776;
+    settings.mayer_vref = &mayer;
+    settings.lagrange_vref = &lagrange;
+
+    settings.path_constraint_vrefs.push_back( { mayer, -10, 10 } );
+    settings.final_constraint_vrefs.push_back( { lagrange, -10, 10 } );
 
     FMI::main_fmi(settings);
 

@@ -26,7 +26,7 @@ int main() {
     settings.path = FOURBAR_FMU_PATH;
     settings.modelname = "Fourbar1";
     settings.lagrange_vref = nullptr;
-    settings.parameter_vrefs = {16777236};
+    settings.parameter_vrefs = {};
 
     FMI::main_fmi(settings);
 
