@@ -58,6 +58,9 @@ struct FMISettings {
 
     // rf^L <= rf(xf, uf, zf, p, tf) <= rf^U (appended to Mrf after Mayer)
     std::vector<BoundedVRef> final_constraint_vrefs;
+
+    // r0^L <= r0(x0, u0, z0, p, t0) <= r0^U (appended to Mrf after rf)
+    std::vector<BoundedVRef> initial_constraint_vrefs;
 };
 
 class FMIData {
@@ -72,9 +75,13 @@ public:
     void eval_point_lfg(const f64* xu, const f64* p, f64 time, f64* out);
     void jac_point_lfg (const f64* xu, const f64* p, f64 time, f64* out);
 
-    // boundary evaluation / Jacobian (M?, rf)  at final time
+    // boundary evaluation / Jacobian (M?, rf) at final time
     void eval_point_mrf(const f64* xuf, const f64* p, f64 tf, f64* out);
     void jac_point_mrf (const f64* xuf, const f64* p, f64 tf, f64* out);
+
+    // boundary evaluation / Jacobian (r0) at initial time
+    void eval_point_r0(const f64* xu0, const f64* p, f64 t0, f64* out);
+    void jac_point_r0 (const f64* xu0, const f64* p, f64 t0, f64* out);
 
     FMISettings& settings;
     std::unique_ptr<struct FMIData_priv> priv;

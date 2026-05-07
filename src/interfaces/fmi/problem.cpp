@@ -82,7 +82,7 @@ struct FMIData_priv {
     // [x1,..,xn, u1,..,uk, z1,..,zm]
     std::vector<fmi3ValueReference> xuz_vrefs;
 
-    // [p1,..,pm]
+    // TODO: [p1,..,pm]
     std::vector<fmi3ValueReference> p_vrefs;
 
     // TODO: [t0, tf]
@@ -106,10 +106,13 @@ struct FMIData_priv {
 
     bool has_mayer = false; // true => Mrf_vrefs[0] is M
 
-    // TODO: boundary functions: (r0_1,..,r0_m) at initial time (output vrefs, user bounds)
+    // boundary functions: (r0_1,..,r0_m) at initial time (output vrefs, user bounds)
     std::vector<fmi3ValueReference> r0_vrefs;
     std::vector<std::vector<Dependency>> r0_dependencies;
 
+    // will be set when creating the sparsity pattern in MOO structures
+    size_t Mr_r0_offset = 0;
+    size_t Mr_r0_offset_nnz = 0;
 
     // bounds objects for (g, c) and (rf, r0)
     std::vector<f64> gc_lb;
@@ -241,6 +244,9 @@ void FMIData::print() {
     Log::dashes(dep_fmt);
 
     print_deps("Mrf", priv->Mrf_vrefs, priv->Mrf_dependencies);
+    Log::dashes(dep_fmt);
+
+    print_deps("r0", priv->r0_vrefs, priv->r0_dependencies);
     Log::dashes(dep_fmt);
 }
 
@@ -418,7 +424,7 @@ FMIData::FMIData(FMISettings& settings)
         priv->gc_ub.push_back(bv.ub);
     }
 
-    // Mrf: (M?, rf1..rfm)
+    // Mrf: (M?, rf1..rfm) + r0: (r01, ..., r0m)
 
     // M: Mayer term?
     if (settings.mayer_vref) {
@@ -438,7 +444,15 @@ FMIData::FMIData(FMISettings& settings)
         priv->rfr0_ub.push_back(bv.ub);
     }
 
-    // TODO: r0 initial boundary constraints
+    // r0: user initial constraints
+    for (auto& bv : settings.initial_constraint_vrefs) {
+        auto vref = static_cast<fmi3ValueReference>(bv.vref);
+        priv->r0_vrefs.push_back(vref);
+        auto* h = find_output_handle(priv->fmu, priv->output_vrefs, vref);
+        priv->r0_dependencies.push_back(h ? read_dependencies(h, priv->vref_map) : std::vector<Dependency>{});
+        priv->rfr0_lb.push_back(bv.lb);
+        priv->rfr0_ub.push_back(bv.ub);
+    }
 
     print();
 }
@@ -603,6 +617,49 @@ void FMIData::jac_point_mrf(const f64* xuf, const f64* p, f64 tf, f64* out)
     }
 }
 
+// evaluate r0(x0, u0, z0, p, t0)
+void FMIData::eval_point_r0(const f64* xu0, const f64* p, f64 t0, f64* out)
+{
+    fmi3_setTime(priv->instance, t0);
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(), priv->xuz_vrefs.size(),
+                    xu0, priv->xuz_vrefs.size());
+
+    // evaluation of model
+    fmi3_getContinuousStateDerivatives(priv->instance, work.data(), work.size());
+
+    fmi3_getFloat64(priv->instance,
+                    priv->r0_vrefs.data(), priv->r0_vrefs.size(),
+                    out, priv->r0_vrefs.size());
+}
+
+// evaluate sparse Jacobian of r0 w.r.t. (x0, u0, z0, p, t0)
+void FMIData::jac_point_r0(const f64* xu0, const f64* p, f64 t0, f64* out)
+{
+    fmi3_setTime(priv->instance, t0);
+    fmi3_setFloat64(priv->instance,
+                    priv->xuz_vrefs.data(), priv->xuz_vrefs.size(),
+                    xu0, priv->xuz_vrefs.size());
+
+    int out_idx = 0;
+    auto get_partial = [&](fmi3ValueReference val_vref, fmi3ValueReference indep_vref) -> f64 {
+        f64 delta = 1.0, result = 0.0;
+        fmi3Status s = fmi3_getDirectionalDerivative(priv->instance,
+                                                     &val_vref, 1,
+                                                     &indep_vref, 1,
+                                                     &delta, 1,
+                                                     &result, 1);
+        return (s == fmi3OK) ? result : 0.0;
+    };
+
+    for (size_t row = 0; row < priv->r0_vrefs.size(); row++) {
+        fmi3ValueReference row_vref = priv->r0_vrefs[row];
+        for (const auto& dep : priv->r0_dependencies[row]) {
+            out[out_idx++] = get_partial(row_vref, dep.vref);
+        }
+    }
+}
+
 GDOP::ProblemConstants create_problem_constants(FMIData& fmi_data)
 {
     auto& priv = *fmi_data.priv;
@@ -727,7 +784,7 @@ void BoundarySweep::callback_eval(const f64* x0_nlp, const f64* xuf_nlp,
 {
     fill_zero_eval_buffer();
     fmi_data.eval_point_mrf(xuf_nlp, p, tf, get_eval_buffer());
-    // TODO: r0 fmi_data.eval_point_r0(x0_nlp, p, t0, get_eval_buffer() + Mrf_size);
+    fmi_data.eval_point_r0(x0_nlp, p, t0, get_eval_buffer() + fmi_data.priv->Mr_r0_offset);
 }
 
 void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp,
@@ -735,7 +792,7 @@ void BoundarySweep::callback_jac(const f64* x0_nlp, const f64* xuf_nlp,
 {
     fill_zero_jac_buffer();
     fmi_data.jac_point_mrf(xuf_nlp, p, tf, get_jac_buffer());
-    // TODO: r0 fmi_data.jac_point_r0(x0_nlp, p, t0, get_jac_buffer() + Mrf_jac_nnz);
+    fmi_data.jac_point_r0(x0_nlp, p, t0, get_jac_buffer() + fmi_data.priv->Mr_r0_offset_nnz);
 }
 
 void BoundarySweep::callback_hes(const f64* x0_nlp, const f64* xuf_nlp,
@@ -766,19 +823,19 @@ void layout_lfg_init_jac(GDOP::FullSweepLayout& layout,
                          FMIData& fmi_data,
                          GDOP::ProblemConstants& pc)
 {
-    auto& priv     = *fmi_data.priv;
-    int jac_offset = 0;
-    int lfg_row    = 0;
+    auto& priv  = *fmi_data.priv;
+    int buf_idx = 0;
+    int lfg_row = 0;
 
     auto push_dep = [&](auto& jac_entry, const Dependency& dep) {
         if (dep.var.category == VarCategory::State) {
-            jac_entry.dx.push_back({dep.var.semi_local, jac_offset++});
+            jac_entry.dx.push_back({dep.var.semi_local, buf_idx++});
         }
         else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
-            jac_entry.du.push_back({dep.var.semi_local, jac_offset++});
+            jac_entry.du.push_back({dep.var.semi_local, buf_idx++});
         }
         else if (dep.var.category == VarCategory::Parameter) {
-            jac_entry.dp.push_back({dep.var.local_index, jac_offset++});
+            jac_entry.dp.push_back({dep.var.local_index, buf_idx++});
         }
         // Unknown / time: skip for now
     };
@@ -803,7 +860,7 @@ void layout_lfg_init_jac(GDOP::FullSweepLayout& layout,
         }
         lfg_row++;
     }
-    Log::info("FullSweep Jacobian sparsity: total NNZ per node = {}", jac_offset);
+    Log::info("FullSweep Jacobian sparsity: total NNZ per node = {}", buf_idx);
 }
 
 void layout_mrf_init_eval(GDOP::BoundarySweepLayout& layout)
@@ -821,41 +878,61 @@ void layout_mrf_init_jac(GDOP::BoundarySweepLayout& layout,
                           FMIData& fmi_data,
                           GDOP::ProblemConstants& pc)
 {
-    auto& priv     = *fmi_data.priv;
-    int jac_offset = 0;
-    int mrf_row    = 0;
+    auto& priv  = *fmi_data.priv;
+    int buf_idx = 0;
+    int mr_row  = 0;
 
-    auto push_dep = [&](auto& jac_entry, const Dependency& dep) {
+    auto push_dep = [&](auto& jac_entry, const Dependency& dep, bool final) {
+        auto& dx = (final ? jac_entry.dxf : jac_entry.dx0);
+        auto& du = (final ? jac_entry.duf : jac_entry.du0);
+        auto& dp = jac_entry.dp;
+        int time_index = (final ? 1 : 0);
+
         if (dep.var.category == VarCategory::State) {
-            jac_entry.dxf.push_back({dep.var.semi_local, jac_offset++});
+            dx.push_back({dep.var.semi_local, buf_idx++});
         }
         else if (dep.var.category == VarCategory::Input || dep.var.category == VarCategory::Algebraic) {
-            jac_entry.duf.push_back({dep.var.semi_local, jac_offset++});
+            du.push_back({dep.var.semi_local, buf_idx++});
         }
         else if (dep.var.category == VarCategory::Parameter) {
-            jac_entry.dp.push_back({dep.var.local_index, jac_offset++});
+            dp.push_back({dep.var.local_index, buf_idx++});
         }
-        else if (dep.var.category == VarCategory::FinalTime) {
-            jac_entry.dT.push_back({1, jac_offset++});
+        else if (dep.var.category == VarCategory::FinalTime || dep.var.category == VarCategory::InitialTime) {
+            jac_entry.dT.push_back({time_index, buf_idx++});
         }
         // Unknown / InitialTime: skip for now
     };
 
     if (layout.M) {
-        for (const auto& dep : priv.Mrf_dependencies[mrf_row]) {
-            push_dep(layout.M->jac, dep);
+        for (const auto& dep : priv.Mrf_dependencies[mr_row]) {
+            push_dep(layout.M->jac, dep, true);
         }
-        mrf_row++;
+        mr_row++;
     }
 
-    for (size_t i = 0; i < layout.r.size(); i++) {
-        for (const auto& dep : priv.Mrf_dependencies[mrf_row]) {
-            push_dep(layout.r[i].jac, dep);
+    size_t Mr_M_offset = mr_row;
+
+    for (size_t i = 0; i < priv.Mrf_vrefs.size() - Mr_M_offset; i++) {
+        for (const auto& dep : priv.Mrf_dependencies[i + Mr_M_offset]) {
+            push_dep(layout.r[i].jac, dep, true);
         }
-        mrf_row++;
+        mr_row++;
     }
 
-    Log::info("BoundarySweep Jacobian sparsity: total NNZ = {}", jac_offset);
+    // jit: set the offset for r0, that are required for the callback implementations
+    fmi_data.priv->Mr_r0_offset = mr_row;
+    fmi_data.priv->Mr_r0_offset_nnz = buf_idx;
+
+    size_t r_internal_offset = fmi_data.priv->Mr_r0_offset - Mr_M_offset;
+
+    for (size_t i = 0; i < priv.r0_vrefs.size(); i++) {
+        for (const auto& dep : priv.r0_dependencies[i]) {
+            push_dep(layout.r[r_internal_offset + i].jac, dep, false);
+        }
+        mr_row++;
+    }
+
+    Log::info("BoundarySweep Jacobian sparsity: total NNZ = {}", buf_idx);
 }
 
 GDOP::FullSweepLayout create_fullsweep_layout(FMIData& fmi_data, GDOP::ProblemConstants& pc)
@@ -907,7 +984,7 @@ void main_fmi(FMISettings& settings) {
     nlp_solver_settings.set(NLP::Option::Hessian, NLP::HessianOption::LBFGS);
     nlp_solver_settings.set(NLP::Option::Jacobian, NLP::JacobianOption::Exact);
     nlp_solver_settings.set(NLP::Option::Gradient, NLP::GradientOption::Exact);
-    // nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
+    nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
     nlp_solver_settings.set(NLP::Option::Tolerance, 1e-8);
     nlp_solver_settings.print();
 

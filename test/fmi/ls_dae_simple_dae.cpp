@@ -40,6 +40,9 @@ int main() {
     settings.path_constraint_vrefs.push_back( { mayer, -10, 10 } );
     settings.final_constraint_vrefs.push_back( { lagrange, -10, 10 } );
 
+    settings.initial_constraint_vrefs.push_back( { lagrange, -1, 1 } );
+    settings.initial_constraint_vrefs.push_back( { mayer, -1, 1 } );
+
     FMI::main_fmi(settings);
 
     return EXIT_SUCCESS;
