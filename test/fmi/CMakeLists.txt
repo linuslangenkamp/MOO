@@ -43,3 +43,24 @@ target_compile_definitions(ls_dae_simple_dae PRIVATE
 )
 
 add_test(NAME ls_dae_simple_dae COMMAND ls_dae_simple_dae)
+
+# FMI ls-dae test 3
+add_executable(ls_dae_crane ls_dae_crane.cpp)
+
+target_link_libraries(ls_dae_crane PRIVATE fmi4c moo)
+
+target_compile_definitions(ls_dae_crane PRIVATE
+    CRANE_FMU_PATH="$ENV{CRANE_FMU}")
+
+add_test(NAME ls_dae_crane COMMAND ls_dae_crane)
+
+# FMI ls-dae test 4
+add_executable(ls_dae_multilink ls_dae_multilink.cpp)
+
+target_link_libraries(ls_dae_multilink PRIVATE fmi4c moo)
+
+target_compile_definitions(ls_dae_multilink PRIVATE
+    MULTILINK_FMU_PATH="$ENV{MULTILINK_FMU}"
+)
+
+add_test(NAME ls_dae_multilink COMMAND ls_dae_multilink)

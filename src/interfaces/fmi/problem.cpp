@@ -977,6 +977,7 @@ void main_fmi(FMISettings& settings) {
 
     auto strategies = std::make_unique<GDOP::Strategies>(GDOP::Strategies::default_strategies());
     strategies->emitter = std::make_shared<GDOP::CSVEmitter>("optimal_solution.csv", false);
+    strategies->mesh_refinement = std::make_shared<GDOP::L2BoundaryNorm>(settings.l2bn_p1_it, settings.l2bn_p2_it, settings.l2bn_p2_lvl);
 
     auto gdop = GDOP::GDOP(problem);
 
@@ -984,8 +985,8 @@ void main_fmi(FMISettings& settings) {
     nlp_solver_settings.set(NLP::Option::Hessian, NLP::HessianOption::LBFGS);
     nlp_solver_settings.set(NLP::Option::Jacobian, NLP::JacobianOption::Exact);
     nlp_solver_settings.set(NLP::Option::Gradient, NLP::GradientOption::Exact);
-    nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
-    nlp_solver_settings.set(NLP::Option::Tolerance, 1e-8);
+    //nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
+    nlp_solver_settings.set(NLP::Option::Tolerance, settings.tolerance);
     nlp_solver_settings.print();
 
     IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_settings);

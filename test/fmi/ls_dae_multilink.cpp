@@ -21,35 +21,23 @@
 #include <interfaces/fmi/problem.h>
 
 int main() {
-
     FMI::FMISettings settings;
-    settings.path = SIMPLE_DAE_FMU_PATH;
-    settings.modelname = "SimpleDAE";
+    settings.path = MULTILINK_FMU_PATH;
+    settings.modelname = "Multilink";
     settings.t0 = 0.0;
-    settings.tf = 0.5;
-    settings.intervals = 25;
-    settings.tolerance = 1e-8;
+    settings.tf = 100.0;
+    settings.intervals = 200;
+    settings.stage = 1;
+    // 2e6 min max
 
-    settings.l2bn_p1_it = 0;
-    settings.l2bn_p2_it = 2;
-    settings.l2bn_p2_lvl = 0.1;
+    f64 factor_u = 10;
+    f64 factor_phi = 1;
 
-    // optimize these parameters
-    settings.control_vrefs.push_back( { 620756992, -3, 3 } );
-    settings.control_vrefs.push_back( { 620756993, -3, 3 } );
+    settings.control_vrefs.push_back( { 620756992, -2e6, 2e6, 2e6 } );
 
     settings.parameter_vrefs = {};
 
-    uint32_t mayer = 603979777;
-    uint32_t lagrange = 603979776;
-    //settings.mayer_vref = &mayer;
-    settings.lagrange_vref = &lagrange;
-
-    settings.path_constraint_vrefs.push_back( { mayer, -5, 5 } );
-    //settings.final_constraint_vrefs.push_back( { mayer, -0, 0 } );
-
-    // settings.initial_constraint_vrefs.push_back( { lagrange, -1, 1 } );
-    //settings.initial_constraint_vrefs.push_back( { mayer, -1, 1 } );
+    settings.lagrange_vref = nullptr;
 
     FMI::main_fmi(settings);
 

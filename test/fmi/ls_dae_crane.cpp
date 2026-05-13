@@ -23,16 +23,11 @@
 int main() {
 
     FMI::FMISettings settings;
-    settings.path = SIMPLE_DAE_FMU_PATH;
-    settings.modelname = "SimpleDAE";
+    settings.path = CRANE_FMU_PATH;
+    settings.modelname = "Crane";
     settings.t0 = 0.0;
-    settings.tf = 0.5;
-    settings.intervals = 25;
-    settings.tolerance = 1e-8;
-
-    settings.l2bn_p1_it = 0;
-    settings.l2bn_p2_it = 2;
-    settings.l2bn_p2_lvl = 0.1;
+    settings.tf = 5.0;
+    settings.intervals = 50;
 
     // optimize these parameters
     settings.control_vrefs.push_back( { 620756992, -3, 3 } );

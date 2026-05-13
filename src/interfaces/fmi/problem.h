@@ -32,15 +32,21 @@ struct FMISettings {
     const char* modelname;
 
     f64 t0 = 0.0;
-    f64 tf = 0.5;
+    f64 tf = 1.0;
     int intervals = 15;
     int stage = 3;
+    f64 tolerance = 1e-6;
+
+    int l2bn_p1_it = 0;
+    int l2bn_p2_it = 0;
+    f64 l2bn_p2_lvl = 0.0;
 
     // bounded output constraints
     struct BoundedVRef {
         uint32_t vref;
         f64 lb;
         f64 ub;
+        f64 nominal = 1.0;
     };
 
     // objective terms (output vrefs)
