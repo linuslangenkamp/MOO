@@ -57,7 +57,8 @@ enum class LinearSolverOption {
 };
 
 enum class NLPSolverOption {
-    Ipopt
+    Ipopt,
+    Uno
 };
 
 enum class Option {
@@ -72,6 +73,7 @@ enum class Option {
 /* bool                  */    IpoptDerivativeTest,
 /* bool                  */    WarmStart,
 /* bool                  */    QP,
+/* std::string           */    UnoPreset,
 };
 
 using OptionValue = std::variant<std::string, f64, int, bool, HessianOption, JacobianOption, GradientOption, LinearSolverOption, NLPSolverOption>;

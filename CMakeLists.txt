@@ -3,6 +3,7 @@ project(moo LANGUAGES C CXX Fortran)
 
 set(CMAKE_CXX_STANDARD 17)
 
+option(MOO_WITH_UNO "Build MOO with Uno solver support" ON)
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_C_INTERFACE "Build MOO with C-interface support" ON)
 option(MOO_WITH_FMI_INTERFACE "Build MOO with FMI-interface support" ON)
@@ -103,6 +104,11 @@ add_subdirectory(third-party/fmt)
 target_compile_options(fmt PRIVATE -fPIC)
 
 add_subdirectory(third-party/Ipopt.cmake)
+
+if(MOO_WITH_UNO)
+    message(STATUS "Building MOO with Uno support")
+    include(cmake/Uno.cmake)
+endif()
 
 if(MOO_WITH_RADAU)
     add_subdirectory(third-party/RADAU)

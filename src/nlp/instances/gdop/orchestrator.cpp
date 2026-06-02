@@ -97,7 +97,20 @@ void MeshRefinementHistory::add_block(const GDOP& gdop, const NLP::NLPSolver& so
 }
 
 MeshRefinementHistory& MeshRefinementHistory::finalize() {
-    strategy_timings_nano = Timing::accumulate_blocks("Strategies::", "IpoptSolver::optimize");
+    auto use_latest_blocks = [this](std::vector<f64>&& timings) {
+        if (timings.size() >= blocks.size()) {
+            strategy_timings_nano.assign(timings.end() - static_cast<std::ptrdiff_t>(blocks.size()), timings.end());
+            return true;
+        }
+        return false;
+    };
+
+    if (!use_latest_blocks(Timing::accumulate_blocks("Strategies::", "IpoptSolver::optimize"))) {
+        use_latest_blocks(Timing::accumulate_blocks("Strategies::", "UnoSolver::optimize"));
+    }
+    if (strategy_timings_nano.size() != blocks.size()) {
+        strategy_timings_nano.assign(blocks.size(), 0.0);
+    }
     return *this;
 }
 

@@ -29,6 +29,9 @@
 #include <base/nlp_structs.h>
 #include <base/log.h>
 
+#include <algorithm>
+#include <chrono>
+
 #include "adapter.h"
 #include "solver.h"
 
@@ -105,6 +108,8 @@ struct IpoptSolverData {
     Ipopt::SmartPtr<IpoptAdapter> adapter;
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app;
     Ipopt::SmartPtr<Ipopt::Journal> logger_journal;
+    f64 total_wall_nano = 0.0;
+    f64 callback_wall_nano = 0.0;
 
     IpoptSolverData(NLP::NLP& nlp)
         : adapter(new IpoptAdapter(nlp)),
@@ -132,7 +137,12 @@ void IpoptSolver::optimize() {
 
     set_settings();
 
+    auto start = std::chrono::high_resolution_clock::now();
     Ipopt::ApplicationReturnStatus status = ipdata->app->OptimizeTNLP(ipdata->adapter);
+    ipdata->total_wall_nano = std::chrono::duration<f64, std::nano>(
+        std::chrono::high_resolution_clock::now() - start).count();
+    ipdata->callback_wall_nano = Timing::s_to_nano(
+        ipdata->app->IpoptDataObject()->TimingStats().TotalFunctionEvaluationWallclockTime());
 
     switch (status) {
         case Ipopt::Solve_Succeeded:
@@ -330,15 +340,15 @@ int IpoptSolver::get_iterations() const {
 }
 
 f64 IpoptSolver::get_total_time() const {
-    return Timing::s_to_nano(ipdata->app->IpoptDataObject()->TimingStats().OverallAlgorithm().TotalWallclockTime());
+    return ipdata->total_wall_nano;
 }
 
 f64 IpoptSolver::get_callback_time() const {
-    return Timing::s_to_nano(ipdata->app->IpoptDataObject()->TimingStats().TotalFunctionEvaluationWallclockTime());
+    return ipdata->callback_wall_nano;
 }
 
 f64 IpoptSolver::get_solver_time() const {
-    return get_total_time() - get_callback_time();
+    return std::max(0.0, get_total_time() - get_callback_time());
 }
 
 IpoptTimingNode::IpoptTimingNode(std::string n, TimingNode* p, IpoptSolver* ipopt_solver)
@@ -350,19 +360,19 @@ void IpoptTimingNode::finalize() {
     auto& ip_timing = data->TimingStats();
     auto orig_nlp = static_cast<Ipopt::OrigIpoptNLP*>(GetRawPtr(app->IpoptNLPObject()));
 
-    f64 wall_total = ip_timing.OverallAlgorithm().TotalWallclockTime();
-    f64 wall_func = ip_timing.TotalFunctionEvaluationWallclockTime();
-    f64 wall_ipopt_self = wall_total - wall_func;
+    f64 wall_total_nano = ipopt_solver->ipdata->total_wall_nano;
+    f64 wall_func_nano = ipopt_solver->ipdata->callback_wall_nano;
+    f64 wall_ipopt_self_nano = std::max(0.0, wall_total_nano - wall_func_nano);
 
     total_iterations = data->iter_count();
 
-    VirtualTimer timer_wall_total("Ipopt Total", Timing::s_to_nano(wall_total));
+    VirtualTimer timer_wall_total("Ipopt Total", wall_total_nano);
     {
         {
-            VirtualTimer timer_wall_ipopt_self("Ipopt Internal", Timing::s_to_nano(wall_ipopt_self));
+            VirtualTimer timer_wall_ipopt_self("Ipopt Internal", wall_ipopt_self_nano);
         }
         {
-            VirtualTimer timer_wall_func("Ipopt Callbacks", Timing::s_to_nano(wall_func));
+            VirtualTimer timer_wall_func("Ipopt Callbacks", wall_func_nano);
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_f("Objective",
                     Timing::s_to_nano(ip_timing.f_eval_time().TotalWallclockTime()), orig_nlp->f_evals());

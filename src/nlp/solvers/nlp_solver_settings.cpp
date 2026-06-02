@@ -43,6 +43,7 @@ const std::unordered_map<Option, OptionValue> default_settings = {
     {Option::IpoptDerivativeTest, false},
     {Option::WarmStart,           false},
     {Option::QP,                  false},
+    {Option::UnoPreset,           std::string("ipopt")},
 };
 
 // === Option string conversions ===
@@ -60,6 +61,7 @@ std::string to_string(Option option) {
         case Option::IpoptDerivativeTest: return "IpoptDerivativeTest";
         case Option::WarmStart:           return "WarmStart";
         case Option::QP:                  return "QP";
+        case Option::UnoPreset:           return "UnoPreset";
         default:                          return "Unknown";
     }
 }
@@ -77,6 +79,7 @@ std::optional<Option> option_from_string(const std::string& name) {
         {"IpoptDerivativeTest", Option::IpoptDerivativeTest},
         {"WarmStart", Option::WarmStart},
         {"QP", Option::QP},
+        {"UnoPreset", Option::UnoPreset},
     };
     auto it = map.find(name);
     if (it != map.end()) return it->second;
@@ -107,6 +110,26 @@ NLPSolverSettings::NLPSolverSettings(int argc, char** argv) {
                         settings[*maybe_option] = std::stoi(val);
                     } else if (std::holds_alternative<bool>(default_val)) {
                         settings[*maybe_option] = (val == "true" || val == "1");
+                    } else if (*maybe_option == Option::Hessian) {
+                        if (val == "Exact") settings[*maybe_option] = HessianOption::Exact;
+                        else if (val == "LBFGS") settings[*maybe_option] = HessianOption::LBFGS;
+                        else if (val == "Const") settings[*maybe_option] = HessianOption::Const;
+                    } else if (*maybe_option == Option::Jacobian) {
+                        if (val == "Exact") settings[*maybe_option] = JacobianOption::Exact;
+                        else if (val == "FD") settings[*maybe_option] = JacobianOption::FD;
+                    } else if (*maybe_option == Option::Gradient) {
+                        if (val == "Exact") settings[*maybe_option] = GradientOption::Exact;
+                        else if (val == "FD") settings[*maybe_option] = GradientOption::FD;
+                    } else if (*maybe_option == Option::LinearSolver) {
+                        if (val == "MUMPS") settings[*maybe_option] = LinearSolverOption::MUMPS;
+                        else if (val == "MA27") settings[*maybe_option] = LinearSolverOption::MA27;
+                        else if (val == "MA57") settings[*maybe_option] = LinearSolverOption::MA57;
+                        else if (val == "MA77") settings[*maybe_option] = LinearSolverOption::MA77;
+                        else if (val == "MA86") settings[*maybe_option] = LinearSolverOption::MA86;
+                        else if (val == "MA97") settings[*maybe_option] = LinearSolverOption::MA97;
+                    } else if (*maybe_option == Option::NLPSolver) {
+                        if (val == "Ipopt") settings[*maybe_option] = NLPSolverOption::Ipopt;
+                        else if (val == "Uno") settings[*maybe_option] = NLPSolverOption::Uno;
                     } else {
                         settings[*maybe_option] = val;
                     }
@@ -170,6 +193,7 @@ void NLPSolverSettings::print() const {
             } else if constexpr (std::is_same_v<T, NLPSolverOption>) {
                 switch (v) {
                     case NLPSolverOption::Ipopt: return "Ipopt";
+                    case NLPSolverOption::Uno: return "Uno";
                     default: return "<invalid NLPSolverOption>";
                 }
             } else {
