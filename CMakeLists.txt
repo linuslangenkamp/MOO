@@ -50,6 +50,10 @@ target_sources(moo PRIVATE
     src/nlp/instances/gdop/strategies.cpp
     src/nlp/instances/gdop/orchestrator.cpp
 
+    # Static Initialization Problem
+    src/nlp/instances/init/init.cpp
+    src/nlp/instances/init/problem.cpp
+
     # generic NLP
     src/nlp/solvers/nlp_solver_settings.cpp
     src/nlp/nlp_scaling.cpp
