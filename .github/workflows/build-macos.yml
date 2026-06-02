@@ -34,7 +34,6 @@ jobs:
             -DCMAKE_CXX_COMPILER=${{ matrix.setup.cxx }} \
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
             -DIPOPT_BUILD_EXAMPLES=ON \
-            -DMOO_WITH_UNO=OFF \
             -DMOO_TESTS=ON \
             -G "${{ matrix.setup.generator }}"
 
