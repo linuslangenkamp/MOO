@@ -14,7 +14,8 @@ jobs:
       fail-fast: true
       matrix:
         setup:
-          - { c: "brew-llvm", cxx: "brew-llvm", fortran: "gfortran-15", generator: "Ninja" }
+          - { c: "clang", cxx: "clang++", fortran: "gfortran-15", generator: "Ninja" }
+
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,6 +28,11 @@ jobs:
 
       - name: Configure
         run: |
+          OMP_PREFIX="$(brew --prefix libomp)"
+
+          export CPPFLAGS="-I${OMP_PREFIX}/include"
+          export LDFLAGS="-L${OMP_PREFIX}/lib"
+
           cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
