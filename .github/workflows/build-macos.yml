@@ -14,8 +14,7 @@ jobs:
       fail-fast: true
       matrix:
         setup:
-          - { c: "clang", cxx: "clang++", fortran: "gfortran-15", generator: "Ninja" }
-
+          - { c: "brew-llvm", cxx: "brew-llvm", fortran: "gfortran-15", generator: "Ninja" }
     steps:
       - uses: actions/checkout@v6
         with:
