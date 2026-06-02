@@ -30,7 +30,7 @@
 namespace NLP {
 
 
-enum class MOO_EXPORT ReturnCode : int {
+enum class ReturnCode {
     GENERIC_FAILURE    = -4,
     RESTORATION_FAILED = -3,
     INFEASIBLE         = -2,
