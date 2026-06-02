@@ -10,3 +10,4 @@ endif()
 
 add_subdirectory(gdopt)
 add_subdirectory(fmi)
+add_subdirectory(init)

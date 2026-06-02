@@ -1775,6 +1775,7 @@ std::pair<std::unique_ptr<Trajectory>, std::unique_ptr<Trajectory>> GDOP::finali
  * `PrimalDualTrajectory` object and stored in the `optimal_solution` member.
  */
 void GDOP::finalize_solution(
+    ReturnCode ret,
     f64 opt_obj,
     const FixedVector<f64>& opt_x,
     const FixedVector<f64>& opt_lambda,
