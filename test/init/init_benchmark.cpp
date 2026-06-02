@@ -24,7 +24,7 @@
 
 #include <base/log.h>
 #include <nlp/instances/init/init.h>
-#include <nlp/solvers/ipopt/solver.h>
+#include <nlp/solvers/uno/solver.h>
 #include <nlp/solvers/nlp_solver_settings.h>
 
 namespace {
@@ -148,7 +148,7 @@ Init::Result solve(ChemicalEquilibriumChain& problem)
     settings.set(NLP::Option::CPUTime, 60.0);
 
     Init::Init init(problem);
-    IpoptSolver::IpoptSolver solver(init, settings);
+    UnoSolver::UnoSolver solver(init, settings);
     solver.optimize();
 
     return init.get_result();

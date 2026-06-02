@@ -20,6 +20,7 @@
 
 #include <nlp/instances/gdop/orchestrator.h>
 #include <nlp/solvers/ipopt/solver.h>
+#include <nlp/solvers/uno/solver.h>
 #include <nlp/instances/gdop/strategies.h>
 #include <base/log.h>
 #include <base/timing.h>
@@ -27,6 +28,7 @@
 #include <interfaces/c/problem.h>
 #include <interfaces/gdopt/main_gdopt.h>
 
+#include <memory>
 #include <string>
 
 // create config for the algorithm (for now basic) not here, this is actually a generic GDOP stuff
@@ -69,9 +71,17 @@ int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
 
     auto gdop = GDOP::GDOP(problem);
 
-    IpoptSolver::IpoptSolver ipopt_solver(gdop, nlp_solver_settings);
+    std::unique_ptr<NLP::NLPSolver> nlp_solver;
+    switch (nlp_solver_settings.get_or_default<NLP::NLPSolverOption>(NLP::Option::NLPSolver)) {
+        case NLP::NLPSolverOption::Ipopt:
+            nlp_solver = std::make_unique<IpoptSolver::IpoptSolver>(gdop, nlp_solver_settings);
+            break;
+        case NLP::NLPSolverOption::Uno:
+            nlp_solver = std::make_unique<UnoSolver::UnoSolver>(gdop, nlp_solver_settings);
+            break;
+    }
 
-    auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), ipopt_solver);
+    auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), *nlp_solver);
 
     orchestrator.optimize();
 

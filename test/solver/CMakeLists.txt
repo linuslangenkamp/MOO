@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.14)
+
+if(TARGET Ipopt::Ipopt)
+    add_executable(test_solver_trivial_qp_ipopt trivial_qp.cpp)
+    target_compile_definitions(test_solver_trivial_qp_ipopt PRIVATE MOO_TEST_SOLVER_IPOPT)
+    target_link_libraries(test_solver_trivial_qp_ipopt PRIVATE moo)
+    add_test(NAME test_solver_trivial_qp_ipopt COMMAND test_solver_trivial_qp_ipopt)
+    set_tests_properties(test_solver_trivial_qp_ipopt PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()
+
+if(MOO_WITH_UNO)
+    add_executable(test_solver_trivial_qp_uno trivial_qp.cpp)
+    target_compile_definitions(test_solver_trivial_qp_uno PRIVATE MOO_TEST_SOLVER_UNO)
+    target_link_libraries(test_solver_trivial_qp_uno PRIVATE moo)
+    add_test(NAME test_solver_trivial_qp_uno COMMAND test_solver_trivial_qp_uno)
+    set_tests_properties(test_solver_trivial_qp_uno PROPERTIES WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()

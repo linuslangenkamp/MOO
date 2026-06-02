@@ -7,3 +7,6 @@
 [submodule "third-party/fmi4c"]
 	path = third-party/fmi4c
 	url = git@github.com:robbr48/fmi4c.git
+[submodule "third-party/Uno"]
+	path = third-party/Uno
+	url = https://github.com/cvanaret/Uno.git

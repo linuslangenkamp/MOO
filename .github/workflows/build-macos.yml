@@ -24,10 +24,12 @@ jobs:
       - name: Install Dependencies
         run: |
           brew update
-          brew install metis
+          brew install metis libomp ninja
 
       - name: Configure
         run: |
+          OMP_PREFIX=$(brew --prefix libomp)
+
           cmake -S . -B build \
             -DCMAKE_INSTALL_PREFIX=install \
             -DCMAKE_C_COMPILER=${{ matrix.setup.c }} \
@@ -35,6 +37,12 @@ jobs:
             -DCMAKE_Fortran_COMPILER=${{ matrix.setup.fortran }} \
             -DIPOPT_BUILD_EXAMPLES=ON \
             -DMOO_TESTS=ON \
+            -DOpenMP_ROOT="$OMP_PREFIX" \
+            -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp -I$OMP_PREFIX/include" \
+            -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp -I$OMP_PREFIX/include" \
+            -DOpenMP_C_LIB_NAMES="omp" \
+            -DOpenMP_CXX_LIB_NAMES="omp" \
+            -DOpenMP_omp_LIBRARY="$OMP_PREFIX/lib/libomp.dylib" \
             -G "${{ matrix.setup.generator }}"
 
       - name: Build
