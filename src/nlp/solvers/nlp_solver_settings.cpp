@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 //
 // This file is part of MOO - Modelica / Model Optimizer
-// Copyright (C) 2025 University of Applied Sciences and Arts
+// Copyright (C) 2026 University of Applied Sciences and Arts
 // Bielefeld, Faculty of Engineering and Mathematics
 //
 // This program is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+
 #include <sstream>
 #include <iomanip>
 #include <cstdlib>
