@@ -29,16 +29,18 @@
 
 namespace NLP {
 
-
 enum class ReturnCode {
-    GENERIC_FAILURE    = -4,
-    RESTORATION_FAILED = -3,
-    INFEASIBLE         = -2,
-    DIVERGENCE         = -1,
-    OPTIMAL            = 0,
-    ACCEPTABLE         = 1,
-    STEP_TOO_SMALL     = 2,
-    UNKNOWN_SUCCESS    = 3
+    GENERIC_FAILURE          = -7,
+    FEASIBILITY_RECOVERED    = -6,
+    ITERATION_LIMIT_EXCEEDED = -5,
+    TIME_LIMIT_EXCEEDED      = -4,
+    RESTORATION_FAILED       = -3,
+    INFEASIBLE               = -2,
+    DIVERGENCE               = -1,
+    OPTIMAL                  = 0,
+    ACCEPTABLE               = 1,
+    STEP_TOO_SMALL           = 2,
+    UNKNOWN_SUCCESS          = 3
 };
 
 /**

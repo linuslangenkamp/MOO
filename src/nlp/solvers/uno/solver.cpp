@@ -98,6 +98,46 @@ uno_int logger_stream_callback(const char* buffer, uno_int length, void* user_da
     return length;
 }
 
+const char* uno_optimization_status_to_string(uno_int status)
+{
+    if (status == UNO_SUCCESS) {
+        return "UNO_SUCCESS";
+    } else if (status == UNO_ITERATION_LIMIT) {
+        return "UNO_ITERATION_LIMIT";
+    } else if (status == UNO_TIME_LIMIT) {
+        return "UNO_TIME_LIMIT";
+    } else if (status == UNO_EVALUATION_ERROR) {
+        return "UNO_EVALUATION_ERROR";
+    } else if (status == UNO_ALGORITHMIC_ERROR) {
+        return "UNO_ALGORITHMIC_ERROR";
+    } else if (status == UNO_USER_TERMINATION) {
+        return "UNO_USER_TERMINATION";
+    } else {
+        return "UNO_UNKNOWN_OPTIMIZATION_STATUS";
+    }
+}
+
+const char* uno_solution_status_to_string(uno_int status)
+{
+    if (status == UNO_NOT_OPTIMAL) {
+        return "UNO_NOT_OPTIMAL";
+    } else if (status == UNO_FEASIBLE_KKT_POINT) {
+        return "UNO_FEASIBLE_KKT_POINT";
+    } else if (status == UNO_FEASIBLE_FJ_POINT) {
+        return "UNO_FEASIBLE_FJ_POINT";
+    } else if (status == UNO_INFEASIBLE_STATIONARY_POINT) {
+        return "UNO_INFEASIBLE_STATIONARY_POINT";
+    } else if (status == UNO_FEASIBLE_SMALL_STEP) {
+        return "UNO_FEASIBLE_SMALL_STEP";
+    } else if (status == UNO_INFEASIBLE_SMALL_STEP) {
+        return "UNO_INFEASIBLE_SMALL_STEP";
+    } else if (status == UNO_UNBOUNDED) {
+        return "UNO_UNBOUNDED";
+    } else {
+        return "UNO_UNKNOWN_SOLUTION_STATUS";
+    }
+}
+
 } // namespace
 
 struct UnoSolverData {
@@ -191,55 +231,64 @@ void UnoSolver::set_settings()
 
 NLP::ReturnCode UnoSolver::get_return_code() const
 {
-    const uno_int optimization_status = uno_get_optimization_status(udata->solver);
-    const uno_int solution_status = uno_get_solution_status(udata->solver);
+    void* solver = udata->solver;
 
-    if (optimization_status == UNO_SUCCESS) {
-        if (solution_status == UNO_FEASIBLE_KKT_POINT) return NLP::ReturnCode::OPTIMAL;
-        if (solution_status == UNO_FEASIBLE_FJ_POINT || solution_status == UNO_FEASIBLE_SMALL_STEP) return NLP::ReturnCode::ACCEPTABLE;
-        if (solution_status == UNO_INFEASIBLE_STATIONARY_POINT) return NLP::ReturnCode::INFEASIBLE;
-        if (solution_status == UNO_INFEASIBLE_SMALL_STEP) return NLP::ReturnCode::STEP_TOO_SMALL;
-        if (solution_status == UNO_UNBOUNDED) return NLP::ReturnCode::DIVERGENCE;
-        return NLP::ReturnCode::UNKNOWN_SUCCESS;
+    const uno_int optimization_status = uno_get_optimization_status(solver);
+    const uno_int solution_status     = uno_get_solution_status(solver);
+
+    if (optimization_status == UNO_ITERATION_LIMIT) {
+        return NLP::ReturnCode::ITERATION_LIMIT_EXCEEDED;
+    } else if (optimization_status == UNO_TIME_LIMIT) {
+        return NLP::ReturnCode::TIME_LIMIT_EXCEEDED;
+    } else if (optimization_status == UNO_EVALUATION_ERROR ||
+               optimization_status == UNO_ALGORITHMIC_ERROR ||
+               optimization_status == UNO_USER_TERMINATION) {
+        return NLP::ReturnCode::GENERIC_FAILURE;
+    } else if (optimization_status != UNO_SUCCESS) {
+        return NLP::ReturnCode::GENERIC_FAILURE;
     }
 
-    if (optimization_status == UNO_ITERATION_LIMIT || optimization_status == UNO_TIME_LIMIT) {
+    if (solution_status == UNO_FEASIBLE_KKT_POINT) {
+        return NLP::ReturnCode::OPTIMAL;
+    } else if (solution_status == UNO_FEASIBLE_FJ_POINT) {
+        return NLP::ReturnCode::ACCEPTABLE;
+    } else if (solution_status == UNO_FEASIBLE_SMALL_STEP) {
+        return NLP::ReturnCode::STEP_TOO_SMALL;
+    } else if (solution_status == UNO_INFEASIBLE_STATIONARY_POINT ||
+               solution_status == UNO_INFEASIBLE_SMALL_STEP) {
+        return NLP::ReturnCode::INFEASIBLE;
+    } else if (solution_status == UNO_UNBOUNDED) {
+        return NLP::ReturnCode::DIVERGENCE;
+    } else if (solution_status == UNO_NOT_OPTIMAL) {
+        return NLP::ReturnCode::UNKNOWN_SUCCESS;
+    } else {
         return NLP::ReturnCode::UNKNOWN_SUCCESS;
     }
-    return NLP::ReturnCode::GENERIC_FAILURE;
 }
 
 void UnoSolver::log_status() const
 {
-    const uno_int optimization_status = uno_get_optimization_status(udata->solver);
-    const uno_int solution_status = uno_get_solution_status(udata->solver);
+    void* solver = udata->solver;
 
-    switch (optimization_status) {
-        case UNO_SUCCESS:
-            Log::success("[Uno Interface] Optimization finished successfully.");
-            break;
-        case UNO_ITERATION_LIMIT:
-            Log::warning("[Uno Interface] Iteration limit reached.");
-            break;
-        case UNO_TIME_LIMIT:
-            Log::warning("[Uno Interface] Time limit reached.");
-            break;
-        case UNO_EVALUATION_ERROR:
-            Log::error("[Uno Interface] Evaluation error.");
-            break;
-        case UNO_ALGORITHMIC_ERROR:
-            Log::error("[Uno Interface] Algorithmic error.");
-            break;
-        case UNO_USER_TERMINATION:
-            Log::warning("[Uno Interface] User termination.");
-            break;
-        default:
-            Log::error("[Uno Interface] Unknown optimization status: {}", static_cast<int>(optimization_status));
-            break;
+    const uno_int optimization_status = uno_get_optimization_status(solver);
+    const uno_int solution_status     = uno_get_solution_status(solver);
+
+    const char* optimization_status_name = uno_optimization_status_to_string(optimization_status);
+    const char* solution_status_name = uno_solution_status_to_string(solution_status);
+
+    if (optimization_status == 0) {
+        Log::success(
+            "[Uno Interface] optimization status: {}, solution status: {}.",
+            optimization_status_name,
+            solution_status_name
+        );
+    } else {
+        Log::error(
+            "[Uno Interface] optimization status: {}, solution status: {}.",
+            optimization_status_name,
+            solution_status_name
+        );
     }
-
-    Log::info("[Uno Interface] Solution status: {}", static_cast<int>(solution_status));
-    Log::info("[Uno Interface] Method: {}", uno_get_method_description(udata->solver));
 }
 
 int UnoSolver::get_iterations() const
