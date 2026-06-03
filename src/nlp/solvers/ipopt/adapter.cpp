@@ -196,7 +196,22 @@ NLP::ReturnCode IpoptAdapter::get_return_code(Ipopt::SolverReturn status)
         return NLP::ReturnCode::INFEASIBLE;
     } else if (status == Ipopt::SolverReturn::RESTORATION_FAILURE) {
         return NLP::ReturnCode::RESTORATION_FAILED;
-    } else if (static_cast<int>(status) < 0) {
+    } else if (status == Ipopt::SolverReturn::CPUTIME_EXCEEDED ||
+               status == Ipopt::SolverReturn::WALLTIME_EXCEEDED) {
+        return NLP::ReturnCode::TIME_LIMIT_EXCEEDED;
+    } else if (status == Ipopt::SolverReturn::MAXITER_EXCEEDED) {
+        return NLP::ReturnCode::ITERATION_LIMIT_EXCEEDED;
+    } else if (status == Ipopt::SolverReturn::FEASIBLE_POINT_FOUND) {
+        return NLP::ReturnCode::FEASIBILITY_RECOVERED;
+    } else if (status == Ipopt::SolverReturn::USER_REQUESTED_STOP) {
+        return NLP::ReturnCode::GENERIC_FAILURE;
+    } else if (status == Ipopt::SolverReturn::ERROR_IN_STEP_COMPUTATION ||
+               status == Ipopt::SolverReturn::INVALID_NUMBER_DETECTED ||
+               status == Ipopt::SolverReturn::TOO_FEW_DEGREES_OF_FREEDOM ||
+               status == Ipopt::SolverReturn::INVALID_OPTION ||
+               status == Ipopt::SolverReturn::OUT_OF_MEMORY ||
+               status == Ipopt::SolverReturn::INTERNAL_ERROR ||
+               status == Ipopt::SolverReturn::UNASSIGNED) {
         return NLP::ReturnCode::GENERIC_FAILURE;
     } else {
         return NLP::ReturnCode::UNKNOWN_SUCCESS;
