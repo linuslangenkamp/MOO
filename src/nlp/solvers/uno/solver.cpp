@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <exception>
 #include <interfaces/C/Uno_C_API.h>
 
 #include <base/log.h>
@@ -182,16 +183,26 @@ void UnoSolver::optimize()
         udata->model = nullptr;
     }
 
-    set_settings();
-    udata->model = udata->adapter.create_model();
-    if (!udata->model) abort();
+    try {
+        set_settings();
+        udata->model = udata->adapter.create_model();
+        if (!udata->model) abort();
 
-    udata->adapter.reset_timing();
-    uno_optimize(udata->solver, udata->model);
-    flush_logger_buffer(udata->logger_buffer);
+        udata->adapter.reset_timing();
+        uno_optimize(udata->solver, udata->model);
+        flush_logger_buffer(udata->logger_buffer);
 
-    log_status();
-    udata->adapter.finalize_solution(udata->solver, get_return_code());
+        log_status();
+        udata->adapter.finalize_solution(udata->solver, get_return_code());
+    } catch (const std::exception& e) {
+        flush_logger_buffer(udata->logger_buffer);
+        Log::error("[Uno Interface] Unhandled exception: {}", e.what());
+        std::abort();
+    } catch (...) {
+        flush_logger_buffer(udata->logger_buffer);
+        Log::error("[Uno Interface] Unhandled non-standard exception.");
+        std::abort();
+    }
 
     udata->total_wall_nano = std::chrono::duration<f64, std::nano>(
         std::chrono::high_resolution_clock::now() - start).count();

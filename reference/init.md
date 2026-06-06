@@ -7,6 +7,11 @@ patterns, and implements the required callbacks. `Init::Init` adapts this
 problem to the generic `NLP::NLP` interface, so it can be solved with Ipopt or
 another MOO NLP solver.
 
+If you want to model Init problems from Python, use `moo.init_model(...)`.
+The Python frontend generates AD-based C callbacks for the objective,
+constraints, Jacobian, and Hessian, compiles them against the Init C interface,
+runs the selected solver, and parses `init_optimal_solution.csv`.
+
 ## Mathematical Form
 
 Given an initial point `(y0, p0)`, the NLP variables are ordered as `[y, dp]`.
@@ -46,6 +51,9 @@ The public interface and NLP adapter are implemented in:
 - `src/nlp/instances/init/problem.cpp`: default objective implementations
 - `src/nlp/instances/init/init.h`: `NLP::NLP` adapter and result access
 - `src/nlp/instances/init/init.cpp`: NLP assembly and solver callback mapping
+- `src/interfaces/init`: C interface used by generated Python Init problems
+
+For Python usage, see `python/README.md` and `examples/moo/init_simple.py`.
 
 ## Problem API
 
@@ -193,3 +201,9 @@ indices in `hes_rows/hes_cols` once during construction, so no Hessian sparsity
 search occurs during Ipopt iterations. If exact Hessians are used, include those
 parameter diagonal entries in `hes_rows/hes_cols`; if using LBFGS, the Hessian
 pattern can stay empty.
+
+Generated Python Init problems use `Objective::USER` and provide exact
+AD-generated derivatives. Hessian callbacks use staged HVP code: the generated
+C callback prepares the cache once for the current `[y, p]` and Lagrangian
+seed, then applies basis directions to fill the sparse lower-triangular
+Hessian buffer.

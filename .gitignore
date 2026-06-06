@@ -5,6 +5,10 @@ out/
 bin/
 docs/
 dist/
+__pycache__/
+*.egg-info/
+.venv/
+.stash/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

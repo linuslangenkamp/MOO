@@ -20,13 +20,16 @@
 
 #include <nlp/instances/gdop/orchestrator.h>
 #include <nlp/solvers/ipopt/solver.h>
-#include <nlp/solvers/uno/solver.h>
 #include <nlp/instances/gdop/strategies.h>
 #include <base/log.h>
 #include <base/timing.h>
 
-#include <interfaces/c/problem.h>
-#include <interfaces/gdopt/main_gdopt.h>
+#if MOO_WITH_UNO_ENABLED
+#include <nlp/solvers/uno/solver.h>
+#endif
+
+#include <interfaces/gdop/problem.h>
+#include <interfaces/gdop/main_gdop.h>
 
 #include <memory>
 #include <string>
@@ -45,16 +48,17 @@ void set_global_configuration(Config& config) {
 }
 
 // TODO: make this clean
-int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
-    Log::prefixed('*', "Entry point [OPT] - main_gdopt\n");
+int main_gdop(int argc, char** argv, c_problem_t* c_problem) {
+    Log::prefixed('*', "Entry point [OPT] - main_gdop\n");
 
     auto config = read_yaml();
     set_global_configuration(config);
 
     auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);
+    if (c_problem->solver_ctx && c_problem->solver_ctx->derivative_test) {
+        nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, true);
+    }
     nlp_solver_settings.print();
-
-    nlp_solver_settings.set(NLP::Option::IpoptDerivativeTest, (c_problem->solver_ctx && c_problem->solver_ctx->derivative_test));
 
     // move this into the problem creation!
     auto problem = C::Problem::create(c_problem);
@@ -77,15 +81,18 @@ int main_gdopt(int argc, char** argv, c_problem_t* c_problem) {
             nlp_solver = std::make_unique<IpoptSolver::IpoptSolver>(gdop, nlp_solver_settings);
             break;
         case NLP::NLPSolverOption::Uno:
+#if MOO_WITH_UNO_ENABLED
             nlp_solver = std::make_unique<UnoSolver::UnoSolver>(gdop, nlp_solver_settings);
+#else
+            Log::error("Uno solver requested, but MOO was built with MOO_WITH_UNO=OFF.");
+            std::abort();
+#endif
             break;
     }
 
     auto orchestrator = GDOP::MeshRefinementOrchestrator(gdop, std::move(strategies), *nlp_solver);
 
     orchestrator.optimize();
-
-    TimingTree::instance().print_tree_table();
 
     return 0;
 }

@@ -18,8 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <interfaces/c/structures.h>
-#include <interfaces/gdopt/main_gdopt.h>
+#include <interfaces/gdop/structures.h>
+#include <interfaces/gdop/main_gdop.h>
 #include <generated.h>
 
 // === problem sizes (compile const) ===
@@ -392,5 +392,5 @@ static c_problem_t globl_c_problem = {
 
 
 int main_full_functionality(int argc, char** argv) {
-    return main_gdopt(argc, argv, &globl_c_problem);
+    return main_gdop(argc, argv, &globl_c_problem);
 }

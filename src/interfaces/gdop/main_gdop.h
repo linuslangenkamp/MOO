@@ -18,17 +18,20 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef MOO_C_GDOPT_GENERATED
-#define MOO_C_GDOPT_GENERATED
+#ifndef MOO_C_GDOP_MAIN
+#define MOO_C_GDOP_MAIN
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int main_generated(int argc, char** argv);
+#include <base/export.h>
+#include <interfaces/gdop/structures.h>
+
+MOO_EXPORT int main_gdop(int argc, char** argv, c_problem_t* c_problem);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // MOO_C_GDOPT_GENERATED
+#endif // MOO_C_GDOP_MAIN

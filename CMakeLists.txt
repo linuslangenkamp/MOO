@@ -7,8 +7,8 @@ option(MOO_WITH_UNO "Build MOO with Uno solver support" ON)
 option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_C_INTERFACE "Build MOO with C-interface support" ON)
 option(MOO_WITH_FMI_INTERFACE "Build MOO with FMI-interface support" ON)
-option(MOO_WITH_GDOPT "Build MOO with GDOPT support" ON)
 option(MOO_TESTS "Build MOO with test executables" ON)
+option(MOO_WITH_PYTHON_BINDINGS "Build experimental Python bindings for MOO AD" ON)
 
 message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER}")
@@ -27,10 +27,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "")
     message(WARNING "CMAKE_BUILD_TYPE not defined - MOO will be slow.")
 else()
     message(STATUS "Using build type: ${CMAKE_BUILD_TYPE}")
-endif()
-
-if (MOO_WITH_GDOPT AND NOT MOO_WITH_C_INTERFACE)
-    message(FATAL_ERROR "Can't build MOO_WITH_GDOPT without MOO_WITH_C_INTERFACE.")
 endif()
 
 add_library(moo SHARED)
@@ -75,7 +71,12 @@ target_sources(moo PRIVATE
 
 if (MOO_WITH_C_INTERFACE)
     message(STATUS "Building MOO with C interface")
-    target_sources(moo PRIVATE src/interfaces/c/problem.cpp)
+    target_sources(moo PRIVATE src/interfaces/gdop/main_gdop.cpp)
+    target_sources(moo PRIVATE src/interfaces/gdop/problem.cpp)
+    target_sources(moo PRIVATE src/interfaces/init/problem.cpp)
+    target_sources(moo PRIVATE src/interfaces/init/main_init.cpp)
+    target_sources(moo PRIVATE src/interfaces/nlp/problem.cpp)
+    target_sources(moo PRIVATE src/interfaces/nlp/main_nlp.cpp)
 endif ()
 
 if (MOO_WITH_FMI_INTERFACE)
@@ -88,11 +89,6 @@ if (MOO_WITH_FMI_INTERFACE)
     target_sources(moo PRIVATE src/interfaces/fmi/strategies.cpp)
     target_sources(moo PRIVATE src/interfaces/fmi/expressions.cpp)
     target_sources(moo PRIVATE src/interfaces/fmi/problem.cpp)
-endif ()
-
-if (MOO_WITH_GDOPT)
-    message(STATUS "Building MOO with GDOPT support")
-    target_sources(moo PRIVATE src/interfaces/gdopt/main_gdopt.cpp)
 endif ()
 
 target_include_directories(moo
@@ -109,6 +105,8 @@ if(MOO_WITH_UNO)
     message(STATUS "Building MOO with Uno support")
     include(cmake/Uno.cmake)
 endif()
+
+target_compile_definitions(moo PRIVATE MOO_WITH_UNO_ENABLED=$<BOOL:${MOO_WITH_UNO}>)
 
 if(MOO_WITH_RADAU)
     add_subdirectory(third-party/RADAU)
@@ -136,6 +134,16 @@ target_link_libraries(moo PRIVATE Ipopt::Ipopt)
 
 if(MOO_WITH_RADAU)
     target_link_libraries(moo PRIVATE radau)
+endif()
+
+if(MOO_WITH_PYTHON_BINDINGS)
+    add_subdirectory(third-party/pybind11)
+    pybind11_add_module(_ad src/ad/python_bindings.cpp)
+    target_include_directories(_ad PRIVATE src/ad)
+    set_target_properties(_ad PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/moo
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/moo
+    )
 endif()
 
 # DLL export / hide symbols

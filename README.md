@@ -3,15 +3,15 @@
 [![Build-Windows](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-windows.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-windows.yml)
 [![Build-macOS](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-macos.yml/badge.svg)](https://github.com/AMIT-HSBI/MOO/actions/workflows/build-macos.yml)
 
-# MOO: Modelica / Model Optimizer - A Generic Framework for Dynamic Optimization
+# MOO: Modelica / Model Optimizer
 
-This is MOO: Modelica / Model Optimizer v.0.1.0, a flexible and extensible
-framework for solving optimization problems. MOO provides a generic
-Nonlinear Programming (NLP) layer with built-in scaling support and a generic
-NLP solver interface. While primarily designed for dynamic optimization in the
-Modelica ecosystem (General Dynamic Optimization Problems, training of
-Physics-enhanced Neural ODEs), it is equally applicable to other
-domains, e.g. model predictive control (MPC).
+MOO: Modelica / Model Optimizer v0.1.0 is a flexible and extensible C++ and Python framework
+for nonlinear optimization, with a focus on dynamic optimization in the Modelica ecosystem.
+It provides a generic Nonlinear Programming (NLP) layer with built-in scaling support,
+solver-independent interfaces, direct-collocation-based GDOP transcription, consistent-initialization
+and standard NLP formulations, and an in-tree symbolic AD/code-generation layer with Python bindings.
+Through its Python frontend, MOO models can generate exact derivative callbacks, compile them against
+`libmoo`, run the selected solver, and read structured result outputs.
 
 ## Working with this repository
 
@@ -19,6 +19,12 @@ Clone with submodules:
 
 ```bash
 git clone --recurse-submodules git@github.com:AMIT-HSBI/MOO.git
+```
+
+If you already cloned without submodules:
+
+```bash
+git submodule update --init --recursive
 ```
 
 ## Compilation
@@ -29,7 +35,7 @@ MOO uses CMake to compile.
 
 Install with your favorite package manager
 
-#### Necessary
+#### Required
 
 - C Compiler
 
@@ -42,9 +48,9 @@ Install with your favorite package manager
   - Debian / Ubuntu: `apt install liblapack-dev`
   - Latest OpenBLAS build from source: add `-DUSE_SYSTEM_LAPACK=OFF -DDOWNLOAD_LAPACK=ON` to the CMake configure command
 
-- [AnHeuermann/fmi4c fmi-ls-dae](https://github.com/AnHeuermann/fmi4c/tree/fmi-ls-dae)
+- Python 3.10 or newer when using the Python frontend
 
-  - Set environment variable `SIMPLE_DAE_FMU` pointing to `fmi-ls-dae-sandbox/Dymola/SimpleDAE.fmu`.
+- pybind11 submodule when building Python AD bindings
 
 #### Optional
 
@@ -57,6 +63,8 @@ Install with your favorite package manager
 
   - add `-DIPOPT_HAS_HSL` to the CMake configure command (package should be found via PkgConfig)
 
+- FMI support through the in-repository `third-party/fmi4c` submodule
+
 ### Configure
 
 ```bash
@@ -65,15 +73,98 @@ cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install
 
 Possible configuration arguments:
 
+- `MOO_WITH_UNO`: Build Uno solver support (default: `ON`)
 - `MOO_WITH_RADAU`: Build with RADAU fortran code to perform simulations (default: `ON`)
-- `MOO_WITH_GDOPT`: Build with GDOPT interface (default: `ON`, WIP)
-- `MOO_WITH_C_INTERFACE`: Build MOO with the generic C interface (default: `ON`, WIP)
+- `MOO_WITH_C_INTERFACE`: Build C interfaces used by generated problems (default: `ON`)
+- `MOO_WITH_FMI_INTERFACE`: Build FMI interface support with fmi4c (default: `ON`)
+- `MOO_WITH_PYTHON_BINDINGS`: Build Python bindings for MOO AD (default: `ON`)
+- `MOO_TESTS`: Build tests (default: `ON`)
+
+For Python modeling and code generation, configure with:
+
+```bash
+cmake -S . -B build -DMOO_WITH_PYTHON_BINDINGS=ON
+cmake --build build --target moo _ad
+```
 
 ### Build
 
 ```bash
 cmake --build build --parallel <Nr. of cores> --target all
 ```
+
+## Python Frontend
+
+Use the Python package from a source checkout with:
+
+```bash
+PYTHONPATH=python python3 examples/moo/hello.py
+```
+
+For normal local use, install it editable in a venv:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+```
+
+The main factories are:
+
+```python
+from moo import gdop_model, init_model, nlp_model
+```
+
+A minimal dynamic optimization problem:
+
+```python
+from moo import gdop_model
+
+m = gdop_model("hello")
+x = m.add_state("x", start=1.0, final=0.0)
+u = m.add_control("u")
+
+m.set_time_fixed(t0=0.0, tf=1.0)
+m.mesh(intervals=25, nodes=3)
+m.set_dynamics(x, x + u)
+m.add_lagrange(u * u + x * x)
+m.solver(tolerance=1e-12, derivative_test=True)
+
+run = m.run("build/moo/hello")
+print(run.result.states["x"])
+```
+
+The shared lifecycle is:
+
+```python
+model.generate("build/moo/problem")
+model.compile("build/moo/problem")
+run = model.optimize("build/moo/problem")
+```
+
+or simply:
+
+```python
+run = model.run("build/moo/problem")
+```
+
+`run.result` is a typed result view. GDOP results expose time-series states,
+controls, and costates. Init and NLP results expose flat variable,
+constraint, multiplier, and bound-dual mappings. Result CSV files can also be
+read directly with `moo.read_results(...)`.
+
+See `python/README.md` for the Python user guide and `examples/moo/` for
+complete examples.
+
+## Native AD
+
+MOO AD lives in `src/ad`. It is a symbolic expression-graph AD layer with C++
+and Python APIs. It supports graph evaluation, forward and reverse AD,
+Hessian-vector products, sparsity extraction, one-shot C emission, and staged
+C emission for Hessian callbacks.
+
+The Python frontend uses these bindings directly during code generation.
+
+See `src/ad/README.md` for the AD user guide.
 
 ### Test
 
@@ -174,7 +265,9 @@ Mesh Refinement", Linus Langenkamp and Bernhard Bachmann, 16th International
 Modelica & FMI Conference, 2025, DOI: 10.3384/ecp218127.
 
 More detailed API documentation for implementing GDOPs is in
-`reference/gdop.md`.
+`reference/gdop.md`. Python modeling examples are in `examples/moo/hello.py`,
+`examples/moo/representative.py`, `examples/moo/free_time.py`, and
+`examples/moo/free_time_boundary.py`.
 
 ## Consistent Initialization of DAEs
 
@@ -217,7 +310,23 @@ Hessian checks are in `test/init/`, and `test/init/init_benchmark.cpp` contains
 a scalable synthetic chemical-equilibrium initialization benchmark.
 
 More detailed API documentation for implementing `Init` is in
-`reference/init.md`.
+`reference/init.md`. A Python Init example is in `examples/moo/init_simple.py`.
+
+## Standard NLP
+
+MOO also provides a generated standard NLP interface for problems of the form:
+
+```math
+\begin{aligned}
+\min_x\quad & f(x) \\
+\text{s.t.}\quad & g^L \le g(x) \le g^U, \\
+& x^L \le x \le x^U.
+\end{aligned}
+```
+
+The Python frontend exposes this as `nlp_model(...)` and generates exact AD
+callbacks for objective values, gradients, constraints, Jacobians, and
+Lagrangian Hessians. See `reference/nlp.md` and `examples/moo/nlp_qp.py`.
 
 ## License
 

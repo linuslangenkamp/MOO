@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+#
+# This file is part of MOO - Modelica / Model Optimizer
+# Copyright (C) 2026 University of Applied Sciences and Arts
+# Bielefeld, Faculty of Engineering and Mathematics
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+from moo import ad
+
+
+g = ad.GraphBuilder()
+x = g.inputs("x", 3)
+f = g.function(x, [2.0 * x[0] - x[1] + 3.0, x[2]])
+hvp = f.reverse_diff("lambda", "x").forward_diff("x", "v")
+
+assert f.jacobian_sparsity("x") == [(0, 0), (0, 1), (1, 2)]
+assert hvp.hessian_sparsity("v") == []
+assert f.evaluate(inputs={"x": [1.0, 2.0, 3.0]}) == [3.0, 3.0]
+assert hvp.evaluate(
+    inputs={"x": [1.0, 2.0, 3.0]},
+    params={"lambda": [1.0, 1.0], "v": [0.0, 0.0, 1.0]},
+) == [0.0, 0.0, 0.0]
+prepared = hvp.prepare(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0]})
+assert prepared.apply([0.0, 0.0, 1.0]) == [0.0, 0.0, 0.0]
+assert "void linear_value" in f.to_c("linear_value")
+assert "linear_hvp_prepare" in hvp.to_staged_c("linear_hvp", "v")

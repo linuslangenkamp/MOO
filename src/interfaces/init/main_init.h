@@ -18,20 +18,20 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef MOO_C_GDOPT_MAIN
-#define MOO_C_GDOPT_MAIN
+#ifndef MOO_INIT_C_MAIN_H
+#define MOO_INIT_C_MAIN_H
+
+#include <base/export.h>
+#include <interfaces/init/structures.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <base/export.h>
-#include <interfaces/c/structures.h>
-
-MOO_EXPORT int main_gdopt(int argc, char** argv, c_problem_t* c_problem);
+MOO_EXPORT int main_init(int argc, char** argv, c_init_problem_t* c_problem);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // MOO_C_GDOPT_MAIN
+#endif

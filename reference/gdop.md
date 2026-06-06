@@ -15,6 +15,12 @@ MOO also provides a C interface and an FMI interface. They follow the same
 problem structure described here and can be used as examples of how to build a
 custom frontend.
 
+If you want to model GDOPs from Python, use `moo.gdop_model(...)`. The Python
+frontend builds the same continuous problem structure, generates AD-based C
+callbacks, compiles them against MOO's C interface, runs the solver, and parses
+the emitted trajectory CSV files. See `python/README.md` and
+`examples/moo/hello.py` for the high-level workflow.
+
 ## Mathematical Form
 
 A `GDOP` represents a continuous optimization problem of the form:
@@ -66,6 +72,8 @@ The main public API is in:
 - `src/nlp/instances/gdop/gdop.h`: the `NLP::NLP` implementation
 - `src/nlp/instances/gdop/strategies.h`: pluggable workflow strategies
 - `src/nlp/instances/gdop/orchestrator.h`: optimization workflow orchestration
+- `src/interfaces/c`: generated-C interface used by the Python frontend
+- `src/interfaces/fmi`: FMI-backed GDOP frontend
 
 ## Problem Construction
 
@@ -247,6 +255,11 @@ written to the boundary Hessian buffer.
 
 If exact Hessians are not available, configure the NLP solver to use a limited
 memory Hessian approximation.
+
+Generated Python GDOPs use MOO AD to emit exact local JVP and staged HVP
+kernels. The generated Hessian callback prepares the HVP cache once at a fixed
+node and multiplier point, then applies basis directions to fill the sparse
+Hessian buffers declared by the GDOP layouts.
 
 ## Optional Dynamics
 

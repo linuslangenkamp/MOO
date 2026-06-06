@@ -10,3 +10,6 @@
 [submodule "third-party/Uno"]
 	path = third-party/Uno
 	url = https://github.com/cvanaret/Uno.git
+[submodule "third-party/pybind11"]
+	path = third-party/pybind11
+	url = https://github.com/pybind/pybind11.git
