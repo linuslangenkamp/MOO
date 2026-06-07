@@ -266,20 +266,85 @@ NLP models support variables, bounds, guesses, nominals, runtime parameters,
 one objective, bounded constraints, exact sparse Jacobians, and exact staged
 Hessian callbacks.
 
-For large repeated NLPs, use the structured helpers so MOO generates compact C
-loops instead of fully unrolled scalar code:
+For large repeated NLPs, use iterable structured helpers so MOO generates
+compact C loops instead of fully unrolled scalar code:
 
 ```python
-from moo import nlp_model
+from moo import matrix, nlp_model, vec, vector
 
 m = nlp_model("banded")
 x = m.add_variables("x", 500, lb=-10.0, ub=10.0, guess=0.1)
 
-m.minimize_sum(500, lambda i: (x[i] - 1.0) ** 2, name="tracking")
-m.minimize_sum(499, lambda i: 0.01 * x[i] * x[i + 1], name="coupling")
-m.add_constraints(499, lambda i: x[i] + x[i + 1], lb=-5.0, ub=5.0, name="band")
+m.minimize_sum(range(500), lambda i: (x[i] - 1.0) ** 2, name="tracking")
+m.minimize_sum(range(499), lambda i: 0.01 * x[i] * x[i + 1], name="coupling")
+m.add_constraints(range(499), lambda i: x[i] + x[i + 1], lb=-5.0, ub=5.0, name="band")
 
 m.codegen("auto").generate("build/moo/banded")
+```
+
+Alternatively an integer can be passed, e.g. `499` instead of `range(499)`.
+You can also pass stepped ranges or explicit index lists:
+
+```python
+x_even = x[::2]
+x_tail = x[5:]
+
+x_even.fix(0, 1.0)
+x_tail.set_nominal(slice(None), 10.0)
+
+m.add_constraints(range(5, 100, 3), lambda i: x[i] - x[i - 1], eq=0.0)
+m.add_constraints([0, 2, 7], lambda i: x_even[i] + x[i + 1], lb=-5.0, ub=5.0)
+```
+
+Mapped block bodies may return scalar expressions, lists/tuples, or expression
+vectors. We also include tiny matrix/vector wrappers that allow for nice block-level operations.
+
+```python
+D = matrix([[-1.0, 1.0]])
+w = vector([1.0])
+
+def f(xb, ub):
+    return vec([
+        -(ub[0] + ub[0] * ub[0] / 2) * xb[0],
+        ub[0] * xb[0],
+    ])
+
+m.add_constraints(
+    range(n),
+    lambda k: vec([
+        (D @ vec([x1[k], x1[k + 1]]))[0],
+        (D @ vec([x2[k], x2[k + 1]]))[0],
+    ]) - h * f(vec([x1[k], x2[k]]), vec([u[k]])),
+    eq=0.0,
+    name="collocation",
+)
+
+m.minimize_sum(range(n), lambda k: h * (w @ vec([u[k] * u[k]])))
+```
+
+Radau IIA, i.e. rescaled flipped Legendre-Gauss-Radau, constants from `data/fLGR/` are available directly from the package for
+stages 1 through 25:
+
+```python
+from moo import matrix, radau, vector
+
+r = radau(3)
+D = matrix(r.D)     # differentiation matrix, including the previous value column
+B = vector(r.B)     # quadrature weights
+C = r.C             # collocation nodes
+C0 = r.C0           # nodes including 0
+W = r.W             # barycentric weights
+W0 = r.W0           # barycentric weights including 0
+```
+
+For vector-valued states, `D.otimes_eye(nx)` builds the Kronecker product
+`D otimes I_nx`, so collocation defects can stay close to the mathematical
+form:
+
+```python
+D_otimes_I = matrix(r.D).otimes_eye(2)
+block = vec([x_previous, x_stage_0, x_stage_1, x_stage_2])
+defect_j = (D_otimes_I @ block)[2 * j:2 * j + 2] - h * f(block[2 * j:2 * j + 2], u_j)
 ```
 
 Mapped objective and constraint blocks emit one local AD kernel and C loops
@@ -300,6 +365,17 @@ m.add_constraints_map(
 )
 m.codegen("loop-colored")
 ```
+
+## Direct Collocation
+
+As can be seen from the previous section, direct collocation can also be implemented with the native NLP.
+Although quite comfortable, modeling problems and direct collocation with this raw NLP interface is significantly harder.
+Examples of direct collocation with the native NLP can be found in `examples/moo/nlp_collocation_batch_reactor.py` and
+`examples/moo/nlp_collocation_batch_reactor_piecewise_ctrls.py`. This interface gives full control over all details of the problem, e.g. if controls are
+piecewise constant or if the problem is a multi-phase optimization problem, but also requires the entire NLP and not only the
+model equations to be generated to C code. This is done very efficiently with the described AD implementation, but also takes additional time
+that is saved using the GDOP layer. Furthermore, the GDOP layer implements several pluggable strategies, e.g. mesh refinement, which is not implemented
+with the raw NLP layer. So the decision between NLP and GDOP really comes down to your use case.
 
 ## Results
 

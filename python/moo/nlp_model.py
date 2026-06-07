@@ -25,9 +25,10 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 from .ad_codegen import emit_function
 from .common import SolverMixin, SolverSettings, derivative_mode
@@ -56,18 +57,22 @@ class NLPConstraint:
 @dataclass
 class MappedObjectiveBlock:
     name: str
-    count: int
+    indices: list[int]
     local_size: int
-    offsets: list[int]
+    local_globals: list[list[int]]
     expr: Expr
+
+    @property
+    def count(self) -> int:
+        return len(self.indices)
 
 
 @dataclass
 class MappedConstraintBlock:
     name: str
-    count: int
+    indices: list[int]
     local_size: int
-    offsets: list[int]
+    local_globals: list[list[int]]
     exprs: list[Expr]
     lb: float
     ub: float
@@ -80,6 +85,10 @@ class MappedConstraintBlock:
     @property
     def output_size(self) -> int:
         return len(self.exprs)
+
+    @property
+    def count(self) -> int:
+        return len(self.indices)
 
 
 @dataclass
@@ -99,58 +108,139 @@ class LocalBlockEmission:
 
 
 class LoopIndex:
-    def __init__(self, offset: int = 0):
+    def __init__(self, offset: int = 0, scale: int = 1, divisor: int = 1):
         self.offset = offset
+        self.scale = scale
+        self.divisor = divisor
+
+    def eval(self, rep: int) -> int:
+        return (self.scale * rep + self.offset) // self.divisor
 
     def __add__(self, other: int) -> "LoopIndex":
-        return LoopIndex(self.offset + int(other))
+        # only valid when divisor == 1, i.e. no active //
+        if self.divisor != 1:
+            raise TypeError("cannot add after //")
+        return LoopIndex(self.offset + int(other), self.scale)
 
     def __radd__(self, other: int) -> "LoopIndex":
         return self.__add__(other)
 
     def __sub__(self, other: int) -> "LoopIndex":
-        return LoopIndex(self.offset - int(other))
+        if self.divisor != 1:
+            raise TypeError("cannot subtract after //")
+        return LoopIndex(self.offset - int(other), self.scale)
 
+    def __mul__(self, other: int) -> "LoopIndex":
+        if self.divisor != 1:
+            raise TypeError("cannot multiply after //")
+        factor = int(other)
+        return LoopIndex(self.offset * factor, self.scale * factor)
+
+    def __rmul__(self, other: int) -> "LoopIndex":
+        return self.__mul__(other)
+
+    def __floordiv__(self, other: int) -> "LoopIndex":
+        if self.divisor != 1:
+            raise TypeError("cannot chain //")
+        if self.offset != 0:
+            raise TypeError("// only supported for pure scale*rep, i.e. offset must be 0")
+        return LoopIndex(0, self.scale, int(other))
 
 class NLPVector:
-    def __init__(self, model: "NLPModel", name: str, start: int, size: int):
+    def __init__(self, model: "NLPModel", name: str, indices: Sequence[int]):
         self.model = model
         self.name = name
-        self.start = start
-        self.size = size
+        self.indices = tuple(int(index) for index in indices)
+        self.size = len(self.indices)
+        self.start = self.indices[0] if self.indices else 0
 
     def __len__(self) -> int:
         return self.size
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
-            start, stop, step = idx.indices(self.size)
-            if step != 1:
-                raise ValueError("NLPVector slices only support step=1")
-            return NLPVector(self.model, self.name, self.start + start, stop - start)
+            return NLPVector(self.model, self.name, self.indices[idx])
         if isinstance(idx, LoopIndex):
-            return self.model._loop_var(self, idx.offset)
+            return self.model._loop_var(self, idx)
         idx = int(idx)
         if idx < 0:
             idx += self.size
         if idx < 0 or idx >= self.size:
             raise IndexError(idx)
-        return Expr(f"x[{self.start + idx}]", f"x[{self.start + idx}]")
+        if self.model._loop_globals is not None:
+            return self.model._loop_var(self, idx)
+        global_idx = self.indices[idx]
+        return Expr(f"x[{global_idx}]", f"x[{global_idx}]")
 
     def __sub__(self, other: object) -> "VectorExpr":
+        if isinstance(other, (NLPVector, VectorExpr)):
+            rhs = list(other)
+            if len(rhs) != self.size:
+                raise ValueError("vector sizes must match")
+            return VectorExpr([self[i] - rhs[i] for i in range(self.size)])
         return VectorExpr([self[i] - other for i in range(self.size)])
 
-    def __add__(self, other: object) -> "VectorExpr":
-        if isinstance(other, NLPVector):
-            if len(self) != len(other):
+    def __rsub__(self, other: object) -> "VectorExpr":
+        if isinstance(other, (NLPVector, VectorExpr)):
+            lhs = list(other)
+            if len(lhs) != self.size:
                 raise ValueError("vector sizes must match")
-            return VectorExpr([self[i] + other[i] for i in range(self.size)])
+            return VectorExpr([lhs[i] - self[i] for i in range(self.size)])
+        return VectorExpr([other - self[i] for i in range(self.size)])
+
+    def __add__(self, other: object) -> "VectorExpr":
+        if isinstance(other, (NLPVector, VectorExpr)):
+            rhs = list(other)
+            if len(rhs) != self.size:
+                raise ValueError("vector sizes must match")
+            return VectorExpr([self[i] + rhs[i] for i in range(self.size)])
         return VectorExpr([self[i] + other for i in range(self.size)])
+
+    def __radd__(self, other: object) -> "VectorExpr":
+        return self.__add__(other)
+
+    def __mul__(self, other: object) -> "VectorExpr":
+        return VectorExpr([self[i] * other for i in range(self.size)])
+
+    def __rmul__(self, other: object) -> "VectorExpr":
+        return self.__mul__(other)
+
+    def __truediv__(self, other: object) -> "VectorExpr":
+        return VectorExpr([self[i] / other for i in range(self.size)])
+
+    def fix(self, idx, value: float) -> None:
+        self.set_bounds(idx, lb=value, ub=value)
+        self.set_guess(idx, value)
+
+    def set_bounds(self, idx, lb: float = -math.inf, ub: float = math.inf) -> None:
+        for global_idx in self._selected_indices(idx):
+            self.model.variables[global_idx].lb = lb
+            self.model.variables[global_idx].ub = ub
+
+    def set_guess(self, idx, value: float) -> None:
+        for global_idx in self._selected_indices(idx):
+            self.model.variables[global_idx].guess = value
+
+    def set_nominal(self, idx, value: float) -> None:
+        for global_idx in self._selected_indices(idx):
+            self.model.variables[global_idx].nominal = value
+
+    def _selected_indices(self, idx) -> list[int]:
+        if isinstance(idx, slice):
+            return list(self.indices[idx])
+        if isinstance(idx, Iterable) and not isinstance(idx, (str, bytes)):
+            return [self.indices[int(i)] for i in idx]
+        i = int(idx)
+        if i < 0:
+            i += self.size
+        if i < 0 or i >= self.size:
+            raise IndexError(idx)
+        return [self.indices[i]]
 
 
 class VectorExpr:
     def __init__(self, values: list[Expr]):
-        self.values = values
+        self.values = [as_expr(value) for value in values]
 
     def __len__(self) -> int:
         return len(self.values)
@@ -162,6 +252,139 @@ class VectorExpr:
 
     def __iter__(self):
         return iter(self.values)
+
+    def block(self, index: int, size: int) -> "VectorExpr":
+        if size <= 0:
+            raise ValueError("block size must be positive")
+        start = int(index) * size
+        stop = start + size
+        if start < 0 or stop > len(self.values):
+            raise IndexError(index)
+        return VectorExpr(self.values[start:stop])
+
+    def _binary(self, other: object, op: str, reverse: bool = False) -> "VectorExpr":
+        if isinstance(other, (VectorExpr, NLPVector)):
+            rhs_values = list(other)
+            if len(rhs_values) != len(self.values):
+                raise ValueError("vector sizes must match")
+            if reverse:
+                return VectorExpr([as_expr(rhs)._binary(lhs, op) for lhs, rhs in zip(self.values, rhs_values)])
+            return VectorExpr([lhs._binary(rhs, op) for lhs, rhs in zip(self.values, rhs_values)])
+        if reverse:
+            return VectorExpr([as_expr(other)._binary(lhs, op) for lhs in self.values])
+        return VectorExpr([lhs._binary(other, op) for lhs in self.values])
+
+    def __add__(self, other: object) -> "VectorExpr":
+        return self._binary(other, "+")
+
+    def __radd__(self, other: object) -> "VectorExpr":
+        return self._binary(other, "+", reverse=True)
+
+    def __sub__(self, other: object) -> "VectorExpr":
+        return self._binary(other, "-")
+
+    def __rsub__(self, other: object) -> "VectorExpr":
+        return self._binary(other, "-", reverse=True)
+
+    def __mul__(self, other: object) -> "VectorExpr":
+        if isinstance(other, (VectorExpr, NLPVector)):
+            return self._binary(other, "*")
+        return VectorExpr([value * other for value in self.values])
+
+    def __rmul__(self, other: object) -> "VectorExpr":
+        return self.__mul__(other)
+
+    def __truediv__(self, other: object) -> "VectorExpr":
+        return VectorExpr([value / other for value in self.values])
+
+    def __neg__(self) -> "VectorExpr":
+        return VectorExpr([-value for value in self.values])
+
+
+class ExprMatrix:
+    def __init__(self, values: object, vector: bool = False):
+        raw = _tolist(values)
+        if vector:
+            self.values = [float(value) for value in raw]
+            self.is_vector = True
+            return
+        self.values = [[float(value) for value in row] for row in raw]
+        self.is_vector = False
+        if self.values:
+            width = len(self.values[0])
+            if any(len(row) != width for row in self.values):
+                raise ValueError("matrix rows must have equal length")
+
+    def __matmul__(self, other: object):
+        rhs = _as_vector_values(other)
+        if self.is_vector:
+            if len(self.values) != len(rhs):
+                raise ValueError("dot dimensions do not match")
+            from .model import sum_expr
+            return sum_expr(weight * value for weight, value in zip(self.values, rhs))
+        if self.values and len(self.values[0]) != len(rhs):
+            raise ValueError("matrix/vector dimensions do not match")
+        from .model import sum_expr
+        return VectorExpr([sum_expr(weight * value for weight, value in zip(row, rhs)) for row in self.values])
+
+    def otimes_eye(self, size: int) -> "ExprMatrix":
+        if self.is_vector:
+            raise ValueError("otimes_eye is only defined for matrices")
+        if size <= 0:
+            raise ValueError("identity size must be positive")
+        rows = []
+        for row in self.values:
+            for eye_row in range(size):
+                expanded = []
+                for value in row:
+                    for eye_col in range(size):
+                        expanded.append(value if eye_row == eye_col else 0.0)
+                rows.append(expanded)
+        return ExprMatrix(rows)
+
+    def kron_eye(self, size: int) -> "ExprMatrix":
+        return self.otimes_eye(size)
+
+
+def _tolist(values: object):
+    if hasattr(values, "tolist"):
+        return values.tolist()
+    return values
+
+
+def _as_vector_values(values: object) -> list[Expr]:
+    if isinstance(values, NLPVector):
+        return [values[i] for i in range(len(values))]
+    if isinstance(values, VectorExpr):
+        return list(values.values)
+    raw = _tolist(values)
+    if isinstance(raw, (list, tuple)):
+        flattened = []
+        for value in raw:
+            if isinstance(value, (NLPVector, VectorExpr)):
+                flattened.extend(_as_vector_values(value))
+            elif isinstance(value, (list, tuple)):
+                flattened.extend(_as_vector_values(value))
+            else:
+                flattened.append(as_expr(value))
+        return flattened
+    raise TypeError(f"Cannot convert {type(values)!r} to expression vector")
+
+
+def vec(values: object) -> VectorExpr:
+    return VectorExpr(_as_vector_values(values))
+
+
+def vector(values: object) -> ExprMatrix:
+    return ExprMatrix(values, vector=True)
+
+
+def matrix(values: object) -> ExprMatrix:
+    return ExprMatrix(values, vector=False)
+
+
+def dot(lhs: object, rhs: object) -> Expr:
+    return vector(lhs) @ vec(rhs)
 
 
 class NLPModel(SolverMixin):
@@ -179,7 +402,9 @@ class NLPModel(SolverMixin):
         self.objective: Expr | None = None
         self.obj_nominal = 1.0
         self.derivative_test = False
-        self._loop_offsets: dict[int, int] | None = None
+        self._loop_indices: list[int] | None = None
+        self._loop_globals: dict[tuple[int, ...], int] | None = None
+        self._loop_global_lists: list[list[int]] | None = None
 
     @property
     def x_size(self) -> int:
@@ -194,43 +419,46 @@ class NLPModel(SolverMixin):
         start = len(self.variables)
         for i in range(size):
             self.variables.append(NLPVar(f"{name}{i}", lb, ub, guess, nominal))
-        return NLPVector(self, name, start, size)
+        return NLPVector(self, name, range(start, start + size))
 
     def add_runtime_parameter(self, name: str, value: float) -> Expr:
         idx = len(self.runtime_parameters)
         self.runtime_parameters.append((name, value))
         return Expr(f"rp[{idx}]", f"rp[{idx}]")
 
-    def minimize(self, expr: object, nominal: float = 1.0) -> None:
-        self.objective = as_expr(expr)
+    def minimize(self, expr: object, nominal: float = 1.0, name: str | None = None) -> None:
+        expr_value = as_expr(expr)
+        self.objective = expr_value if self.objective is None else self.objective + expr_value
         self.obj_nominal = nominal
 
-    def minimize_sum(self, count: int, body: Callable[[LoopIndex], object], name: str | None = None) -> None:
+    def minimize_sum(self, count: int | Iterable[int], body: Callable[[LoopIndex], object], name: str | None = None) -> None:
+        indices = self._normalize_loop_indices(count)
         idx = LoopIndex()
-        self._loop_offsets = {}
+        self._start_loop_context(indices)
         expr = as_expr(body(idx))
-        offsets = self._finish_loop_offsets(count)
-        self.mapped_objectives.append(MappedObjectiveBlock(name or f"obj_map{len(self.mapped_objectives)}", count, len(offsets), offsets, expr))
+        local_globals = self._finish_loop_context()
+        self.mapped_objectives.append(MappedObjectiveBlock(name or f"obj_map{len(self.mapped_objectives)}", indices, len(local_globals), local_globals, expr))
 
     def add_constraint(self, expr: object, lb: float = -math.inf, ub: float = math.inf, eq: float | None = None, name: str | None = None, nominal: float = 1.0) -> None:
         low, high = (eq, eq) if eq is not None else (lb, ub)
         idx = len(self.constraints)
         self.constraints.append(NLPConstraint(name or f"g{idx}", as_expr(expr), low, high, nominal))
 
-    def add_constraints(self, count_or_expr: int | VectorExpr, body: Callable[[LoopIndex], object] | None = None, lb: float = -math.inf, ub: float = math.inf, eq: float | None = None, name: str | None = None, nominal: float = 1.0) -> None:
+    def add_constraints(self, count_or_expr: int | Iterable[int] | VectorExpr, body: Callable[[LoopIndex], object] | None = None, lb: float = -math.inf, ub: float = math.inf, eq: float | None = None, name: str | None = None, nominal: float = 1.0) -> None:
         low, high = (eq, eq) if eq is not None else (lb, ub)
         if isinstance(count_or_expr, VectorExpr):
             for i, expr in enumerate(count_or_expr):
                 self.add_constraint(expr, lb=low, ub=high, name=f"{name or 'g'}_{i}", nominal=nominal)
             return
         if body is None:
-            raise ValueError("add_constraints(count, body, ...) requires a body callable")
-        self.add_constraints_map(int(count_or_expr), body, lb=low, ub=high, name=name, nominal=nominal)
+            raise ValueError("add_constraints(indices, body, ...) requires a body callable")
+        self.add_constraints_map(count_or_expr, body, lb=low, ub=high, name=name, nominal=nominal)
 
-    def add_constraints_map(self, count: int, body: Callable[[LoopIndex], object], lb: float = -math.inf, ub: float = math.inf, eq: float | None = None, name: str | None = None, nominal: float = 1.0) -> None:
+    def add_constraints_map(self, count: int | Iterable[int], body: Callable[[LoopIndex], object], lb: float = -math.inf, ub: float = math.inf, eq: float | None = None, name: str | None = None, nominal: float = 1.0) -> None:
         low, high = (eq, eq) if eq is not None else (lb, ub)
+        indices = self._normalize_loop_indices(count)
         idx = LoopIndex()
-        self._loop_offsets = {}
+        self._start_loop_context(indices)
         raw = body(idx)
         if isinstance(raw, VectorExpr):
             exprs = [as_expr(expr) for expr in raw]
@@ -238,31 +466,55 @@ class NLPModel(SolverMixin):
             exprs = [as_expr(expr) for expr in raw]
         else:
             exprs = [as_expr(raw)]
-        offsets = self._finish_loop_offsets(count)
+        local_globals = self._finish_loop_context()
         block_name = name or f"g_map{len(self.mapped_constraints)}"
-        self.mapped_constraints.append(MappedConstraintBlock(block_name, count, len(offsets), offsets, exprs, low, high, nominal))
+        self.mapped_constraints.append(MappedConstraintBlock(block_name, indices, len(local_globals), local_globals, exprs, low, high, nominal))
 
     def sumsqr(self, values: NLPVector | VectorExpr) -> Expr:
         from .model import sum_expr
         return sum_expr(value * value for value in values)
 
-    def _loop_var(self, vector: NLPVector, offset: int) -> Expr:
-        if self._loop_offsets is None:
-            if offset < 0 or offset >= vector.size:
-                raise IndexError(offset)
-            return vector[offset]
-        local = self._loop_offsets.setdefault(vector.start + offset, len(self._loop_offsets))
+    def _loop_var(self, vector: NLPVector, idx: int | LoopIndex) -> Expr:
+        if self._loop_globals is None:
+            if isinstance(idx, LoopIndex):
+                raise RuntimeError("loop index used outside a mapped block")
+            globals_for_idx = vector._selected_indices(idx)
+            global_idx = globals_for_idx[0]
+            return Expr(f"x[{global_idx}]", f"x[{global_idx}]")
+        if isinstance(idx, LoopIndex):
+            globals_for_reps = [vector._selected_indices(idx.eval(iter_value))[0] for iter_value in self._loop_indices or []]
+        else:
+            globals_for_reps = [vector._selected_indices(idx)[0] for _ in self._loop_indices or []]
+        key = tuple(globals_for_reps)
+        local = self._loop_globals.get(key)
+        if local is None:
+            local = len(self._loop_globals)
+            self._loop_globals[key] = local
+            assert self._loop_global_lists is not None
+            self._loop_global_lists.append(globals_for_reps)
         return Expr(f"xl[{local}]", f"xl[{local}]")
 
-    def _finish_loop_offsets(self, count: int) -> list[int]:
-        if self._loop_offsets is None:
+    def _normalize_loop_indices(self, indices: int | Iterable[int]) -> list[int]:
+        if isinstance(indices, int):
+            if indices < 0:
+                raise ValueError("mapped block count must be non-negative")
+            return list(range(indices))
+        values = [int(index) for index in indices]
+        return values
+
+    def _start_loop_context(self, indices: list[int]) -> None:
+        self._loop_indices = indices
+        self._loop_globals = {}
+        self._loop_global_lists = []
+
+    def _finish_loop_context(self) -> list[list[int]]:
+        if self._loop_globals is None or self._loop_global_lists is None:
             raise RuntimeError("internal loop context is not active")
-        offsets = [global_offset for global_offset, _ in sorted(self._loop_offsets.items(), key=lambda item: item[1])]
-        self._loop_offsets = None
-        for offset in offsets:
-            if offset < 0 or offset + count > self.x_size:
-                raise ValueError(f"mapped block index offset {offset} is outside the variable range for count={count}")
-        return offsets
+        local_globals = self._loop_global_lists
+        self._loop_indices = None
+        self._loop_globals = None
+        self._loop_global_lists = None
+        return local_globals
 
     def generate(self, out_dir: str | os.PathLike[str], repo_root: str | os.PathLike[str] | None = None, standalone_main: bool = True) -> tuple[Path, Path]:
         self._validate()
@@ -399,8 +651,24 @@ class NLPModel(SolverMixin):
         )
 
     def _emit_structured_ad(self) -> dict[str, object]:
+        scalar_emitted = None
+        scalar_jac_mode = "direct"
+        scalar_hes_mode = "direct"
         if self.objective is not None or self.constraints:
-            raise NotImplementedError("structured NLP codegen currently supports mapped objectives/constraints without additional scalar terms")
+            scalar_outputs = [self.objective.lfg if self.objective is not None else "0.0"]
+            scalar_outputs.extend(c.expr.lfg for c in self.constraints)
+            emitted = emit_function(
+                "x",
+                self.x_size,
+                scalar_outputs,
+                [("rp", len(self.runtime_parameters))],
+                "moo_nlp_scalar_value",
+                "moo_nlp_scalar_jvp",
+                "moo_nlp_scalar_hvp",
+            )
+            scalar_jac_mode = "direct"
+            scalar_hes_mode = "direct"
+            scalar_emitted = emitted
         local_objectives = [
             (block, self._emit_local_block(f"moo_nlp_obj_map_{idx}", block))
             for idx, block in enumerate(self.mapped_objectives)
@@ -428,25 +696,43 @@ class NLPModel(SolverMixin):
                 hes_pairs[key] = len(hes_pairs)
             return hes_pairs[key]
 
+        if scalar_emitted is not None:
+            for row, col in scalar_emitted.jac_sparsity:
+                if row == 0:
+                    obj_buf_for(col)
+            for row, col in scalar_emitted.hes_sparsity:
+                hes_buf_for(row, col)
+
         for block, local in local_objectives:
             for rep in range(block.count):
                 for row, col in local.jac_sparsity:
                     if row == 0:
-                        obj_buf_for(rep + block.offsets[col])
+                        obj_buf_for(block.local_globals[col][rep])
                 for row, col in local.hes_sparsity:
-                    hes_buf_for(rep + block.offsets[row], rep + block.offsets[col])
+                    hes_buf_for(block.local_globals[row][rep], block.local_globals[col][rep])
+
+        g_buf_next = len(obj_cols)
+        scalar_jac_buf: list[int] = []
+        if scalar_emitted is not None:
+            for row, col in scalar_emitted.jac_sparsity:
+                if row == 0:
+                    scalar_jac_buf.append(obj_buf_for(col))
+                else:
+                    g_jac.append((row - 1, col))
+                    scalar_jac_buf.append(g_buf_next)
+                    g_buf.append(g_buf_next)
+                    g_buf_next += 1
 
         g_base = len(self.constraints)
-        g_buf_next = len(obj_cols)
         for block, local in local_constraints:
             for rep in range(block.count):
                 for row, col in local.jac_sparsity:
                     global_row = g_base + rep * block.output_size + row
-                    g_jac.append((global_row, rep + block.offsets[col]))
+                    g_jac.append((global_row, block.local_globals[col][rep]))
                     g_buf.append(g_buf_next)
                     g_buf_next += 1
                 for row, col in local.hes_sparsity:
-                    hes_buf_for(rep + block.offsets[row], rep + block.offsets[col])
+                    hes_buf_for(block.local_globals[row][rep], block.local_globals[col][rep])
             g_base += block.count * block.output_size
 
         obj_jac = [(0, col) for col, _ in sorted(obj_cols.items(), key=lambda item: item[1])]
@@ -456,6 +742,8 @@ class NLPModel(SolverMixin):
         hes_modes = {local.hes_mode for local in all_local}
         report = {
             "kernel_source": "structured_loop_blocks",
+            "scalar_constraints": len(self.constraints),
+            "scalar_objective": self.objective is not None,
             "mapped_objective_blocks": len(local_objectives),
             "mapped_constraint_blocks": len(local_constraints),
             "mapped_repetitions": sum(block.count for block, _ in local_objectives) + sum(block.count for block, _ in local_constraints),
@@ -463,6 +751,11 @@ class NLPModel(SolverMixin):
             "jacobian_nnz": len(obj_jac) + len(g_jac),
             "hessian_nnz": len(hes),
         }
+        if scalar_emitted is not None:
+            report["scalar_jacobian_nnz"] = len(scalar_emitted.jac_sparsity)
+            report["scalar_hessian_nnz"] = len(scalar_emitted.hes_sparsity)
+            report["scalar_jacobian_mode"] = scalar_jac_mode
+            report["scalar_hessian_mode"] = scalar_hes_mode
         for idx, (block, local) in enumerate(local_objectives):
             prefix = f"local_objective_{idx}"
             report[f"{prefix}_repetitions"] = block.count
@@ -488,6 +781,10 @@ class NLPModel(SolverMixin):
 
         return {
             "STRUCTURED": True,
+            "SCALAR": scalar_emitted,
+            "SCALAR_JAC_MODE": scalar_jac_mode,
+            "SCALAR_HES_MODE": scalar_hes_mode,
+            "SCALAR_JAC_BUF": scalar_jac_buf,
             "LOCAL_OBJECTIVES": local_objectives,
             "LOCAL_CONSTRAINTS": local_constraints,
             "LOCAL_JAC_MODE": next(iter(jac_modes)) if len(jac_modes) == 1 else "mixed",
@@ -648,6 +945,8 @@ int main_{self.name}(int argc, char** argv) {{
 """
 
     def _render_structured_c(self, emitted: dict[str, object], standalone_main: bool) -> str:
+        scalar = emitted["SCALAR"]
+        scalar_jac_buf = emitted["SCALAR_JAC_BUF"]
         obj_jac = emitted["OBJ_JAC"]
         obj_buf = emitted["OBJ_BUF"]
         g_jac = emitted["G_JAC"]
@@ -656,23 +955,62 @@ int main_{self.name}(int argc, char** argv) {{
         local_objectives = emitted["LOCAL_OBJECTIVES"]
         local_constraints = emitted["LOCAL_CONSTRAINTS"]
         local_seed_size = max(
-            [1]
+            [1 + len(self.constraints) if scalar is not None else 1]
             + [1 for _, _ in local_objectives]
             + [block.output_size for block, _ in local_constraints]
         )
         obj_buf_by_col = {col: buf for buf, (_, col) in zip(obj_buf, obj_jac)}
         hes_buf_by_pair = {pair: idx for idx, pair in enumerate(hes)}
 
+        def global_at(block: MappedObjectiveBlock | MappedConstraintBlock, local_col: int, rep: int) -> int:
+            return block.local_globals[local_col][rep]
+
         def hes_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission) -> list[int]:
             table = []
             for rep in range(block.count):
                 for row, col in local.hes_sparsity:
-                    gr = rep + block.offsets[row]
-                    gc = rep + block.offsets[col]
+                    gr = global_at(block, row, rep)
+                    gc = global_at(block, col, rep)
                     if gr < gc:
                         gr, gc = gc, gr
                     table.append(hes_buf_by_pair[(gr, gc)])
             return table
+
+        def jac_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission, objective: bool, base_buf: int = 0) -> list[int]:
+            table = []
+            for rep in range(block.count):
+                for local_buf, (row, col) in enumerate(local.jac_sparsity):
+                    if objective:
+                        table.append(obj_buf_by_col[global_at(block, col, rep)] if row == 0 else -1)
+                    else:
+                        table.append(base_buf + rep * len(local.jac_sparsity) + local_buf)
+            return table
+
+        def affine(values: list[int]) -> tuple[int, int] | None:
+            if not values:
+                return (0, 0)
+            if len(values) == 1:
+                return (values[0], 0)
+            step = values[1] - values[0]
+            if all(values[i] == values[0] + i * step for i in range(len(values))):
+                return (values[0], step)
+            return None
+
+        def gather_lines(block: MappedObjectiveBlock | MappedConstraintBlock, indent: str, prefix: str) -> list[str]:
+            lines = []
+            for local_idx, globals_for_reps in enumerate(block.local_globals):
+                regular = affine(globals_for_reps)
+                if regular is not None:
+                    base, step = regular
+                    if step == 0:
+                        lines.append(f"{indent}xl[{local_idx}] = x[{base}];")
+                    else:
+                        lines.append(f"{indent}xl[{local_idx}] = x[{base} + rep * {step}];")
+                else:
+                    name = f"{prefix}_gidx_{local_idx}"
+                    lines.append(self._static_int_array(name, globals_for_reps, indent))
+                    lines.append(f"{indent}xl[{local_idx}] = x[{name}[rep]];")
+            return lines
 
         def coo(name: str, pairs: list[tuple[int, int]], bufs: list[int] | None = None) -> str:
             return f"""static coo_t {name} = {{
@@ -689,6 +1027,7 @@ int main_{self.name}(int argc, char** argv) {{
             return f"static bounds_t {name}[{len(values)}] = {{ {', '.join(f'{{ {_num(v.lb)}, {_num(v.ub)} }}' for v in values)} }};\n"
 
         g_bounds_values: list[NLPConstraint] = []
+        g_bounds_values.extend(self.constraints)
         for block, _ in local_constraints:
             g_bounds_values.extend(
                 NLPConstraint(f"{block.name}_{i}_{j}", block.exprs[j], block.lb, block.ub, block.nominal)
@@ -697,6 +1036,10 @@ int main_{self.name}(int argc, char** argv) {{
             )
 
         local_code = []
+        if scalar is not None:
+            local_code.append(scalar.value)
+            local_code.append(scalar.jac)
+            local_code.append(scalar.hes)
         for _, local in local_objectives:
             local_code.append(local.value)
             local_code.append(local.jac if local.jac_mode == "direct" else local.jvp)
@@ -707,22 +1050,26 @@ int main_{self.name}(int argc, char** argv) {{
             local_code.append(local.hes if local.hes_mode == "direct" else local.hvp)
 
         eval_lines = ["    out[0] = 0.0;"]
+        if scalar is not None:
+            eval_lines.append(f"    f64 scalar_tmp[{max(1 + len(self.constraints), 1)}];")
+            eval_lines.append("    moo_nlp_scalar_value(x, rp, scalar_tmp);")
+            eval_lines.append("    out[0] += scalar_tmp[0];")
+            for i in range(len(self.constraints)):
+                eval_lines.append(f"    out[1 + {i}] = scalar_tmp[1 + {i}];")
         for idx, (block, local) in enumerate(local_objectives):
             eval_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
             eval_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-            for local_idx, offset in enumerate(block.offsets):
-                eval_lines.append(f"        xl[{local_idx}] = x[rep + {offset}];")
+            eval_lines.extend(gather_lines(block, "        ", f"obj_{idx}"))
             eval_lines.append("        f64 tmp[1];")
             eval_lines.append(f"        moo_nlp_obj_map_{idx}_value(xl, rp, tmp);")
             eval_lines.append("        out[0] += tmp[0];")
             eval_lines.append("    }")
 
-        g_base = 0
+        g_base = len(self.constraints)
         for idx, (block, local) in enumerate(local_constraints):
             eval_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
             eval_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-            for local_idx, offset in enumerate(block.offsets):
-                eval_lines.append(f"        xl[{local_idx}] = x[rep + {offset}];")
+            eval_lines.extend(gather_lines(block, "        ", f"g_{idx}"))
             eval_lines.append(f"        f64 tmp[{max(block.output_size, 1)}];")
             eval_lines.append(f"        moo_nlp_g_map_{idx}_value(xl, rp, tmp);")
             for local_row in range(block.output_size):
@@ -731,31 +1078,38 @@ int main_{self.name}(int argc, char** argv) {{
             g_base += block.count * block.output_size
 
         jac_lines = [f"    for (int i = 0; i < JAC_BUF_SIZE; ++i) {{ out[i] = 0.0; }}"]
+        if scalar is not None and scalar.jac_sparsity:
+            jac_lines.append(f"    f64 scalar_jac[{max(len(scalar.jac_sparsity), 1)}];")
+            jac_lines.append("    moo_nlp_scalar_jvp_sparse(x, rp, scalar_jac);")
+            jac_lines.append(self._static_int_array("scalar_jac_buf", scalar_jac_buf, "    "))
+            for local_buf, _ in enumerate(scalar.jac_sparsity):
+                jac_lines.append(f"    out[scalar_jac_buf[{local_buf}]] += scalar_jac[{local_buf}];")
         for idx, (block, local) in enumerate(local_objectives):
             if not local.jac_sparsity:
                 continue
             jac_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
             jac_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-            for local_idx, offset in enumerate(block.offsets):
-                jac_lines.append(f"        xl[{local_idx}] = x[rep + {offset}];")
+            jac_lines.extend(gather_lines(block, "        ", f"obj_jac_{idx}"))
+            obj_jbuf = jac_buf_table(block, local, objective=True)
+            jac_lines.append(self._static_int_array(f"obj_{idx}_jbuf", obj_jbuf, "        "))
             if local.jac_mode == "direct":
                 jac_lines.append(f"        f64 tmp[{max(len(local.jac_sparsity), 1)}];")
                 jac_lines.append(f"        moo_nlp_obj_map_{idx}_jvp_sparse(xl, rp, tmp);")
                 for local_buf, (row, col) in enumerate(local.jac_sparsity):
                     if row == 0:
-                        jac_lines.append(f"        out[{obj_buf_by_col[block.offsets[col]]} + rep] += tmp[{local_buf}];")
+                        jac_lines.append(f"        out[obj_{idx}_jbuf[rep * {len(local.jac_sparsity)} + {local_buf}]] += tmp[{local_buf}];")
             else:
-                jac_lines.extend(self._render_local_colored_jac_lines(f"moo_nlp_obj_map_{idx}_jvp", local, block, obj_buf_by_col, "out", "rep", accumulate=True, indent="        "))
+                jac_lines.extend(self._render_local_colored_jac_lines(f"moo_nlp_obj_map_{idx}_jvp", local, block, None, "out", "rep", accumulate=True, indent="        ", jbuf_name=f"obj_{idx}_jbuf"))
             jac_lines.append("    }")
 
-        g_base = 0
         g_buf_cursor = len(obj_jac)
+        if scalar is not None:
+            g_buf_cursor += sum(1 for row, _ in scalar.jac_sparsity if row >= 1)
         for idx, (block, local) in enumerate(local_constraints):
             if local.jac_sparsity:
                 jac_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
                 jac_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-                for local_idx, offset in enumerate(block.offsets):
-                    jac_lines.append(f"        xl[{local_idx}] = x[rep + {offset}];")
+                jac_lines.extend(gather_lines(block, "        ", f"g_jac_{idx}"))
                 if local.jac_mode == "direct":
                     jac_lines.append(f"        f64 tmp[{max(len(local.jac_sparsity), 1)}];")
                     jac_lines.append(f"        moo_nlp_g_map_{idx}_jvp_sparse(xl, rp, tmp);")
@@ -765,17 +1119,29 @@ int main_{self.name}(int argc, char** argv) {{
                     jac_lines.extend(self._render_local_colored_jac_lines(f"moo_nlp_g_map_{idx}_jvp", local, block, None, "out", "rep", accumulate=False, indent="        ", base_buf=g_buf_cursor))
                 jac_lines.append("    }")
                 g_buf_cursor += block.count * len(local.jac_sparsity)
-            g_base += block.count * block.output_size
 
         hes_lines = [f"    for (int i = 0; i < HES_SIZE; ++i) {{ out[i] = 0.0; }}", f"    f64 seed[{local_seed_size}] = {{0}};"]
+        if scalar is not None and scalar.hes_sparsity:
+            scalar_hbuf = []
+            for row, col in scalar.hes_sparsity:
+                r, c = (row, col) if row >= col else (col, row)
+                scalar_hbuf.append(hes_buf_by_pair[(r, c)])
+            hes_lines.append(f"    f64 scalar_seed[{max(1 + len(self.constraints), 1)}] = {{0}};")
+            hes_lines.append("    scalar_seed[0] = obj_factor;")
+            for i in range(len(self.constraints)):
+                hes_lines.append(f"    scalar_seed[1 + {i}] = lambda[{i}];")
+            hes_lines.append(f"    f64 scalar_hes[{max(len(scalar.hes_sparsity), 1)}];")
+            hes_lines.append("    moo_nlp_scalar_hvp_sparse(x, scalar_seed, rp, scalar_hes);")
+            hes_lines.append(self._static_int_array("scalar_hbuf", scalar_hbuf, "    "))
+            for local_buf, _ in enumerate(scalar.hes_sparsity):
+                hes_lines.append(f"    out[scalar_hbuf[{local_buf}]] += scalar_hes[{local_buf}];")
         for idx, (block, local) in enumerate(local_objectives):
             if not local.hes_sparsity:
                 continue
             hes_lines.append("    seed[0] = obj_factor;")
             hes_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
             hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-            for local_idx, offset in enumerate(block.offsets):
-                hes_lines.append(f"        xl[{local_idx}] = x[rep + {offset}];")
+            hes_lines.extend(gather_lines(block, "        ", f"obj_hes_{idx}"))
             if local.hes_mode == "direct":
                 hes_lines.append(f"        f64 tmp[{max(len(local.hes_sparsity), 1)}];")
                 hes_lines.append(f"        moo_nlp_obj_map_{idx}_hvp_sparse(xl, seed, rp, tmp);")
@@ -787,13 +1153,12 @@ int main_{self.name}(int argc, char** argv) {{
                 hes_lines.extend(self._render_local_colored_hes_lines(f"moo_nlp_obj_map_{idx}_hvp", local, block, hes_buf_table(block, local), indent="        "))
             hes_lines.append("    }")
 
-        g_base = 0
+        g_base = len(self.constraints)
         for idx, (block, local) in enumerate(local_constraints):
             if local.hes_sparsity:
                 hes_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
                 hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-                for local_idx, offset in enumerate(block.offsets):
-                    hes_lines.append(f"        xl[{local_idx}] = x[rep + {offset}];")
+                hes_lines.extend(gather_lines(block, "        ", f"g_hes_{idx}"))
                 hbuf = hes_buf_table(block, local)
                 hes_lines.append(self._static_int_array(f"g_{idx}_hbuf", hbuf, "        "))
                 for local_row in range(block.output_size):
@@ -911,7 +1276,7 @@ int main_{self.name}(int argc, char** argv) {{
     def _static_int_array(self, name: str, values: list[int], indent: str) -> str:
         return f"{indent}static const int {name}[{max(len(values), 1)}] = {{ {', '.join(map(str, values)) or '0'} }};"
 
-    def _render_local_colored_jac_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, obj_buf_by_col: dict[int, int] | None, out_name: str, rep_name: str, accumulate: bool, indent: str, base_buf: int = 0) -> list[str]:
+    def _render_local_colored_jac_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, obj_buf_by_col: dict[int, int] | None, out_name: str, rep_name: str, accumulate: bool, indent: str, base_buf: int = 0, jbuf_name: str | None = None) -> list[str]:
         color_offsets, color_cols, scatter_offsets, scatter_idx, scatter_row, scatter_col = self._local_color_metadata(local.jac_sparsity, local.jac_colors)
         lines = [
             f"{indent}f64 v[{max(block.local_size, 1)}] = {{0}};",
@@ -927,10 +1292,10 @@ int main_{self.name}(int argc, char** argv) {{
             f"{indent}    {fn}(xl, rp, v, tmp_color);",
             f"{indent}    for (int k = scatter_offsets[color]; k < scatter_offsets[color + 1]; ++k) {{",
         ]
-        if accumulate and obj_buf_by_col is not None:
-            offsets = [obj_buf_by_col[offset] for offset in block.offsets]
-            lines.append(self._static_int_array("obj_buf_for_local_col", offsets, indent + "        "))
-            lines.append(f"{indent}        {out_name}[obj_buf_for_local_col[scatter_col[k]] + {rep_name}] += tmp_color[scatter_row[k]];")
+        if accumulate and jbuf_name is not None:
+            lines.append(f"{indent}        {out_name}[{jbuf_name}[{rep_name} * {len(local.jac_sparsity)} + scatter_idx[k]]] += tmp_color[scatter_row[k]];")
+        elif accumulate and obj_buf_by_col is not None:
+            lines.append(f"{indent}        {out_name}[scatter_idx[k]] += tmp_color[scatter_row[k]];")
         else:
             lines.append(f"{indent}        {out_name}[{base_buf} + {rep_name} * {len(local.jac_sparsity)} + scatter_idx[k]] = tmp_color[scatter_row[k]];")
         lines.extend([

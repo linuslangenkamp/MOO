@@ -41,6 +41,8 @@ from .model import (
 
 from .init_model import InitModel
 from .nlp_model import NLPModel
+from .nlp_model import dot, matrix, vec, vector
+from .radauIIA import RADAU, RadauConstants, radauIIA
 from .results import OptimizationRun, ResultSet, ResultTable, read_results
 
 
@@ -70,6 +72,13 @@ __all__ = [
     "ResultSet",
     "ResultTable",
     "read_results",
+    "vec",
+    "vector",
+    "matrix",
+    "dot",
+    "RADAU",
+    "RadauConstants",
+    "radauIIA",
     "sin",
     "sum_expr",
     "cos",

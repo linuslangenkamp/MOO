@@ -30,7 +30,7 @@ def build_model():
     u = model.add_control("u", lb=0.0, ub=5.0)
 
     model.set_time_fixed(t0 = 0.0, tf = 1.0)
-    model.mesh(intervals=40, nodes=3)
+    model.mesh(intervals=250, nodes=3)
 
     model.set_dynamics(x1, -(u + u**2 / 2) * x1)
     model.set_dynamics(x2, u * x1)

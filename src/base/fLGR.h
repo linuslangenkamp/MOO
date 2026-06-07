@@ -71,27 +71,27 @@ private:
 
     // nodes, i.e. [c1, c2, ..., cm]
     static constexpr f64 c[] =
-#include "../data/radauConstantsC.data"
+#include "../data/fLGR/radauConstantsC.data"
 
         // nodes including 0, i.e. [0 = c0, c1, c2, ..., cm = 1]
         static constexpr f64 c0[] =
-#include "../data/radauConstantsC0.data"
+#include "../data/fLGR/radauConstantsC0.data"
 
             // quadrature weights {}, {1}, ...
         static constexpr f64 b[] =
-#include "../data/radauConstantsB.data"
+#include "../data/fLGR/radauConstantsB.data"
 
             // differentiation matrices
         static constexpr f64 D[] =
-#include "../data/radauConstantsD.data"
+#include "../data/fLGR/radauConstantsD.data"
 
             // barycentric weights (all nodes [0 = c0, c1, ..., cm = 1])
         static constexpr f64 w[] =
-#include "../data/radauConstantsW.data"
+#include "../data/fLGR/radauConstantsW.data"
 
             // barycentric weights (only inner nodes [c1, ..., cm])
         static constexpr f64 w0[] =
-#include "../data/radauConstantsW0.data"
+#include "../data/fLGR/radauConstantsW0.data"
 };
 
 #endif // MOO_FLGR_H

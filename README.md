@@ -166,13 +166,17 @@ for repeated Hessian-vector products.
 The Python frontend uses these bindings directly during code generation.
 Generated derivative callbacks use direct sparse AD kernels by default.
 `model.codegen("auto")` uses loop-preserving structured codegen for mapped NLP
-blocks, keeps small and medium scalar derivative blocks on direct sparse
-kernels, and can switch large highly-compressible scalar blocks to colored
-compressed JVP/HVP evaluation. Structured NLP blocks can also force the local
-kernel mode with `model.codegen("loop-direct")` or
-`model.codegen("loop-colored")`. `model.codegen("basis")` keeps the old
-one-direction-per-entry path available for debugging. Every generated model
-writes a `codegen_report.txt` beside the C file.
+blocks, keeps small and medium local derivative blocks on direct sparse
+kernels, and can switch highly-compressible local blocks to colored compressed
+JVP/HVP evaluation. Structured NLP maps accept `range(...)`, stepped ranges,
+and explicit index lists; variable vectors support strided views such as
+`x[5:]` and `x[::2]`; block bodies can use `moo.vec`, `moo.vector`, and
+`moo.matrix` for vector constraints and `D @ x` style expressions. Structured
+NLP blocks can also force the local kernel mode with
+`model.codegen("loop-direct")` or `model.codegen("loop-colored")`.
+`model.codegen("basis")` keeps a legacy trivial coloring path available
+for debugging. Every generated model writes a `codegen_report.txt` beside the
+C file.
 
 See `src/ad/README.md` for the AD user guide.
 
