@@ -23,10 +23,10 @@
 
 #include <set>
 
-#include <base/fixed_vector.h>
-#include <base/nlp_structs.h>
 #include <base/export.h>
+#include <base/fixed_vector.h>
 #include <base/log.h>
+#include <base/nlp_structs.h>
 
 
 enum class BlockType {
@@ -76,9 +76,7 @@ struct MOO_EXPORT BlockSparsity {
        . | x x x
        R | x x x
     */
-    inline static BlockSparsity create_square(const int size, const BlockType block_type) {
-        return create_rectangular(size, size, block_type);
-    }
+    inline static BlockSparsity create_square(const int size, const BlockType block_type) { return create_rectangular(size, size, block_type); }
 
     inline void insert(const int row, const int col, const int index) {
         block[row][col] = index;
@@ -110,14 +108,12 @@ struct MOO_EXPORT DenseRectangularBlockSparsity {
     static DenseRectangularBlockSparsity create(const int rows, const int cols);
 
     // mapping (row, col) -> index in some larger sparsity structure
-    inline int access(const int row, const int col, const int block_count) const {
-        return row_offset_prev[row] + row_size * block_count + col;
-    }
+    inline int access(const int row, const int col, const int block_count) const { return row_offset_prev[row] + row_size * block_count + col; }
 };
 
 struct MOO_EXPORT OrderedIndexSet {
     struct MOO_EXPORT Compare {
-        bool operator()(const std::pair<int, int>& a, const std::pair<int, int>& b) const;
+        bool operator()(const std::pair<int, int> &a, const std::pair<int, int> &b) const;
     };
 
     std::set<std::pair<int, int>, Compare> set;
@@ -126,15 +122,13 @@ struct MOO_EXPORT OrderedIndexSet {
     bool is_diag_block = false;
 
     // standard Hessian insertion
-    void insert_sparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off);
+    void insert_sparsity(const std::vector<HessianSparsity> &hes, int row_off, int col_off);
 
     // insertion for Jacobian, e.g. if because of product rule Jacobian terms must be included (see GDOP Block K)
     //                              these stem from the D * x - deltaT * f(x, u, p) -> partial w.r.t. tf / t0 and p
-    void insert_sparsity(std::vector<int>& rows, const std::vector<JacobianSparsity>& jac, int row_off, int col_off);
+    void insert_sparsity(std::vector<int> &rows, const std::vector<JacobianSparsity> &jac, int row_off, int col_off);
 
-    inline int size() const {
-        return set.size();
-    }
+    inline int size() const { return set.size(); }
 
     inline void clear(bool is_diag) {
         is_diag_block = is_diag;

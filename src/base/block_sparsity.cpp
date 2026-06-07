@@ -18,15 +18,15 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <set>
 #include <memory>
+#include <set>
 #include <stdexcept>
 
-#include <base/fixed_vector.h>
-#include <base/nlp_structs.h>
-#include <base/export.h>
-#include <base/log.h>
 #include <base/block_sparsity.h>
+#include <base/export.h>
+#include <base/fixed_vector.h>
+#include <base/log.h>
+#include <base/nlp_structs.h>
 
 
 /* creates a dense lower triangular (with diagonal) block structure
@@ -113,7 +113,7 @@ int BlockSparsity::access(const int row, const int col, const int block_count) c
 }
 
 void BlockSparsity::print() const {
-    for (auto const& v : block) {
+    for (auto const &v : block) {
         v.print();
     }
 }
@@ -134,7 +134,7 @@ DenseRectangularBlockSparsity DenseRectangularBlockSparsity::create(const int ro
     return b;
 }
 
-bool OrderedIndexSet::Compare::operator()(const std::pair<int, int>& a, const std::pair<int, int>& b) const {
+bool OrderedIndexSet::Compare::operator()(const std::pair<int, int> &a, const std::pair<int, int> &b) const {
     if (a.first != b.first) {
         return a.first < b.first;
     } else {
@@ -143,8 +143,8 @@ bool OrderedIndexSet::Compare::operator()(const std::pair<int, int>& a, const st
 }
 
 // standard Hessian insertion
-void OrderedIndexSet::insert_sparsity(const std::vector<HessianSparsity>& hes, int row_off, int col_off) {
-    for (const auto& coo : hes) {
+void OrderedIndexSet::insert_sparsity(const std::vector<HessianSparsity> &hes, int row_off, int col_off) {
+    for (const auto &coo : hes) {
         assert((!is_diag_block || coo.row + row_off >= coo.col + col_off) && "Hessian must be lower triangular!");
         set.insert({coo.row + row_off, coo.col + col_off});
     }
@@ -152,9 +152,9 @@ void OrderedIndexSet::insert_sparsity(const std::vector<HessianSparsity>& hes, i
 
 // insertion for Jacobian, e.g. if because of product rule Jacobian terms must be included (see GDOP Block K)
 //                              these stem from the D * x - deltaT * f(x, u, p) -> partial w.r.t. tf / t0 and p
-void OrderedIndexSet::insert_sparsity(std::vector<int>& rows, const std::vector<JacobianSparsity>& jac, int row_off, int col_off) {
+void OrderedIndexSet::insert_sparsity(std::vector<int> &rows, const std::vector<JacobianSparsity> &jac, int row_off, int col_off) {
     for (const auto row : rows) {
-        for (const auto& jac_elem : jac) {
+        for (const auto &jac_elem : jac) {
             assert((!is_diag_block || row + row_off >= jac_elem.col + col_off) && "Hessian must be lower triangular!");
             set.insert({row + row_off, jac_elem.col + col_off});
         }

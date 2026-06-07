@@ -26,15 +26,13 @@
 
 namespace {
 
-bool close(double a, double b)
-{
+bool close(double a, double b) {
     return std::abs(a - b) <= 1e-12;
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     using namespace ad;
 
     Graph g;
@@ -55,15 +53,12 @@ int main()
     jvm.evaluate(jenv, jac);
 
     std::vector<double> expected_jac = {4.0, 1.0, 5.0, 3.0};
-    if (J_pat != std::vector<std::pair<int, int>>{{0, 0}, {0, 1}, {1, 1}, {1, 2}})
-    {
+    if (J_pat != std::vector<std::pair<int, int>>{{0, 0}, {0, 1}, {1, 1}, {1, 2}}) {
         std::cerr << "unexpected Jacobian sparsity\n";
         return 1;
     }
-    for (int i = 0; i < 4; ++i)
-    {
-        if (!close(jac[i], expected_jac[i]))
-        {
+    for (int i = 0; i < 4; ++i) {
+        if (!close(jac[i], expected_jac[i])) {
             std::cerr << "bad sparse Jacobian value " << i << ": " << jac[i] << "\n";
             return 1;
         }
@@ -81,13 +76,11 @@ int main()
     henv.input("x", xv).param("lambda", lambda);
     hvm.evaluate(henv, hes);
 
-    if (H_pat != std::vector<std::pair<int, int>>{{0, 0}, {2, 1}})
-    {
+    if (H_pat != std::vector<std::pair<int, int>>{{0, 0}, {2, 1}}) {
         std::cerr << "unexpected Hessian sparsity\n";
         return 1;
     }
-    if (!close(hes[0], 14.0) || !close(hes[1], 11.0))
-    {
+    if (!close(hes[0], 14.0) || !close(hes[1], 11.0)) {
         std::cerr << "bad sparse Hessian values: " << hes[0] << ", " << hes[1] << "\n";
         return 1;
     }

@@ -18,14 +18,14 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <simulation/radau/test.h>
+#include <full_functionality_check.h>
 #include <generated.h>
 #include <sanity_check.h>
-#include <full_functionality_check.h>
+#include <simulation/radau/test.h>
 
 #include <base/log.h>
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     // simulation test
     Simulation::radau_wrapper_test();
 

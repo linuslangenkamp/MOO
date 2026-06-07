@@ -18,37 +18,33 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <nlp/instances/gdop/orchestrator.h>
-#include <nlp/solvers/ipopt/solver.h>
-#include <nlp/instances/gdop/strategies.h>
 #include <base/log.h>
 #include <base/timing.h>
+#include <nlp/instances/gdop/orchestrator.h>
+#include <nlp/instances/gdop/strategies.h>
+#include <nlp/solvers/ipopt/solver.h>
 
 #if MOO_WITH_UNO_ENABLED
 #include <nlp/solvers/uno/solver.h>
 #endif
 
-#include <interfaces/gdop/problem.h>
 #include <interfaces/gdop/main_gdop.h>
+#include <interfaces/gdop/problem.h>
 
 #include <memory>
 #include <string>
 
 // create config for the algorithm (for now basic) not here, this is actually a generic GDOP stuff
-class Config {
-
-};
+class Config {};
 
 Config read_yaml() {
     return Config();
 }
 
-void set_global_configuration(Config& config) {
-
-}
+void set_global_configuration(Config &config) {}
 
 // TODO: make this clean
-int main_gdop(int argc, char** argv, c_problem_t* c_problem) {
+int main_gdop(int argc, char **argv, c_problem_t *c_problem) {
     Log::prefixed('*', "Entry point [OPT] - main_gdop\n");
 
     auto config = read_yaml();

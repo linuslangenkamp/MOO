@@ -21,31 +21,41 @@
 #ifndef MOO_FMI_EXPRESSIONS_H
 #define MOO_FMI_EXPRESSIONS_H
 
-#include <base/util.h>
 #include <base/export.h>
+#include <base/util.h>
 
 #include <functional>
-#include <vector>
 #include <stdint.h>
+#include <vector>
 
 namespace FMI {
 
 // Linear / Quadratic expressions
 struct MOO_EXPORT ExprTerm {
-    enum class Kind { Linear, Quadratic };
+    enum class Kind {
+        Linear,
+        Quadratic
+    };
 
     Kind kind = Kind::Quadratic;
     uint32_t vref = 0;
 
     // tracking / offset function (evaluated at the collocation time)
-    std::function<f64(f64)> reference = [](f64) { return 0.0; };
+    std::function<f64(f64)> reference = [](f64) {
+        return 0.0;
+    };
 
     // time-varying weight
-    std::function<f64(f64)> weight = [](f64) { return 1.0; };
+    std::function<f64(f64)> weight = [](f64) {
+        return 1.0;
+    };
 
     static ExprTerm quadratic_term(uint32_t vref, f64 weight = 1.0);
     static ExprTerm tracking_term(uint32_t vref, std::function<f64(f64)> reference, f64 weight = 1.0);
-    static ExprTerm linear_term(uint32_t vref, std::function<f64(f64)> reference = [](f64){ return 0.0; }, f64 weight = 1.0);
+    static ExprTerm linear_term(
+        uint32_t vref,
+        std::function<f64(f64)> reference = [](f64) { return 0.0; },
+        f64 weight = 1.0);
 };
 
 struct MOO_EXPORT Expr {
@@ -54,10 +64,10 @@ struct MOO_EXPORT Expr {
     bool empty() const { return terms.empty(); }
 
     // evaluate at time t, given a callback that maps vref -> current FMU value
-    f64 eval(f64 t, const std::function<f64(uint32_t vref)>& get_val) const;
+    f64 eval(f64 t, const std::function<f64(uint32_t vref)> &get_val) const;
 
     // partial derivative of the expression w.r.t. y_i (the vref's value)
-    f64 deval_dy(const ExprTerm& term, f64 y_i, f64 t) const;
+    f64 deval_dy(const ExprTerm &term, f64 y_i, f64 t) const;
 };
 
 } // namespace FMI

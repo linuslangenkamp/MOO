@@ -85,21 +85,17 @@ public:
 
     virtual ~Problem() = default;
 
-    virtual void eval_objective(const f64* y, const f64* p, f64& obj);
-    virtual void eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* grad_p);
-    virtual void eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor, f64* hes_values);
+    virtual void eval_objective(const f64 *y, const f64 *p, f64 &obj);
+    virtual void eval_grad_objective(const f64 *y, const f64 *p, f64 *grad_y, f64 *grad_p);
+    virtual void eval_hessian_objective(const f64 *y, const f64 *p, f64 obj_factor, f64 *hes_values);
 
-    virtual void eval_f(const f64* y, const f64* p, f64* f) = 0;
-    virtual void eval_g(const f64* y, const f64* p, f64* g);
+    virtual void eval_f(const f64 *y, const f64 *p, f64 *f) = 0;
+    virtual void eval_g(const f64 *y, const f64 *p, f64 *g);
 
-    virtual void eval_jacobian_f(const f64* y, const f64* p, f64* jac_f_values) = 0;
-    virtual void eval_jacobian_g(const f64* y, const f64* p, f64* jac_g_values);
+    virtual void eval_jacobian_f(const f64 *y, const f64 *p, f64 *jac_f_values) = 0;
+    virtual void eval_jacobian_g(const f64 *y, const f64 *p, f64 *jac_g_values);
 
-    virtual void eval_hessian_constraints(const f64* y,
-                                          const f64* p,
-                                          const f64* lambda_f,
-                                          const f64* lambda_g,
-                                          f64* hes_values);
+    virtual void eval_hessian_constraints(const f64 *y, const f64 *p, const f64 *lambda_f, const f64 *lambda_g, f64 *hes_values);
 };
 
 } // namespace Init

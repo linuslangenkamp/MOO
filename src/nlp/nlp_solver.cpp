@@ -22,8 +22,9 @@
 
 namespace NLP {
 
-NLPSolver::NLPSolver(NLP& nlp, NLPSolverSettings& solver_settings)
-    : nlp(nlp), solver_settings(solver_settings) {}
+NLPSolver::NLPSolver(NLP &nlp, NLPSolverSettings &solver_settings)
+    : nlp(nlp),
+      solver_settings(solver_settings) {}
 
 int NLPSolver::get_iterations() const {
     return 0;

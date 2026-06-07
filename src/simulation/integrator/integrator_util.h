@@ -21,8 +21,8 @@
 #ifndef MOO_INTEGRATOR_UTIL_H
 #define MOO_INTEGRATOR_UTIL_H
 
-#include <base/util.h>
 #include <base/export.h>
+#include <base/util.h>
 
 namespace Simulation {
 
@@ -35,19 +35,19 @@ enum class JacobianFormat {
 class MOO_EXPORT Jacobian {
 public:
     static Jacobian dense();
-    static Jacobian sparse(JacobianFormat sparse_fmt, int* i_row, int* j_col, int nnz);
+    static Jacobian sparse(JacobianFormat sparse_fmt, int *i_row, int *j_col, int nnz);
 
     JacobianFormat jfmt;
-    int* i_row;
-    int* j_col;
+    int *i_row;
+    int *j_col;
     int nnz;
 
 private:
-    Jacobian(JacobianFormat jfmt, int* i_row, int* j_col, int nnz);
+    Jacobian(JacobianFormat jfmt, int *i_row, int *j_col, int nnz);
 };
 
-using ODEFunction = std::function<void(const f64* x, const f64* u, const f64* p, f64 t, f64* f, void* user_data)>;
-using JacobianFunction = std::function<void(const f64* x, const f64* u, const f64* p, f64 t, f64* dfdx, void* user_data)>;
+using ODEFunction = std::function<void(const f64 *x, const f64 *u, const f64 *p, f64 t, f64 *f, void *user_data)>;
+using JacobianFunction = std::function<void(const f64 *x, const f64 *u, const f64 *p, f64 t, f64 *dfdx, void *user_data)>;
 
 } // namespace Simulation
 

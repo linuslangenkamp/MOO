@@ -21,12 +21,12 @@
 #ifndef MOO_NLP_STRUCTS_H
 #define MOO_NLP_STRUCTS_H
 
-#include <vector>
 #include <algorithm>
+#include <vector>
 
+#include <base/export.h>
 #include <base/fixed_vector.h>
 #include <base/util.h>
-#include <base/export.h>
 
 struct MOO_EXPORT Bounds {
     f64 lb = MINUS_INFINITY;
@@ -56,9 +56,7 @@ struct MOO_EXPORT JacobianLFG {
     std::vector<JacobianSparsity> du;
     std::vector<JacobianSparsity> dp;
 
-    inline int nnz() const {
-        return dx.size() + du.size() + dp.size();
-    }
+    inline int nnz() const { return dx.size() + du.size() + dp.size(); }
 };
 
 // TODO: if these do not work all too good, add dT_* to this
@@ -71,17 +69,13 @@ struct MOO_EXPORT HessianLFG {
     std::vector<HessianSparsity> dp_dx;
     std::vector<HessianSparsity> dp_du;
 
-    inline int nnz() const {
-        return dx_dx.size() + du_dx.size() + du_du.size() + dp_dx.size() + dp_du.size();
-    }
+    inline int nnz() const { return dx_dx.size() + du_dx.size() + du_du.size() + dp_dx.size() + dp_du.size(); }
 };
 
 struct MOO_EXPORT ParameterHessian {
     std::vector<HessianSparsity> dp_dp;
 
-    inline int nnz() const {
-        return dp_dp.size();
-    }
+    inline int nnz() const { return dp_dp.size(); }
 };
 
 struct MOO_EXPORT FunctionLFG {
@@ -101,17 +95,11 @@ struct MOO_EXPORT JacobianMR {
     std::vector<JacobianSparsity> dp;
     std::vector<JacobianSparsity> dT;
 
-    inline int nnz() const {
-        return dx0.size() + du0.size() + dxf.size() + duf.size() + dp.size() + dT.size();
-    }
+    inline int nnz() const { return dx0.size() + du0.size() + dxf.size() + duf.size() + dp.size() + dT.size(); }
 
-    inline int nnz_time() const {
-        return dT.size();
-    }
+    inline int nnz_time() const { return dT.size(); }
 
-    inline int nnz_no_time() const {
-        return dx0.size() + du0.size() + dxf.size() + duf.size() + dp.size();
-    }
+    inline int nnz_no_time() const { return dx0.size() + du0.size() + dxf.size() + duf.size() + dp.size(); }
 };
 
 struct MOO_EXPORT HessianMR {
@@ -139,24 +127,16 @@ struct MOO_EXPORT HessianMR {
     std::vector<HessianSparsity> dT_dT;
 
     inline int nnz() const {
-        return dx0_dx0.size()
-             + du0_dx0.size() + du0_du0.size()
-             + dxf_dx0.size() + dxf_du0.size() + dxf_dxf.size()
-             + duf_dx0.size() + duf_du0.size() + duf_dxf.size() + duf_duf.size()
-             + dp_dx0.size()  + dp_du0.size()  + dp_dxf.size()  + dp_duf.size() + dp_dp.size()
-             + dT_dx0.size()  + dT_du0.size()  + dT_dxf.size()  + dT_duf.size() + dT_dp.size() + dT_dT.size();
+        return dx0_dx0.size() + du0_dx0.size() + du0_du0.size() + dxf_dx0.size() + dxf_du0.size() + dxf_dxf.size() + duf_dx0.size() + duf_du0.size() + duf_dxf.size() +
+               duf_duf.size() + dp_dx0.size() + dp_du0.size() + dp_dxf.size() + dp_duf.size() + dp_dp.size() + dT_dx0.size() + dT_du0.size() + dT_dxf.size() + dT_duf.size() +
+               dT_dp.size() + dT_dT.size();
     }
 
-    inline int nnz_time() const {
-        return dT_dx0.size() + dT_du0.size() + dT_dxf.size()  + dT_duf.size() + dT_dp.size() + dT_dT.size();
-    }
+    inline int nnz_time() const { return dT_dx0.size() + dT_du0.size() + dT_dxf.size() + dT_duf.size() + dT_dp.size() + dT_dT.size(); }
 
     inline int nnz_no_time() const {
-        return dx0_dx0.size()
-             + du0_dx0.size() + du0_du0.size()
-             + dxf_dx0.size() + dxf_du0.size() + dxf_dxf.size()
-             + duf_dx0.size() + duf_du0.size() + duf_dxf.size() + duf_duf.size()
-             + dp_dx0.size()  + dp_du0.size()  + dp_dxf.size()  + dp_duf.size() + dp_dp.size();
+        return dx0_dx0.size() + du0_dx0.size() + du0_du0.size() + dxf_dx0.size() + dxf_du0.size() + dxf_dxf.size() + duf_dx0.size() + duf_du0.size() + duf_dxf.size() +
+               duf_duf.size() + dp_dx0.size() + dp_du0.size() + dp_dxf.size() + dp_duf.size() + dp_dp.size();
     }
 };
 
@@ -167,25 +147,25 @@ struct MOO_EXPORT FunctionMR {
 
 // simple state to check which actions are / have to be performed for an iteration
 struct MOO_EXPORT NLPState {
-    bool eval_f         = false;
-    bool eval_g         = false;
-    bool grad_f         = false;
-    bool jac_g          = false;
-    bool hes            = false;
+    bool eval_f = false;
+    bool eval_g = false;
+    bool grad_f = false;
+    bool jac_g = false;
+    bool hes = false;
 
     void check_reset_x(bool new_x) {
         if (new_x) {
-            eval_f         = false;
-            eval_g         = false;
-            grad_f         = false;
-            jac_g          = false;
-            hes            = false; 
+            eval_f = false;
+            eval_g = false;
+            grad_f = false;
+            jac_g = false;
+            hes = false;
         }
     };
 
     void check_reset_lambda(bool new_lambda) {
         if (new_lambda) {
-            hes = false; 
+            hes = false;
         }
     };
 };
@@ -207,23 +187,18 @@ public:
 
     CscToCoo() = default;
 
-    CscToCoo(int nnz) 
+    CscToCoo(int nnz)
         : row(FixedVector<int>(nnz)),
           col(FixedVector<int>(nnz)),
           __coo_to_csc(FixedVector<int>(nnz)),
           __csc_to_coo(FixedVector<int>(nnz)),
           nnz(nnz),
-          nnz_offset(0)
-    {}
+          nnz_offset(0) {}
 
     /* local access (for standard CSC blocks) */
-    inline int csc_to_coo(int index) {
-        return __csc_to_coo[index];
-    }
+    inline int csc_to_coo(int index) { return __csc_to_coo[index]; }
 
-    inline int coo_to_csc(int local_index) {
-        return __coo_to_csc[local_index];
-    }
+    inline int coo_to_csc(int local_index) { return __coo_to_csc[local_index]; }
 
     int row_nnz(int row_index) {
         int count = 0;
@@ -243,7 +218,7 @@ public:
         Log::info("  nnz_offset  = {}", nnz_offset);
 
         Log::info("  row indices (COO):");
-        row.print();  // assuming row.print() also uses Log; otherwise wrap it
+        row.print(); // assuming row.print() also uses Log; otherwise wrap it
 
         Log::info("  col indices (COO):");
         col.print();
@@ -282,18 +257,18 @@ public:
      *       The mappings `coo_to_csc` and `csc_to_coo` store **local (block-wise)** indices.
      *       Use the `*_global()` methods to map to/from global COO indices when embedded in a larger sparsity structure.
      */
-    static CscToCoo from_csc(const int* lead_col, const int* row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0) {
+    static CscToCoo from_csc(const int *lead_col, const int *row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0) {
         return CscToCoo(lead_col, row_csc, number_cols, nnz, move_to_first_row, nnz_offset);
     }
 
 private:
-    CscToCoo(const int* lead_col,
-             const int* row_csc,
-             int number_cols,
-             int nnz,
-             int move_to_first_row = -1,
-             int nnz_offset = 0)
-        : row(nnz), col(nnz), __coo_to_csc(nnz), __csc_to_coo(nnz), nnz(nnz), nnz_offset(nnz_offset) {
+    CscToCoo(const int *lead_col, const int *row_csc, int number_cols, int nnz, int move_to_first_row = -1, int nnz_offset = 0)
+        : row(nnz),
+          col(nnz),
+          __coo_to_csc(nnz),
+          __csc_to_coo(nnz),
+          nnz(nnz),
+          nnz_offset(nnz_offset) {
         int nz = 0;
         for (int curr_col = 0; curr_col < number_cols; ++curr_col) {
             for (int i = lead_col[curr_col]; i < lead_col[curr_col + 1]; i++) {
@@ -302,20 +277,18 @@ private:
                     if (curr_row == move_to_first_row) {
                         curr_row = 0;
                         nnz_moved_row++;
-                    } else if (curr_row <  move_to_first_row) {
-                         curr_row++;
+                    } else if (curr_row < move_to_first_row) {
+                        curr_row++;
                     }
                 }
-                row[nz]          = curr_row;
-                col[nz]          = curr_col;
+                row[nz] = curr_row;
+                col[nz] = curr_col;
                 __coo_to_csc[nz] = nz;
                 nz++;
             }
         }
 
-        std::sort(__coo_to_csc.begin(), __coo_to_csc.end(), [&](int a, int b) {
-            return (row[a] != row[b]) ? (row[a] < row[b]) : (col[a] < col[b]);}
-        );
+        std::sort(__coo_to_csc.begin(), __coo_to_csc.end(), [&](int a, int b) { return (row[a] != row[b]) ? (row[a] < row[b]) : (col[a] < col[b]); });
 
         FixedVector<int> sorted_row(nnz);
         FixedVector<int> sorted_col(nnz);

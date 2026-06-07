@@ -37,38 +37,68 @@
 
 namespace {
 
-void write_init_result_csv(const Init::Result& result, const Init::ProblemFormulation& form)
-{
+void write_init_result_csv(const Init::Result &result, const Init::ProblemFormulation &form) {
     std::ofstream out("init_optimal_solution.csv");
     out << std::setprecision(17);
 
     out << "objective,f_l2_norm,f_max_error,g_max_violation";
-    for (int i = 0; i < form.y_size; i++) out << ",y_" << i;
-    for (int i = 0; i < form.p_size; i++) out << ",p_" << i;
-    for (int i = 0; i < form.p_size; i++) out << ",dp_" << i;
-    for (int i = 0; i < form.f_size; i++) out << ",f_" << i;
-    for (int i = 0; i < form.g_size; i++) out << ",g_" << i;
-    for (int i = 0; i < result.lambda.int_size(); i++) out << ",lambda_" << i;
-    for (int i = 0; i < result.z_lb.int_size(); i++) out << ",z_lb_" << i;
-    for (int i = 0; i < result.z_ub.int_size(); i++) out << ",z_ub_" << i;
+    for (int i = 0; i < form.y_size; i++) {
+        out << ",y_" << i;
+    }
+    for (int i = 0; i < form.p_size; i++) {
+        out << ",p_" << i;
+    }
+    for (int i = 0; i < form.p_size; i++) {
+        out << ",dp_" << i;
+    }
+    for (int i = 0; i < form.f_size; i++) {
+        out << ",f_" << i;
+    }
+    for (int i = 0; i < form.g_size; i++) {
+        out << ",g_" << i;
+    }
+    for (int i = 0; i < result.lambda.int_size(); i++) {
+        out << ",lambda_" << i;
+    }
+    for (int i = 0; i < result.z_lb.int_size(); i++) {
+        out << ",z_lb_" << i;
+    }
+    for (int i = 0; i < result.z_ub.int_size(); i++) {
+        out << ",z_ub_" << i;
+    }
     out << "\n";
 
     out << result.objective << "," << result.f_l2_norm << "," << result.f_max_error << "," << result.g_max_violation;
-    for (int i = 0; i < form.y_size; i++) out << "," << result.y[i];
-    for (int i = 0; i < form.p_size; i++) out << "," << result.p[i];
-    for (int i = 0; i < form.p_size; i++) out << "," << result.dp[i];
-    for (int i = 0; i < form.f_size; i++) out << "," << result.constraints[i];
-    for (int i = 0; i < form.g_size; i++) out << "," << result.constraints[form.f_size + i];
-    for (int i = 0; i < result.lambda.int_size(); i++) out << "," << result.lambda[i];
-    for (int i = 0; i < result.z_lb.int_size(); i++) out << "," << result.z_lb[i];
-    for (int i = 0; i < result.z_ub.int_size(); i++) out << "," << result.z_ub[i];
+    for (int i = 0; i < form.y_size; i++) {
+        out << "," << result.y[i];
+    }
+    for (int i = 0; i < form.p_size; i++) {
+        out << "," << result.p[i];
+    }
+    for (int i = 0; i < form.p_size; i++) {
+        out << "," << result.dp[i];
+    }
+    for (int i = 0; i < form.f_size; i++) {
+        out << "," << result.constraints[i];
+    }
+    for (int i = 0; i < form.g_size; i++) {
+        out << "," << result.constraints[form.f_size + i];
+    }
+    for (int i = 0; i < result.lambda.int_size(); i++) {
+        out << "," << result.lambda[i];
+    }
+    for (int i = 0; i < result.z_lb.int_size(); i++) {
+        out << "," << result.z_lb[i];
+    }
+    for (int i = 0; i < result.z_ub.int_size(); i++) {
+        out << "," << result.z_ub[i];
+    }
     out << "\n";
 }
 
 } // namespace
 
-int main_init(int argc, char** argv, c_init_problem_t* c_problem)
-{
+int main_init(int argc, char **argv, c_init_problem_t *c_problem) {
     Log::prefixed('*', "Entry point [INIT] - main_init\n");
 
     auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);

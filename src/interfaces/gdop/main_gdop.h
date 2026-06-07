@@ -28,7 +28,7 @@ extern "C" {
 #include <base/export.h>
 #include <interfaces/gdop/structures.h>
 
-MOO_EXPORT int main_gdop(int argc, char** argv, c_problem_t* c_problem);
+MOO_EXPORT int main_gdop(int argc, char **argv, c_problem_t *c_problem);
 
 #ifdef __cplusplus
 }

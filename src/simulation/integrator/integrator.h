@@ -21,10 +21,10 @@
 #ifndef MOO_INTEGRATOR_H
 #define MOO_INTEGRATOR_H
 
-#include <base/util.h>
 #include <base/export.h>
 #include <base/fixed_vector.h>
 #include <base/trajectory.h>
+#include <base/util.h>
 
 #include <simulation/integrator/integrator_util.h>
 
@@ -34,24 +34,24 @@ class MOO_EXPORT Integrator {
 public:
     Integrator(ODEFunction ode_fn,
                std::vector<f64> dense_output_grid,
-               f64* x_start_values,
+               f64 *x_start_values,
                int x_size,
-               void* user_data,
-               const f64* parameters,
+               void *user_data,
+               const f64 *parameters,
                int p_size,
-               const ControlTrajectory* controls,
+               const ControlTrajectory *controls,
                JacobianFunction jac_fn,
                Jacobian jac_pattern);
 
     virtual ~Integrator() = default;
-    Integrator(Integrator&&) noexcept = default;
+    Integrator(Integrator &&) noexcept = default;
 
     std::unique_ptr<Trajectory> simulate();
-    std::unique_ptr<Trajectory> simulate(f64* x_start_values_, std::vector<f64> dense_output_grid_);
-    std::unique_ptr<Trajectory> simulate(f64* x_start_values_, f64 t0_, f64 tf_, int steps_);
+    std::unique_ptr<Trajectory> simulate(f64 *x_start_values_, std::vector<f64> dense_output_grid_);
+    std::unique_ptr<Trajectory> simulate(f64 *x_start_values_, f64 t0_, f64 tf_, int steps_);
 
-    void get_ode(f64 t, f64* x, f64* out);
-    void get_dense_jacobian_col_major(f64 t, f64* x, f64* out);
+    void get_ode(f64 t, f64 *x, f64 *out);
+    void get_dense_jacobian_col_major(f64 t, f64 *x, f64 *out);
     // f64* get_sparse_jacobian(f64 t, f64* x);
 
     ODEFunction ode_func;
@@ -61,7 +61,7 @@ public:
 
     std::unique_ptr<Trajectory> output;
 
-    f64* x_start_values;
+    f64 *x_start_values;
 
     void set_controls(f64 t);
 
@@ -74,10 +74,10 @@ public:
 private:
     virtual int internal_simulate() = 0;
 
-    void* user_data;
+    void *user_data;
 
-    const ControlTrajectory* internal_controls;
-    const f64* parameters;
+    const ControlTrajectory *internal_controls;
+    const f64 *parameters;
 
     Jacobian jac_pattern;
 

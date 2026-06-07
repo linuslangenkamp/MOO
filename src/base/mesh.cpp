@@ -23,11 +23,11 @@
 Mesh::Mesh(int intervals,
            f64 t0,
            f64 tf,
-           FixedVector<f64>&& grid,
-           FixedVector<f64>&& delta_t,
-           FixedField<f64, 2>&& t,
-           FixedVector<int>&& nodes,
-           FixedField<int, 2>&& acc_nodes,
+           FixedVector<f64> &&grid,
+           FixedVector<f64> &&delta_t,
+           FixedField<f64, 2> &&t,
+           FixedVector<int> &&nodes,
+           FixedField<int, 2> &&acc_nodes,
            int node_count)
     : intervals(intervals),
       node_count(node_count),
@@ -39,30 +39,16 @@ Mesh::Mesh(int intervals,
       nodes(std::move(nodes)),
       acc_nodes(std::move(acc_nodes)) {}
 
-std::shared_ptr<Mesh> Mesh::create_same_type(
-    int intervals,
-    f64 t0,
-    f64 tf,
-    FixedVector<f64>&& grid,
-    FixedVector<f64>&& delta_t,
-    FixedField<f64, 2>&& t,
-    FixedVector<int>&& nodes,
-    FixedField<int, 2>&& acc_nodes,
-    int node_count) const
-{
-    return std::shared_ptr<Mesh>(
-        new Mesh(
-            intervals,
-            t0,
-            tf,
-            std::move(grid),
-            std::move(delta_t),
-            std::move(t),
-            std::move(nodes),
-            std::move(acc_nodes),
-            node_count
-        )
-    );
+std::shared_ptr<Mesh> Mesh::create_same_type(int intervals,
+                                             f64 t0,
+                                             f64 tf,
+                                             FixedVector<f64> &&grid,
+                                             FixedVector<f64> &&delta_t,
+                                             FixedField<f64, 2> &&t,
+                                             FixedVector<int> &&nodes,
+                                             FixedField<int, 2> &&acc_nodes,
+                                             int node_count) const {
+    return std::shared_ptr<Mesh>(new Mesh(intervals, t0, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count));
 }
 
 /** 
@@ -97,8 +83,7 @@ std::shared_ptr<Mesh> Mesh::create_equidistant_fixed_stages(f64 t0, f64 tf, int 
     int node_count = stages * intervals;
 
     switch (creation_type) {
-        case MeshType::Spectral:
-        {
+        case MeshType::Spectral: {
             FixedVector<f64> spectral_grid(grid.size());
             f64 invT = 1.0 / (tf - t0);
 
@@ -111,37 +96,21 @@ std::shared_ptr<Mesh> Mesh::create_equidistant_fixed_stages(f64 t0, f64 tf, int 
                 spectral_delta_t[i] = spectral_grid[i + 1] - spectral_grid[i];
             }
 
-            return std::shared_ptr<SpectralMesh>(
-                new SpectralMesh(
-                    intervals,
-                    t0,
-                    tf,
-                    std::move(grid),
-                    std::move(delta_t),
-                    std::move(t),
-                    std::move(nodes),
-                    std::move(acc_nodes),
-                    node_count,
-                    std::move(spectral_grid),
-                    std::move(spectral_delta_t)
-                )
-            );
+            return std::shared_ptr<SpectralMesh>(new SpectralMesh(intervals,
+                                                                  t0,
+                                                                  tf,
+                                                                  std::move(grid),
+                                                                  std::move(delta_t),
+                                                                  std::move(t),
+                                                                  std::move(nodes),
+                                                                  std::move(acc_nodes),
+                                                                  node_count,
+                                                                  std::move(spectral_grid),
+                                                                  std::move(spectral_delta_t)));
         }
         case MeshType::Physical:
         default:
-            return std::shared_ptr<Mesh>(
-                new Mesh(
-                    intervals,
-                    t0,
-                    tf,
-                    std::move(grid),
-                    std::move(delta_t),
-                    std::move(t),
-                    std::move(nodes),
-                    std::move(acc_nodes),
-                    node_count
-                )
-            );
+            return std::shared_ptr<Mesh>(new Mesh(intervals, t0, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count));
     }
 }
 
@@ -178,17 +147,15 @@ std::shared_ptr<Mesh> Mesh::create_from_mesh_update(std::unique_ptr<MeshUpdate> 
     }
 
     // let polymorphism handle the type
-    return create_same_type(
-        new_intervals,
-        new_t0,
-        new_tf,
-        std::move(new_grid),
-        std::move(new_delta_t),
-        std::move(new_t),
-        std::move(new_nodes),
-        std::move(new_acc_nodes),
-        new_node_count
-    );
+    return create_same_type(new_intervals,
+                            new_t0,
+                            new_tf,
+                            std::move(new_grid),
+                            std::move(new_delta_t),
+                            std::move(new_t),
+                            std::move(new_nodes),
+                            std::move(new_acc_nodes),
+                            new_node_count);
 }
 
 std::vector<f64> Mesh::get_flat_t() const {
@@ -209,39 +176,29 @@ std::vector<f64> Mesh::get_flat_t() const {
 SpectralMesh::SpectralMesh(int intervals,
                            f64 t0,
                            f64 tf,
-                           FixedVector<f64>&& grid,
-                           FixedVector<f64>&& delta_t,
-                           FixedField<f64, 2>&& t,
-                           FixedVector<int>&& nodes,
-                           FixedField<int, 2>&& acc_nodes,
+                           FixedVector<f64> &&grid,
+                           FixedVector<f64> &&delta_t,
+                           FixedField<f64, 2> &&t,
+                           FixedVector<int> &&nodes,
+                           FixedField<int, 2> &&acc_nodes,
                            int node_count,
-                           FixedVector<f64>&& spectral_grid,
-                           FixedVector<f64>&& spectral_delta_t)
-    : Mesh(intervals,
-           t0,
-           tf,
-           std::move(grid),
-           std::move(delta_t),
-           std::move(t),
-           std::move(nodes),
-           std::move(acc_nodes),
-           node_count),
+                           FixedVector<f64> &&spectral_grid,
+                           FixedVector<f64> &&spectral_delta_t)
+    : Mesh(intervals, t0, tf, std::move(grid), std::move(delta_t), std::move(t), std::move(nodes), std::move(acc_nodes), node_count),
       spectral_grid(std::move(spectral_grid)),
       spectral_delta_t(std::move(spectral_delta_t)) {}
 
 // virtual (pseudo static) SpectralMesh factory
 // is non static for override with derived SpectralMesh
-std::shared_ptr<Mesh> SpectralMesh::create_same_type(
-    int intervals,
-    f64 t0,
-    f64 tf,
-    FixedVector<f64>&& grid,
-    FixedVector<f64>&& delta_t,
-    FixedField<f64, 2>&& t,
-    FixedVector<int>&& nodes,
-    FixedField<int, 2>&& acc_nodes,
-    int node_count) const
-{
+std::shared_ptr<Mesh> SpectralMesh::create_same_type(int intervals,
+                                                     f64 t0,
+                                                     f64 tf,
+                                                     FixedVector<f64> &&grid,
+                                                     FixedVector<f64> &&delta_t,
+                                                     FixedField<f64, 2> &&t,
+                                                     FixedVector<int> &&nodes,
+                                                     FixedField<int, 2> &&acc_nodes,
+                                                     int node_count) const {
     assert(intervals == grid.int_size() - 1);
 
     FixedVector<f64> new_spectral_grid(grid.size());
@@ -258,21 +215,17 @@ std::shared_ptr<Mesh> SpectralMesh::create_same_type(
 
     assert(new_spectral_delta_t.size() == new_spectral_grid.size() - 1);
 
-    return std::shared_ptr<SpectralMesh>(
-        new SpectralMesh(
-            intervals,
-            t0,
-            tf,
-            std::move(grid),
-            std::move(delta_t),
-            std::move(t),
-            std::move(nodes),
-            std::move(acc_nodes),
-            node_count,
-            std::move(new_spectral_grid),
-            std::move(new_spectral_delta_t)
-        )
-    );
+    return std::shared_ptr<SpectralMesh>(new SpectralMesh(intervals,
+                                                          t0,
+                                                          tf,
+                                                          std::move(grid),
+                                                          std::move(delta_t),
+                                                          std::move(t),
+                                                          std::move(nodes),
+                                                          std::move(acc_nodes),
+                                                          node_count,
+                                                          std::move(new_spectral_grid),
+                                                          std::move(new_spectral_delta_t)));
 }
 
 // updates t0, tf, grid, delta_t and t from base Mesh object

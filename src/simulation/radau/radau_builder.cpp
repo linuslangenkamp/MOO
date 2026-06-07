@@ -22,23 +22,23 @@
 
 namespace Simulation {
 
-RadauBuilder& RadauBuilder::radau_scheme(RadauScheme radau_scheme_) {
+RadauBuilder &RadauBuilder::radau_scheme(RadauScheme radau_scheme_) {
     scheme = radau_scheme_;
     return *this;
 }
 
-RadauBuilder& RadauBuilder::radau_h0(f64 h_init_) {
+RadauBuilder &RadauBuilder::radau_h0(f64 h_init_) {
     h_init = h_init_;
     return *this;
 }
 
-RadauBuilder& RadauBuilder::radau_tol(f64 atol_, f64 rtol_) {
+RadauBuilder &RadauBuilder::radau_tol(f64 atol_, f64 rtol_) {
     atol = atol_;
     rtol = rtol_;
     return *this;
 }
 
-RadauBuilder& RadauBuilder::radau_max_it(int max_it_) {
+RadauBuilder &RadauBuilder::radau_max_it(int max_it_) {
     max_it = max_it_;
     return *this;
 }
@@ -48,18 +48,22 @@ RadauIntegrator RadauBuilder::build() const {
 
     return RadauIntegrator(
         /* every Integrator */
-        ode_func, dense_output_grid,
-        x_start_values, x_size,
-        user_data, parameters, p_size,
+        ode_func,
+        dense_output_grid,
+        x_start_values,
+        x_size,
+        user_data,
+        parameters,
+        p_size,
         controls,
-        jac_func, jac_pattern,
+        jac_func,
+        jac_pattern,
         /* Radau specific */
         scheme,
         h0,
         atol,
         rtol,
-        max_it
-    );
+        max_it);
 }
 
 } // namespace Simulation

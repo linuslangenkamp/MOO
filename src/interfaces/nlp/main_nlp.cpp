@@ -36,31 +36,49 @@
 
 namespace {
 
-void write_nlp_result_csv(const CNLP::Result& result, int x_size, int g_size)
-{
+void write_nlp_result_csv(const CNLP::Result &result, int x_size, int g_size) {
     std::ofstream out("nlp_optimal_solution.csv");
     out << std::setprecision(17);
     out << "objective";
-    for (int i = 0; i < x_size; i++) out << ",x_" << i;
-    for (int i = 0; i < g_size; i++) out << ",g_" << i;
-    for (int i = 0; i < result.lambda.int_size(); i++) out << ",lambda_" << i;
-    for (int i = 0; i < result.z_lb.int_size(); i++) out << ",z_lb_" << i;
-    for (int i = 0; i < result.z_ub.int_size(); i++) out << ",z_ub_" << i;
+    for (int i = 0; i < x_size; i++) {
+        out << ",x_" << i;
+    }
+    for (int i = 0; i < g_size; i++) {
+        out << ",g_" << i;
+    }
+    for (int i = 0; i < result.lambda.int_size(); i++) {
+        out << ",lambda_" << i;
+    }
+    for (int i = 0; i < result.z_lb.int_size(); i++) {
+        out << ",z_lb_" << i;
+    }
+    for (int i = 0; i < result.z_ub.int_size(); i++) {
+        out << ",z_ub_" << i;
+    }
     out << "\n";
 
     out << result.objective;
-    for (int i = 0; i < x_size; i++) out << "," << result.x[i];
-    for (int i = 0; i < g_size; i++) out << "," << result.g[i];
-    for (int i = 0; i < result.lambda.int_size(); i++) out << "," << result.lambda[i];
-    for (int i = 0; i < result.z_lb.int_size(); i++) out << "," << result.z_lb[i];
-    for (int i = 0; i < result.z_ub.int_size(); i++) out << "," << result.z_ub[i];
+    for (int i = 0; i < x_size; i++) {
+        out << "," << result.x[i];
+    }
+    for (int i = 0; i < g_size; i++) {
+        out << "," << result.g[i];
+    }
+    for (int i = 0; i < result.lambda.int_size(); i++) {
+        out << "," << result.lambda[i];
+    }
+    for (int i = 0; i < result.z_lb.int_size(); i++) {
+        out << "," << result.z_lb[i];
+    }
+    for (int i = 0; i < result.z_ub.int_size(); i++) {
+        out << "," << result.z_ub[i];
+    }
     out << "\n";
 }
 
 } // namespace
 
-int main_nlp(int argc, char** argv, c_nlp_problem_t* c_problem)
-{
+int main_nlp(int argc, char **argv, c_nlp_problem_t *c_problem) {
     Log::prefixed('*', "Entry point [NLP] - main_nlp\n");
 
     auto nlp_solver_settings = NLP::NLPSolverSettings(argc, argv);

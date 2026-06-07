@@ -21,13 +21,13 @@
 #ifndef MOO_NLP_SOLVER_SETTINGS_H
 #define MOO_NLP_SOLVER_SETTINGS_H
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <variant>
-#include <optional>
 
-#include <base/util.h>
 #include <base/export.h>
+#include <base/util.h>
 
 namespace NLP {
 
@@ -62,35 +62,35 @@ enum class NLPSolverOption {
 };
 
 enum class Option {
-/* HessianOption         */    Hessian,
-/* JacobianOption        */    Jacobian,
-/* GradientOption        */    Gradient,
-/* f64                   */    Tolerance,
-/* int                   */    Iterations,
-/* f64                   */    CPUTime,
-/* LinearSolverOption    */    LinearSolver,
-/* NLPSolverOption       */    NLPSolver,
-/* bool                  */    IpoptDerivativeTest,
-/* bool                  */    WarmStart,
-/* bool                  */    QP,
-/* std::string           */    UnoPreset,
+    /* HessianOption         */ Hessian,
+    /* JacobianOption        */ Jacobian,
+    /* GradientOption        */ Gradient,
+    /* f64                   */ Tolerance,
+    /* int                   */ Iterations,
+    /* f64                   */ CPUTime,
+    /* LinearSolverOption    */ LinearSolver,
+    /* NLPSolverOption       */ NLPSolver,
+    /* bool                  */ IpoptDerivativeTest,
+    /* bool                  */ WarmStart,
+    /* bool                  */ QP,
+    /* std::string           */ UnoPreset,
 };
 
 using OptionValue = std::variant<std::string, f64, int, bool, HessianOption, JacobianOption, GradientOption, LinearSolverOption, NLPSolverOption>;
 
 class MOO_EXPORT NLPSolverSettings {
 public:
-    NLPSolverSettings(int argc, char** argv);
+    NLPSolverSettings(int argc, char **argv);
 
     void print() const;
 
-    void set(Option option, const OptionValue& value);
-    const OptionValue& get(Option option) const;
+    void set(Option option, const OptionValue &value);
+    const OptionValue &get(Option option) const;
 
     bool option_is_true(Option option) const;
-    bool option_matches(Option option, const std::string& str) const;
+    bool option_matches(Option option, const std::string &str) const;
 
-    template<typename T>
+    template <typename T>
     T get_or_default(Option option) const;
 
 private:
@@ -101,7 +101,7 @@ private:
 std::string to_string(Option option);
 
 // string to Option enum
-std::optional<Option> option_from_string(const std::string& name);
+std::optional<Option> option_from_string(const std::string &name);
 
 extern const std::unordered_map<Option, OptionValue> default_settings;
 

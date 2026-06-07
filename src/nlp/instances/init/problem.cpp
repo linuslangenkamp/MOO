@@ -29,29 +29,25 @@
 
 namespace Init {
 
-f64 value_or_zero(const FixedVector<f64>& values, int index)
-{
+f64 value_or_zero(const FixedVector<f64> &values, int index) {
     if (index < values.int_size()) {
         return values[index];
     }
     return 0.0;
 }
 
-f64 nominal_or_one(const FixedVector<f64>& nominals, int index)
-{
+f64 nominal_or_one(const FixedVector<f64> &nominals, int index) {
     if (index < nominals.int_size() && std::isfinite(nominals[index]) && nominals[index] != 0.0) {
         return std::abs(nominals[index]);
     }
     return 1.0;
 }
 
-f64 p0_or_zero(const ProblemFormulation& formulation, int index)
-{
+f64 p0_or_zero(const ProblemFormulation &formulation, int index) {
     return value_or_zero(formulation.p0, index);
 }
 
-void Problem::eval_objective(const f64* y, const f64* p, f64& obj)
-{
+void Problem::eval_objective(const f64 *y, const f64 *p, f64 &obj) {
     switch (formulation.objective) {
         case Objective::ZERO:
             obj = 0.0;
@@ -72,8 +68,7 @@ void Problem::eval_objective(const f64* y, const f64* p, f64& obj)
     }
 }
 
-void Problem::eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* grad_p)
-{
+void Problem::eval_grad_objective(const f64 *y, const f64 *p, f64 *grad_y, f64 *grad_p) {
     std::fill(grad_y, grad_y + formulation.y_size, 0.0);
     std::fill(grad_p, grad_p + formulation.p_size, 0.0);
 
@@ -94,8 +89,7 @@ void Problem::eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* 
     }
 }
 
-void Problem::eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor, f64* hes_values)
-{
+void Problem::eval_hessian_objective(const f64 *y, const f64 *p, f64 obj_factor, f64 *hes_values) {
     switch (formulation.objective) {
         case Objective::ZERO:
         case Objective::LEAST_SQUARE_DEVIATION:
@@ -107,29 +101,20 @@ void Problem::eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor,
     }
 }
 
-void Problem::eval_g(const f64* y, const f64* p, f64* g)
-{
+void Problem::eval_g(const f64 *y, const f64 *p, f64 *g) {
     if (formulation.g_size > 0) {
         Log::error("Init::Problem g_size is {}, but eval_g was not overridden.", formulation.g_size);
         abort();
     }
 }
 
-void Problem::eval_jacobian_g(const f64* y, const f64* p, f64* jac_g_values)
-{
+void Problem::eval_jacobian_g(const f64 *y, const f64 *p, f64 *jac_g_values) {
     if (formulation.g_size > 0) {
         Log::error("Init::Problem g_size is {}, but eval_jacobian_g was not overridden.", formulation.g_size);
         abort();
     }
 }
 
-void Problem::eval_hessian_constraints(const f64* y,
-                                       const f64* p,
-                                       const f64* lambda_f,
-                                       const f64* lambda_g,
-                                       f64* hes_values)
-{
-
-}
+void Problem::eval_hessian_constraints(const f64 *y, const f64 *p, const f64 *lambda_f, const f64 *lambda_g, f64 *hes_values) {}
 
 } // namespace Init

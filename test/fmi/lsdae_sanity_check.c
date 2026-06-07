@@ -12,21 +12,26 @@ static void print_message(const char *msg) {
     printf("[fmi4c] %s\n", msg);
 }
 
-static const char *dep_kind_str(fmi3DependencyKind k)
-{
+static const char *dep_kind_str(fmi3DependencyKind k) {
     switch (k) {
-        case fmi3Independent: return "independent";
-        case fmi3Constant:    return "constant";
-        case fmi3Fixed:       return "fixed";
-        case fmi3Tunable:     return "tunable";
-        case fmi3Discrete:    return "discrete";
-        case fmi3Dependent:   return "dependent";
-        default:              return "unknown";
+        case fmi3Independent:
+            return "independent";
+        case fmi3Constant:
+            return "constant";
+        case fmi3Fixed:
+            return "fixed";
+        case fmi3Tunable:
+            return "tunable";
+        case fmi3Discrete:
+            return "discrete";
+        case fmi3Dependent:
+            return "dependent";
+        default:
+            return "unknown";
     }
 }
 
-static void print_structure_entry(const char *label, fmiLsDaeModelStructureHandle *h)
-{
+static void print_structure_entry(const char *label, fmiLsDaeModelStructureHandle *h) {
     int n = fmiLsDae_getNumberOfDependencies(h);
     printf("  %s vr=%-12u  deps=%d", label, fmiLsDae_getValueReference(h), n);
     if (n > 0) {
@@ -35,22 +40,23 @@ static void print_structure_entry(const char *label, fmiLsDaeModelStructureHandl
         int take = (n < 64) ? n : 64;
         fmiLsDae_getDependencies(h, deps, take);
         printf(" [");
-        for (int i = 0; i < take; ++i)
+        for (int i = 0; i < take; ++i) {
             printf("%s%u", i ? " " : "", deps[i]);
+        }
         printf("]");
         if (fmiLsDae_dependencyKindsDefined(h)) {
             fmiLsDae_getDependencyKinds(h, kinds, take);
             printf(" kinds=[");
-            for (int i = 0; i < take; ++i)
+            for (int i = 0; i < take; ++i) {
                 printf("%s%s", i ? " " : "", dep_kind_str(kinds[i]));
+            }
             printf("]");
         }
     }
     printf("\n");
 }
 
-int main(void)
-{
+int main(void) {
     fmi4c_setMessageFunction(print_message);
 
     printf("Loading FMU: %s\n", SIMPLE_DAE_FMU_PATH);
@@ -81,20 +87,20 @@ int main(void)
         printf("  [%d] vr=%u\n", i, fmiLsDae_getAlgebraicVariableValueReference(v));
     }
 
-    printf("\nModelStructure - ContinuousStateDerivatives (%d):\n",
-           fmiLsDae_getNumberOfContinuousStateDerivatives(fmu));
-    for (int i = 0; i < fmiLsDae_getNumberOfContinuousStateDerivatives(fmu); ++i)
+    printf("\nModelStructure - ContinuousStateDerivatives (%d):\n", fmiLsDae_getNumberOfContinuousStateDerivatives(fmu));
+    for (int i = 0; i < fmiLsDae_getNumberOfContinuousStateDerivatives(fmu); ++i) {
         print_structure_entry("CSD", fmiLsDae_getContinuousStateDerivativeByIndex(fmu, i));
+    }
 
-    printf("\nModelStructure - Residuals (%d):\n",
-           fmiLsDae_getNumberOfResiduals(fmu));
-    for (int i = 0; i < fmiLsDae_getNumberOfResiduals(fmu); ++i)
+    printf("\nModelStructure - Residuals (%d):\n", fmiLsDae_getNumberOfResiduals(fmu));
+    for (int i = 0; i < fmiLsDae_getNumberOfResiduals(fmu); ++i) {
         print_structure_entry("Res", fmiLsDae_getResidualByIndex(fmu, i));
+    }
 
-    printf("\nModelStructure - Outputs (%d):\n",
-           fmiLsDae_getNumberOfOutputs(fmu));
-    for (int i = 0; i < fmiLsDae_getNumberOfOutputs(fmu); ++i)
+    printf("\nModelStructure - Outputs (%d):\n", fmiLsDae_getNumberOfOutputs(fmu));
+    for (int i = 0; i < fmiLsDae_getNumberOfOutputs(fmu); ++i) {
         print_structure_entry("Out", fmiLsDae_getOutputByIndex(fmu, i));
+    }
 
     fmi4c_freeFmu(fmu);
     printf("\nOK\n");

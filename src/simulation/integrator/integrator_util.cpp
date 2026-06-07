@@ -24,10 +24,7 @@
 
 namespace Simulation {
 
-Jacobian::Jacobian(JacobianFormat jfmt,
-                   int* i_row,
-                   int* j_col,
-                   int nnz)
+Jacobian::Jacobian(JacobianFormat jfmt, int *i_row, int *j_col, int nnz)
     : jfmt(jfmt),
       i_row(i_row),
       j_col(j_col),
@@ -37,7 +34,7 @@ Jacobian Jacobian::dense() {
     return Jacobian(JacobianFormat::DENSE, nullptr, nullptr, 0);
 }
 
-Jacobian Jacobian::sparse(JacobianFormat sparse_fmt, int* i_row, int* j_col, int nnz) {
+Jacobian Jacobian::sparse(JacobianFormat sparse_fmt, int *i_row, int *j_col, int nnz) {
     assert(sparse_fmt != JacobianFormat::DENSE);
     return Jacobian(sparse_fmt, i_row, j_col, nnz);
 }

@@ -18,9 +18,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <sstream>
-#include <iomanip>
 #include <cstdlib>
+#include <iomanip>
+#include <sstream>
 
 #include <base/log.h>
 
@@ -33,41 +33,54 @@ namespace NLP {
 // === Default values ===
 
 const std::unordered_map<Option, OptionValue> default_settings = {
-    {Option::Hessian,             HessianOption::Exact},
-    {Option::Jacobian,            JacobianOption::Exact},
-    {Option::Gradient,            GradientOption::Exact},
-    {Option::Tolerance,           1e-10},
-    {Option::Iterations,          5000},
-    {Option::CPUTime,             3600.0},
-    {Option::LinearSolver,        LinearSolverOption::MUMPS},
-    {Option::NLPSolver,           NLPSolverOption::Ipopt},
+    {Option::Hessian, HessianOption::Exact},
+    {Option::Jacobian, JacobianOption::Exact},
+    {Option::Gradient, GradientOption::Exact},
+    {Option::Tolerance, 1e-10},
+    {Option::Iterations, 5000},
+    {Option::CPUTime, 3600.0},
+    {Option::LinearSolver, LinearSolverOption::MUMPS},
+    {Option::NLPSolver, NLPSolverOption::Ipopt},
     {Option::IpoptDerivativeTest, false},
-    {Option::WarmStart,           false},
-    {Option::QP,                  false},
-    {Option::UnoPreset,           std::string("ipopt")},
+    {Option::WarmStart, false},
+    {Option::QP, false},
+    {Option::UnoPreset, std::string("ipopt")},
 };
 
 // === Option string conversions ===
 
 std::string to_string(Option option) {
     switch (option) {
-        case Option::Hessian:             return "Hessian";
-        case Option::Jacobian:            return "Jacobian";
-        case Option::Gradient:            return "Gradient";
-        case Option::Tolerance:           return "Tolerance";
-        case Option::Iterations:          return "Iterations";
-        case Option::CPUTime:             return "CPUTime";
-        case Option::LinearSolver:        return "LinearSolver";
-        case Option::NLPSolver:           return "NLPSolver";
-        case Option::IpoptDerivativeTest: return "IpoptDerivativeTest";
-        case Option::WarmStart:           return "WarmStart";
-        case Option::QP:                  return "QP";
-        case Option::UnoPreset:           return "UnoPreset";
-        default:                          return "Unknown";
+        case Option::Hessian:
+            return "Hessian";
+        case Option::Jacobian:
+            return "Jacobian";
+        case Option::Gradient:
+            return "Gradient";
+        case Option::Tolerance:
+            return "Tolerance";
+        case Option::Iterations:
+            return "Iterations";
+        case Option::CPUTime:
+            return "CPUTime";
+        case Option::LinearSolver:
+            return "LinearSolver";
+        case Option::NLPSolver:
+            return "NLPSolver";
+        case Option::IpoptDerivativeTest:
+            return "IpoptDerivativeTest";
+        case Option::WarmStart:
+            return "WarmStart";
+        case Option::QP:
+            return "QP";
+        case Option::UnoPreset:
+            return "UnoPreset";
+        default:
+            return "Unknown";
     }
 }
 
-std::optional<Option> option_from_string(const std::string& name) {
+std::optional<Option> option_from_string(const std::string &name) {
     static const std::unordered_map<std::string, Option> map = {
         {"Hessian", Option::Hessian},
         {"Jacobian", Option::Jacobian},
@@ -83,13 +96,15 @@ std::optional<Option> option_from_string(const std::string& name) {
         {"UnoPreset", Option::UnoPreset},
     };
     auto it = map.find(name);
-    if (it != map.end()) return it->second;
+    if (it != map.end()) {
+        return it->second;
+    }
     return std::nullopt;
 }
 
 // === Option Class ===
 
-NLPSolverSettings::NLPSolverSettings(int argc, char** argv) {
+NLPSolverSettings::NLPSolverSettings(int argc, char **argv) {
     // start with defaults
     settings = default_settings;
 
@@ -104,7 +119,7 @@ NLPSolverSettings::NLPSolverSettings(int argc, char** argv) {
                 auto maybe_option = option_from_string(key);
                 if (maybe_option) {
                     // Try to parse into correct type based on default
-                    const auto& default_val = default_settings.at(*maybe_option);
+                    const auto &default_val = default_settings.at(*maybe_option);
                     if (std::holds_alternative<f64>(default_val)) {
                         settings[*maybe_option] = std::stod(val);
                     } else if (std::holds_alternative<int>(default_val)) {
@@ -112,25 +127,45 @@ NLPSolverSettings::NLPSolverSettings(int argc, char** argv) {
                     } else if (std::holds_alternative<bool>(default_val)) {
                         settings[*maybe_option] = (val == "true" || val == "1");
                     } else if (*maybe_option == Option::Hessian) {
-                        if (val == "Exact") settings[*maybe_option] = HessianOption::Exact;
-                        else if (val == "LBFGS") settings[*maybe_option] = HessianOption::LBFGS;
-                        else if (val == "Const") settings[*maybe_option] = HessianOption::Const;
+                        if (val == "Exact") {
+                            settings[*maybe_option] = HessianOption::Exact;
+                        } else if (val == "LBFGS") {
+                            settings[*maybe_option] = HessianOption::LBFGS;
+                        } else if (val == "Const") {
+                            settings[*maybe_option] = HessianOption::Const;
+                        }
                     } else if (*maybe_option == Option::Jacobian) {
-                        if (val == "Exact") settings[*maybe_option] = JacobianOption::Exact;
-                        else if (val == "FD") settings[*maybe_option] = JacobianOption::FD;
+                        if (val == "Exact") {
+                            settings[*maybe_option] = JacobianOption::Exact;
+                        } else if (val == "FD") {
+                            settings[*maybe_option] = JacobianOption::FD;
+                        }
                     } else if (*maybe_option == Option::Gradient) {
-                        if (val == "Exact") settings[*maybe_option] = GradientOption::Exact;
-                        else if (val == "FD") settings[*maybe_option] = GradientOption::FD;
+                        if (val == "Exact") {
+                            settings[*maybe_option] = GradientOption::Exact;
+                        } else if (val == "FD") {
+                            settings[*maybe_option] = GradientOption::FD;
+                        }
                     } else if (*maybe_option == Option::LinearSolver) {
-                        if (val == "MUMPS") settings[*maybe_option] = LinearSolverOption::MUMPS;
-                        else if (val == "MA27") settings[*maybe_option] = LinearSolverOption::MA27;
-                        else if (val == "MA57") settings[*maybe_option] = LinearSolverOption::MA57;
-                        else if (val == "MA77") settings[*maybe_option] = LinearSolverOption::MA77;
-                        else if (val == "MA86") settings[*maybe_option] = LinearSolverOption::MA86;
-                        else if (val == "MA97") settings[*maybe_option] = LinearSolverOption::MA97;
+                        if (val == "MUMPS") {
+                            settings[*maybe_option] = LinearSolverOption::MUMPS;
+                        } else if (val == "MA27") {
+                            settings[*maybe_option] = LinearSolverOption::MA27;
+                        } else if (val == "MA57") {
+                            settings[*maybe_option] = LinearSolverOption::MA57;
+                        } else if (val == "MA77") {
+                            settings[*maybe_option] = LinearSolverOption::MA77;
+                        } else if (val == "MA86") {
+                            settings[*maybe_option] = LinearSolverOption::MA86;
+                        } else if (val == "MA97") {
+                            settings[*maybe_option] = LinearSolverOption::MA97;
+                        }
                     } else if (*maybe_option == Option::NLPSolver) {
-                        if (val == "Ipopt") settings[*maybe_option] = NLPSolverOption::Ipopt;
-                        else if (val == "Uno") settings[*maybe_option] = NLPSolverOption::Uno;
+                        if (val == "Ipopt") {
+                            settings[*maybe_option] = NLPSolverOption::Ipopt;
+                        } else if (val == "Uno") {
+                            settings[*maybe_option] = NLPSolverOption::Uno;
+                        }
                     } else {
                         settings[*maybe_option] = val;
                     }
@@ -141,66 +176,85 @@ NLPSolverSettings::NLPSolverSettings(int argc, char** argv) {
 }
 
 void NLPSolverSettings::print() const {
-    FixedTableFormat<2> ftf = {
-        {25,            15},
-        {Align::Center, Align::Center}
-    };
+    FixedTableFormat<2> ftf = {{25, 15}, {Align::Center, Align::Center}};
 
     Log::start_module(ftf, "NLP Solver options");
     Log::row(ftf, "Option", "Value");
     Log::dashes(ftf);
 
-    for (const auto& [option, value] : settings) {
-        std::string val_str = std::visit([](const auto& v) -> std::string {
-            using T = std::decay_t<decltype(v)>;
+    for (const auto &[option, value] : settings) {
+        std::string val_str = std::visit(
+            [](const auto &v) -> std::string {
+                using T = std::decay_t<decltype(v)>;
 
-            if constexpr (std::is_same_v<T, bool>) {
-                return v ? "true" : "false";
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                return v;
-            } else if constexpr (std::is_same_v<T, f64>) {
-                return std::to_string(v);
-            } else if constexpr (std::is_same_v<T, int>) {
-                return std::to_string(v);
-            } else if constexpr (std::is_same_v<T, HessianOption>) {
-                switch (v) {
-                    case HessianOption::Exact: return "Exact";
-                    case HessianOption::LBFGS: return "LBFGS";
-                    case HessianOption::Const: return "Const";
-                    default: return "<invalid HessianOption>";
+                if constexpr (std::is_same_v<T, bool>) {
+                    return v ? "true" : "false";
+                } else if constexpr (std::is_same_v<T, std::string>) {
+                    return v;
+                } else if constexpr (std::is_same_v<T, f64>) {
+                    return std::to_string(v);
+                } else if constexpr (std::is_same_v<T, int>) {
+                    return std::to_string(v);
+                } else if constexpr (std::is_same_v<T, HessianOption>) {
+                    switch (v) {
+                        case HessianOption::Exact:
+                            return "Exact";
+                        case HessianOption::LBFGS:
+                            return "LBFGS";
+                        case HessianOption::Const:
+                            return "Const";
+                        default:
+                            return "<invalid HessianOption>";
+                    }
+                } else if constexpr (std::is_same_v<T, JacobianOption>) {
+                    switch (v) {
+                        case JacobianOption::Exact:
+                            return "Exact";
+                        case JacobianOption::FD:
+                            return "FD";
+                        default:
+                            return "<invalid JacobianOption>";
+                    }
+                } else if constexpr (std::is_same_v<T, GradientOption>) {
+                    switch (v) {
+                        case GradientOption::Exact:
+                            return "Exact";
+                        case GradientOption::FD:
+                            return "FD";
+                        default:
+                            return "<invalid GradientOption>";
+                    }
+                } else if constexpr (std::is_same_v<T, LinearSolverOption>) {
+                    switch (v) {
+                        case LinearSolverOption::MUMPS:
+                            return "MUMPS";
+                        case LinearSolverOption::MA27:
+                            return "MA27";
+                        case LinearSolverOption::MA57:
+                            return "MA57";
+                        case LinearSolverOption::MA77:
+                            return "MA77";
+                        case LinearSolverOption::MA86:
+                            return "MA86";
+                        case LinearSolverOption::MA97:
+                            return "MA97";
+                        default:
+                            return "<invalid LinearSolverOption>";
+                    }
+                } else if constexpr (std::is_same_v<T, NLPSolverOption>) {
+                    switch (v) {
+                        case NLPSolverOption::Ipopt:
+                            return "Ipopt";
+                        case NLPSolverOption::Uno:
+                            return "Uno";
+                        default:
+                            return "<invalid NLPSolverOption>";
+                    }
+                } else {
+                    return "<unknown>";
                 }
-            } else if constexpr (std::is_same_v<T, JacobianOption>) {
-                switch (v) {
-                    case JacobianOption::Exact: return "Exact";
-                    case JacobianOption::FD: return "FD";
-                    default: return "<invalid JacobianOption>";
-                }
-            } else if constexpr (std::is_same_v<T, GradientOption>) {
-                switch (v) {
-                    case GradientOption::Exact: return "Exact";
-                    case GradientOption::FD: return "FD";
-                    default: return "<invalid GradientOption>";
-                }
-            } else if constexpr (std::is_same_v<T, LinearSolverOption>) {
-                switch (v) {
-                    case LinearSolverOption::MUMPS: return "MUMPS";
-                    case LinearSolverOption::MA27:  return "MA27";
-                    case LinearSolverOption::MA57:  return "MA57";
-                    case LinearSolverOption::MA77:  return "MA77";
-                    case LinearSolverOption::MA86:  return "MA86";
-                    case LinearSolverOption::MA97:  return "MA97";
-                    default: return "<invalid LinearSolverOption>";
-                }
-            } else if constexpr (std::is_same_v<T, NLPSolverOption>) {
-                switch (v) {
-                    case NLPSolverOption::Ipopt: return "Ipopt";
-                    case NLPSolverOption::Uno: return "Uno";
-                    default: return "<invalid NLPSolverOption>";
-                }
-            } else {
-                return "<unknown>";
-            }
-        }, value);
+            },
+            value);
 
         Log::row(ftf, to_string(option), val_str);
     }
@@ -208,22 +262,25 @@ void NLPSolverSettings::print() const {
     Log::dashes_ln(ftf);
 }
 
-void NLPSolverSettings::set(Option option, const OptionValue& value) {
+void NLPSolverSettings::set(Option option, const OptionValue &value) {
     settings[option] = value;
 }
 
-const OptionValue& NLPSolverSettings::get(Option option) const {
+const OptionValue &NLPSolverSettings::get(Option option) const {
     auto it = settings.find(option);
-    if (it != settings.end()) return it->second;
+    if (it != settings.end()) {
+        return it->second;
+    }
     return default_settings.at(option);
 }
 
-template<typename T>
+template <typename T>
 T NLPSolverSettings::get_or_default(Option option) const {
     auto it = settings.find(option);
     if (it != settings.end()) {
-        if (auto val = std::get_if<T>(&it->second))
+        if (auto val = std::get_if<T>(&it->second)) {
             return *val;
+        }
     }
     return std::get<T>(default_settings.at(option));
 }
@@ -233,9 +290,10 @@ bool NLPSolverSettings::option_is_true(Option option) const {
     return val;
 }
 
-bool NLPSolverSettings::option_matches(Option option, const std::string& str) const {
-    if (auto val = std::get_if<std::string>(&get(option)))
+bool NLPSolverSettings::option_matches(Option option, const std::string &str) const {
+    if (auto val = std::get_if<std::string>(&get(option))) {
         return *val == str;
+    }
     return false;
 }
 

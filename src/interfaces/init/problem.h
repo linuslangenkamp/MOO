@@ -28,26 +28,26 @@ namespace CInit {
 
 class Problem final : public Init::Problem {
 public:
-    explicit Problem(c_init_problem_t* c_problem);
+    explicit Problem(c_init_problem_t *c_problem);
 
-    void eval_objective(const f64* y, const f64* p, f64& obj) override;
-    void eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* grad_p) override;
-    void eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor, f64* hes_values) override;
-    void eval_f(const f64* y, const f64* p, f64* f) override;
-    void eval_g(const f64* y, const f64* p, f64* g) override;
-    void eval_jacobian_f(const f64* y, const f64* p, f64* jac_f_values) override;
-    void eval_jacobian_g(const f64* y, const f64* p, f64* jac_g_values) override;
-    void eval_hessian_constraints(const f64* y, const f64* p, const f64* lambda_f, const f64* lambda_g, f64* hes_values) override;
+    void eval_objective(const f64 *y, const f64 *p, f64 &obj) override;
+    void eval_grad_objective(const f64 *y, const f64 *p, f64 *grad_y, f64 *grad_p) override;
+    void eval_hessian_objective(const f64 *y, const f64 *p, f64 obj_factor, f64 *hes_values) override;
+    void eval_f(const f64 *y, const f64 *p, f64 *f) override;
+    void eval_g(const f64 *y, const f64 *p, f64 *g) override;
+    void eval_jacobian_f(const f64 *y, const f64 *p, f64 *jac_f_values) override;
+    void eval_jacobian_g(const f64 *y, const f64 *p, f64 *jac_g_values) override;
+    void eval_hessian_constraints(const f64 *y, const f64 *p, const f64 *lambda_f, const f64 *lambda_g, f64 *hes_values) override;
 
 private:
-    c_init_problem_t* c_problem;
+    c_init_problem_t *c_problem;
     FixedVector<f64> z_buffer;
     FixedVector<f64> eval_buffer;
     FixedVector<f64> jac_buffer;
     FixedVector<f64> lambda_buffer;
     FixedVector<f64> hes_buffer;
 
-    const f64* pack_z(const f64* y, const f64* p);
+    const f64 *pack_z(const f64 *y, const f64 *p);
 };
 
 } // namespace CInit

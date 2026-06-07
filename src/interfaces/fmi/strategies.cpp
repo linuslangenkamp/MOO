@@ -25,19 +25,19 @@
 
 namespace FMI {
 
-std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP& gdop) {
+std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP &gdop) {
     // x, g, f of the NLP { min f(x) s.t. g_l <= g(x) <= g_l }
     auto x_nominal = FixedVector<f64>(gdop.get_number_vars());
     auto g_nominal = FixedVector<f64>(gdop.get_number_constraints());
-    f64  f_nominal = 1;
+    f64 f_nominal = 1;
 
     // get problem sizes
-    auto x_size  = gdop.get_problem().pc->x_size;
-    auto u_size  = gdop.get_problem().pc->u_size;
+    auto x_size = gdop.get_problem().pc->x_size;
+    auto u_size = gdop.get_problem().pc->u_size;
     auto xu_size = x_size + u_size;
-    auto f_size  = gdop.get_problem().pc->x_size;
-    auto g_size  = gdop.get_problem().pc->g_size;
-    auto r_size  = gdop.get_problem().pc->r_size;
+    auto f_size = gdop.get_problem().pc->x_size;
+    auto g_size = gdop.get_problem().pc->g_size;
+    auto r_size = gdop.get_problem().pc->r_size;
     auto fg_size = f_size + g_size;
 
     auto has_mayer = gdop.get_problem().pc->has_mayer;
@@ -45,8 +45,7 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
 
     // create simple lookup: vref -> nominal if exists
     auto map = std::unordered_map<uint32_t, f64>{};
-    for (const auto& elem : fmi_data.settings.nominals)
-    {
+    for (const auto &elem : fmi_data.settings.nominals) {
         map[elem.vref] = elem.nominal;
     }
 
@@ -67,11 +66,9 @@ std::shared_ptr<NLP::Scaling> NominalScalingFactory::operator()(const GDOP::GDOP
         const f64 nominal_mayer = DUMMY_NOMINAL;    // TODO: what if objective is not set from output?
         const f64 nominal_lagrange = DUMMY_NOMINAL; // same here
         f_nominal = (nominal_mayer + nominal_lagrange) / 2;
-    }
-    else if (has_lagrange) {
+    } else if (has_lagrange) {
         f_nominal = DUMMY_NOMINAL;
-    }
-    else if (has_mayer) {
+    } else if (has_mayer) {
         f_nominal = DUMMY_NOMINAL;
     }
 

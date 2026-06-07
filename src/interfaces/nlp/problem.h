@@ -21,8 +21,8 @@
 #ifndef MOO_NLP_C_PROBLEM_H
 #define MOO_NLP_C_PROBLEM_H
 
-#include <interfaces/nlp/structures.h>
 #include <base/nlp_structs.h>
+#include <interfaces/nlp/structures.h>
 #include <nlp/nlp.h>
 
 namespace CNLP {
@@ -38,26 +38,44 @@ struct Result {
 
 class Problem final : public NLP::NLP {
 public:
-    explicit Problem(c_nlp_problem_t* c_problem);
+    explicit Problem(c_nlp_problem_t *c_problem);
 
     Result result;
 
-    void get_sizes(int& number_vars, int& number_constraints) override;
-    void get_nnz(int& nnz_jac, int& nnz_hes) override;
+    void get_sizes(int &number_vars, int &number_constraints) override;
+    void get_nnz(int &nnz_jac, int &nnz_hes) override;
     std::shared_ptr<::NLP::Scaling> get_scaling() override;
-    void get_bounds(FixedVector<f64>& x_lb, FixedVector<f64>& x_ub, FixedVector<f64>& g_lb, FixedVector<f64>& g_ub) override;
-    void get_initial_guess(bool init_x, FixedVector<f64>& x_init, bool init_lambda, FixedVector<f64>& lambda_init, bool init_z, FixedVector<f64>& z_lb_init, FixedVector<f64>& z_ub_init) override;
-    void get_jac_sparsity(FixedVector<int>& i_row_jac, FixedVector<int>& j_col_jac) override;
-    void get_hes_sparsity(FixedVector<int>& i_row_hes, FixedVector<int>& j_col_hes) override;
-    void eval_f(bool new_x, const FixedVector<f64>& curr_x, f64& curr_obj) override;
-    void eval_g(bool new_x, const FixedVector<f64>& curr_x, FixedVector<f64>& curr_g) override;
-    void eval_grad_f(bool new_x, const FixedVector<f64>& curr_x, FixedVector<f64>& curr_grad_f) override;
-    void eval_jac_g(bool new_x, const FixedVector<f64>& curr_x, const FixedVector<int>& i_row_jac, const FixedVector<int>& j_col_jac, FixedVector<f64>& curr_jac) override;
-    void eval_hes(bool new_x, const FixedVector<f64>& curr_x, bool new_lambda, const FixedVector<f64>& curr_lambda, f64 curr_obj_factor, const FixedVector<int>& i_row_hes, const FixedVector<int>& j_col_hes, FixedVector<f64>& curr_hes) override;
-    void finalize_solution(::NLP::ReturnCode ret, f64 opt_obj, const FixedVector<f64>& opt_x, const FixedVector<f64>& opt_lambda, const FixedVector<f64>& opt_z_lb, const FixedVector<f64>& opt_z_ub) override;
+    void get_bounds(FixedVector<f64> &x_lb, FixedVector<f64> &x_ub, FixedVector<f64> &g_lb, FixedVector<f64> &g_ub) override;
+    void get_initial_guess(bool init_x,
+                           FixedVector<f64> &x_init,
+                           bool init_lambda,
+                           FixedVector<f64> &lambda_init,
+                           bool init_z,
+                           FixedVector<f64> &z_lb_init,
+                           FixedVector<f64> &z_ub_init) override;
+    void get_jac_sparsity(FixedVector<int> &i_row_jac, FixedVector<int> &j_col_jac) override;
+    void get_hes_sparsity(FixedVector<int> &i_row_hes, FixedVector<int> &j_col_hes) override;
+    void eval_f(bool new_x, const FixedVector<f64> &curr_x, f64 &curr_obj) override;
+    void eval_g(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_g) override;
+    void eval_grad_f(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_grad_f) override;
+    void eval_jac_g(bool new_x, const FixedVector<f64> &curr_x, const FixedVector<int> &i_row_jac, const FixedVector<int> &j_col_jac, FixedVector<f64> &curr_jac) override;
+    void eval_hes(bool new_x,
+                  const FixedVector<f64> &curr_x,
+                  bool new_lambda,
+                  const FixedVector<f64> &curr_lambda,
+                  f64 curr_obj_factor,
+                  const FixedVector<int> &i_row_hes,
+                  const FixedVector<int> &j_col_hes,
+                  FixedVector<f64> &curr_hes) override;
+    void finalize_solution(::NLP::ReturnCode ret,
+                           f64 opt_obj,
+                           const FixedVector<f64> &opt_x,
+                           const FixedVector<f64> &opt_lambda,
+                           const FixedVector<f64> &opt_z_lb,
+                           const FixedVector<f64> &opt_z_ub) override;
 
 private:
-    c_nlp_problem_t* c_problem;
+    c_nlp_problem_t *c_problem;
     FixedVector<f64> eval_buffer;
     FixedVector<f64> jac_buffer;
     FixedVector<f64> hes_buffer;

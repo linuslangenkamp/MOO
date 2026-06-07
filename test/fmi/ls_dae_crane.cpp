@@ -21,7 +21,6 @@
 #include <interfaces/fmi/problem.h>
 
 int main() {
-
     FMI::FMISettings settings;
     settings.path = CRANE_FMU_PATH;
     settings.modelname = "Crane";
@@ -30,8 +29,8 @@ int main() {
     settings.intervals = 50;
 
     // optimize these parameters
-    settings.control_vrefs.push_back( { 620756992, -3, 3 } );
-    settings.control_vrefs.push_back( { 620756993, -3, 3 } );
+    settings.control_vrefs.push_back({620756992, -3, 3});
+    settings.control_vrefs.push_back({620756993, -3, 3});
 
     settings.parameter_vrefs = {};
 
@@ -40,7 +39,7 @@ int main() {
     //settings.mayer_vref = &mayer;
     settings.lagrange_vref = &lagrange;
 
-    settings.path_constraint_vrefs.push_back( { mayer, -5, 5 } );
+    settings.path_constraint_vrefs.push_back({mayer, -5, 5});
     //settings.final_constraint_vrefs.push_back( { mayer, -0, 0 } );
 
     // settings.initial_constraint_vrefs.push_back( { lagrange, -1, 1 } );

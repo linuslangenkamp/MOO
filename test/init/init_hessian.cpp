@@ -29,8 +29,7 @@
 
 namespace {
 
-std::string vector_string(const FixedVector<f64>& values)
-{
+std::string vector_string(const FixedVector<f64> &values) {
     std::string out = "[";
     for (int i = 0; i < values.int_size(); i++) {
         out += fmt::format("{}", values[i]);
@@ -44,8 +43,7 @@ std::string vector_string(const FixedVector<f64>& values)
 
 class CoupledHessianProblem : public Init::Problem {
 public:
-    explicit CoupledHessianProblem(Init::Objective objective)
-    {
+    explicit CoupledHessianProblem(Init::Objective objective) {
         formulation.y_size = 2;
         formulation.p_size = 2;
         formulation.f_size = 2;
@@ -70,8 +68,7 @@ public:
         formulation.hes_cols = FixedVector<int>{0, 0, 1, 2, 3};
     }
 
-    void eval_objective(const f64* y, const f64* p, f64& obj) override
-    {
+    void eval_objective(const f64 *y, const f64 *p, f64 &obj) override {
         if (formulation.objective != Init::Objective::USER) {
             Init::Problem::eval_objective(y, p, obj);
             return;
@@ -82,8 +79,7 @@ public:
         obj = 0.1 * y[0] * y[0] + dp0 * dp0 + 0.25 * dp1 * dp1;
     }
 
-    void eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* grad_p) override
-    {
+    void eval_grad_objective(const f64 *y, const f64 *p, f64 *grad_y, f64 *grad_p) override {
         if (formulation.objective != Init::Objective::USER) {
             Init::Problem::eval_grad_objective(y, p, grad_y, grad_p);
             return;
@@ -95,8 +91,7 @@ public:
         grad_p[1] = 0.5 * (p[1] - formulation.p0[1]);
     }
 
-    void eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor, f64* hes_values) override
-    {
+    void eval_hessian_objective(const f64 *y, const f64 *p, f64 obj_factor, f64 *hes_values) override {
         if (formulation.objective != Init::Objective::USER) {
             Init::Problem::eval_hessian_objective(y, p, obj_factor, hes_values);
             return;
@@ -107,8 +102,7 @@ public:
         hes_values[4] += obj_factor * 0.5;
     }
 
-    void eval_f(const f64* y, const f64* p, f64* f) override
-    {
+    void eval_f(const f64 *y, const f64 *p, f64 *f) override {
         const f64 sum = y[0] + y[1];
         const f64 diff = y[0] - y[1];
 
@@ -116,8 +110,7 @@ public:
         f[1] = diff * diff + p[1];
     }
 
-    void eval_jacobian_f(const f64* y, const f64*, f64* jac_f_values) override
-    {
+    void eval_jacobian_f(const f64 *y, const f64 *, f64 *jac_f_values) override {
         const f64 sum = y[0] + y[1];
         const f64 diff = y[0] - y[1];
 
@@ -129,12 +122,7 @@ public:
         jac_f_values[5] = 1.0;
     }
 
-    void eval_hessian_constraints(const f64*,
-                                  const f64*,
-                                  const f64* lambda_f,
-                                  const f64*,
-                                  f64* hes_values) override
-    {
+    void eval_hessian_constraints(const f64 *, const f64 *, const f64 *lambda_f, const f64 *, f64 *hes_values) override {
         // Hessian(lambda0 * F0 + lambda1 * F1), lower triangle.
         hes_values[0] += 2.0 * (lambda_f[0] + lambda_f[1]);
         hes_values[1] += 2.0 * (lambda_f[0] - lambda_f[1]);
@@ -142,10 +130,9 @@ public:
     }
 };
 
-Init::Result solve(CoupledHessianProblem& problem)
-{
+Init::Result solve(CoupledHessianProblem &problem) {
     char argv0[] = "test_init_hessian";
-    char* argv[] = {argv0};
+    char *argv[] = {argv0};
 
     NLP::NLPSolverSettings settings(1, argv);
     settings.set(NLP::Option::Hessian, NLP::HessianOption::Exact);
@@ -160,32 +147,28 @@ Init::Result solve(CoupledHessianProblem& problem)
     return init.get_result();
 }
 
-void print_solution(const char* label, const Init::Result& result)
-{
+void print_solution(const char *label, const Init::Result &result) {
     Log::info("\nInit Hessian test: {}", label);
     Log::info("  y*  = {}", vector_string(result.y));
     Log::info("  p*  = {}", vector_string(result.p));
     Log::info("  dp* = {}", vector_string(result.dp));
 }
 
-void finalize_solution_zero(const Init::Result& result)
-{
+void finalize_solution_zero(const Init::Result &result) {
     print_solution("ZERO", result);
     assert(result.f_max_error < 1e-6);
     assert(result.p[0] <= 1e-6);
     assert(result.p[1] <= 1e-6);
 }
 
-void finalize_solution_least_square(const Init::Result& result)
-{
+void finalize_solution_least_square(const Init::Result &result) {
     print_solution("LEAST_SQUARE_DEVIATION", result);
     assert(result.f_max_error < 1e-6);
     assert(std::abs(result.p[0]) < 1e-4);
     assert(std::abs(result.p[1]) < 1e-4);
 }
 
-void finalize_solution_user(const Init::Result& result)
-{
+void finalize_solution_user(const Init::Result &result) {
     print_solution("USER", result);
     assert(result.f_max_error < 1e-6);
     assert(result.p[0] <= 1e-6);
@@ -194,8 +177,7 @@ void finalize_solution_user(const Init::Result& result)
 
 } // namespace
 
-int main()
-{
+int main() {
     CoupledHessianProblem zero_problem(Init::Objective::ZERO);
     Init::Result zero_result = solve(zero_problem);
     finalize_solution_zero(zero_result);

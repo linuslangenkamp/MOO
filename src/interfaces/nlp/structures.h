@@ -28,9 +28,9 @@ extern "C" {
 #include <interfaces/gdop/structures.h>
 
 typedef struct c_nlp_callbacks_t {
-    void (*eval_all)(const f64* x, const f64* rp, f64* out, void* user_data);
-    void (*jac_all)(const f64* x, const f64* rp, f64* out, void* user_data);
-    void (*hes_all)(const f64* x, const f64* rp, const f64* lambda, f64 obj_factor, f64* out, void* user_data);
+    void (*eval_all)(const f64 *x, const f64 *rp, f64 *out, void *user_data);
+    void (*jac_all)(const f64 *x, const f64 *rp, f64 *out, void *user_data);
+    void (*hes_all)(const f64 *x, const f64 *rp, const f64 *lambda, f64 obj_factor, f64 *out, void *user_data);
 } c_nlp_callbacks_t;
 
 typedef struct c_nlp_problem_t {
@@ -38,22 +38,22 @@ typedef struct c_nlp_problem_t {
     const int rp_size;
     const int g_size;
 
-    f64* rp;
-    f64* x0;
-    bounds_t* x_bounds;
-    bounds_t* g_bounds;
+    f64 *rp;
+    f64 *x0;
+    bounds_t *x_bounds;
+    bounds_t *g_bounds;
 
     f64 obj_nominal;
-    f64* x_nominal;
-    f64* g_nominal;
+    f64 *x_nominal;
+    f64 *g_nominal;
 
-    coo_t* obj_jac;
-    coo_t* g_jac;
-    coo_t* hes;
+    coo_t *obj_jac;
+    coo_t *g_jac;
+    coo_t *hes;
 
-    c_nlp_callbacks_t* callbacks;
-    solver_ctx_t* solver_ctx;
-    void* user_data;
+    c_nlp_callbacks_t *callbacks;
+    solver_ctx_t *solver_ctx;
+    void *user_data;
 } c_nlp_problem_t;
 
 #ifdef __cplusplus

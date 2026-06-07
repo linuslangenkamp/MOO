@@ -25,8 +25,8 @@
 extern "C" {
 #endif
 
-#include <stdbool.h>
 #include <float.h>
+#include <stdbool.h>
 
 typedef double f64;
 
@@ -42,14 +42,14 @@ typedef struct optional_value_t {
 
 // eval_structure_t[fn] -> buf_index of out in eval_lfg() - fn is sorted as L -> f -> g
 typedef struct eval_structure_t {
-    int* buf_index;  // buf_index
+    int *buf_index; // buf_index
 } eval_structure_t;
 
 typedef struct coo_t {
-    int* row;        // row indices
-    int* col;        // col indices
-    int* buf_index;  // non-zero index == buf_index
-    int nnz;         // total nnz
+    int *row;       // row indices
+    int *col;       // col indices
+    int *buf_index; // non-zero index == buf_index
+    int nnz;        // total nnz
 } coo_t;
 
 // TODO: refactor how we supply information: YAML or is this C-interface just a blueprint for python callbacks?
@@ -67,18 +67,25 @@ typedef struct solver_ctx_t {
 } solver_ctx_t;
 
 typedef struct c_callbacks_t {
-    void (*eval_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
-    void (*jac_lfg)(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data);
-    void (*hes_lfg)(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, f64* out_pp, void* user_data);
-    void (*eval_mr)(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf,
-                    const f64* data_t0, const f64* data_tf, f64* out, void* user_data);
-    void (*jac_mr)(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf,
-                   const f64* data_t0, const f64* data_tf, f64* out, void* user_data);
-    void (*hes_mr)(const f64* xu0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf,
-                   const f64* data_t0, const f64* data_tf, f64* out, void* user_data);
+    void (*eval_lfg)(const f64 *xu, const f64 *p, f64 t, const f64 *data, f64 *out, void *user_data);
+    void (*jac_lfg)(const f64 *xu, const f64 *p, f64 t, const f64 *data, f64 *out, void *user_data);
+    void (*hes_lfg)(const f64 *xu, const f64 *p, const f64 *lambda, const f64 obj_factor, f64 t, const f64 *data, f64 *out, f64 *out_pp, void *user_data);
+    void (*eval_mr)(const f64 *xu0, const f64 *xuf, const f64 *p, f64 t0, f64 tf, const f64 *data_t0, const f64 *data_tf, f64 *out, void *user_data);
+    void (*jac_mr)(const f64 *xu0, const f64 *xuf, const f64 *p, f64 t0, f64 tf, const f64 *data_t0, const f64 *data_tf, f64 *out, void *user_data);
+    void (*hes_mr)(const f64 *xu0,
+                   const f64 *xuf,
+                   const f64 *p,
+                   const f64 *lambda,
+                   const f64 obj_factor,
+                   f64 t0,
+                   f64 tf,
+                   const f64 *data_t0,
+                   const f64 *data_tf,
+                   f64 *out,
+                   void *user_data);
 
-    void (*ode_f)(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* f, void* user_data);
-    void (*ode_jac_f)(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* dfdx, void* user_data) ;
+    void (*ode_f)(const f64 *x, const f64 *u, const f64 *p, f64 t, const f64 *data, f64 *f, void *user_data);
+    void (*ode_jac_f)(const f64 *x, const f64 *u, const f64 *p, f64 t, const f64 *data, f64 *dfdx, void *user_data);
 } c_callbacks_t;
 
 typedef struct c_problem_t {
@@ -94,53 +101,53 @@ typedef struct c_problem_t {
     const bool has_mayer;
     const bool has_lagrange;
 
-    const char** data_filepath;
+    const char **data_filepath;
     const int data_file_count;
-    f64* rp;
+    f64 *rp;
 
-    bounds_t* x_bounds;
-    bounds_t* u_bounds;
-    bounds_t* p_bounds;
-    bounds_t* T_bounds; // size == 2 or nullptr
+    bounds_t *x_bounds;
+    bounds_t *u_bounds;
+    bounds_t *p_bounds;
+    bounds_t *T_bounds; // size == 2 or nullptr
 
-    bounds_t* r_bounds;
-    bounds_t* g_bounds;
+    bounds_t *r_bounds;
+    bounds_t *g_bounds;
 
-    optional_value_t* xu0_fixed;
-    optional_value_t* xuf_fixed;
+    optional_value_t *xu0_fixed;
+    optional_value_t *xuf_fixed;
 
-    f64* x_nominal;
-    f64* u_nominal;
-    f64* p_nominal;
+    f64 *x_nominal;
+    f64 *u_nominal;
+    f64 *p_nominal;
 
-    f64* obj_nominal;
-    f64* f_nominal;
-    f64* g_nominal;
-    f64* r_nominal;
+    f64 *obj_nominal;
+    f64 *f_nominal;
+    f64 *g_nominal;
+    f64 *r_nominal;
 
-    eval_structure_t* lfg_eval;
-    coo_t* lfg_jac;
-    coo_t* lfg_lt_hes;
+    eval_structure_t *lfg_eval;
+    coo_t *lfg_jac;
+    coo_t *lfg_lt_hes;
 
-    eval_structure_t* mr_eval;
-    coo_t* mr_jac;
-    coo_t* mr_lt_hes;
+    eval_structure_t *mr_eval;
+    coo_t *mr_jac;
+    coo_t *mr_lt_hes;
 
     // TODO: this ignores the buf_idx of coo_t - do smth about it?
-    coo_t* ode_jac;
+    coo_t *ode_jac;
 
-    c_callbacks_t* callbacks;
+    c_callbacks_t *callbacks;
 
     // make this more general
-    mesh_ref_ctx_t* mesh_ctx;
-    solver_ctx_t* solver_ctx;
+    mesh_ref_ctx_t *mesh_ctx;
+    solver_ctx_t *solver_ctx;
 
-    void* user_data;
+    void *user_data;
 
-// private
+    // private
 
     // data read from csvs -> automatically passed to callbacks
-    f64* data;
+    f64 *data;
     int data_chunk_size;
 } c_problem_t;
 

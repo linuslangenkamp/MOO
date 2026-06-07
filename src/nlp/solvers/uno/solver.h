@@ -36,7 +36,7 @@ class MOO_EXPORT UnoSolver : public NLP::NLPSolver {
     friend UnoTimingNode;
 
 public:
-    UnoSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings);
+    UnoSolver(NLP::NLP &nlp, NLP::NLPSolverSettings &solver_settings);
     ~UnoSolver() override;
 
     void optimize() override;
@@ -48,17 +48,17 @@ public:
     f64 get_callback_time() const override;
 
 private:
-    UnoSolverData* udata;
+    UnoSolverData *udata;
 
     NLP::ReturnCode get_return_code() const;
     void log_status() const;
 };
 
 class UnoTimingNode : public TimingNode {
-    UnoSolver* uno_solver;
+    UnoSolver *uno_solver;
 
 public:
-    UnoTimingNode(std::string n, TimingNode* p = nullptr, UnoSolver* uno_solver = nullptr);
+    UnoTimingNode(std::string n, TimingNode *p = nullptr, UnoSolver *uno_solver = nullptr);
 
     void finalize() override;
 };

@@ -21,7 +21,6 @@
 #include <interfaces/fmi/problem.h>
 
 int main() {
-
     FMI::FMISettings settings;
     settings.path = FOURBAR_FMU_PATH;
     settings.modelname = "Fourbar1";

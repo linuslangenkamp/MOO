@@ -45,14 +45,17 @@ int main() {
     f64 phi_A = 0.13;
     f64 phi_f = 1.0;
 
-    settings.control_vrefs.push_back( { vref_u, -2e6, 2e6 } );
-    settings.fixed_start_values = { {vref_phi, phi_0}, {vref_w_a, 2 * M_PI * phi_A * phi_f} };
-    settings.nominals = { { vref_u, 2e6 } };
+    settings.control_vrefs.push_back({vref_u, -2e6, 2e6});
+    settings.fixed_start_values = {{vref_phi, phi_0}, {vref_w_a, 2 * M_PI * phi_A * phi_f}};
+    settings.nominals = {{vref_u, 2e6}};
 
     auto u_penalty = FMI::ExprTerm::quadratic_term(vref_u, factor_u);
-    auto phi_penalty = FMI::ExprTerm::tracking_term(vref_phi, [&](f64 t) -> f64 { return phi_0 + phi_A * sin(2 * M_PI * t * phi_f);}, factor_phi);
+    auto phi_penalty = FMI::ExprTerm::tracking_term(
+        vref_phi,
+        [&](f64 t) -> f64 { return phi_0 + phi_A * sin(2 * M_PI * t * phi_f); },
+        factor_phi);
 
-    settings.lagrange_expr.terms = { phi_penalty, u_penalty };
+    settings.lagrange_expr.terms = {phi_penalty, u_penalty};
 
     FMI::main_fmi(settings);
 

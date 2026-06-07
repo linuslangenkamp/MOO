@@ -25,7 +25,7 @@
 extern "C" {
 #endif
 
-int main_sanity_check(int argc, char** argv);
+int main_sanity_check(int argc, char **argv);
 
 #ifdef __cplusplus
 }

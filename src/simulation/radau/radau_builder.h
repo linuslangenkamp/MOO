@@ -29,14 +29,15 @@
 
 namespace Simulation {
 
-class MOO_EXPORT RadauBuilder : public IntegratorBuilder<RadauBuilder, RadauIntegrator>{
+class MOO_EXPORT RadauBuilder : public IntegratorBuilder<RadauBuilder, RadauIntegrator> {
 public:
-    RadauBuilder() : IntegratorBuilder() {}
+    RadauBuilder()
+        : IntegratorBuilder() {}
 
-    RadauBuilder& radau_scheme(RadauScheme radau_scheme_);
-    RadauBuilder& radau_h0(f64 h_init_);
-    RadauBuilder& radau_tol(f64 atol_, f64 rtol_);
-    RadauBuilder& radau_max_it(int max_it_);
+    RadauBuilder &radau_scheme(RadauScheme radau_scheme_);
+    RadauBuilder &radau_h0(f64 h_init_);
+    RadauBuilder &radau_tol(f64 atol_, f64 rtol_);
+    RadauBuilder &radau_max_it(int max_it_);
 
     RadauIntegrator build() const override;
 

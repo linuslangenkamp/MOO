@@ -26,41 +26,34 @@
 #include <simulation/integrator/integrator.h>
 
 extern "C" {
-    void radau_(
-        int* n,
-        void (*fcn)(int*, f64*, f64*, f64*, f64*, int*),
-        f64* x,
-        f64* y,
-        f64* xend,
-        f64* h,
-        f64* rtol,
-        f64* atol,
-        int* itol,
-        void (*jac)(int*, f64*, f64*, f64*, int*, f64*, int*),
-        int* ijac,
-        int* mljac,
-        int* mujac,
-        void (*mas)(int*, f64*, int*, f64*, int*),
-        int* imas,
-        int* mlmas,
-        int* mumas,
-        void (*solout)(int*, f64*, f64*, f64*, f64*, int*, int*, f64*, int*, int*),
-        int* iout,
-        f64* work,
-        int* lwork,
-        int* iwork,
-        int* liwork,
-        f64* rpar,
-        int* ipar,
-        int* idid
-    );
+void radau_(int *n,
+            void (*fcn)(int *, f64 *, f64 *, f64 *, f64 *, int *),
+            f64 *x,
+            f64 *y,
+            f64 *xend,
+            f64 *h,
+            f64 *rtol,
+            f64 *atol,
+            int *itol,
+            void (*jac)(int *, f64 *, f64 *, f64 *, int *, f64 *, int *),
+            int *ijac,
+            int *mljac,
+            int *mujac,
+            void (*mas)(int *, f64 *, int *, f64 *, int *),
+            int *imas,
+            int *mlmas,
+            int *mumas,
+            void (*solout)(int *, f64 *, f64 *, f64 *, f64 *, int *, int *, f64 *, int *, int *),
+            int *iout,
+            f64 *work,
+            int *lwork,
+            int *iwork,
+            int *liwork,
+            f64 *rpar,
+            int *ipar,
+            int *idid);
 
-    f64 contra_(
-        int* i,
-        f64* s,
-        f64* cont,
-        int* lrc
-    );
+f64 contra_(int *i, f64 *s, f64 *cont, int *lrc);
 }
 
 namespace Simulation {
@@ -74,11 +67,10 @@ enum RadauScheme {
 };
 
 class MOO_EXPORT RadauIntegrator : public Integrator {
-
-friend class RadauBuilder;
+    friend class RadauBuilder;
 
 public:
-    RadauIntegrator(RadauIntegrator&&) noexcept = default;
+    RadauIntegrator(RadauIntegrator &&) noexcept = default;
 
     int internal_simulate() override;
 
@@ -112,12 +104,12 @@ public:
 private:
     RadauIntegrator(ODEFunction ode_fn,
                     std::vector<f64> dense_output_grid,
-                    f64* x_start_values,
+                    f64 *x_start_values,
                     int x_size,
-                    void* user_data,
-                    const f64* parameters,
-                    int p_size ,
-                    const ControlTrajectory* controls,
+                    void *user_data,
+                    const f64 *parameters,
+                    int p_size,
+                    const ControlTrajectory *controls,
                     JacobianFunction jac_fn,
                     Jacobian jac_pattern,
                     RadauScheme scheme,

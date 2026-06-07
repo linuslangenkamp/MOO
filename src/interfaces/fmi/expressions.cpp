@@ -26,43 +26,47 @@
 namespace FMI {
 
 // out = weight * x[vref]**2
-ExprTerm ExprTerm::quadratic_term(uint32_t vref, f64 weight)
-{
+ExprTerm ExprTerm::quadratic_term(uint32_t vref, f64 weight) {
     ExprTerm t;
     t.kind = ExprTerm::Kind::Quadratic;
     t.vref = vref;
-    t.weight = [weight](f64) { return weight; };
-    t.reference = [](f64) { return 0.0; };
+    t.weight = [weight](f64) {
+        return weight;
+    };
+    t.reference = [](f64) {
+        return 0.0;
+    };
     return t;
 }
 
 // out = weight * (x[vref] - ref(t))**2
-ExprTerm ExprTerm::tracking_term(uint32_t vref, std::function<f64(f64)> reference, f64 weight)
-{
+ExprTerm ExprTerm::tracking_term(uint32_t vref, std::function<f64(f64)> reference, f64 weight) {
     ExprTerm t;
     t.kind = ExprTerm::Kind::Quadratic;
     t.vref = vref;
-    t.weight = [weight](f64) { return weight; };
+    t.weight = [weight](f64) {
+        return weight;
+    };
     t.reference = std::move(reference);
     return t;
 }
 
 // out = weight * (x[vref] - ref(t))
-ExprTerm ExprTerm::linear_term(uint32_t vref, std::function<f64(f64)> reference, f64 weight)
-{
+ExprTerm ExprTerm::linear_term(uint32_t vref, std::function<f64(f64)> reference, f64 weight) {
     ExprTerm t;
     t.kind = ExprTerm::Kind::Linear;
     t.vref = vref;
-    t.weight = [weight](f64) { return weight; };
+    t.weight = [weight](f64) {
+        return weight;
+    };
     t.reference = std::move(reference);
     return t;
 }
 
 // evaluate at time t, given a callback that maps vref -> current FMU value
-f64 Expr::eval(f64 t, const std::function<f64(uint32_t vref)>& get_val) const
-{
+f64 Expr::eval(f64 t, const std::function<f64(uint32_t vref)> &get_val) const {
     f64 result = 0.0;
-    for (const auto& term : terms) {
+    for (const auto &term : terms) {
         f64 y = get_val(term.vref);
         f64 ref = term.reference(t);
         f64 w = term.weight(t);
@@ -73,8 +77,7 @@ f64 Expr::eval(f64 t, const std::function<f64(uint32_t vref)>& get_val) const
 }
 
 // partial derivative of the expression w.r.t. y_i (the vref's value)
-f64 Expr::deval_dy(const ExprTerm& term, f64 y_i, f64 t) const
-{
+f64 Expr::deval_dy(const ExprTerm &term, f64 y_i, f64 t) const {
     f64 w = term.weight(t);
     f64 ref = term.reference(t);
     return (term.kind == ExprTerm::Kind::Quadratic) ? w * 2.0 * (y_i - ref) : w;

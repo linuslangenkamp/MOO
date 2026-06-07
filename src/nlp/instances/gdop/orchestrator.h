@@ -21,21 +21,19 @@
 #ifndef MOO_GDOP_ORCHESTRATOR_H
 #define MOO_GDOP_ORCHESTRATOR_H
 
+#include "gdop.h"
 #include <base/export.h>
 #include <nlp/nlp_solver.h>
-#include "gdop.h"
 
 namespace GDOP {
 
 class MOO_EXPORT Orchestrator {
 public:
-    GDOP& gdop;
+    GDOP &gdop;
     std::unique_ptr<Strategies> strategies;
-    NLP::NLPSolver& solver;
+    NLP::NLPSolver &solver;
 
-    Orchestrator(GDOP& gdop,
-                 std::unique_ptr<Strategies> strategies,
-                 NLP::NLPSolver& solver);
+    Orchestrator(GDOP &gdop, std::unique_ptr<Strategies> strategies, NLP::NLPSolver &solver);
 
     virtual ~Orchestrator() = default;
 
@@ -52,7 +50,7 @@ class MOO_EXPORT MeshRefinementHistoryBlock {
     f64 nlp_solver_self_nano;
     f64 nlp_solver_callback_nano;
 
-    MeshRefinementHistoryBlock(const GDOP& gdop, const NLP::NLPSolver& solver);
+    MeshRefinementHistoryBlock(const GDOP &gdop, const NLP::NLPSolver &solver);
 };
 
 class MOO_EXPORT MeshRefinementHistory {
@@ -62,16 +60,14 @@ public:
 
     MeshRefinementHistory() = default;
 
-    void add_block(const GDOP& gdop, const NLP::NLPSolver& solver);
-    MeshRefinementHistory& finalize();
+    void add_block(const GDOP &gdop, const NLP::NLPSolver &solver);
+    MeshRefinementHistory &finalize();
     void print();
 };
 
 class MOO_EXPORT MeshRefinementOrchestrator : public Orchestrator {
 public:
-    MeshRefinementOrchestrator(GDOP& gdop,
-                               std::unique_ptr<Strategies> strategies,
-                               NLP::NLPSolver& solver);
+    MeshRefinementOrchestrator(GDOP &gdop, std::unique_ptr<Strategies> strategies, NLP::NLPSolver &solver);
 
     void optimize() override;
 

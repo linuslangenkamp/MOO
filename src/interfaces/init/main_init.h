@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-MOO_EXPORT int main_init(int argc, char** argv, c_init_problem_t* c_problem);
+MOO_EXPORT int main_init(int argc, char **argv, c_init_problem_t *c_problem);
 
 #ifdef __cplusplus
 }

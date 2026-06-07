@@ -23,59 +23,59 @@
 
 namespace GDOP {
 
-Orchestrator::Orchestrator(GDOP& gdop,
-                           std::unique_ptr<Strategies> strategies,
-                           NLP::NLPSolver& solver)
+Orchestrator::Orchestrator(GDOP &gdop, std::unique_ptr<Strategies> strategies, NLP::NLPSolver &solver)
     : gdop(gdop),
       strategies(std::move(strategies)),
       solver(solver) {}
 
-MeshRefinementOrchestrator::MeshRefinementOrchestrator(GDOP& gdop,
-                                                       std::unique_ptr<Strategies> strategies,
-                                                       NLP::NLPSolver& solver)
+MeshRefinementOrchestrator::MeshRefinementOrchestrator(GDOP &gdop, std::unique_ptr<Strategies> strategies, NLP::NLPSolver &solver)
     : Orchestrator(gdop, std::move(strategies), solver) {}
 
 void MeshRefinementOrchestrator::optimize() {
-    { ScopedTimer optimize{"MeshRefinementOrchestrator::optimize"};
+    {
+        ScopedTimer optimize{"MeshRefinementOrchestrator::optimize"};
 
-    strategies->reset(gdop);
+        strategies->reset(gdop);
 
-    auto initial_guess = strategies->get_initial_guess(gdop);
+        auto initial_guess = strategies->get_initial_guess(gdop);
 
-    gdop.set_scaling_factory(strategies->scaling_factory);
+        gdop.set_scaling_factory(strategies->scaling_factory);
 
-    for(;;) {
-        gdop.set_initial_guess(std::move(initial_guess));
+        for (;;) {
+            gdop.set_initial_guess(std::move(initial_guess));
 
-        solver.optimize();
+            solver.optimize();
 
-        // append metadata to mesh refinement history
-        history.add_block(gdop, solver);
+            // append metadata to mesh refinement history
+            history.add_block(gdop, solver);
 
-        // === mesh refinement ===
+            // === mesh refinement ===
 
-        // 1. detect intervals and degrees (new vectors)
-        auto mesh_update = strategies->detect(gdop.get_mesh(), *gdop.get_optimal_solution());
+            // 1. detect intervals and degrees (new vectors)
+            auto mesh_update = strategies->detect(gdop.get_mesh(), *gdop.get_optimal_solution());
 
-        if (!mesh_update) { break; }
+            if (!mesh_update) {
+                break;
+            }
 
-        // 2. create refined Mesh
-        auto refined_mesh = gdop.get_mesh().create_from_mesh_update(std::move(mesh_update));
+            // 2. create refined Mesh
+            auto refined_mesh = gdop.get_mesh().create_from_mesh_update(std::move(mesh_update));
 
-        // 3. interpolate (x*, lambda*, z*) to new mesh -> new initial guess
-        initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), *refined_mesh, *gdop.get_optimal_solution());
-        solver.solver_settings.set(NLP::Option::WarmStart, true);
+            // 3. interpolate (x*, lambda*, z*) to new mesh -> new initial guess
+            initial_guess = strategies->get_refined_initial_guess(gdop.get_mesh(), *refined_mesh, *gdop.get_optimal_solution());
+            solver.solver_settings.set(NLP::Option::WarmStart, true);
 
-        //initial_guess->costates->to_csv("costates_interp.csv", false);
-        //initial_guess->lower_costates->to_csv("lower_costates_interp.csv", false);
-        //initial_guess->upper_costates->to_csv("upper_costates_interp.csv", false);
+            //initial_guess->costates->to_csv("costates_interp.csv", false);
+            //initial_guess->lower_costates->to_csv("lower_costates_interp.csv", false);
+            //initial_guess->upper_costates->to_csv("upper_costates_interp.csv", false);
 
-        // 4. update gdop with new mesh
-        gdop.update(refined_mesh);
+            // 4. update gdop with new mesh
+            gdop.update(refined_mesh);
+        }
+
+        strategies->verify(gdop, *gdop.get_optimal_solution());
+        strategies->emit(*gdop.get_optimal_solution());
     }
-
-    strategies->verify(gdop, *gdop.get_optimal_solution());
-    strategies->emit(*gdop.get_optimal_solution()); }
 
     history.finalize().print();
 
@@ -84,7 +84,7 @@ void MeshRefinementOrchestrator::optimize() {
     //gdop.get_optimal_solution()->upper_costates->to_csv("upper_costates_final.csv", false);
 }
 
-MeshRefinementHistoryBlock::MeshRefinementHistoryBlock(const GDOP& gdop, const NLP::NLPSolver& solver)
+MeshRefinementHistoryBlock::MeshRefinementHistoryBlock(const GDOP &gdop, const NLP::NLPSolver &solver)
     : objective(gdop.get_objective_value()),
       intervals(gdop.get_mesh().intervals),
       nlp_solver_iters(solver.get_iterations()),
@@ -92,12 +92,12 @@ MeshRefinementHistoryBlock::MeshRefinementHistoryBlock(const GDOP& gdop, const N
       nlp_solver_self_nano(solver.get_solver_time()),
       nlp_solver_callback_nano(solver.get_callback_time()) {}
 
-void MeshRefinementHistory::add_block(const GDOP& gdop, const NLP::NLPSolver& solver) {
+void MeshRefinementHistory::add_block(const GDOP &gdop, const NLP::NLPSolver &solver) {
     blocks.push_back(MeshRefinementHistoryBlock(gdop, solver));
 }
 
-MeshRefinementHistory& MeshRefinementHistory::finalize() {
-    auto use_latest_blocks = [this](std::vector<f64>&& timings) {
+MeshRefinementHistory &MeshRefinementHistory::finalize() {
+    auto use_latest_blocks = [this](std::vector<f64> &&timings) {
         if (timings.size() >= blocks.size()) {
             strategy_timings_nano.assign(timings.end() - static_cast<std::ptrdiff_t>(blocks.size()), timings.end());
             return true;
@@ -115,14 +115,10 @@ MeshRefinementHistory& MeshRefinementHistory::finalize() {
 }
 
 void MeshRefinementHistory::print() {
-    FixedTableFormat<8> ftf(
-        {9, 20, 9, 10, 14, 15, 18, 15},
-        {Align::Right, Align::Right, Align::Right, Align::Right,
-         Align::Right, Align::Right, Align::Right, Align::Right});
+    FixedTableFormat<8> ftf({9, 20, 9, 10, 14, 15, 18, 15}, {Align::Right, Align::Right, Align::Right, Align::Right, Align::Right, Align::Right, Align::Right, Align::Right});
 
     Log::start_module(ftf, "Mesh Refinement History");
-    Log::row(ftf, "Iteration", "Objective", "Intervals", "Iterations",
-                  "NLP Total [ms]", "NLP Solver [ms]", "NLP Callbacks [ms]", "Strategies [ms]");
+    Log::row(ftf, "Iteration", "Objective", "Intervals", "Iterations", "NLP Total [ms]", "NLP Solver [ms]", "NLP Callbacks [ms]", "Strategies [ms]");
     Log::dashes(ftf);
 
     f64 total_solver_total_nano = 0.0;
@@ -132,16 +128,16 @@ void MeshRefinementHistory::print() {
     int total_iters = 0;
 
     for (int i = 0; i < int_size(blocks); i++) {
-        const auto& e = blocks[i];
+        const auto &e = blocks[i];
         Log::row(ftf,
-            fmt::format("{:>9}", i),
-            fmt::format("{:>20.10e}", e.objective),
-            fmt::format("{:>9}", e.intervals),
-            fmt::format("{:>10}", e.nlp_solver_iters),
-            fmt::format("{:>14.3f}", Timing::nano_to_ms(e.nlp_solver_total_nano)),
-            fmt::format("{:>15.3f}", Timing::nano_to_ms(e.nlp_solver_self_nano)),
-            fmt::format("{:>18.3f}", Timing::nano_to_ms(e.nlp_solver_callback_nano)),
-            fmt::format("{:>15.3f}", Timing::nano_to_ms(strategy_timings_nano[i])));
+                 fmt::format("{:>9}", i),
+                 fmt::format("{:>20.10e}", e.objective),
+                 fmt::format("{:>9}", e.intervals),
+                 fmt::format("{:>10}", e.nlp_solver_iters),
+                 fmt::format("{:>14.3f}", Timing::nano_to_ms(e.nlp_solver_total_nano)),
+                 fmt::format("{:>15.3f}", Timing::nano_to_ms(e.nlp_solver_self_nano)),
+                 fmt::format("{:>18.3f}", Timing::nano_to_ms(e.nlp_solver_callback_nano)),
+                 fmt::format("{:>15.3f}", Timing::nano_to_ms(strategy_timings_nano[i])));
 
         total_iters += e.nlp_solver_iters;
         total_solver_total_nano += e.nlp_solver_total_nano;
@@ -153,14 +149,14 @@ void MeshRefinementHistory::print() {
     Log::dashes(ftf);
 
     Log::row(ftf,
-    fmt::format("{:>9}", "Overall"),
-    fmt::format("{:>20.10e}", blocks.back().objective),
-    fmt::format("{:>9}", blocks.back().intervals),
-    fmt::format("{:>10}", total_iters),
-    fmt::format("{:>14.3f}", Timing::nano_to_ms(total_solver_total_nano)),
-    fmt::format("{:>15.3f}", Timing::nano_to_ms(total_solver_self_nano)),
-    fmt::format("{:>18.3f}", Timing::nano_to_ms(total_solver_callback_nano)),
-    fmt::format("{:>15.3f}", Timing::nano_to_ms(total_strategy_nano)));
+             fmt::format("{:>9}", "Overall"),
+             fmt::format("{:>20.10e}", blocks.back().objective),
+             fmt::format("{:>9}", blocks.back().intervals),
+             fmt::format("{:>10}", total_iters),
+             fmt::format("{:>14.3f}", Timing::nano_to_ms(total_solver_total_nano)),
+             fmt::format("{:>15.3f}", Timing::nano_to_ms(total_solver_self_nano)),
+             fmt::format("{:>18.3f}", Timing::nano_to_ms(total_solver_callback_nano)),
+             fmt::format("{:>15.3f}", Timing::nano_to_ms(total_strategy_nano)));
 
     Log::dashes_ln(ftf);
 }

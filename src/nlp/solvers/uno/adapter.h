@@ -47,20 +47,20 @@ struct UnoCallbackTiming {
 
 class UnoAdapter {
 public:
-    explicit UnoAdapter(NLP::NLP& nlp);
+    explicit UnoAdapter(NLP::NLP &nlp);
 
-    void* create_model();
-    void finalize_solution(void* solver, NLP::ReturnCode return_code);
+    void *create_model();
+    void finalize_solution(void *solver, NLP::ReturnCode return_code);
     void reset_timing();
 
     int get_number_vars() const { return number_vars; }
     int get_number_constraints() const { return number_constraints; }
     int get_nnz_jac() const { return nnz_jac; }
     int get_nnz_hes() const { return nnz_hes; }
-    const UnoCallbackTiming& get_callback_timing() const { return callback_timing; }
+    const UnoCallbackTiming &get_callback_timing() const { return callback_timing; }
 
 private:
-    NLP::NLP& nlp;
+    NLP::NLP &nlp;
     UnoCallbackTiming callback_timing;
 
     int number_vars = 0;
@@ -83,14 +83,20 @@ private:
     FixedVector<uno_int> i_row_hes;
     FixedVector<uno_int> j_col_hes;
 
-    static UnoAdapter& from_user_data(void* user_data);
+    static UnoAdapter &from_user_data(void *user_data);
 
-    static uno_int eval_f(uno_int number_variables, const double* x, double* objective_value, void* user_data);
-    static uno_int eval_grad_f(uno_int number_variables, const double* x, double* gradient, void* user_data);
-    static uno_int eval_g(uno_int number_variables, uno_int number_constraints, const double* x, double* constraint_values, void* user_data);
-    static uno_int eval_jac(uno_int number_variables, uno_int number_jacobian_nonzeros, const double* x, double* jacobian_values, void* user_data);
-    static uno_int eval_hes(uno_int number_variables, uno_int number_constraints, uno_int number_hessian_nonzeros,
-        const double* x, double objective_multiplier, const double* multipliers, double* hessian_values, void* user_data);
+    static uno_int eval_f(uno_int number_variables, const double *x, double *objective_value, void *user_data);
+    static uno_int eval_grad_f(uno_int number_variables, const double *x, double *gradient, void *user_data);
+    static uno_int eval_g(uno_int number_variables, uno_int number_constraints, const double *x, double *constraint_values, void *user_data);
+    static uno_int eval_jac(uno_int number_variables, uno_int number_jacobian_nonzeros, const double *x, double *jacobian_values, void *user_data);
+    static uno_int eval_hes(uno_int number_variables,
+                            uno_int number_constraints,
+                            uno_int number_hessian_nonzeros,
+                            const double *x,
+                            double objective_multiplier,
+                            const double *multipliers,
+                            double *hessian_values,
+                            void *user_data);
 };
 
 } // namespace UnoSolver

@@ -22,28 +22,27 @@
 #define MOO_MESH_H
 
 #include <fstream>
-#include <sstream>
 #include <iomanip>
 #include <numeric>
+#include <sstream>
 
-#include <base/fixed_vector.h>
 #include <base/export.h>
 #include <base/fLGR.h>
+#include <base/fixed_vector.h>
 #include <base/util.h>
 
 enum MeshType {
-    Physical,  // real time grid only
-    Spectral   // real time grid + spectral ([0, 1]) time grid
+    Physical, // real time grid only
+    Spectral  // real time grid + spectral ([0, 1]) time grid
 };
 
 struct MOO_EXPORT MeshUpdate {
     FixedVector<f64> new_grid;
     FixedVector<int> new_nodes_per_interval;
 
-    MeshUpdate(FixedVector<f64>&& new_grid,
-               FixedVector<int>&& new_nodes_per_interval)
-    : new_grid(std::move(new_grid)),
-      new_nodes_per_interval(std::move(new_nodes_per_interval)) {}
+    MeshUpdate(FixedVector<f64> &&new_grid, FixedVector<int> &&new_nodes_per_interval)
+        : new_grid(std::move(new_grid)),
+          new_nodes_per_interval(std::move(new_nodes_per_interval)) {}
 };
 
 // TODO: make these private and add const& getters, as this is dangerous now
@@ -71,25 +70,23 @@ protected:
     Mesh(int intervals,
          f64 t0,
          f64 tf,
-         FixedVector<f64>&& grid,
-         FixedVector<f64>&& delta_t,
-         FixedField<f64, 2>&& t,
-         FixedVector<int>&& nodes,
-         FixedField<int, 2>&& acc_nodes,
+         FixedVector<f64> &&grid,
+         FixedVector<f64> &&delta_t,
+         FixedField<f64, 2> &&t,
+         FixedVector<int> &&nodes,
+         FixedField<int, 2> &&acc_nodes,
          int node_count);
 
     // virtual static constructor
-    virtual std::shared_ptr<Mesh> create_same_type(
-        int intervals,
-        f64 t0,
-        f64 tf,
-        FixedVector<f64>&& grid,
-        FixedVector<f64>&& delta_t,
-        FixedField<f64, 2>&& t,
-        FixedVector<int>&& nodes,
-        FixedField<int, 2>&& acc_nodes,
-        int node_count
-    ) const;
+    virtual std::shared_ptr<Mesh> create_same_type(int intervals,
+                                                   f64 t0,
+                                                   f64 tf,
+                                                   FixedVector<f64> &&grid,
+                                                   FixedVector<f64> &&delta_t,
+                                                   FixedField<f64, 2> &&t,
+                                                   FixedVector<int> &&nodes,
+                                                   FixedField<int, 2> &&acc_nodes,
+                                                   int node_count) const;
 };
 
 class MOO_EXPORT SpectralMesh : public Mesh {
@@ -106,27 +103,25 @@ private:
     SpectralMesh(int intervals,
                  f64 t0,
                  f64 tf,
-                 FixedVector<f64>&& grid,
-                 FixedVector<f64>&& delta_t,
-                 FixedField<f64, 2>&& t,
-                 FixedVector<int>&& nodes,
-                 FixedField<int, 2>&& acc_nodes,
+                 FixedVector<f64> &&grid,
+                 FixedVector<f64> &&delta_t,
+                 FixedField<f64, 2> &&t,
+                 FixedVector<int> &&nodes,
+                 FixedField<int, 2> &&acc_nodes,
                  int node_count,
-                 FixedVector<f64>&& spectral_grid,
-                 FixedVector<f64>&& spectral_delta_t);
+                 FixedVector<f64> &&spectral_grid,
+                 FixedVector<f64> &&spectral_delta_t);
 
     // virtual static constructor
-    std::shared_ptr<Mesh> create_same_type(
-        int intervals,
-        f64 t0,
-        f64 tf,
-        FixedVector<f64>&& grid,
-        FixedVector<f64>&& delta_t,
-        FixedField<f64, 2>&& t,
-        FixedVector<int>&& nodes,
-        FixedField<int, 2>&& acc_nodes,
-        int node_count
-    ) const override;
+    std::shared_ptr<Mesh> create_same_type(int intervals,
+                                           f64 t0,
+                                           f64 tf,
+                                           FixedVector<f64> &&grid,
+                                           FixedVector<f64> &&delta_t,
+                                           FixedField<f64, 2> &&t,
+                                           FixedVector<int> &&nodes,
+                                           FixedField<int, 2> &&acc_nodes,
+                                           int node_count) const override;
 };
 
-#endif  // MOO_MESH_H
+#endif // MOO_MESH_H

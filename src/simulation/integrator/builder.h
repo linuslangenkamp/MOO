@@ -33,19 +33,21 @@ class MOO_EXPORT IntegratorBuilder {
 public:
     virtual ~IntegratorBuilder() = default;
 
-    BuilderImpl& states(int x_size_, f64* x_start_values_ = nullptr) {
+    BuilderImpl &states(int x_size_, f64 *x_start_values_ = nullptr) {
         x_size = x_size_;
         x_start_values = x_start_values_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& ode(ODEFunction ode_func_) {
+    BuilderImpl &ode(ODEFunction ode_func_) {
         ode_func = ode_func_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& interval(f64 t0_, f64 tf_, int steps_) {
-        if (steps_ <= 0 || tf_ <= t0_) Log::error("Invalid interval");
+    BuilderImpl &interval(f64 t0_, f64 tf_, int steps_) {
+        if (steps_ <= 0 || tf_ <= t0_) {
+            Log::error("Invalid interval");
+        }
 
         t0 = t0_;
         tf = tf_;
@@ -53,44 +55,45 @@ public:
 
         dense_output_grid = std::vector<f64>(num_steps + 1);
         f64 dt = (tf - t0) / num_steps;
-        for (int i = 0; i <= num_steps; i++) dense_output_grid[i] = t0 + i * dt;
+        for (int i = 0; i <= num_steps; i++) {
+            dense_output_grid[i] = t0 + i * dt;
+        }
 
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& grid(const std::vector<f64> dense_output_grid_) {
+    BuilderImpl &grid(const std::vector<f64> dense_output_grid_) {
         dense_output_grid = dense_output_grid_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& userdata(void* user_data_) {
+    BuilderImpl &userdata(void *user_data_) {
         user_data = user_data_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& params(int p_size_, const f64* parameters_ = nullptr) {
+    BuilderImpl &params(int p_size_, const f64 *parameters_ = nullptr) {
         p_size = p_size_;
         parameters = parameters_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& control(const ControlTrajectory* controls_) {
+    BuilderImpl &control(const ControlTrajectory *controls_) {
         controls = controls_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
-    BuilderImpl& jacobian(JacobianFunction jac_func_,
-                          Jacobian jac_pattern_) {
+    BuilderImpl &jacobian(JacobianFunction jac_func_, Jacobian jac_pattern_) {
         jac_func = jac_func_;
         jac_pattern = jac_pattern_;
-        return static_cast<BuilderImpl&>(*this);
+        return static_cast<BuilderImpl &>(*this);
     }
 
     virtual IntegratorImpl build() const = 0;
 
 protected:
     ODEFunction ode_func = nullptr;
-    f64* x_start_values = nullptr;
+    f64 *x_start_values = nullptr;
     int x_size = 0;
 
     std::vector<f64> dense_output_grid{};
@@ -99,11 +102,11 @@ protected:
     f64 tf = 0.0;
     int num_steps = 1;
 
-    void* user_data = nullptr;
-    const f64* parameters = nullptr;
+    void *user_data = nullptr;
+    const f64 *parameters = nullptr;
     int p_size = 0;
 
-    const ControlTrajectory* controls = nullptr;
+    const ControlTrajectory *controls = nullptr;
 
     JacobianFunction jac_func = nullptr;
     Jacobian jac_pattern = Jacobian::dense();

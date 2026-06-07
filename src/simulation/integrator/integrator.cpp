@@ -24,12 +24,12 @@ namespace Simulation {
 
 Integrator::Integrator(ODEFunction ode_fn,
                        std::vector<f64> grid,
-                       f64* x_start_values,
+                       f64 *x_start_values,
                        int x_size,
-                       void* user_data,
-                       const f64* parameters,
+                       void *user_data,
+                       const f64 *parameters,
                        int p_size,
-                       const ControlTrajectory* controls,
+                       const ControlTrajectory *controls,
                        JacobianFunction jac_fn,
                        Jacobian jac_pattern)
     : ode_func(ode_fn),
@@ -51,7 +51,7 @@ Integrator::Integrator(ODEFunction ode_fn,
 /**
  * @brief Override current dense_output_grid and start simulating at new states x_start_values
  */
-std::unique_ptr<Trajectory> Integrator::simulate(f64* x_start_values_, std::vector<f64> dense_output_grid_) {
+std::unique_ptr<Trajectory> Integrator::simulate(f64 *x_start_values_, std::vector<f64> dense_output_grid_) {
     x_start_values = x_start_values_;
     dense_output_grid = dense_output_grid_;
     return simulate();
@@ -60,24 +60,32 @@ std::unique_ptr<Trajectory> Integrator::simulate(f64* x_start_values_, std::vect
 /**
  * @brief Override current dense_output_grid and start simulating at new states x_start_values
  */
-std::unique_ptr<Trajectory> Integrator::simulate(f64* x_start_values_, f64 t0_, f64 tf_, int steps_) {
+std::unique_ptr<Trajectory> Integrator::simulate(f64 *x_start_values_, f64 t0_, f64 tf_, int steps_) {
     x_start_values = x_start_values_;
     dense_output_grid = std::vector<f64>(steps_ + 1);
     f64 dt = (tf_ - t0_) / steps_;
-    for (int i = 0; i <= steps_; i++) dense_output_grid[i] = t0_ + i * dt;
+    for (int i = 0; i <= steps_; i++) {
+        dense_output_grid[i] = t0_ + i * dt;
+    }
     return simulate();
 }
 
 std::unique_ptr<Trajectory> Integrator::simulate() {
-    if (internal_controls) set_controls(dense_output_grid[0]);
+    if (internal_controls) {
+        set_controls(dense_output_grid[0]);
+    }
 
     output = std::make_unique<Trajectory>();
     output->t.reserve(dense_output_grid.size());
     output->x.resize(x_size);
     output->u.resize(u_size);
 
-    for (int x_idx = 0; x_idx < x_size; x_idx++) { output->x[x_idx].reserve(dense_output_grid.size()); }
-    for (int u_idx = 0; u_idx < u_size; u_idx++) { output->u[u_idx].reserve(dense_output_grid.size()); }
+    for (int x_idx = 0; x_idx < x_size; x_idx++) {
+        output->x[x_idx].reserve(dense_output_grid.size());
+    }
+    for (int u_idx = 0; u_idx < u_size; u_idx++) {
+        output->u[u_idx].reserve(dense_output_grid.size());
+    }
 
     int err = internal_simulate();
 
@@ -87,7 +95,7 @@ std::unique_ptr<Trajectory> Integrator::simulate() {
 
     output->p.resize(p_size);
 
-    for (int p_idx = 0;  p_idx < p_size; p_idx++) {
+    for (int p_idx = 0; p_idx < p_size; p_idx++) {
         output->p[p_idx] = parameters[p_idx];
     }
 
@@ -102,23 +110,23 @@ void Integrator::set_controls(f64 t) {
     last_t = t;
 }
 
-void Integrator::get_dense_jacobian_col_major(f64 t, f64* x, f64* out) {
-    if (!jac_func) return;
+void Integrator::get_dense_jacobian_col_major(f64 t, f64 *x, f64 *out) {
+    if (!jac_func) {
+        return;
+    }
 
     set_controls(t);
 
     if (jac_pattern.jfmt == JacobianFormat::DENSE) {
         jac_func(x, u.raw(), parameters, t, out, user_data);
-    }
-    else if (jac_pattern.jfmt == JacobianFormat::COO) {
+    } else if (jac_pattern.jfmt == JacobianFormat::COO) {
         sparse_jac.fill_zero();
         jac_func(x, u.raw(), parameters, t, sparse_jac.raw(), user_data);
 
         for (int nz = 0; nz < jac_pattern.nnz; nz++) {
             out[jac_pattern.j_col[nz] * x_size + jac_pattern.i_row[nz]] = sparse_jac[nz];
         }
-    }
-    else if (jac_pattern.jfmt == JacobianFormat::CSC) {
+    } else if (jac_pattern.jfmt == JacobianFormat::CSC) {
         sparse_jac.fill_zero();
         jac_func(x, u.raw(), parameters, t, sparse_jac.raw(), user_data);
 
@@ -130,7 +138,7 @@ void Integrator::get_dense_jacobian_col_major(f64 t, f64* x, f64* out) {
     }
 }
 
-void Integrator::get_ode(f64 t, f64* x, f64* out) {
+void Integrator::get_ode(f64 t, f64 *x, f64 *out) {
     set_controls(t);
     ode_func(x, u.raw(), parameters, t, out, user_data);
 }

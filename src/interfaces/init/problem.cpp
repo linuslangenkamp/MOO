@@ -26,8 +26,7 @@ namespace CInit {
 
 namespace {
 
-FixedVector<f64> copy_values(f64* values, int size)
-{
+FixedVector<f64> copy_values(f64 *values, int size) {
     FixedVector<f64> out(size);
     for (int i = 0; i < size; i++) {
         out[i] = values ? values[i] : 0.0;
@@ -35,8 +34,7 @@ FixedVector<f64> copy_values(f64* values, int size)
     return out;
 }
 
-FixedVector<Bounds> copy_bounds(bounds_t* bounds, int size)
-{
+FixedVector<Bounds> copy_bounds(bounds_t *bounds, int size) {
     FixedVector<Bounds> out(size);
     for (int i = 0; i < size; i++) {
         out[i].lb = bounds ? bounds[i].lb : MINUS_INFINITY;
@@ -45,8 +43,7 @@ FixedVector<Bounds> copy_bounds(bounds_t* bounds, int size)
     return out;
 }
 
-FixedVector<int> copy_ints(int* values, int size)
-{
+FixedVector<int> copy_ints(int *values, int size) {
     FixedVector<int> out(size);
     for (int i = 0; i < size; i++) {
         out[i] = values[i];
@@ -56,16 +53,13 @@ FixedVector<int> copy_ints(int* values, int size)
 
 } // namespace
 
-Problem::Problem(c_init_problem_t* c_problem)
+Problem::Problem(c_init_problem_t *c_problem)
     : c_problem(c_problem),
       z_buffer(c_problem->y_size + c_problem->p_size),
       eval_buffer(1 + c_problem->f_size + c_problem->g_size),
-      jac_buffer((c_problem->obj_jac ? c_problem->obj_jac->nnz : 0)
-               + (c_problem->f_jac ? c_problem->f_jac->nnz : 0)
-               + (c_problem->g_jac ? c_problem->g_jac->nnz : 0)),
+      jac_buffer((c_problem->obj_jac ? c_problem->obj_jac->nnz : 0) + (c_problem->f_jac ? c_problem->f_jac->nnz : 0) + (c_problem->g_jac ? c_problem->g_jac->nnz : 0)),
       lambda_buffer(c_problem->f_size + c_problem->g_size),
-      hes_buffer(c_problem->hes ? c_problem->hes->nnz : 0)
-{
+      hes_buffer(c_problem->hes ? c_problem->hes->nnz : 0) {
     formulation.y_size = c_problem->y_size;
     formulation.p_size = c_problem->p_size;
     formulation.f_size = c_problem->f_size;
@@ -96,8 +90,7 @@ Problem::Problem(c_init_problem_t* c_problem)
     formulation.hes_cols = copy_ints(c_problem->hes->col, c_problem->hes->nnz);
 }
 
-const f64* Problem::pack_z(const f64* y, const f64* p)
-{
+const f64 *Problem::pack_z(const f64 *y, const f64 *p) {
     for (int i = 0; i < c_problem->y_size; i++) {
         z_buffer[i] = y[i];
     }
@@ -107,14 +100,12 @@ const f64* Problem::pack_z(const f64* y, const f64* p)
     return z_buffer.raw();
 }
 
-void Problem::eval_objective(const f64* y, const f64* p, f64& obj)
-{
+void Problem::eval_objective(const f64 *y, const f64 *p, f64 &obj) {
     c_problem->callbacks->eval_all(pack_z(y, p), c_problem->rp, eval_buffer.raw(), c_problem->user_data);
     obj = eval_buffer[0];
 }
 
-void Problem::eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* grad_p)
-{
+void Problem::eval_grad_objective(const f64 *y, const f64 *p, f64 *grad_y, f64 *grad_p) {
     std::fill(grad_y, grad_y + c_problem->y_size, 0.0);
     std::fill(grad_p, grad_p + c_problem->p_size, 0.0);
     c_problem->callbacks->jac_all(pack_z(y, p), c_problem->rp, jac_buffer.raw(), c_problem->user_data);
@@ -128,8 +119,7 @@ void Problem::eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* 
     }
 }
 
-void Problem::eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor, f64* hes_values)
-{
+void Problem::eval_hessian_objective(const f64 *y, const f64 *p, f64 obj_factor, f64 *hes_values) {
     lambda_buffer.fill_zero();
     c_problem->callbacks->hes_all(pack_z(y, p), c_problem->rp, lambda_buffer.raw(), obj_factor, hes_buffer.raw(), c_problem->user_data);
     for (int nz = 0; nz < c_problem->hes->nnz; nz++) {
@@ -137,40 +127,35 @@ void Problem::eval_hessian_objective(const f64* y, const f64* p, f64 obj_factor,
     }
 }
 
-void Problem::eval_f(const f64* y, const f64* p, f64* f)
-{
+void Problem::eval_f(const f64 *y, const f64 *p, f64 *f) {
     c_problem->callbacks->eval_all(pack_z(y, p), c_problem->rp, eval_buffer.raw(), c_problem->user_data);
     for (int i = 0; i < c_problem->f_size; i++) {
         f[i] = eval_buffer[1 + i];
     }
 }
 
-void Problem::eval_g(const f64* y, const f64* p, f64* g)
-{
+void Problem::eval_g(const f64 *y, const f64 *p, f64 *g) {
     c_problem->callbacks->eval_all(pack_z(y, p), c_problem->rp, eval_buffer.raw(), c_problem->user_data);
     for (int i = 0; i < c_problem->g_size; i++) {
         g[i] = eval_buffer[1 + c_problem->f_size + i];
     }
 }
 
-void Problem::eval_jacobian_f(const f64* y, const f64* p, f64* jac_f_values)
-{
+void Problem::eval_jacobian_f(const f64 *y, const f64 *p, f64 *jac_f_values) {
     c_problem->callbacks->jac_all(pack_z(y, p), c_problem->rp, jac_buffer.raw(), c_problem->user_data);
     for (int nz = 0; nz < c_problem->f_jac->nnz; nz++) {
         jac_f_values[nz] = jac_buffer[c_problem->f_jac->buf_index[nz]];
     }
 }
 
-void Problem::eval_jacobian_g(const f64* y, const f64* p, f64* jac_g_values)
-{
+void Problem::eval_jacobian_g(const f64 *y, const f64 *p, f64 *jac_g_values) {
     c_problem->callbacks->jac_all(pack_z(y, p), c_problem->rp, jac_buffer.raw(), c_problem->user_data);
     for (int nz = 0; nz < c_problem->g_jac->nnz; nz++) {
         jac_g_values[nz] = jac_buffer[c_problem->g_jac->buf_index[nz]];
     }
 }
 
-void Problem::eval_hessian_constraints(const f64* y, const f64* p, const f64* lambda_f, const f64* lambda_g, f64* hes_values)
-{
+void Problem::eval_hessian_constraints(const f64 *y, const f64 *p, const f64 *lambda_f, const f64 *lambda_g, f64 *hes_values) {
     for (int i = 0; i < c_problem->f_size; i++) {
         lambda_buffer[i] = lambda_f[i];
     }

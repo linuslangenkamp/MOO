@@ -29,8 +29,7 @@
 
 namespace {
 
-std::string vector_string(const FixedVector<f64>& values)
-{
+std::string vector_string(const FixedVector<f64> &values) {
     std::string out = "[";
     for (int i = 0; i < values.int_size(); i++) {
         out += fmt::format("{}", values[i]);
@@ -44,8 +43,7 @@ std::string vector_string(const FixedVector<f64>& values)
 
 class TwoParameterInitProblem : public Init::Problem {
 public:
-    explicit TwoParameterInitProblem(Init::Objective objective)
-    {
+    explicit TwoParameterInitProblem(Init::Objective objective) {
         formulation.y_size = 2;
         formulation.p_size = 2;
         formulation.f_size = 2;
@@ -67,8 +65,7 @@ public:
         formulation.jac_f_cols = FixedVector<int>{0, 2, 1, 3};
     }
 
-    void eval_objective(const f64* y, const f64* p, f64& obj) override
-    {
+    void eval_objective(const f64 *y, const f64 *p, f64 &obj) override {
         if (formulation.objective != Init::Objective::USER) {
             Init::Problem::eval_objective(y, p, obj);
             return;
@@ -77,8 +74,7 @@ public:
         obj = (p[0] - formulation.p0[0]) * (p[0] - formulation.p0[0]);
     }
 
-    void eval_grad_objective(const f64* y, const f64* p, f64* grad_y, f64* grad_p) override
-    {
+    void eval_grad_objective(const f64 *y, const f64 *p, f64 *grad_y, f64 *grad_p) override {
         if (formulation.objective != Init::Objective::USER) {
             Init::Problem::eval_grad_objective(y, p, grad_y, grad_p);
             return;
@@ -90,14 +86,12 @@ public:
         grad_p[1] = 0.0;
     }
 
-    void eval_f(const f64* y, const f64* p, f64* f) override
-    {
+    void eval_f(const f64 *y, const f64 *p, f64 *f) override {
         f[0] = y[0] * y[0] + p[0];
         f[1] = y[1] * y[1] + p[1];
     }
 
-    void eval_jacobian_f(const f64* y, const f64*, f64* jac_f_values) override
-    {
+    void eval_jacobian_f(const f64 *y, const f64 *, f64 *jac_f_values) override {
         jac_f_values[0] = 2.0 * y[0];
         jac_f_values[1] = 1.0;
         jac_f_values[2] = 2.0 * y[1];
@@ -105,10 +99,9 @@ public:
     }
 };
 
-Init::Result solve(TwoParameterInitProblem& problem)
-{
+Init::Result solve(TwoParameterInitProblem &problem) {
     char argv0[] = "test_init";
-    char* argv[] = {argv0};
+    char *argv[] = {argv0};
 
     NLP::NLPSolverSettings settings(1, argv);
     settings.set(NLP::Option::Hessian, NLP::HessianOption::LBFGS);
@@ -123,30 +116,26 @@ Init::Result solve(TwoParameterInitProblem& problem)
     return init.get_result();
 }
 
-void print_solution(const char* label, const Init::Result& result)
-{
+void print_solution(const char *label, const Init::Result &result) {
     Log::info("\nInit objective test: {}", label);
     Log::info("  y*  = {}", vector_string(result.y));
     Log::info("  p*  = {}", vector_string(result.p));
     Log::info("  dp* = {}", vector_string(result.dp));
 }
 
-void finalize_solution_zero(const Init::Result& result)
-{
+void finalize_solution_zero(const Init::Result &result) {
     print_solution("ZERO", result);
     assert(result.f_max_error > 1e-3);
 }
 
-void finalize_solution_user(const Init::Result& result)
-{
+void finalize_solution_user(const Init::Result &result) {
     print_solution("USER", result);
     assert(result.f_max_error < 1e-6);
     assert(std::abs(result.p[0]) < 1e-4);
     assert(result.p[1] < 1e-4);
 }
 
-void finalize_solution_least_square(const Init::Result& result)
-{
+void finalize_solution_least_square(const Init::Result &result) {
     print_solution("LEAST_SQUARE_DEVIATION", result);
     assert(result.f_max_error < 1e-6);
     assert(std::abs(result.p[0]) < 1e-4);
@@ -155,8 +144,7 @@ void finalize_solution_least_square(const Init::Result& result)
 
 } // namespace
 
-int main()
-{
+int main() {
     TwoParameterInitProblem zero_problem(Init::Objective::ZERO);
     Init::Result zero_result = solve(zero_problem);
     finalize_solution_zero(zero_result);

@@ -25,7 +25,7 @@
 extern "C" {
 #endif
 
-int main_full_functionality(int argc, char** argv);
+int main_full_functionality(int argc, char **argv);
 
 #ifdef __cplusplus
 }

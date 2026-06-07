@@ -23,8 +23,7 @@
 #include <iostream>
 #include <vector>
 
-int main()
-{
+int main() {
     using namespace ad;
 
     Graph g;
@@ -95,15 +94,13 @@ int main()
 
     auto H_lower = hessian_sparsity(HVP, "v");
     std::cout << "\nLagrangian Hessian sparsity (lower triangle)\n";
-    for (auto &[row, col] : H_lower)
-    {
+    for (auto &[row, col] : H_lower) {
         std::cout << "  H[" << row << "," << col << "]\n";
     }
 
     auto H_full = hessian_sparsity_full(HVP, "v");
     std::cout << "\nLagrangian Hessian sparsity (full symmetric)\n";
-    for (auto &[row, col] : H_full)
-    {
+    for (auto &[row, col] : H_full) {
         std::cout << "  H[" << row << "," << col << "]\n";
     }
     return 0;

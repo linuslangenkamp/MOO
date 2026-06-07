@@ -18,16 +18,16 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <IpIpoptData.hpp>
 #include <IpDenseVector.hpp>
-#include <IpSmartPtr.hpp>
 #include <IpIpoptApplication.hpp>
-#include <IpSolveStatistics.hpp>
+#include <IpIpoptData.hpp>
 #include <IpJournalist.hpp>
 #include <IpOrigIpoptNLP.hpp>
+#include <IpSmartPtr.hpp>
+#include <IpSolveStatistics.hpp>
 
-#include <base/nlp_structs.h>
 #include <base/log.h>
+#include <base/nlp_structs.h>
 
 #include <algorithm>
 #include <chrono>
@@ -37,7 +37,7 @@
 
 namespace IpoptSolver {
 
-std::string vformat_no_newline(const char* format, va_list args) {
+std::string vformat_no_newline(const char *format, va_list args) {
     va_list args_copy;
     va_copy(args_copy, args);
     int len = vsnprintf(nullptr, 0, format, args_copy);
@@ -60,21 +60,23 @@ std::string vformat_no_newline(const char* format, va_list args) {
 
 class LoggerJournal : public Ipopt::Journal {
 public:
-    LoggerJournal(const std::string& name, Ipopt::EJournalLevel default_level)
-    : Ipopt::Journal(name, Ipopt::EJournalLevel::J_ITERSUMMARY) {}
+    LoggerJournal(const std::string &name, Ipopt::EJournalLevel default_level)
+        : Ipopt::Journal(name, Ipopt::EJournalLevel::J_ITERSUMMARY) {}
 
 protected:
-    void PrintImpl(Ipopt::EJournalCategory category, Ipopt::EJournalLevel level, const char* str) override
-    {
-        if (str == nullptr) return;
+    void PrintImpl(Ipopt::EJournalCategory category, Ipopt::EJournalLevel level, const char *str) override {
+        if (str == nullptr) {
+            return;
+        }
         Log::info(str);
     }
 
-    void PrintfImpl(Ipopt::EJournalCategory category, Ipopt::EJournalLevel level, const char* pformat, va_list ap) override
-    {
+    void PrintfImpl(Ipopt::EJournalCategory category, Ipopt::EJournalLevel level, const char *pformat, va_list ap) override {
         std::string formatted_message = vformat_no_newline(pformat, ap);
 
-        if (formatted_message.empty()) return;
+        if (formatted_message.empty()) {
+            return;
+        }
 
         switch (level) {
             case Ipopt::J_ERROR:
@@ -111,19 +113,18 @@ struct IpoptSolverData {
     f64 total_wall_nano = 0.0;
     f64 callback_wall_nano = 0.0;
 
-    IpoptSolverData(NLP::NLP& nlp)
+    IpoptSolverData(NLP::NLP &nlp)
         : adapter(new IpoptAdapter(nlp)),
           app(IpoptApplicationFactory()),
-          logger_journal(new LoggerJournal("LoggerImpl", Ipopt::J_DETAILED))
-    {
+          logger_journal(new LoggerJournal("LoggerImpl", Ipopt::J_DETAILED)) {
         app->Jnlst()->DeleteAllJournals();
         app->Jnlst()->AddJournal(logger_journal);
     }
 };
 
-IpoptSolver::IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings)
-    : NLPSolver(nlp, solver_settings), ipdata{new IpoptSolverData{nlp}}
-{
+IpoptSolver::IpoptSolver(NLP::NLP &nlp, NLP::NLPSolverSettings &solver_settings)
+    : NLPSolver(nlp, solver_settings),
+      ipdata{new IpoptSolverData{nlp}} {
     init_application();
 }
 
@@ -133,16 +134,14 @@ IpoptSolver::~IpoptSolver() {
 
 // simple wrapper to adapter
 void IpoptSolver::optimize() {
-    ScopedTimer<IpoptTimingNode, IpoptSolver*> timer("IpoptSolver::optimize", this);
+    ScopedTimer<IpoptTimingNode, IpoptSolver *> timer("IpoptSolver::optimize", this);
 
     set_settings();
 
     auto start = std::chrono::high_resolution_clock::now();
     Ipopt::ApplicationReturnStatus status = ipdata->app->OptimizeTNLP(ipdata->adapter);
-    ipdata->total_wall_nano = std::chrono::duration<f64, std::nano>(
-        std::chrono::high_resolution_clock::now() - start).count();
-    ipdata->callback_wall_nano = Timing::s_to_nano(
-        ipdata->app->IpoptDataObject()->TimingStats().TotalFunctionEvaluationWallclockTime());
+    ipdata->total_wall_nano = std::chrono::duration<f64, std::nano>(std::chrono::high_resolution_clock::now() - start).count();
+    ipdata->callback_wall_nano = Timing::s_to_nano(ipdata->app->IpoptDataObject()->TimingStats().TotalFunctionEvaluationWallclockTime());
 
     switch (status) {
         case Ipopt::Solve_Succeeded:
@@ -258,7 +257,8 @@ void IpoptSolver::set_settings() {
     ipdata->app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
     ipdata->app->Options()->SetStringValue("fixed_variable_treatment", "make_parameter");
     ipdata->app->Options()->SetIntegerValue("mumps_print_level", 0); // 2 gives ICNTL options
-    ipdata->app->Options()->SetIntegerValue("mumps_scaling", 77); // -2 during analysis, 0 no, 4 row/col inf norms, 7 equilibrium, 8 stronger equilibrium, 77 automatic
+    ipdata->app->Options()->SetIntegerValue("mumps_scaling",
+                                            77); // -2 during analysis, 0 no, 4 row/col inf norms, 7 equilibrium, 8 stronger equilibrium, 77 automatic
 
     // --- hessian options ---
     NLP::HessianOption hess_opt = solver_settings.get_or_default<NLP::HessianOption>(NLP::Option::Hessian);
@@ -311,12 +311,24 @@ void IpoptSolver::set_settings() {
     // --- linear solver ---
     NLP::LinearSolverOption linear_solver = solver_settings.get_or_default<NLP::LinearSolverOption>(NLP::Option::LinearSolver);
     switch (linear_solver) {
-        case NLP::LinearSolverOption::MUMPS: ipdata->app->Options()->SetStringValue("linear_solver", "mumps"); break;
-        case NLP::LinearSolverOption::MA27:  ipdata->app->Options()->SetStringValue("linear_solver", "ma27");  break;
-        case NLP::LinearSolverOption::MA57:  ipdata->app->Options()->SetStringValue("linear_solver", "ma57");  break;
-        case NLP::LinearSolverOption::MA77:  ipdata->app->Options()->SetStringValue("linear_solver", "ma77");  break;
-        case NLP::LinearSolverOption::MA86:  ipdata->app->Options()->SetStringValue("linear_solver", "ma86");  break;
-        case NLP::LinearSolverOption::MA97:  ipdata->app->Options()->SetStringValue("linear_solver", "ma97");  break;
+        case NLP::LinearSolverOption::MUMPS:
+            ipdata->app->Options()->SetStringValue("linear_solver", "mumps");
+            break;
+        case NLP::LinearSolverOption::MA27:
+            ipdata->app->Options()->SetStringValue("linear_solver", "ma27");
+            break;
+        case NLP::LinearSolverOption::MA57:
+            ipdata->app->Options()->SetStringValue("linear_solver", "ma57");
+            break;
+        case NLP::LinearSolverOption::MA77:
+            ipdata->app->Options()->SetStringValue("linear_solver", "ma77");
+            break;
+        case NLP::LinearSolverOption::MA86:
+            ipdata->app->Options()->SetStringValue("linear_solver", "ma86");
+            break;
+        case NLP::LinearSolverOption::MA97:
+            ipdata->app->Options()->SetStringValue("linear_solver", "ma97");
+            break;
     }
 
     // --- constant derivatives (assumed false for now) ---
@@ -351,14 +363,15 @@ f64 IpoptSolver::get_solver_time() const {
     return std::max(0.0, get_total_time() - get_callback_time());
 }
 
-IpoptTimingNode::IpoptTimingNode(std::string n, TimingNode* p, IpoptSolver* ipopt_solver)
-    : TimingNode(n, p), ipopt_solver(ipopt_solver) {}
+IpoptTimingNode::IpoptTimingNode(std::string n, TimingNode *p, IpoptSolver *ipopt_solver)
+    : TimingNode(n, p),
+      ipopt_solver(ipopt_solver) {}
 
 void IpoptTimingNode::finalize() {
-    auto& app = ipopt_solver->ipdata->app;
+    auto &app = ipopt_solver->ipdata->app;
     auto data = app->IpoptDataObject();
-    auto& ip_timing = data->TimingStats();
-    auto orig_nlp = static_cast<Ipopt::OrigIpoptNLP*>(GetRawPtr(app->IpoptNLPObject()));
+    auto &ip_timing = data->TimingStats();
+    auto orig_nlp = static_cast<Ipopt::OrigIpoptNLP *>(GetRawPtr(app->IpoptNLPObject()));
 
     f64 wall_total_nano = ipopt_solver->ipdata->total_wall_nano;
     f64 wall_func_nano = ipopt_solver->ipdata->callback_wall_nano;
@@ -368,39 +381,32 @@ void IpoptTimingNode::finalize() {
 
     VirtualTimer timer_wall_total("Ipopt Total", wall_total_nano);
     {
-        {
-            VirtualTimer timer_wall_ipopt_self("Ipopt Internal", wall_ipopt_self_nano);
-        }
+        { VirtualTimer timer_wall_ipopt_self("Ipopt Internal", wall_ipopt_self_nano); }
         {
             VirtualTimer timer_wall_func("Ipopt Callbacks", wall_func_nano);
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_f("Objective",
-                    Timing::s_to_nano(ip_timing.f_eval_time().TotalWallclockTime()), orig_nlp->f_evals());
-            }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_f("Objective", Timing::s_to_nano(ip_timing.f_eval_time().TotalWallclockTime()), orig_nlp->f_evals()); }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_grad_f("Objective Gradient",
-                    Timing::s_to_nano(ip_timing.grad_f_eval_time().TotalWallclockTime()), orig_nlp->grad_f_evals());
+                                                                       Timing::s_to_nano(ip_timing.grad_f_eval_time().TotalWallclockTime()),
+                                                                       orig_nlp->grad_f_evals());
             }
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_g_eq("Equality Constraints",
-                    Timing::s_to_nano(ip_timing.c_eval_time().TotalWallclockTime()), orig_nlp->c_evals());
-            }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_g_eq("Equality Constraints", Timing::s_to_nano(ip_timing.c_eval_time().TotalWallclockTime()), orig_nlp->c_evals()); }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_g_ineq("Inequality Constraints",
-                    Timing::s_to_nano(ip_timing.d_eval_time().TotalWallclockTime()), orig_nlp->d_evals());
+                                                                       Timing::s_to_nano(ip_timing.d_eval_time().TotalWallclockTime()),
+                                                                       orig_nlp->d_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_eq("Jacobian Equality Constraints",
-                    Timing::s_to_nano(ip_timing.jac_c_eval_time().TotalWallclockTime()), orig_nlp->jac_c_evals());
+                                                                         Timing::s_to_nano(ip_timing.jac_c_eval_time().TotalWallclockTime()),
+                                                                         orig_nlp->jac_c_evals());
             }
             {
                 VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_ineq("Jacobian Inequality Constraints",
-                    Timing::s_to_nano(ip_timing.jac_d_eval_time().TotalWallclockTime()), orig_nlp->jac_d_evals());
+                                                                           Timing::s_to_nano(ip_timing.jac_d_eval_time().TotalWallclockTime()),
+                                                                           orig_nlp->jac_d_evals());
             }
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_lag_hes("Lagrangian Hessian",
-                    Timing::s_to_nano(ip_timing.h_eval_time().TotalWallclockTime()), orig_nlp->h_evals());
-            }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_lag_hes("Lagrangian Hessian", Timing::s_to_nano(ip_timing.h_eval_time().TotalWallclockTime()), orig_nlp->h_evals()); }
         }
     }
 }

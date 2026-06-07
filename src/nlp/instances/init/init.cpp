@@ -31,37 +31,32 @@ namespace Init {
 
 namespace {
 
-Bounds bounds_or_unbounded(const FixedVector<Bounds>& bounds, int index)
-{
+Bounds bounds_or_unbounded(const FixedVector<Bounds> &bounds, int index) {
     if (index < bounds.int_size()) {
         return bounds[index];
     }
     return Bounds{};
 }
 
-f64 value_or_zero(const FixedVector<f64>& values, int index)
-{
+f64 value_or_zero(const FixedVector<f64> &values, int index) {
     if (index < values.int_size()) {
         return values[index];
     }
     return 0.0;
 }
 
-f64 nominal_or_one(const FixedVector<f64>& nominals, int index)
-{
+f64 nominal_or_one(const FixedVector<f64> &nominals, int index) {
     if (index < nominals.int_size() && std::isfinite(nominals[index]) && nominals[index] != 0.0) {
         return std::abs(nominals[index]);
     }
     return 1.0;
 }
 
-f64 p0_or_zero(const ProblemFormulation& formulation, int index)
-{
+f64 p0_or_zero(const ProblemFormulation &formulation, int index) {
     return value_or_zero(formulation.p0, index);
 }
 
-bool valid_optional_size(const char* name, int size, int expected)
-{
+bool valid_optional_size(const char *name, int size, int expected) {
     if (size == 0 || size == expected) {
         return true;
     }
@@ -70,17 +65,11 @@ bool valid_optional_size(const char* name, int size, int expected)
     return false;
 }
 
-bool has_nominal_scaling(const ProblemFormulation& formulation)
-{
-    return !formulation.y_nominal.empty()
-        || !formulation.p_nominal.empty()
-        || !formulation.dp_nominal.empty()
-        || !formulation.f_nominal.empty()
-        || !formulation.g_nominal.empty();
+bool has_nominal_scaling(const ProblemFormulation &formulation) {
+    return !formulation.y_nominal.empty() || !formulation.p_nominal.empty() || !formulation.dp_nominal.empty() || !formulation.f_nominal.empty() || !formulation.g_nominal.empty();
 }
 
-f64 objective_nominal_or_one(f64 obj_nominal)
-{
+f64 objective_nominal_or_one(f64 obj_nominal) {
     if (std::isfinite(obj_nominal) && obj_nominal != 0.0) {
         return std::abs(obj_nominal);
     }
@@ -89,26 +78,23 @@ f64 objective_nominal_or_one(f64 obj_nominal)
 
 } // namespace
 
-Init::Init(Problem& problem)
+Init::Init(Problem &problem)
     : problem(problem),
       p_buffer(FixedVector<f64>(problem.formulation.p_size)),
       grad_y_buffer(FixedVector<f64>(problem.formulation.y_size)),
       grad_p_buffer(FixedVector<f64>(problem.formulation.p_size)),
       jac_f_buffer(FixedVector<f64>(problem.formulation.jac_f_rows.size())),
-      jac_g_buffer(FixedVector<f64>(problem.formulation.jac_g_rows.size()))
-{
+      jac_g_buffer(FixedVector<f64>(problem.formulation.jac_g_rows.size())) {
     validate_formulation();
     initialize_objective_hessian_structure();
 }
 
-const Result& Init::get_result() const
-{
+const Result &Init::get_result() const {
     return result;
 }
 
-std::shared_ptr<::NLP::Scaling> Init::get_scaling()
-{
-    const auto& form = formulation();
+std::shared_ptr<::NLP::Scaling> Init::get_scaling() {
+    const auto &form = formulation();
 
     if (!has_nominal_scaling(form)) {
         return std::make_shared<::NLP::NoScaling>();
@@ -122,9 +108,7 @@ std::shared_ptr<::NLP::Scaling> Init::get_scaling()
     }
 
     for (int p = 0; p < form.p_size; p++) {
-        x_nominal[form.y_size + p] = form.dp_nominal.empty()
-                                   ? nominal_or_one(form.p_nominal, p)
-                                   : nominal_or_one(form.dp_nominal, p);
+        x_nominal[form.y_size + p] = form.dp_nominal.empty() ? nominal_or_one(form.p_nominal, p) : nominal_or_one(form.dp_nominal, p);
     }
 
     for (int f = 0; f < form.f_size; f++) {
@@ -135,24 +119,16 @@ std::shared_ptr<::NLP::Scaling> Init::get_scaling()
         g_nominal[form.f_size + g] = nominal_or_one(form.g_nominal, g);
     }
 
-    return std::make_shared<::NLP::NominalScaling>(
-        std::move(x_nominal),
-        std::move(g_nominal),
-        objective_nominal_or_one(form.obj_nominal));
+    return std::make_shared<::NLP::NominalScaling>(std::move(x_nominal), std::move(g_nominal), objective_nominal_or_one(form.obj_nominal));
 }
 
-void Init::get_sizes(int& number_vars, int& number_constraints)
-{
+void Init::get_sizes(int &number_vars, int &number_constraints) {
     number_vars = number_vars_internal();
     number_constraints = number_constraints_internal();
 }
 
-void Init::get_bounds(FixedVector<f64>& x_lb,
-                      FixedVector<f64>& x_ub,
-                      FixedVector<f64>& g_lb,
-                      FixedVector<f64>& g_ub)
-{
-    const auto& form = formulation();
+void Init::get_bounds(FixedVector<f64> &x_lb, FixedVector<f64> &x_ub, FixedVector<f64> &g_lb, FixedVector<f64> &g_ub) {
+    const auto &form = formulation();
 
     for (int y = 0; y < form.y_size; y++) {
         const Bounds bounds = bounds_or_unbounded(form.y_bounds, y);
@@ -182,14 +158,13 @@ void Init::get_bounds(FixedVector<f64>& x_lb,
 }
 
 void Init::get_initial_guess(bool init_x,
-                             FixedVector<f64>& x_init,
+                             FixedVector<f64> &x_init,
                              bool init_lambda,
-                             FixedVector<f64>& lambda_init,
+                             FixedVector<f64> &lambda_init,
                              bool init_z,
-                             FixedVector<f64>& z_lb_init,
-                             FixedVector<f64>& z_ub_init)
-{
-    const auto& form = formulation();
+                             FixedVector<f64> &z_lb_init,
+                             FixedVector<f64> &z_ub_init) {
+    const auto &form = formulation();
 
     if (init_x) {
         for (int y = 0; y < form.y_size; y++) {
@@ -211,16 +186,14 @@ void Init::get_initial_guess(bool init_x,
     }
 }
 
-void Init::get_nnz(int& nnz_jac, int& nnz_hes)
-{
-    const auto& form = formulation();
+void Init::get_nnz(int &nnz_jac, int &nnz_hes) {
+    const auto &form = formulation();
     nnz_jac = form.jac_f_rows.int_size() + form.jac_g_rows.int_size();
     nnz_hes = form.hes_rows.int_size();
 }
 
-void Init::get_jac_sparsity(FixedVector<int>& i_row_jac, FixedVector<int>& j_col_jac)
-{
-    const auto& form = formulation();
+void Init::get_jac_sparsity(FixedVector<int> &i_row_jac, FixedVector<int> &j_col_jac) {
+    const auto &form = formulation();
     int offset = 0;
 
     for (int nz = 0; nz < form.jac_f_rows.int_size(); nz++) {
@@ -236,24 +209,21 @@ void Init::get_jac_sparsity(FixedVector<int>& i_row_jac, FixedVector<int>& j_col
     }
 }
 
-void Init::get_hes_sparsity(FixedVector<int>& i_row_hes, FixedVector<int>& j_col_hes)
-{
+void Init::get_hes_sparsity(FixedVector<int> &i_row_hes, FixedVector<int> &j_col_hes) {
     for (int nz = 0; nz < formulation().hes_rows.int_size(); nz++) {
         i_row_hes[nz] = formulation().hes_rows[nz];
         j_col_hes[nz] = formulation().hes_cols[nz];
     }
 }
 
-void Init::eval_f(bool new_x, const FixedVector<f64>& curr_x, f64& curr_obj)
-{
+void Init::eval_f(bool new_x, const FixedVector<f64> &curr_x, f64 &curr_obj) {
     problem.eval_objective(get_y(curr_x), update_p(curr_x), curr_obj);
 }
 
-void Init::eval_g(bool new_x, const FixedVector<f64>& curr_x, FixedVector<f64>& curr_g)
-{
-    const auto& form = formulation();
-    const f64* y = get_y(curr_x);
-    const f64* p = update_p(curr_x);
+void Init::eval_g(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_g) {
+    const auto &form = formulation();
+    const f64 *y = get_y(curr_x);
+    const f64 *p = update_p(curr_x);
 
     problem.eval_f(y, p, curr_g.raw());
 
@@ -262,9 +232,8 @@ void Init::eval_g(bool new_x, const FixedVector<f64>& curr_x, FixedVector<f64>& 
     }
 }
 
-void Init::eval_grad_f(bool new_x, const FixedVector<f64>& curr_x, FixedVector<f64>& curr_grad_f)
-{
-    const auto& form = formulation();
+void Init::eval_grad_f(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_grad_f) {
+    const auto &form = formulation();
     problem.eval_grad_objective(get_y(curr_x), update_p(curr_x), grad_y_buffer.raw(), grad_p_buffer.raw());
 
     for (int y = 0; y < form.y_size; y++) {
@@ -276,15 +245,10 @@ void Init::eval_grad_f(bool new_x, const FixedVector<f64>& curr_x, FixedVector<f
     }
 }
 
-void Init::eval_jac_g(bool new_x,
-                      const FixedVector<f64>& curr_x,
-                      const FixedVector<int>& i_row_jac,
-                      const FixedVector<int>& j_col_jac,
-                      FixedVector<f64>& curr_jac)
-{
-    const auto& form = formulation();
-    const f64* y = get_y(curr_x);
-    const f64* p = update_p(curr_x);
+void Init::eval_jac_g(bool new_x, const FixedVector<f64> &curr_x, const FixedVector<int> &i_row_jac, const FixedVector<int> &j_col_jac, FixedVector<f64> &curr_jac) {
+    const auto &form = formulation();
+    const f64 *y = get_y(curr_x);
+    const f64 *p = update_p(curr_x);
     int offset = 0;
 
     problem.eval_jacobian_f(y, p, jac_f_buffer.raw());
@@ -301,17 +265,16 @@ void Init::eval_jac_g(bool new_x,
 }
 
 void Init::eval_hes(bool new_x,
-                    const FixedVector<f64>& curr_x,
+                    const FixedVector<f64> &curr_x,
                     bool new_lambda,
-                    const FixedVector<f64>& curr_lambda,
+                    const FixedVector<f64> &curr_lambda,
                     f64 curr_obj_factor,
-                    const FixedVector<int>& i_row_hes,
-                    const FixedVector<int>& j_col_hes,
-                    FixedVector<f64>& curr_hes)
-{
-    const auto& form = formulation();
-    const f64* lambda_f = curr_lambda.raw();
-    const f64* lambda_g = form.g_size > 0 ? curr_lambda.raw() + form.f_size : nullptr;
+                    const FixedVector<int> &i_row_hes,
+                    const FixedVector<int> &j_col_hes,
+                    FixedVector<f64> &curr_hes) {
+    const auto &form = formulation();
+    const f64 *lambda_f = curr_lambda.raw();
+    const f64 *lambda_g = form.g_size > 0 ? curr_lambda.raw() + form.f_size : nullptr;
 
     curr_hes.fill_zero();
     problem.eval_hessian_constraints(get_y(curr_x), update_p(curr_x), lambda_f, lambda_g, curr_hes.raw());
@@ -325,12 +288,11 @@ void Init::eval_hes(bool new_x,
 
 void Init::finalize_solution(::NLP::ReturnCode ret,
                              f64 opt_obj,
-                             const FixedVector<f64>& opt_x,
-                             const FixedVector<f64>& opt_lambda,
-                             const FixedVector<f64>& opt_z_lb,
-                             const FixedVector<f64>& opt_z_ub)
-{
-    const auto& form = formulation();
+                             const FixedVector<f64> &opt_x,
+                             const FixedVector<f64> &opt_lambda,
+                             const FixedVector<f64> &opt_z_lb,
+                             const FixedVector<f64> &opt_z_ub) {
+    const auto &form = formulation();
 
     result.objective = opt_obj;
     result.y = FixedVector<f64>(form.y_size);
@@ -359,35 +321,29 @@ void Init::finalize_solution(::NLP::ReturnCode ret,
     update_result_diagnostics();
 }
 
-const ProblemFormulation& Init::formulation() const
-{
+const ProblemFormulation &Init::formulation() const {
     return problem.formulation;
 }
 
-int Init::number_vars_internal() const
-{
+int Init::number_vars_internal() const {
     return formulation().y_size + formulation().p_size;
 }
 
-int Init::number_constraints_internal() const
-{
+int Init::number_constraints_internal() const {
     return formulation().f_size + formulation().g_size;
 }
 
-const f64* Init::get_y(const FixedVector<f64>& x) const
-{
+const f64 *Init::get_y(const FixedVector<f64> &x) const {
     return x.raw();
 }
 
-const f64* Init::get_dp(const FixedVector<f64>& x) const
-{
+const f64 *Init::get_dp(const FixedVector<f64> &x) const {
     return x.raw() + formulation().y_size;
 }
 
-const f64* Init::update_p(const FixedVector<f64>& x)
-{
-    const auto& form = formulation();
-    const f64* dp = get_dp(x);
+const f64 *Init::update_p(const FixedVector<f64> &x) {
+    const auto &form = formulation();
+    const f64 *dp = get_dp(x);
 
     for (int p = 0; p < form.p_size; p++) {
         p_buffer[p] = p0_or_zero(form, p) + dp[p];
@@ -396,9 +352,8 @@ const f64* Init::update_p(const FixedVector<f64>& x)
     return p_buffer.raw();
 }
 
-void Init::validate_formulation() const
-{
-    const auto& form = formulation();
+void Init::validate_formulation() const {
+    const auto &form = formulation();
     bool ok = true;
 
     ok &= form.y_size >= 0;
@@ -455,9 +410,8 @@ void Init::validate_formulation() const
     }
 }
 
-void Init::initialize_objective_hessian_structure()
-{
-    const auto& form = formulation();
+void Init::initialize_objective_hessian_structure() {
+    const auto &form = formulation();
 
     if (form.objective != Objective::LEAST_SQUARE_DEVIATION) {
         objective_hes_indices = FixedVector<int>(0);
@@ -478,9 +432,7 @@ void Init::initialize_objective_hessian_structure()
     objective_hes_values = FixedVector<f64>(diagonal_count);
 
     if (diagonal_count != form.p_size && !form.hes_rows.empty()) {
-        Log::warning("Init::ProblemFormulation least-square objective Hessian has {} parameter diagonal entries, expected {}.",
-                     diagonal_count,
-                     form.p_size);
+        Log::warning("Init::ProblemFormulation least-square objective Hessian has {} parameter diagonal entries, expected {}.", diagonal_count, form.p_size);
     }
 
     int index = 0;
@@ -498,16 +450,14 @@ void Init::initialize_objective_hessian_structure()
     }
 }
 
-void Init::accumulate_objective_hessian(f64 obj_factor, FixedVector<f64>& curr_hes)
-{
+void Init::accumulate_objective_hessian(f64 obj_factor, FixedVector<f64> &curr_hes) {
     for (int i = 0; i < objective_hes_indices.int_size(); i++) {
         curr_hes[objective_hes_indices[i]] += obj_factor * objective_hes_values[i];
     }
 }
 
-void Init::update_result_diagnostics()
-{
-    const auto& form = formulation();
+void Init::update_result_diagnostics() {
+    const auto &form = formulation();
 
     result.f_l2_norm = 0.0;
     result.f_max_error = 0.0;

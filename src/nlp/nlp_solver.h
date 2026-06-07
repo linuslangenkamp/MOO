@@ -21,19 +21,19 @@
 #ifndef OPT_NLP_SOLVER_H
 #define OPT_NLP_SOLVER_H
 
-#include "nlp/solvers/nlp_solver_settings.h"
 #include "nlp.h"
+#include "nlp/solvers/nlp_solver_settings.h"
 
 namespace NLP {
 
 class NLPSolver {
 public:
-    NLPSolver(NLP& nlp, NLPSolverSettings& solver_settings);
+    NLPSolver(NLP &nlp, NLPSolverSettings &solver_settings);
 
     virtual ~NLPSolver() = default;
 
-    NLP& nlp;
-    NLPSolverSettings& solver_settings;
+    NLP &nlp;
+    NLPSolverSettings &solver_settings;
 
     // optimization entry point
     virtual void optimize() = 0;
@@ -47,6 +47,6 @@ public:
     virtual f64 get_callback_time() const;
 };
 
-}
+} // namespace NLP
 
 #endif // OPT_NLP_SOLVER_H

@@ -18,35 +18,36 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+#include <base/log.h>
 #include <base/timing.h>
 #include <base/util.h>
-#include <base/log.h>
 
-TimingNode::TimingNode(std::string n, TimingNode* p)
-    : name(std::move(n)), parent(p) {}
+TimingNode::TimingNode(std::string n, TimingNode *p)
+    : name(std::move(n)),
+      parent(p) {}
 
-TimingNode* TimingNode::add_child(std::unique_ptr<TimingNode> child) {
+TimingNode *TimingNode::add_child(std::unique_ptr<TimingNode> child) {
     children.push_back(std::move(child));
     children.back()->parent = this;
     return children.back().get();
 }
 
-void TimingNode::finalize() {};
+void TimingNode::finalize(){};
 
-TimingTree& TimingTree::instance() {
+TimingTree &TimingTree::instance() {
     static TimingTree inst;
     return inst;
 }
 
-TimingNode* TimingTree::current_node() {
+TimingNode *TimingTree::current_node() {
     return current;
 }
 
-void TimingTree::set_current(TimingNode* n) {
+void TimingTree::set_current(TimingNode *n) {
     current = n;
 }
 
-TimingNode* TimingTree::add_child(std::unique_ptr<TimingNode> child) {
+TimingNode *TimingTree::add_child(std::unique_ptr<TimingNode> child) {
     child->parent = current;
     current->children.push_back(std::move(child));
     return current->children.back().get();
@@ -58,27 +59,25 @@ TimingTree::TimingTree() {
 }
 
 void TimingTree::traverse(visitor_fn visitor) const {
-    if (!root) return;
+    if (!root) {
+        return;
+    }
     traverse_node(root.get(), nullptr, nullptr, visitor);
 }
 
-void TimingTree::traverse_node(
-    const TimingNode* node,
-    const TimingNode* parent,
-    const TimingNode* next,
-    visitor_fn& visitor) const
-{
+void TimingTree::traverse_node(const TimingNode *node, const TimingNode *parent, const TimingNode *next, visitor_fn &visitor) const {
     visitor(node, parent, next);
 
-    const auto& children = node->children;
+    const auto &children = node->children;
     for (size_t i = 0; i < children.size(); ++i) {
-        const TimingNode* next_sibling = (i + 1 < children.size()) ? children[i + 1].get() : nullptr;
+        const TimingNode *next_sibling = (i + 1 < children.size()) ? children[i + 1].get() : nullptr;
         traverse_node(children[i].get(), node, next_sibling, visitor);
     }
 }
 
-CountedTimingNode::CountedTimingNode(std::string n, TimingNode* p, int cnt)
-    : TimingNode(n, p), cnt(cnt) {}
+CountedTimingNode::CountedTimingNode(std::string n, TimingNode *p, int cnt)
+    : TimingNode(n, p),
+      cnt(cnt) {}
 
 // ==== Common Queries ====
 
@@ -90,7 +89,7 @@ namespace Timing {
 std::unordered_map<std::string, f64> accumulate_prefix(std::string prefix) {
     std::unordered_map<std::string, f64> mapping{};
 
-    TimingTree::instance().traverse([&](const TimingNode* node, const TimingNode*, const TimingNode*) {
+    TimingTree::instance().traverse([&](const TimingNode *node, const TimingNode *, const TimingNode *) {
         if (node->name.rfind("Strategies::", 0) == 0) {
             mapping[node->name] += node->duration_nano;
         }
@@ -104,24 +103,20 @@ std::unordered_map<std::string, f64> accumulate_prefix(std::string prefix) {
 // whenever a subsequent node name starts with `prefix_break`.
 // Each entry in the returned vector represents the total time (in nanoseconds)
 // spent in one contiguous block of `prefix_start` entries before the next `prefix_break`.
-std::vector<f64> accumulate_blocks(const std::string& prefix_start,
-                                   const std::string& prefix_break)
-{
+std::vector<f64> accumulate_blocks(const std::string &prefix_start, const std::string &prefix_break) {
     std::vector<f64> blocks;
     f64 current_sum = 0.0;
 
-    TimingTree::instance().traverse(
-        [&](const TimingNode* node, const TimingNode*, const TimingNode* next) {
-            if (node->name.rfind(prefix_start, 0) == 0) {
-                current_sum += node->duration_nano;
-            }
-
-            if (next && next->name.rfind(prefix_break, 0) == 0 && current_sum > 0.0) {
-                blocks.push_back(current_sum);
-                current_sum = 0.0;
-            }
+    TimingTree::instance().traverse([&](const TimingNode *node, const TimingNode *, const TimingNode *next) {
+        if (node->name.rfind(prefix_start, 0) == 0) {
+            current_sum += node->duration_nano;
         }
-    );
+
+        if (next && next->name.rfind(prefix_break, 0) == 0 && current_sum > 0.0) {
+            blocks.push_back(current_sum);
+            current_sum = 0.0;
+        }
+    });
 
     // push last accumulated block (if no break node followed)
     if (current_sum > 0.0) {
@@ -135,13 +130,13 @@ std::vector<f64> accumulate_blocks(const std::string& prefix_start,
 
 // ==== printing ====
 
-void TimingNode::print_table_tree(const FixedTableFormat<4>& ftf, const std::string& prefix, bool is_last) const {
+void TimingNode::print_table_tree(const FixedTableFormat<4> &ftf, const std::string &prefix, bool is_last) const {
     f64 duration_ms = Timing::nano_to_ms(duration_nano);
 
     std::string count_str = "-";
     std::string avg_str = "-";
 
-    if (const auto* counted = dynamic_cast<const CountedTimingNode*>(this)) {
+    if (const auto *counted = dynamic_cast<const CountedTimingNode *>(this)) {
         count_str = fmt::format("{}", counted->cnt);
         if (counted->cnt > 0) {
             avg_str = fmt::format("{:.3f}", duration_ms / counted->cnt);
@@ -160,8 +155,7 @@ void TimingNode::print_table_tree(const FixedTableFormat<4>& ftf, const std::str
     const size_t tree_col_width = ftf.col_widths[0];
     if (tree_col.length() > tree_col_width) {
         tree_col = tree_col.substr(0, tree_col_width - 3) + "...";
-    }
-    else {
+    } else {
         tree_col += std::string(tree_col_width - tree_col.length(), ' ');
     }
 
@@ -173,7 +167,9 @@ void TimingNode::print_table_tree(const FixedTableFormat<4>& ftf, const std::str
 }
 
 void TimingTree::print_tree_table() const {
-    if (!root) return;
+    if (!root) {
+        return;
+    }
 
     FixedTableFormat<4> ftf({60, 12, 8, 12}, {Align::Left, Align::Right, Align::Right, Align::Right});
 

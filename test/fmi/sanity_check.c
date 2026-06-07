@@ -30,8 +30,8 @@ int main(void) {
     printf("Description : %s\n", fmi3_description(fmu));
     printf("Gen. tool   : %s\n", fmi3_generationTool(fmu));
 
-    printf("Supports ME : %s\n", fmi3_supportsModelExchange(fmu)      ? "yes" : "no");
-    printf("Supports CS : %s\n", fmi3_supportsCoSimulation(fmu)       ? "yes" : "no");
+    printf("Supports ME : %s\n", fmi3_supportsModelExchange(fmu) ? "yes" : "no");
+    printf("Supports CS : %s\n", fmi3_supportsCoSimulation(fmu) ? "yes" : "no");
     printf("Supports SE : %s\n", fmi3_supportsScheduledExecution(fmu) ? "yes" : "no");
 
     int n_vars = fmi3_getNumberOfVariables(fmu);

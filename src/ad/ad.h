@@ -42,8 +42,7 @@
 #include <utility>
 #include <vector>
 
-namespace ad
-{
+namespace ad {
 
 // -----------------------------------------------------------------------------
 // Header-only symbolic graph AD
@@ -63,18 +62,15 @@ using NodeId = int;
 
 inline constexpr NodeId invalid_node = -1;
 
-inline bool nearly_zero(double x)
-{
+inline bool nearly_zero(double x) {
     return std::abs(x) <= 0.0;
 }
 
-inline bool exactly(double a, double b)
-{
+inline bool exactly(double a, double b) {
     return a == b;
 }
 
-enum class Op
-{
+enum class Op {
     Constant,
     Input,
     Param,
@@ -91,10 +87,8 @@ enum class Op
     PowConst
 };
 
-inline const char *op_name(Op op)
-{
-    switch (op)
-    {
+inline const char *op_name(Op op) {
+    switch (op) {
         case Op::Constant:
             return "Constant";
         case Op::Input:
@@ -127,8 +121,7 @@ inline const char *op_name(Op op)
     return "Unknown";
 }
 
-struct Node
-{
+struct Node {
     Op op = Op::Constant;
     NodeId a = invalid_node;
     NodeId b = invalid_node;
@@ -137,23 +130,19 @@ struct Node
     int index = -1;     // input/param index in group
 };
 
-struct Expr
-{
+struct Expr {
     Graph *g = nullptr;
     NodeId id = invalid_node;
 
     Expr() = default;
     Expr(Graph *graph, NodeId node)
         : g(graph),
-          id(node)
-    {
-    }
+          id(node) {}
 
     explicit operator bool() const { return g != nullptr && id != invalid_node; }
 };
 
-struct NamedVector
-{
+struct NamedVector {
     std::string name;
     std::vector<Expr> values;
 
@@ -162,12 +151,10 @@ struct NamedVector
     const Expr &operator[](std::size_t i) const { return values[i]; }
 };
 
-struct Graph
-{
+struct Graph {
     std::vector<Node> nodes;
 
-    Expr constant(double v)
-    {
+    Expr constant(double v) {
         Node n;
         n.op = Op::Constant;
         n.value = v;
@@ -175,8 +162,7 @@ struct Graph
         return Expr(this, static_cast<NodeId>(nodes.size() - 1));
     }
 
-    Expr input(const std::string &name, int index)
-    {
+    Expr input(const std::string &name, int index) {
         Node n;
         n.op = Op::Input;
         n.name = name;
@@ -185,8 +171,7 @@ struct Graph
         return Expr(this, static_cast<NodeId>(nodes.size() - 1));
     }
 
-    Expr param(const std::string &name, int index)
-    {
+    Expr param(const std::string &name, int index) {
         Node n;
         n.op = Op::Param;
         n.name = name;
@@ -195,8 +180,7 @@ struct Graph
         return Expr(this, static_cast<NodeId>(nodes.size() - 1));
     }
 
-    Expr unary(Op op, Expr x)
-    {
+    Expr unary(Op op, Expr x) {
         check_same(x);
         Node n;
         n.op = op;
@@ -205,8 +189,7 @@ struct Graph
         return Expr(this, static_cast<NodeId>(nodes.size() - 1));
     }
 
-    Expr binary(Op op, Expr x, Expr y)
-    {
+    Expr binary(Op op, Expr x, Expr y) {
         check_same(x);
         check_same(y);
         Node n;
@@ -217,8 +200,7 @@ struct Graph
         return Expr(this, static_cast<NodeId>(nodes.size() - 1));
     }
 
-    Expr pow_const(Expr x, double p)
-    {
+    Expr pow_const(Expr x, double p) {
         check_same(x);
         Node n;
         n.op = Op::PowConst;
@@ -228,151 +210,122 @@ struct Graph
         return Expr(this, static_cast<NodeId>(nodes.size() - 1));
     }
 
-    void check_same(Expr e) const
-    {
-        if (e.g != this || e.id < 0 || e.id >= static_cast<NodeId>(nodes.size()))
-        {
+    void check_same(Expr e) const {
+        if (e.g != this || e.id < 0 || e.id >= static_cast<NodeId>(nodes.size())) {
             throw std::runtime_error("expression belongs to a different graph or is invalid");
         }
     }
 
-    NamedVector inputs(const std::string &name, int n)
-    {
+    NamedVector inputs(const std::string &name, int n) {
         NamedVector v;
         v.name = name;
-        for (int i = 0; i < n; ++i)
-        {
+        for (int i = 0; i < n; ++i) {
             v.values.push_back(input(name, i));
         }
         return v;
     }
 
-    NamedVector params(const std::string &name, int n)
-    {
+    NamedVector params(const std::string &name, int n) {
         NamedVector v;
         v.name = name;
-        for (int i = 0; i < n; ++i)
-        {
+        for (int i = 0; i < n; ++i) {
             v.values.push_back(param(name, i));
         }
         return v;
     }
 };
 
-inline void require_same_graph(Expr a, Expr b)
-{
-    if (a.g != b.g)
-    {
+inline void require_same_graph(Expr a, Expr b) {
+    if (a.g != b.g) {
         throw std::runtime_error("expressions belong to different graphs");
     }
 }
 
-inline Expr operator+(Expr a, Expr b)
-{
+inline Expr operator+(Expr a, Expr b) {
     require_same_graph(a, b);
     return a.g->binary(Op::Add, a, b);
 }
 
-inline Expr operator-(Expr a, Expr b)
-{
+inline Expr operator-(Expr a, Expr b) {
     require_same_graph(a, b);
     return a.g->binary(Op::Sub, a, b);
 }
 
-inline Expr operator*(Expr a, Expr b)
-{
+inline Expr operator*(Expr a, Expr b) {
     require_same_graph(a, b);
     return a.g->binary(Op::Mul, a, b);
 }
 
-inline Expr operator/(Expr a, Expr b)
-{
+inline Expr operator/(Expr a, Expr b) {
     require_same_graph(a, b);
     return a.g->binary(Op::Div, a, b);
 }
 
-inline Expr operator-(Expr a)
-{
+inline Expr operator-(Expr a) {
     return a.g->unary(Op::Neg, a);
 }
 
-inline Expr operator+(Expr a, double b)
-{
+inline Expr operator+(Expr a, double b) {
     return a + a.g->constant(b);
 }
 
-inline Expr operator-(Expr a, double b)
-{
+inline Expr operator-(Expr a, double b) {
     return a - a.g->constant(b);
 }
 
-inline Expr operator*(Expr a, double b)
-{
+inline Expr operator*(Expr a, double b) {
     return a * a.g->constant(b);
 }
 
-inline Expr operator/(Expr a, double b)
-{
+inline Expr operator/(Expr a, double b) {
     return a / a.g->constant(b);
 }
 
-inline Expr operator+(double a, Expr b)
-{
+inline Expr operator+(double a, Expr b) {
     return b.g->constant(a) + b;
 }
 
-inline Expr operator-(double a, Expr b)
-{
+inline Expr operator-(double a, Expr b) {
     return b.g->constant(a) - b;
 }
 
-inline Expr operator*(double a, Expr b)
-{
+inline Expr operator*(double a, Expr b) {
     return b.g->constant(a) * b;
 }
 
-inline Expr operator/(double a, Expr b)
-{
+inline Expr operator/(double a, Expr b) {
     return b.g->constant(a) / b;
 }
 
-inline Expr sin(Expr x)
-{
+inline Expr sin(Expr x) {
     return x.g->unary(Op::Sin, x);
 }
 
-inline Expr cos(Expr x)
-{
+inline Expr cos(Expr x) {
     return x.g->unary(Op::Cos, x);
 }
 
-inline Expr tan(Expr x)
-{
+inline Expr tan(Expr x) {
     return x.g->unary(Op::Tan, x);
 }
 
-inline Expr exp(Expr x)
-{
+inline Expr exp(Expr x) {
     return x.g->unary(Op::Exp, x);
 }
 
-inline Expr log(Expr x)
-{
+inline Expr log(Expr x) {
     return x.g->unary(Op::Log, x);
 }
 
-inline Expr pow_const(Expr x, double p)
-{
+inline Expr pow_const(Expr x, double p) {
     return x.g->pow_const(x, p);
 }
 
-inline Expr sqr(Expr x)
-{
+inline Expr sqr(Expr x) {
     return x * x;
 }
 
-struct GraphFunction
-{
+struct GraphFunction {
     Graph graph;
     std::vector<NodeId> inputs;
     std::vector<NodeId> params;
@@ -388,12 +341,9 @@ struct GraphFunction
 
 inline GraphFunction optimize(const GraphFunction &f);
 
-inline void add_unique_group(std::vector<std::pair<std::string, int>> &groups, const std::string &name, int size)
-{
-    for (auto &g : groups)
-    {
-        if (g.first == name)
-        {
+inline void add_unique_group(std::vector<std::pair<std::string, int>> &groups, const std::string &name, int size) {
+    for (auto &g : groups) {
+        if (g.first == name) {
             g.second = std::max(g.second, size);
             return;
         }
@@ -401,48 +351,37 @@ inline void add_unique_group(std::vector<std::pair<std::string, int>> &groups, c
     groups.push_back({name, size});
 }
 
-inline int input_group_size(const GraphFunction &f, const std::string &name)
-{
-    for (auto [n, s] : f.input_groups)
-    {
-        if (n == name)
-        {
+inline int input_group_size(const GraphFunction &f, const std::string &name) {
+    for (auto [n, s] : f.input_groups) {
+        if (n == name) {
             return s;
         }
     }
     return 0;
 }
 
-inline int param_group_size(const GraphFunction &f, const std::string &name)
-{
-    for (auto [n, s] : f.param_groups)
-    {
-        if (n == name)
-        {
+inline int param_group_size(const GraphFunction &f, const std::string &name) {
+    for (auto [n, s] : f.param_groups) {
+        if (n == name) {
             return s;
         }
     }
     return 0;
 }
 
-inline GraphFunction function_from(Graph &&graph, const NamedVector &inputs, const std::vector<Expr> &outputs, const std::vector<NamedVector> &params = {})
-{
+inline GraphFunction function_from(Graph &&graph, const NamedVector &inputs, const std::vector<Expr> &outputs, const std::vector<NamedVector> &params = {}) {
     GraphFunction f;
     f.graph = std::move(graph);
-    for (auto e : inputs.values)
-    {
+    for (auto e : inputs.values) {
         f.inputs.push_back(e.id);
     }
-    for (auto e : outputs)
-    {
+    for (auto e : outputs) {
         f.outputs.push_back(e.id);
     }
     add_unique_group(f.input_groups, inputs.name, static_cast<int>(inputs.size()));
-    for (const auto &p : params)
-    {
+    for (const auto &p : params) {
         add_unique_group(f.param_groups, p.name, static_cast<int>(p.size()));
-        for (auto e : p.values)
-        {
+        for (auto e : p.values) {
             f.params.push_back(e.id);
         }
     }
@@ -453,8 +392,7 @@ inline GraphFunction function_from(Graph &&graph, const NamedVector &inputs, con
 // Graph cloning / optimized building helpers
 // -----------------------------------------------------------------------------
 
-struct NodeKey
-{
+struct NodeKey {
     Op op{};
     NodeId a = invalid_node;
     NodeId b = invalid_node;
@@ -465,13 +403,10 @@ struct NodeKey
     bool operator==(const NodeKey &o) const { return op == o.op && a == o.a && b == o.b && value == o.value && name == o.name && index == o.index; }
 };
 
-struct NodeKeyHash
-{
-    std::size_t operator()(const NodeKey &k) const
-    {
+struct NodeKeyHash {
+    std::size_t operator()(const NodeKey &k) const {
         std::size_t h = std::hash<int>{}(static_cast<int>(k.op));
-        auto mix = [&](std::size_t x)
-        {
+        auto mix = [&](std::size_t x) {
             h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
         };
         mix(std::hash<int>{}(k.a));
@@ -483,24 +418,19 @@ struct NodeKeyHash
     }
 };
 
-struct OptimizingBuilder
-{
+struct OptimizingBuilder {
     Graph g;
     std::unordered_map<NodeKey, NodeId, NodeKeyHash> cse;
 
-    Expr make_raw(const Node &n)
-    {
+    Expr make_raw(const Node &n) {
         NodeKey k{n.op, n.a, n.b, n.value, n.name, n.index};
-        if (n.op == Op::Add || n.op == Op::Mul)
-        {
-            if (k.b < k.a)
-            {
+        if (n.op == Op::Add || n.op == Op::Mul) {
+            if (k.b < k.a) {
                 std::swap(k.a, k.b);
             }
         }
         auto it = cse.find(k);
-        if (it != cse.end())
-        {
+        if (it != cse.end()) {
             return Expr(&g, it->second);
         }
         Node nn = n;
@@ -512,16 +442,14 @@ struct OptimizingBuilder
         return Expr(&g, id);
     }
 
-    Expr constant(double v)
-    {
+    Expr constant(double v) {
         Node n;
         n.op = Op::Constant;
         n.value = v;
         return make_raw(n);
     }
 
-    Expr input(const std::string &name, int index)
-    {
+    Expr input(const std::string &name, int index) {
         Node n;
         n.op = Op::Input;
         n.name = name;
@@ -529,8 +457,7 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr param(const std::string &name, int index)
-    {
+    Expr param(const std::string &name, int index) {
         Node n;
         n.op = Op::Param;
         n.name = name;
@@ -538,37 +465,29 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    bool is_const(Expr e, double *value = nullptr) const
-    {
+    bool is_const(Expr e, double *value = nullptr) const {
         const auto &n = g.nodes[e.id];
-        if (n.op != Op::Constant)
-        {
+        if (n.op != Op::Constant) {
             return false;
         }
-        if (value)
-        {
+        if (value) {
             *value = n.value;
         }
         return true;
     }
 
-    Expr add(Expr x, Expr y)
-    {
+    Expr add(Expr x, Expr y) {
         double cx, cy;
-        if (is_const(x, &cx) && is_const(y, &cy))
-        {
+        if (is_const(x, &cx) && is_const(y, &cy)) {
             return constant(cx + cy);
         }
-        if (is_const(x, &cx) && exactly(cx, 0.0))
-        {
+        if (is_const(x, &cx) && exactly(cx, 0.0)) {
             return y;
         }
-        if (is_const(y, &cy) && exactly(cy, 0.0))
-        {
+        if (is_const(y, &cy) && exactly(cy, 0.0)) {
             return x;
         }
-        if (x.id == y.id)
-        {
+        if (x.id == y.id) {
             return mul(constant(2.0), x);
         }
         Node n;
@@ -578,23 +497,18 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr sub(Expr x, Expr y)
-    {
+    Expr sub(Expr x, Expr y) {
         double cx, cy;
-        if (is_const(x, &cx) && is_const(y, &cy))
-        {
+        if (is_const(x, &cx) && is_const(y, &cy)) {
             return constant(cx - cy);
         }
-        if (is_const(y, &cy) && exactly(cy, 0.0))
-        {
+        if (is_const(y, &cy) && exactly(cy, 0.0)) {
             return x;
         }
-        if (is_const(x, &cx) && exactly(cx, 0.0))
-        {
+        if (is_const(x, &cx) && exactly(cx, 0.0)) {
             return neg(y);
         }
-        if (x.id == y.id)
-        {
+        if (x.id == y.id) {
             return constant(0.0);
         }
         Node n;
@@ -604,40 +518,30 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr mul(Expr x, Expr y)
-    {
+    Expr mul(Expr x, Expr y) {
         double cx, cy;
-        if (is_const(x, &cx) && is_const(y, &cy))
-        {
+        if (is_const(x, &cx) && is_const(y, &cy)) {
             return constant(cx * cy);
         }
-        if (is_const(x, &cx))
-        {
-            if (exactly(cx, 0.0))
-            {
+        if (is_const(x, &cx)) {
+            if (exactly(cx, 0.0)) {
                 return constant(0.0);
             }
-            if (exactly(cx, 1.0))
-            {
+            if (exactly(cx, 1.0)) {
                 return y;
             }
-            if (exactly(cx, -1.0))
-            {
+            if (exactly(cx, -1.0)) {
                 return neg(y);
             }
         }
-        if (is_const(y, &cy))
-        {
-            if (exactly(cy, 0.0))
-            {
+        if (is_const(y, &cy)) {
+            if (exactly(cy, 0.0)) {
                 return constant(0.0);
             }
-            if (exactly(cy, 1.0))
-            {
+            if (exactly(cy, 1.0)) {
                 return x;
             }
-            if (exactly(cy, -1.0))
-            {
+            if (exactly(cy, -1.0)) {
                 return neg(x);
             }
         }
@@ -648,19 +552,15 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr div(Expr x, Expr y)
-    {
+    Expr div(Expr x, Expr y) {
         double cx, cy;
-        if (is_const(x, &cx) && is_const(y, &cy))
-        {
+        if (is_const(x, &cx) && is_const(y, &cy)) {
             return constant(cx / cy);
         }
-        if (is_const(x, &cx) && exactly(cx, 0.0))
-        {
+        if (is_const(x, &cx) && exactly(cx, 0.0)) {
             return constant(0.0);
         }
-        if (is_const(y, &cy) && exactly(cy, 1.0))
-        {
+        if (is_const(y, &cy) && exactly(cy, 1.0)) {
             return x;
         }
         Node n;
@@ -670,16 +570,13 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr neg(Expr x)
-    {
+    Expr neg(Expr x) {
         double cx;
-        if (is_const(x, &cx))
-        {
+        if (is_const(x, &cx)) {
             return constant(-cx);
         }
         const auto &nx = g.nodes[x.id];
-        if (nx.op == Op::Neg)
-        {
+        if (nx.op == Op::Neg) {
             return Expr(&g, nx.a);
         }
         Node n;
@@ -688,13 +585,10 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr unary(Op op, Expr x)
-    {
+    Expr unary(Op op, Expr x) {
         double cx;
-        if (is_const(x, &cx))
-        {
-            switch (op)
-            {
+        if (is_const(x, &cx)) {
+            switch (op) {
                 case Op::Sin:
                     return constant(std::sin(cx));
                 case Op::Cos:
@@ -715,23 +609,18 @@ struct OptimizingBuilder
         return make_raw(n);
     }
 
-    Expr pow_const(Expr x, double p)
-    {
+    Expr pow_const(Expr x, double p) {
         double cx;
-        if (exactly(p, 0.0))
-        {
+        if (exactly(p, 0.0)) {
             return constant(1.0);
         }
-        if (exactly(p, 1.0))
-        {
+        if (exactly(p, 1.0)) {
             return x;
         }
-        if (exactly(p, 2.0))
-        {
+        if (exactly(p, 2.0)) {
             return mul(x, x);
         }
-        if (is_const(x, &cx))
-        {
+        if (is_const(x, &cx)) {
             return constant(std::pow(cx, p));
         }
         Node n;
@@ -742,10 +631,8 @@ struct OptimizingBuilder
     }
 };
 
-inline Expr ob_binary(OptimizingBuilder &b, Op op, Expr x, Expr y)
-{
-    switch (op)
-    {
+inline Expr ob_binary(OptimizingBuilder &b, Op op, Expr x, Expr y) {
+    switch (op) {
         case Op::Add:
             return b.add(x, y);
         case Op::Sub:
@@ -759,14 +646,11 @@ inline Expr ob_binary(OptimizingBuilder &b, Op op, Expr x, Expr y)
     }
 }
 
-inline std::vector<NodeId> topo_used(const Graph &g, const std::vector<NodeId> &outputs)
-{
+inline std::vector<NodeId> topo_used(const Graph &g, const std::vector<NodeId> &outputs) {
     std::vector<char> seen(g.nodes.size(), false);
     std::vector<NodeId> order;
-    std::function<void(NodeId)> dfs = [&](NodeId id)
-    {
-        if (id < 0 || seen[id])
-        {
+    std::function<void(NodeId)> dfs = [&](NodeId id) {
+        if (id < 0 || seen[id]) {
             return;
         }
         seen[id] = true;
@@ -775,15 +659,13 @@ inline std::vector<NodeId> topo_used(const Graph &g, const std::vector<NodeId> &
         dfs(n.b);
         order.push_back(id);
     };
-    for (auto o : outputs)
-    {
+    for (auto o : outputs) {
         dfs(o);
     }
     return order;
 }
 
-inline GraphFunction optimize(const GraphFunction &f)
-{
+inline GraphFunction optimize(const GraphFunction &f) {
     std::vector<NodeId> roots = f.outputs;
     roots.insert(roots.end(), f.inputs.begin(), f.inputs.end());
     roots.insert(roots.end(), f.params.begin(), f.params.end());
@@ -791,12 +673,10 @@ inline GraphFunction optimize(const GraphFunction &f)
     OptimizingBuilder b;
     std::unordered_map<NodeId, Expr> map;
 
-    for (NodeId old : order)
-    {
+    for (NodeId old : order) {
         const auto &n = f.graph.nodes[old];
         Expr e;
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
                 e = b.constant(n.value);
                 break;
@@ -845,16 +725,13 @@ inline GraphFunction optimize(const GraphFunction &f)
 
     GraphFunction out;
     out.graph = std::move(b.g);
-    for (auto id : f.inputs)
-    {
+    for (auto id : f.inputs) {
         out.inputs.push_back(map.at(id).id);
     }
-    for (auto id : f.params)
-    {
+    for (auto id : f.params) {
         out.params.push_back(map.at(id).id);
     }
-    for (auto id : f.outputs)
-    {
+    for (auto id : f.outputs) {
         out.outputs.push_back(map.at(id).id);
     }
     out.input_groups = f.input_groups;
@@ -866,24 +743,18 @@ inline GraphFunction optimize(const GraphFunction &f)
 // Copy graph into OptimizingBuilder
 // -----------------------------------------------------------------------------
 
-inline std::vector<Expr> clone_nodes(const Graph &src, OptimizingBuilder &dst, const std::optional<std::string> &input_as_param = std::nullopt)
-{
+inline std::vector<Expr> clone_nodes(const Graph &src, OptimizingBuilder &dst, const std::optional<std::string> &input_as_param = std::nullopt) {
     std::vector<Expr> map(src.nodes.size());
-    for (NodeId i = 0; i < static_cast<NodeId>(src.nodes.size()); ++i)
-    {
+    for (NodeId i = 0; i < static_cast<NodeId>(src.nodes.size()); ++i) {
         const auto &n = src.nodes[i];
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
                 map[i] = dst.constant(n.value);
                 break;
             case Op::Input:
-                if (input_as_param && n.name == *input_as_param)
-                {
+                if (input_as_param && n.name == *input_as_param) {
                     map[i] = dst.param(n.name, n.index);
-                }
-                else
-                {
+                } else {
                     map[i] = dst.input(n.name, n.index);
                 }
                 break;
@@ -932,29 +803,23 @@ inline std::vector<Expr> clone_nodes(const Graph &src, OptimizingBuilder &dst, c
 // Forward-mode graph transform: JVP.
 // -----------------------------------------------------------------------------
 
-inline GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt_input_name = "x", const std::string &direction_name = "v")
-{
+inline GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt_input_name = "x", const std::string &direction_name = "v") {
     OptimizingBuilder b;
     auto primal = clone_nodes(f.graph, b);
     std::vector<Expr> tangent(f.graph.nodes.size());
     auto zero = b.constant(0.0);
 
-    for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-    {
+    for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
         const auto &n = f.graph.nodes[i];
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
             case Op::Param:
                 tangent[i] = zero;
                 break;
             case Op::Input:
-                if (n.name == wrt_input_name)
-                {
+                if (n.name == wrt_input_name) {
                     tangent[i] = b.param(direction_name, n.index);
-                }
-                else
-                {
+                } else {
                     tangent[i] = zero;
                 }
                 break;
@@ -967,8 +832,7 @@ inline GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt
             case Op::Mul:
                 tangent[i] = b.add(b.mul(tangent[n.a], primal[n.b]), b.mul(primal[n.a], tangent[n.b]));
                 break;
-            case Op::Div:
-            {
+            case Op::Div: {
                 auto num = b.sub(b.mul(tangent[n.a], primal[n.b]), b.mul(primal[n.a], tangent[n.b]));
                 auto den = b.mul(primal[n.b], primal[n.b]);
                 tangent[i] = b.div(num, den);
@@ -992,14 +856,10 @@ inline GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt
             case Op::Log:
                 tangent[i] = b.div(tangent[n.a], primal[n.a]);
                 break;
-            case Op::PowConst:
-            {
-                if (exactly(n.value, 0.0))
-                {
+            case Op::PowConst: {
+                if (exactly(n.value, 0.0)) {
                     tangent[i] = zero;
-                }
-                else
-                {
+                } else {
                     auto c = b.constant(n.value);
                     auto p = b.pow_const(primal[n.a], n.value - 1.0);
                     tangent[i] = b.mul(b.mul(c, p), tangent[n.a]);
@@ -1010,38 +870,31 @@ inline GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt
     }
 
     GraphFunction out;
-    for (auto id : f.inputs)
-    {
+    for (auto id : f.inputs) {
         out.inputs.push_back(primal[id].id);
     }
 
-    for (auto id : f.params)
-    {
+    for (auto id : f.params) {
         out.params.push_back(primal[id].id);
     }
 
-    for (auto [name, size] : f.param_groups)
-    {
+    for (auto [name, size] : f.param_groups) {
         add_unique_group(out.param_groups, name, size);
     }
 
-    for (auto [name, size] : f.input_groups)
-    {
+    for (auto [name, size] : f.input_groups) {
         add_unique_group(out.input_groups, name, size);
     }
 
     int wrt_size = 0;
-    for (auto [name, size] : f.input_groups)
-    {
-        if (name == wrt_input_name)
-        {
+    for (auto [name, size] : f.input_groups) {
+        if (name == wrt_input_name) {
             wrt_size = size;
         }
     }
     add_unique_group(out.param_groups, direction_name, wrt_size);
 
-    for (auto id : f.outputs)
-    {
+    for (auto id : f.outputs) {
         out.outputs.push_back(tangent[id].id);
     }
     out.graph = std::move(b.g);
@@ -1053,50 +906,40 @@ inline GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt
 // Returns grad_x(lambda^T f(x)).
 // -----------------------------------------------------------------------------
 
-inline GraphFunction reverse_diff(const GraphFunction &f, const std::string &lambda_name = "lambda", const std::string &wrt_input_name = "x")
-{
+inline GraphFunction reverse_diff(const GraphFunction &f, const std::string &lambda_name = "lambda", const std::string &wrt_input_name = "x") {
     OptimizingBuilder b;
     auto primal = clone_nodes(f.graph, b);
     auto zero = b.constant(0.0);
 
     std::vector<std::vector<Expr>> adj_terms(f.graph.nodes.size());
-    auto add_adj = [&](NodeId id, Expr term)
-    {
-        if (id >= 0)
-        {
+    auto add_adj = [&](NodeId id, Expr term) {
+        if (id >= 0) {
             adj_terms[id].push_back(term);
         }
     };
 
-    for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i)
-    {
+    for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i) {
         add_adj(f.outputs[i], b.param(lambda_name, i));
     }
 
-    auto sum_terms = [&](const std::vector<Expr> &terms) -> Expr
-    {
-        if (terms.empty())
-        {
+    auto sum_terms = [&](const std::vector<Expr> &terms) -> Expr {
+        if (terms.empty()) {
             return zero;
         }
         Expr s = terms[0];
-        for (std::size_t i = 1; i < terms.size(); ++i)
-        {
+        for (std::size_t i = 1; i < terms.size(); ++i) {
             s = b.add(s, terms[i]);
         }
         return s;
     };
 
-    for (NodeId i = static_cast<NodeId>(f.graph.nodes.size()) - 1; i >= 0; --i)
-    {
-        if (adj_terms[i].empty())
-        {
+    for (NodeId i = static_cast<NodeId>(f.graph.nodes.size()) - 1; i >= 0; --i) {
+        if (adj_terms[i].empty()) {
             continue;
         }
         const auto &n = f.graph.nodes[i];
         Expr adj = sum_terms(adj_terms[i]);
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
             case Op::Input:
             case Op::Param:
@@ -1139,8 +982,7 @@ inline GraphFunction reverse_diff(const GraphFunction &f, const std::string &lam
                 add_adj(n.a, b.mul(adj, b.mul(b.constant(n.value), b.pow_const(primal[n.a], n.value - 1.0))));
                 break;
         }
-        if (i == 0)
-        {
+        if (i == 0) {
             break;
         }
     }
@@ -1149,34 +991,27 @@ inline GraphFunction reverse_diff(const GraphFunction &f, const std::string &lam
 
     int out_size = static_cast<int>(f.outputs.size());
     add_unique_group(out.param_groups, lambda_name, out_size);
-    for (int i = 0; i < out_size; ++i)
-    {
+    for (int i = 0; i < out_size; ++i) {
         // lambda seed nodes were created while seeding output adjoints.
         // They do not need to be duplicated here.
     }
-    for (auto [name, size] : f.param_groups)
-    {
+    for (auto [name, size] : f.param_groups) {
         add_unique_group(out.param_groups, name, size);
     }
-    for (auto [name, size] : f.input_groups)
-    {
+    for (auto [name, size] : f.input_groups) {
         add_unique_group(out.input_groups, name, size);
     }
 
-    for (auto id : f.inputs)
-    {
+    for (auto id : f.inputs) {
         out.inputs.push_back(primal[id].id);
     }
-    for (auto id : f.params)
-    {
+    for (auto id : f.params) {
         out.params.push_back(primal[id].id);
     }
 
-    for (auto id : f.inputs)
-    {
+    for (auto id : f.inputs) {
         const auto &n = f.graph.nodes[id];
-        if (n.op == Op::Input && n.name == wrt_input_name)
-        {
+        if (n.op == Op::Input && n.name == wrt_input_name) {
             out.outputs.push_back(sum_terms(adj_terms[id]).id);
         }
     }
@@ -1193,35 +1028,28 @@ inline GraphFunction reverse_diff(const GraphFunction &f, const std::string &lam
 // values directly.
 // -----------------------------------------------------------------------------
 
-struct SparseDerivativePlan
-{
+struct SparseDerivativePlan {
     std::vector<std::pair<int, int>> pattern;
     std::vector<int> column_color;
     int color_count = 0;
     std::string strategy = "direct";
 };
 
-inline std::vector<int> greedy_column_coloring(int column_count, const std::vector<std::pair<int, int>> &pattern)
-{
+inline std::vector<int> greedy_column_coloring(int column_count, const std::vector<std::pair<int, int>> &pattern) {
     std::vector<std::unordered_set<int>> rows_by_col(column_count);
     std::unordered_map<int, std::vector<int>> cols_by_row;
-    for (auto [row, col] : pattern)
-    {
-        if (col >= 0 && col < column_count)
-        {
+    for (auto [row, col] : pattern) {
+        if (col >= 0 && col < column_count) {
             cols_by_row[row].push_back(col);
         }
     }
     std::vector<std::unordered_set<int>> adjacency(column_count);
-    for (auto &[row, cols] : cols_by_row)
-    {
+    for (auto &[row, cols] : cols_by_row) {
         (void)row;
         std::sort(cols.begin(), cols.end());
         cols.erase(std::unique(cols.begin(), cols.end()), cols.end());
-        for (std::size_t i = 0; i < cols.size(); ++i)
-        {
-            for (std::size_t j = i + 1; j < cols.size(); ++j)
-            {
+        for (std::size_t i = 0; i < cols.size(); ++i) {
+            for (std::size_t j = i + 1; j < cols.size(); ++j) {
                 adjacency[cols[i]].insert(cols[j]);
                 adjacency[cols[j]].insert(cols[i]);
             }
@@ -1229,33 +1057,26 @@ inline std::vector<int> greedy_column_coloring(int column_count, const std::vect
     }
 
     std::vector<int> order(column_count);
-    for (int i = 0; i < column_count; ++i)
-    {
+    for (int i = 0; i < column_count; ++i) {
         order[i] = i;
     }
-    std::sort(order.begin(), order.end(), [&](int a, int b)
-    {
-        if (adjacency[a].size() != adjacency[b].size())
-        {
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        if (adjacency[a].size() != adjacency[b].size()) {
             return adjacency[a].size() > adjacency[b].size();
         }
         return a < b;
     });
 
     std::vector<int> color(column_count, -1);
-    for (int col : order)
-    {
+    for (int col : order) {
         std::unordered_set<int> used;
-        for (int other : adjacency[col])
-        {
-            if (color[other] >= 0)
-            {
+        for (int other : adjacency[col]) {
+            if (color[other] >= 0) {
                 used.insert(color[other]);
             }
         }
         int c = 0;
-        while (used.count(c))
-        {
+        while (used.count(c)) {
             ++c;
         }
         color[col] = c;
@@ -1263,78 +1084,62 @@ inline std::vector<int> greedy_column_coloring(int column_count, const std::vect
     return color;
 }
 
-inline SparseDerivativePlan derivative_plan(int column_count, const std::vector<std::pair<int, int>> &pattern)
-{
+inline SparseDerivativePlan derivative_plan(int column_count, const std::vector<std::pair<int, int>> &pattern) {
     SparseDerivativePlan plan;
     plan.pattern = pattern;
     plan.column_color = greedy_column_coloring(column_count, pattern);
     plan.color_count = 0;
-    for (int c : plan.column_color)
-    {
+    for (int c : plan.column_color) {
         plan.color_count = std::max(plan.color_count, c + 1);
     }
     plan.strategy = (plan.color_count > 0 && plan.color_count < static_cast<int>(pattern.size())) ? "direct" : "direct";
     return plan;
 }
 
-struct LinearForm
-{
+struct LinearForm {
     Expr constant;
     std::map<int, Expr> coeff;
 };
 
-inline bool has_coeff(const LinearForm &f)
-{
+inline bool has_coeff(const LinearForm &f) {
     return !f.coeff.empty();
 }
 
-inline LinearForm make_constant_form(Expr e)
-{
+inline LinearForm make_constant_form(Expr e) {
     LinearForm out;
     out.constant = e;
     return out;
 }
 
-inline LinearForm linear_add(OptimizingBuilder &b, const LinearForm &a, const LinearForm &c, double sign = 1.0)
-{
+inline LinearForm linear_add(OptimizingBuilder &b, const LinearForm &a, const LinearForm &c, double sign = 1.0) {
     LinearForm out;
     out.constant = sign > 0.0 ? b.add(a.constant, c.constant) : b.sub(a.constant, c.constant);
     out.coeff = a.coeff;
-    for (auto &[idx, expr] : c.coeff)
-    {
+    for (auto &[idx, expr] : c.coeff) {
         auto it = out.coeff.find(idx);
         Expr term = sign > 0.0 ? expr : b.neg(expr);
-        if (it == out.coeff.end())
-        {
+        if (it == out.coeff.end()) {
             out.coeff.emplace(idx, term);
-        }
-        else
-        {
+        } else {
             it->second = b.add(it->second, term);
         }
     }
     return out;
 }
 
-inline LinearForm linear_scale(OptimizingBuilder &b, const LinearForm &a, Expr scale)
-{
+inline LinearForm linear_scale(OptimizingBuilder &b, const LinearForm &a, Expr scale) {
     LinearForm out;
     out.constant = b.mul(a.constant, scale);
-    for (auto &[idx, expr] : a.coeff)
-    {
+    for (auto &[idx, expr] : a.coeff) {
         out.coeff.emplace(idx, b.mul(expr, scale));
     }
     return out;
 }
 
-inline GraphFunction sparse_coefficients(const GraphFunction &fn,
-                                         const std::string &seed_name,
-                                         const std::vector<std::pair<int, int>> &entries)
-{
+inline GraphFunction sparse_coefficients(const GraphFunction &fn, const std::string &seed_name, const std::vector<std::pair<int, int>> &entries) {
     auto f = optimize(fn);
     const int seed_size = param_group_size(f, seed_name);
-    if (seed_size <= 0)
-    {
+    if (seed_size <= 0) {
         throw std::runtime_error("sparse_coefficients: unknown seed parameter group: " + seed_name);
     }
 
@@ -1344,10 +1149,8 @@ inline GraphFunction sparse_coefficients(const GraphFunction &fn,
     auto zero = b.constant(0.0);
     auto one = b.constant(1.0);
 
-    auto require_constant = [&](const LinearForm &lf, const char *op) -> Expr
-    {
-        if (has_coeff(lf))
-        {
+    auto require_constant = [&](const LinearForm &lf, const char *op) -> Expr {
+        if (has_coeff(lf)) {
             throw std::runtime_error(std::string("sparse_coefficients: nonlinear seed use in ") + op);
         }
         return lf.constant;
@@ -1356,11 +1159,9 @@ inline GraphFunction sparse_coefficients(const GraphFunction &fn,
     std::vector<NodeId> roots = f.outputs;
     roots.insert(roots.end(), f.inputs.begin(), f.inputs.end());
     roots.insert(roots.end(), f.params.begin(), f.params.end());
-    for (NodeId i : topo_used(f.graph, roots))
-    {
+    for (NodeId i : topo_used(f.graph, roots)) {
         const auto &n = f.graph.nodes[i];
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
                 cloned[i] = b.constant(n.value);
                 form[i] = make_constant_form(cloned[i]);
@@ -1370,14 +1171,11 @@ inline GraphFunction sparse_coefficients(const GraphFunction &fn,
                 form[i] = make_constant_form(cloned[i]);
                 break;
             case Op::Param:
-                if (n.name == seed_name)
-                {
+                if (n.name == seed_name) {
                     cloned[i] = zero;
                     form[i] = make_constant_form(zero);
                     form[i].coeff[n.index] = one;
-                }
-                else
-                {
+                } else {
                     cloned[i] = b.param(n.name, n.index);
                     form[i] = make_constant_form(cloned[i]);
                 }
@@ -1394,39 +1192,29 @@ inline GraphFunction sparse_coefficients(const GraphFunction &fn,
                 form[i] = linear_scale(b, form[n.a], b.constant(-1.0));
                 cloned[i] = form[i].constant;
                 break;
-            case Op::Mul:
-            {
+            case Op::Mul: {
                 bool la = has_coeff(form[n.a]);
                 bool lb = has_coeff(form[n.b]);
-                if (la && lb)
-                {
+                if (la && lb) {
                     throw std::runtime_error("sparse_coefficients: nonlinear seed use in multiplication");
                 }
-                if (la)
-                {
+                if (la) {
                     form[i] = linear_scale(b, form[n.a], form[n.b].constant);
-                }
-                else if (lb)
-                {
+                } else if (lb) {
                     form[i] = linear_scale(b, form[n.b], form[n.a].constant);
-                }
-                else
-                {
+                } else {
                     form[i] = make_constant_form(b.mul(form[n.a].constant, form[n.b].constant));
                 }
                 cloned[i] = form[i].constant;
                 break;
             }
-            case Op::Div:
-            {
-                if (has_coeff(form[n.b]))
-                {
+            case Op::Div: {
+                if (has_coeff(form[n.b])) {
                     throw std::runtime_error("sparse_coefficients: nonlinear seed use in division denominator");
                 }
                 Expr denom = form[n.b].constant;
                 form[i].constant = b.div(form[n.a].constant, denom);
-                for (auto &[idx, expr] : form[n.a].coeff)
-                {
+                for (auto &[idx, expr] : form[n.a].coeff) {
                     form[i].coeff.emplace(idx, b.div(expr, denom));
                 }
                 cloned[i] = form[i].constant;
@@ -1461,29 +1249,22 @@ inline GraphFunction sparse_coefficients(const GraphFunction &fn,
 
     GraphFunction out;
     out.input_groups = f.input_groups;
-    for (auto id : f.inputs)
-    {
+    for (auto id : f.inputs) {
         out.inputs.push_back(cloned[id].id);
     }
-    for (auto [name, size] : f.param_groups)
-    {
-        if (name != seed_name)
-        {
+    for (auto [name, size] : f.param_groups) {
+        if (name != seed_name) {
             add_unique_group(out.param_groups, name, size);
         }
     }
-    for (auto id : f.params)
-    {
+    for (auto id : f.params) {
         const auto &n = f.graph.nodes[id];
-        if (n.op == Op::Param && n.name != seed_name)
-        {
+        if (n.op == Op::Param && n.name != seed_name) {
             out.params.push_back(cloned[id].id);
         }
     }
-    for (auto [row, col] : entries)
-    {
-        if (row < 0 || row >= static_cast<int>(f.outputs.size()) || col < 0 || col >= seed_size)
-        {
+    for (auto [row, col] : entries) {
+        if (row < 0 || row >= static_cast<int>(f.outputs.size()) || col < 0 || col >= seed_size) {
             throw std::runtime_error("sparse_coefficients: requested entry out of range");
         }
         const auto &coeff = form[f.outputs[row]].coeff;
@@ -1497,15 +1278,11 @@ inline GraphFunction sparse_coefficients(const GraphFunction &fn,
 inline GraphFunction sparse_jacobian_function(const GraphFunction &F,
                                               const std::string &wrt,
                                               const std::vector<std::pair<int, int>> &entries,
-                                              const std::string &direction_name = "v")
-{
+                                              const std::string &direction_name = "v") {
     return sparse_coefficients(forward_diff(F, wrt, direction_name), direction_name, entries);
 }
 
-inline GraphFunction sparse_hessian_function(const GraphFunction &HVP,
-                                             const std::string &direction_name,
-                                             const std::vector<std::pair<int, int>> &entries)
-{
+inline GraphFunction sparse_hessian_function(const GraphFunction &HVP, const std::string &direction_name, const std::vector<std::pair<int, int>> &entries) {
     return sparse_coefficients(HVP, direction_name, entries);
 }
 
@@ -1513,58 +1290,45 @@ inline GraphFunction sparse_hessian_function(const GraphFunction &HVP,
 // Evaluation environment and VM.
 // -----------------------------------------------------------------------------
 
-struct EvalEnv
-{
+struct EvalEnv {
     std::unordered_map<std::string, const double *> inputs;
     std::unordered_map<std::string, const double *> params;
 
-    EvalEnv &input(const std::string &name, const double *data)
-    {
+    EvalEnv &input(const std::string &name, const double *data) {
         inputs[name] = data;
         return *this;
     }
-    EvalEnv &param(const std::string &name, const double *data)
-    {
+    EvalEnv &param(const std::string &name, const double *data) {
         params[name] = data;
         return *this;
     }
 };
 
-struct VM
-{
+struct VM {
     GraphFunction f;
 
     explicit VM(GraphFunction fn)
-        : f(optimize(fn))
-    {
-    }
+        : f(optimize(fn)) {}
 
-    void evaluate(const EvalEnv &env, double *out) const
-    {
+    void evaluate(const EvalEnv &env, double *out) const {
         std::vector<double> mem(f.graph.nodes.size(), 0.0);
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            switch (n.op)
-            {
+            switch (n.op) {
                 case Op::Constant:
                     mem[i] = n.value;
                     break;
-                case Op::Input:
-                {
+                case Op::Input: {
                     auto it = env.inputs.find(n.name);
-                    if (it == env.inputs.end())
-                    {
+                    if (it == env.inputs.end()) {
                         throw std::runtime_error("missing input group: " + n.name);
                     }
                     mem[i] = it->second[n.index];
                     break;
                 }
-                case Op::Param:
-                {
+                case Op::Param: {
                     auto it = env.params.find(n.name);
-                    if (it == env.params.end())
-                    {
+                    if (it == env.params.end()) {
                         throw std::runtime_error("missing param group: " + n.name);
                     }
                     mem[i] = it->second[n.index];
@@ -1605,8 +1369,7 @@ struct VM
                     break;
             }
         }
-        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i)
-        {
+        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i) {
             out[i] = mem[f.outputs[i]];
         }
     }
@@ -1616,49 +1379,40 @@ struct VM
 // Staged VM: prepares all nodes independent of a chosen direction parameter group.
 // -----------------------------------------------------------------------------
 
-struct StagedVM
-{
+struct StagedVM {
     GraphFunction f;
     std::string direction_name;
     std::vector<char> depends_on_direction;
 
     explicit StagedVM(GraphFunction fn, std::string direction = "v")
         : f(optimize(fn)),
-          direction_name(std::move(direction))
-    {
+          direction_name(std::move(direction)) {
         analyze();
     }
 
-    void analyze()
-    {
+    void analyze() {
         depends_on_direction.assign(f.graph.nodes.size(), false);
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
             bool dep = false;
-            if (n.op == Op::Param && n.name == direction_name)
-            {
+            if (n.op == Op::Param && n.name == direction_name) {
                 dep = true;
             }
-            if (n.a >= 0)
-            {
+            if (n.a >= 0) {
                 dep = dep || depends_on_direction[n.a];
             }
-            if (n.b >= 0)
-            {
+            if (n.b >= 0) {
                 dep = dep || depends_on_direction[n.b];
             }
             depends_on_direction[i] = dep;
         }
     }
 
-    struct Prepared
-    {
+    struct Prepared {
         const StagedVM *vm = nullptr;
         std::vector<double> mem;
 
-        void apply(const double *direction, double *out) const
-        {
+        void apply(const double *direction, double *out) const {
             EvalEnv env;
             env.params.emplace(vm->direction_name, direction);
             std::vector<double> local = mem;
@@ -1666,15 +1420,12 @@ struct StagedVM
         }
     };
 
-    Prepared prepare(const EvalEnv &env) const
-    {
+    Prepared prepare(const EvalEnv &env) const {
         Prepared p;
         p.vm = this;
         p.mem.assign(f.graph.nodes.size(), 0.0);
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
-            if (depends_on_direction[i])
-            {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
+            if (depends_on_direction[i]) {
                 continue;
             }
             eval_node(i, env, p.mem);
@@ -1682,45 +1433,35 @@ struct StagedVM
         return p;
     }
 
-    void eval_dependent(const EvalEnv &env, std::vector<double> &mem, double *out) const
-    {
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
-            if (!depends_on_direction[i])
-            {
+    void eval_dependent(const EvalEnv &env, std::vector<double> &mem, double *out) const {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
+            if (!depends_on_direction[i]) {
                 continue;
             }
             eval_node(i, env, mem);
         }
-        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i)
-        {
+        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i) {
             out[i] = mem[f.outputs[i]];
         }
     }
 
-    void eval_node(NodeId i, const EvalEnv &env, std::vector<double> &mem) const
-    {
+    void eval_node(NodeId i, const EvalEnv &env, std::vector<double> &mem) const {
         const auto &n = f.graph.nodes[i];
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
                 mem[i] = n.value;
                 break;
-            case Op::Input:
-            {
+            case Op::Input: {
                 auto it = env.inputs.find(n.name);
-                if (it == env.inputs.end())
-                {
+                if (it == env.inputs.end()) {
                     throw std::runtime_error("missing input group: " + n.name);
                 }
                 mem[i] = it->second[n.index];
                 break;
             }
-            case Op::Param:
-            {
+            case Op::Param: {
                 auto it = env.params.find(n.name);
-                if (it == env.params.end())
-                {
+                if (it == env.params.end()) {
                     throw std::runtime_error("missing param group: " + n.name);
                 }
                 mem[i] = it->second[n.index];
@@ -1767,31 +1508,23 @@ struct StagedVM
 // C emitter.
 // -----------------------------------------------------------------------------
 
-struct CEmitter
-{
-    static std::string number(double v)
-    {
+struct CEmitter {
+    static std::string number(double v) {
         std::ostringstream os;
         os << std::setprecision(17) << v;
         return os.str();
     }
 
-    static std::string cname(const std::string &s)
-    {
+    static std::string cname(const std::string &s) {
         std::string r;
-        for (char c : s)
-        {
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')
-            {
+        for (char c : s) {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
                 r.push_back(c);
-            }
-            else
-            {
+            } else {
                 r.push_back('_');
             }
         }
-        if (r.empty() || (r[0] >= '0' && r[0] <= '9'))
-        {
+        if (r.empty() || (r[0] >= '0' && r[0] <= '9')) {
             r = "_" + r;
         }
         return r;
@@ -1799,24 +1532,19 @@ struct CEmitter
 
     static std::string cache_slot(const Node &n) { return cname(n.name) + "_" + std::to_string(n.index); }
 
-    static std::string node_ref(const Node &n)
-    {
-        if (n.op == Op::Input)
-        {
+    static std::string node_ref(const Node &n) {
+        if (n.op == Op::Input) {
             return n.name + "[" + std::to_string(n.index) + "]";
         }
-        if (n.op == Op::Param)
-        {
+        if (n.op == Op::Param) {
             return n.name + "[" + std::to_string(n.index) + "]";
         }
         throw std::runtime_error("node_ref only supports input/param");
     }
 
-    static std::string expr_rhs(const Graph &g, NodeId id, const std::function<std::string(NodeId)> &ref)
-    {
+    static std::string expr_rhs(const Graph &g, NodeId id, const std::function<std::string(NodeId)> &ref) {
         const auto &n = g.nodes[id];
-        switch (n.op)
-        {
+        switch (n.op) {
             case Op::Constant:
                 return number(n.value);
             case Op::Input:
@@ -1849,144 +1577,113 @@ struct CEmitter
         return "0.0";
     }
 
-    static void emit_function(const GraphFunction &fn, const std::string &name, std::ostream &os)
-    {
+    static void emit_function(const GraphFunction &fn, const std::string &name, std::ostream &os) {
         auto f = optimize(fn);
         os << "void " << name << "(\n";
-        for (auto [n, s] : f.input_groups)
-        {
+        for (auto [n, s] : f.input_groups) {
             os << "    const double* " << n << ",\n";
         }
-        for (auto [n, s] : f.param_groups)
-        {
+        for (auto [n, s] : f.param_groups) {
             os << "    const double* " << n << ",\n";
         }
         os << "    double* out\n) {\n";
 
         std::unordered_set<NodeId> output_set(f.outputs.begin(), f.outputs.end());
-        auto ref = [&](NodeId id) -> std::string
-        {
+        auto ref = [&](NodeId id) -> std::string {
             const auto &n = f.graph.nodes[id];
-            if (n.op == Op::Input || n.op == Op::Param)
-            {
+            if (n.op == Op::Input || n.op == Op::Param) {
                 return node_ref(n);
             }
-            if (n.op == Op::Constant)
-            {
+            if (n.op == Op::Constant) {
                 return number(n.value);
             }
             return "t" + std::to_string(id);
         };
 
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant)
-            {
+            if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant) {
                 continue;
             }
             os << "    double t" << i << " = " << expr_rhs(f.graph, i, ref) << ";\n";
         }
-        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i)
-        {
+        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i) {
             os << "    out[" << i << "] = " << ref(f.outputs[i]) << ";\n";
         }
         os << "}\n";
     }
 
-    static void emit_staged(const GraphFunction &fn, const std::string &basename, const std::string &direction_name, std::ostream &os)
-    {
+    static void emit_staged(const GraphFunction &fn, const std::string &basename, const std::string &direction_name, std::ostream &os) {
         StagedVM svm(fn, direction_name);
         const auto &f = svm.f;
         os << "typedef struct {\n";
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            if ((n.op == Op::Input) || (n.op == Op::Param && n.name != direction_name))
-            {
+            if ((n.op == Op::Input) || (n.op == Op::Param && n.name != direction_name)) {
                 os << "    double " << cache_slot(n) << ";\n";
             }
         }
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            if (!svm.depends_on_direction[i] && n.op != Op::Input && n.op != Op::Param && n.op != Op::Constant)
-            {
+            if (!svm.depends_on_direction[i] && n.op != Op::Input && n.op != Op::Param && n.op != Op::Constant) {
                 os << "    double t" << i << ";\n";
             }
         }
         os << "} " << basename << "_cache_t;\n\n";
 
-        auto ref_prepare = [&](NodeId id) -> std::string
-        {
+        auto ref_prepare = [&](NodeId id) -> std::string {
             const auto &n = f.graph.nodes[id];
-            if (n.op == Op::Input || n.op == Op::Param)
-            {
+            if (n.op == Op::Input || n.op == Op::Param) {
                 return node_ref(n);
             }
-            if (n.op == Op::Constant)
-            {
+            if (n.op == Op::Constant) {
                 return number(n.value);
             }
             return "cache->t" + std::to_string(id);
         };
 
-        auto ref_apply = [&](NodeId id) -> std::string
-        {
+        auto ref_apply = [&](NodeId id) -> std::string {
             const auto &n = f.graph.nodes[id];
-            if (n.op == Op::Input)
-            {
+            if (n.op == Op::Input) {
                 return "cache->" + cache_slot(n);
             }
-            if (n.op == Op::Param)
-            {
-                if (n.name == direction_name)
-                {
+            if (n.op == Op::Param) {
+                if (n.name == direction_name) {
                     return node_ref(n);
                 }
                 return "cache->" + cache_slot(n);
             }
-            if (n.op == Op::Constant)
-            {
+            if (n.op == Op::Constant) {
                 return number(n.value);
             }
-            if (!svm.depends_on_direction[id])
-            {
+            if (!svm.depends_on_direction[id]) {
                 return "cache->t" + std::to_string(id);
             }
             return "t" + std::to_string(id);
         };
 
         os << "void " << basename << "_prepare(\n";
-        for (auto [n, s] : f.input_groups)
-        {
+        for (auto [n, s] : f.input_groups) {
             os << "    const double* " << n << ",\n";
         }
-        for (auto [n, s] : f.param_groups)
-        {
-            if (n != direction_name)
-            {
+        for (auto [n, s] : f.param_groups) {
+            if (n != direction_name) {
                 os << "    const double* " << n << ",\n";
             }
         }
         os << "    " << basename << "_cache_t* cache\n) {\n";
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            if (n.op == Op::Input || (n.op == Op::Param && n.name != direction_name))
-            {
+            if (n.op == Op::Input || (n.op == Op::Param && n.name != direction_name)) {
                 os << "    cache->" << cache_slot(n) << " = " << node_ref(n) << ";\n";
             }
         }
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            if (svm.depends_on_direction[i])
-            {
+            if (svm.depends_on_direction[i]) {
                 continue;
             }
-            if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant)
-            {
+            if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant) {
                 continue;
             }
             os << "    cache->t" << i << " = " << expr_rhs(f.graph, i, ref_prepare) << ";\n";
@@ -1997,46 +1694,36 @@ struct CEmitter
         os << "    const " << basename << "_cache_t* cache,\n";
         os << "    const double* " << direction_name << ",\n";
         os << "    double* out\n) {\n";
-        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
-        {
+        for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
             const auto &n = f.graph.nodes[i];
-            if (!svm.depends_on_direction[i])
-            {
+            if (!svm.depends_on_direction[i]) {
                 continue;
             }
-            if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant)
-            {
+            if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant) {
                 continue;
             }
             os << "    double t" << i << " = " << expr_rhs(f.graph, i, ref_apply) << ";\n";
         }
-        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i)
-        {
+        for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i) {
             os << "    out[" << i << "] = " << ref_apply(f.outputs[i]) << ";\n";
         }
         os << "}\n";
     }
 };
 
-inline std::string to_c(const GraphFunction &f, const std::string &name)
-{
+inline std::string to_c(const GraphFunction &f, const std::string &name) {
     std::ostringstream os;
     CEmitter::emit_function(f, name, os);
     return os.str();
 }
 
-inline std::string to_staged_c(const GraphFunction &f, const std::string &basename, const std::string &direction_name = "v")
-{
+inline std::string to_staged_c(const GraphFunction &f, const std::string &basename, const std::string &direction_name = "v") {
     std::ostringstream os;
     CEmitter::emit_staged(f, basename, direction_name, os);
     return os.str();
 }
 
-inline std::string to_sparse_coefficients_c(const GraphFunction &linear_f,
-                                            const std::string &seed_name,
-                                            const std::vector<std::pair<int, int>> &entries,
-                                            const std::string &name)
-{
+inline std::string to_sparse_coefficients_c(const GraphFunction &linear_f, const std::string &seed_name, const std::vector<std::pair<int, int>> &entries, const std::string &name) {
     return to_c(sparse_coefficients(linear_f, seed_name, entries), name);
 }
 
@@ -2044,16 +1731,11 @@ inline std::string to_sparse_jacobian_c(const GraphFunction &F,
                                         const std::string &wrt,
                                         const std::vector<std::pair<int, int>> &entries,
                                         const std::string &name,
-                                        const std::string &direction_name = "v")
-{
+                                        const std::string &direction_name = "v") {
     return to_c(sparse_jacobian_function(F, wrt, entries, direction_name), name);
 }
 
-inline std::string to_sparse_hessian_c(const GraphFunction &HVP,
-                                       const std::string &direction_name,
-                                       const std::vector<std::pair<int, int>> &entries,
-                                       const std::string &name)
-{
+inline std::string to_sparse_hessian_c(const GraphFunction &HVP, const std::string &direction_name, const std::vector<std::pair<int, int>> &entries, const std::string &name) {
     return to_c(sparse_hessian_function(HVP, direction_name, entries), name);
 }
 
@@ -2086,14 +1768,12 @@ inline std::string to_sparse_hessian_c(const GraphFunction &HVP,
 //   SparsityPattern::symmetrize(pairs)        — add (j,i) for every (i,j)
 // -----------------------------------------------------------------------------
 
-struct SparsityEntry
-{
+struct SparsityEntry {
     int output; // which output of the function
     int var;    // which component of the probed group
 };
 
-struct SparsityPattern
-{
+struct SparsityPattern {
     std::string variable_name;
     int output_size = 0;
     int variable_size = 0;
@@ -2104,12 +1784,10 @@ struct SparsityPattern
     bool empty() const { return entries.empty(); }
 
     // Raw (output, var) pairs.
-    std::vector<std::pair<int, int>> to_pairs() const
-    {
+    std::vector<std::pair<int, int>> to_pairs() const {
         std::vector<std::pair<int, int>> out;
         out.reserve(entries.size());
-        for (auto &e : entries)
-        {
+        for (auto &e : entries) {
             out.push_back({e.output, e.var});
         }
         return out;
@@ -2117,12 +1795,10 @@ struct SparsityPattern
 
     // Reinterpret (output, var) as (row, col) and deduplicate.
     // Valid when the function's output index i IS x_i (gradient / HVP outputs).
-    std::vector<std::pair<int, int>> contract_outputs() const
-    {
+    std::vector<std::pair<int, int>> contract_outputs() const {
         std::vector<std::pair<int, int>> out;
         out.reserve(entries.size());
-        for (auto &e : entries)
-        {
+        for (auto &e : entries) {
             out.push_back({e.output, e.var});
         }
         std::sort(out.begin(), out.end());
@@ -2131,12 +1807,9 @@ struct SparsityPattern
     }
 
     // Fold (i,j) and (j,i) to the lower triangle: i >= j.
-    static std::vector<std::pair<int, int>> lower_triangular(std::vector<std::pair<int, int>> pairs)
-    {
-        for (auto &p : pairs)
-        {
-            if (p.first < p.second)
-            {
+    static std::vector<std::pair<int, int>> lower_triangular(std::vector<std::pair<int, int>> pairs) {
+        for (auto &p : pairs) {
+            if (p.first < p.second) {
                 std::swap(p.first, p.second);
             }
         }
@@ -2146,12 +1819,10 @@ struct SparsityPattern
     }
 
     // Add (j,i) for every (i,j), keep unique -> full symmetric set.
-    static std::vector<std::pair<int, int>> symmetrize(std::vector<std::pair<int, int>> pairs)
-    {
+    static std::vector<std::pair<int, int>> symmetrize(std::vector<std::pair<int, int>> pairs) {
         const std::size_t n = pairs.size();
         pairs.reserve(n * 2);
-        for (std::size_t k = 0; k < n; ++k)
-        {
+        for (std::size_t k = 0; k < n; ++k) {
             pairs.push_back({pairs[k].second, pairs[k].first});
         }
         std::sort(pairs.begin(), pairs.end());
@@ -2159,22 +1830,19 @@ struct SparsityPattern
         return pairs;
     }
 
-    std::string str() const
-    {
+    std::string str() const {
         std::ostringstream os;
         os << "SparsityPattern("
            << "outputs=" << output_size << ", " << variable_name << "[" << variable_size << "]"
            << ", nnz=" << nnz() << ")\n";
-        for (auto &e : entries)
-        {
+        for (auto &e : entries) {
             os << "  out[" << e.output << "]  " << variable_name << "[" << e.var << "]\n";
         }
         return os.str();
     }
 };
 
-inline std::ostream &operator<<(std::ostream &os, const SparsityPattern &p)
-{
+inline std::ostream &operator<<(std::ostream &os, const SparsityPattern &p) {
     return os << p.str();
 }
 
@@ -2186,21 +1854,18 @@ inline std::ostream &operator<<(std::ostream &os, const SparsityPattern &p)
 // to Op::Constant is unreachable from every variable — exactly right.
 // -----------------------------------------------------------------------------
 
-inline SparsityPattern structural_sparsity(const GraphFunction &fn, const std::string &wrt_name)
-{
+inline SparsityPattern structural_sparsity(const GraphFunction &fn, const std::string &wrt_name) {
     auto f = optimize(fn);
 
     // Determine node type and size from the name alone.
     int n = input_group_size(f, wrt_name);
 
     bool wrt_param = false;
-    if (n <= 0)
-    {
+    if (n <= 0) {
         n = param_group_size(f, wrt_name);
         wrt_param = true;
     }
-    if (n <= 0)
-    {
+    if (n <= 0) {
         throw std::runtime_error("structural_sparsity: unknown group: " + wrt_name);
     }
 
@@ -2211,34 +1876,27 @@ inline SparsityPattern structural_sparsity(const GraphFunction &fn, const std::s
     // Filled in topological (post) order: children before parents.
     std::vector<bool> deps(N * n, false);
 
-    for (NodeId i : topo_used(f.graph, f.outputs))
-    {
+    for (NodeId i : topo_used(f.graph, f.outputs)) {
         const auto &nd = f.graph.nodes[i];
 
         // Seed: this node is one component of the probed group.
-        if (!wrt_param && nd.op == Op::Input && nd.name == wrt_name)
-        {
+        if (!wrt_param && nd.op == Op::Input && nd.name == wrt_name) {
             deps[i * n + nd.index] = true;
             continue;
         }
-        if (wrt_param && nd.op == Op::Param && nd.name == wrt_name)
-        {
+        if (wrt_param && nd.op == Op::Param && nd.name == wrt_name) {
             deps[i * n + nd.index] = true;
             continue;
         }
 
         // Union children's dependency sets into this node.
-        if (nd.a >= 0)
-        {
-            for (int v = 0; v < n; ++v)
-            {
+        if (nd.a >= 0) {
+            for (int v = 0; v < n; ++v) {
                 deps[i * n + v] = deps[i * n + v] || deps[nd.a * n + v];
             }
         }
-        if (nd.b >= 0)
-        {
-            for (int v = 0; v < n; ++v)
-            {
+        if (nd.b >= 0) {
+            for (int v = 0; v < n; ++v) {
                 deps[i * n + v] = deps[i * n + v] || deps[nd.b * n + v];
             }
         }
@@ -2249,13 +1907,10 @@ inline SparsityPattern structural_sparsity(const GraphFunction &fn, const std::s
     pat.output_size = static_cast<int>(f.outputs.size());
     pat.variable_size = n;
 
-    for (int out = 0; out < static_cast<int>(f.outputs.size()); ++out)
-    {
+    for (int out = 0; out < static_cast<int>(f.outputs.size()); ++out) {
         const NodeId oid = f.outputs[out];
-        for (int v = 0; v < n; ++v)
-        {
-            if (deps[oid * n + v])
-            {
+        for (int v = 0; v < n; ++v) {
+            if (deps[oid * n + v]) {
                 pat.entries.push_back({out, v});
             }
         }
@@ -2276,22 +1931,19 @@ inline SparsityPattern structural_sparsity(const GraphFunction &fn, const std::s
 // -----------------------------------------------------------------------------
 
 // Jacobian: pass F, probe the input group.
-inline SparsityPattern jacobian_sparsity(const GraphFunction &F, const std::string &wrt = "x")
-{
+inline SparsityPattern jacobian_sparsity(const GraphFunction &F, const std::string &wrt = "x") {
     return structural_sparsity(F, wrt);
 }
 
 // Hessian lower triangle: pass HVP, probe the direction param.
 // Output i of HVP == grad component i == x_i, so contract_outputs()
 // gives (H_row, H_col) = (output, v_index) directly.
-inline std::vector<std::pair<int, int>> hessian_sparsity(const GraphFunction &HVP, const std::string &v_name = "v")
-{
+inline std::vector<std::pair<int, int>> hessian_sparsity(const GraphFunction &HVP, const std::string &v_name = "v") {
     return SparsityPattern::lower_triangular(structural_sparsity(HVP, v_name).contract_outputs());
 }
 
 // Hessian full symmetric: same but both triangles.
-inline std::vector<std::pair<int, int>> hessian_sparsity_full(const GraphFunction &HVP, const std::string &v_name = "v")
-{
+inline std::vector<std::pair<int, int>> hessian_sparsity_full(const GraphFunction &HVP, const std::string &v_name = "v") {
     return SparsityPattern::symmetrize(structural_sparsity(HVP, v_name).contract_outputs());
 }
 

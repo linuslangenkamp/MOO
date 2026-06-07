@@ -21,8 +21,8 @@
 #ifndef MOO_LINALG_H
 #define MOO_LINALG_H
 
-#include <base/util.h>
 #include <base/export.h>
+#include <base/util.h>
 
 // This Linear Algebra namespace implements several useful subroutines, which are (in part) straight BLAS wrappers, but also custom implementations
 
@@ -36,21 +36,25 @@ enum class Norm {
 
 inline std::string norm_to_string(Norm norm) {
     switch (norm) {
-        case Norm::NORM_1:   return "l_1";
-        case Norm::NORM_2:   return "l_2";
-        case Norm::NORM_INF: return "l_inf";
-        default:             return "Unknown";
+        case Norm::NORM_1:
+            return "l_1";
+        case Norm::NORM_2:
+            return "l_2";
+        case Norm::NORM_INF:
+            return "l_inf";
+        default:
+            return "Unknown";
     }
 }
 
-MOO_EXPORT f64 dot(int size, const f64* x, const f64* y);
-MOO_EXPORT void matrix_vector(int size, char format, const f64* matrix, const f64* vector, f64* out);
-MOO_EXPORT void square(int size, f64* x);
-MOO_EXPORT void diag_scaled_axpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
-MOO_EXPORT void diag_matrix_vector(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out);
-MOO_EXPORT void diagmat_vec(const f64* D, bool invD, const f64* x, int size, f64* out);
-MOO_EXPORT void diagmat_vec_inplace(const f64* D, bool invD, f64* x, int size);
+MOO_EXPORT f64 dot(int size, const f64 *x, const f64 *y);
+MOO_EXPORT void matrix_vector(int size, char format, const f64 *matrix, const f64 *vector, f64 *out);
+MOO_EXPORT void square(int size, f64 *x);
+MOO_EXPORT void diag_scaled_axpy(int size, const f64 *x, const f64 *y, const f64 *D, f64 beta, bool invD, f64 *out);
+MOO_EXPORT void diag_matrix_vector(int size, const f64 *x, const f64 *y, const f64 *D, f64 beta, bool invD, f64 *out);
+MOO_EXPORT void diagmat_vec(const f64 *D, bool invD, const f64 *x, int size, f64 *out);
+MOO_EXPORT void diagmat_vec_inplace(const f64 *D, bool invD, f64 *x, int size);
 
 } // namespace Linalg
 
-#endif  // MOO_LINALG_H
+#endif // MOO_LINALG_H

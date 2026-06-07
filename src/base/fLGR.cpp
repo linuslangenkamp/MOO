@@ -37,7 +37,7 @@
  * @param values  Array of function values at the collocation nodes \( f(c_1), \dots, f(c_m) \), of length `scheme`.
  * @return        Approximation of the integral over the interval [0, 1].
  */
-f64 fLGR::integrate(int scheme, const f64* values) {
+f64 fLGR::integrate(int scheme, const f64 *values) {
     return Linalg::dot(scheme, values, get_b(scheme));
 };
 
@@ -50,7 +50,7 @@ f64 fLGR::integrate(int scheme, const f64* values) {
  * @param in      Input vector of length (scheme + 1), e.g., values at t_0, ..., t_p.
  * @param out     Output vector of length (scheme + 1), contains the result of D * in.
  */
-void fLGR::diff_matrix_multiply(int scheme, const f64* in, f64* out) {
+void fLGR::diff_matrix_multiply(int scheme, const f64 *in, f64 *out) {
     Linalg::matrix_vector(scheme + 1, 'R', get_D(scheme), in, out);
 }
 
@@ -73,8 +73,7 @@ void fLGR::diff_matrix_multiply(int scheme, const f64* in, f64* out) {
  * @param x_new      Pointer to strided new values at collocation points (from t_{i, 0} to t_{i, m_{i}}),
  * @param out        Pointer to the output buffer where results are accumulated (has stride out_stride).
  */
-void fLGR::diff_matrix_multiply_block_strided(int scheme, int x_size, int x_stride, int out_stride,
-                                              const f64* x_prev, const f64* x_new, f64* out) {
+void fLGR::diff_matrix_multiply_block_strided(int scheme, int x_size, int x_stride, int out_stride, const f64 *x_prev, const f64 *x_new, f64 *out) {
     for (int row = 1; row < scheme + 1; row++) {
         int out_row_base = (row - 1) * out_stride;
 
@@ -111,14 +110,13 @@ void fLGR::diff_matrix_multiply_block_strided(int scheme, int x_size, int x_stri
  * @param point          The physical time at which to interpolate.
  * @return The interpolated value at point.
  */
-f64 fLGR::interpolate(int scheme, bool contains_zero, const f64* values, int increment,
-                      f64 interval_start, f64 interval_end, f64 point) {
-    const auto& nodes   = contains_zero ? get_c0(scheme) : get_c(scheme);
-    const auto& weights = contains_zero ? get_w0(scheme) : get_w(scheme);
+f64 fLGR::interpolate(int scheme, bool contains_zero, const f64 *values, int increment, f64 interval_start, f64 interval_end, f64 point) {
+    const auto &nodes = contains_zero ? get_c0(scheme) : get_c(scheme);
+    const auto &weights = contains_zero ? get_w0(scheme) : get_w(scheme);
     int node_count = scheme + static_cast<int>(contains_zero);
 
     f64 node_start = nodes[0];
-    f64 node_end   = nodes[node_count - 1];
+    f64 node_end = nodes[node_count - 1];
 
     // check if interval is empty or if just one point is given -> return constant polynomial
     if ((std::abs(interval_end - interval_start) < 1e-14) || (!contains_zero && scheme == 1)) {
@@ -134,7 +132,9 @@ f64 fLGR::interpolate(int scheme, bool contains_zero, const f64* values, int inc
 
     // check for exact match with any node to avoid division by zero
     for (int j = 0; j < node_count; j++) {
-        if (std::abs(point_hat - nodes[j]) < 1e-14) return values[j];
+        if (std::abs(point_hat - nodes[j]) < 1e-14) {
+            return values[j];
+        }
     }
 
     // compute the barycentric interpolant

@@ -28,9 +28,9 @@ extern "C" {
 #include <interfaces/gdop/structures.h>
 
 typedef struct c_init_callbacks_t {
-    void (*eval_all)(const f64* z, const f64* rp, f64* out, void* user_data);
-    void (*jac_all)(const f64* z, const f64* rp, f64* out, void* user_data);
-    void (*hes_all)(const f64* z, const f64* rp, const f64* lambda, f64 obj_factor, f64* out, void* user_data);
+    void (*eval_all)(const f64 *z, const f64 *rp, f64 *out, void *user_data);
+    void (*jac_all)(const f64 *z, const f64 *rp, f64 *out, void *user_data);
+    void (*hes_all)(const f64 *z, const f64 *rp, const f64 *lambda, f64 obj_factor, f64 *out, void *user_data);
 } c_init_callbacks_t;
 
 typedef struct c_init_problem_t {
@@ -40,31 +40,31 @@ typedef struct c_init_problem_t {
     const int f_size;
     const int g_size;
 
-    f64* rp;
-    f64* y0;
-    f64* p0;
-    f64* dp0;
+    f64 *rp;
+    f64 *y0;
+    f64 *p0;
+    f64 *dp0;
 
-    bounds_t* y_bounds;
-    bounds_t* p_bounds;
-    bounds_t* dp_bounds;
-    bounds_t* g_bounds;
+    bounds_t *y_bounds;
+    bounds_t *p_bounds;
+    bounds_t *dp_bounds;
+    bounds_t *g_bounds;
 
-    f64* y_nominal;
-    f64* p_nominal;
-    f64* dp_nominal;
-    f64* f_nominal;
-    f64* g_nominal;
+    f64 *y_nominal;
+    f64 *p_nominal;
+    f64 *dp_nominal;
+    f64 *f_nominal;
+    f64 *g_nominal;
     f64 obj_nominal;
 
-    coo_t* obj_jac;
-    coo_t* f_jac;
-    coo_t* g_jac;
-    coo_t* hes;
+    coo_t *obj_jac;
+    coo_t *f_jac;
+    coo_t *g_jac;
+    coo_t *hes;
 
-    c_init_callbacks_t* callbacks;
-    solver_ctx_t* solver_ctx;
-    void* user_data;
+    c_init_callbacks_t *callbacks;
+    solver_ctx_t *solver_ctx;
+    void *user_data;
 } c_init_problem_t;
 
 #ifdef __cplusplus

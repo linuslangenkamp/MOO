@@ -39,15 +39,12 @@ struct LoggerBuffer {
     bool logged_identical_bounds = false;
 };
 
-bool is_identical_bounds_message(const std::string& line)
-{
-    constexpr const char* prefix = "Variable x";
-    return line.compare(0, std::char_traits<char>::length(prefix), prefix) == 0
-        && line.find(" has identical bounds") != std::string::npos;
+bool is_identical_bounds_message(const std::string &line) {
+    constexpr const char *prefix = "Variable x";
+    return line.compare(0, std::char_traits<char>::length(prefix), prefix) == 0 && line.find(" has identical bounds") != std::string::npos;
 }
 
-bool should_log_line(LoggerBuffer& logger_buffer, std::string& line)
-{
+bool should_log_line(LoggerBuffer &logger_buffer, std::string &line) {
     if (!is_identical_bounds_message(line)) {
         return true;
     }
@@ -62,8 +59,7 @@ bool should_log_line(LoggerBuffer& logger_buffer, std::string& line)
     return false;
 }
 
-void flush_logger_buffer(LoggerBuffer& logger_buffer)
-{
+void flush_logger_buffer(LoggerBuffer &logger_buffer) {
     if (!logger_buffer.pending.empty()) {
         if (should_log_line(logger_buffer, logger_buffer.pending)) {
             Log::info(logger_buffer.pending);
@@ -72,10 +68,11 @@ void flush_logger_buffer(LoggerBuffer& logger_buffer)
     }
 }
 
-uno_int logger_stream_callback(const char* buffer, uno_int length, void* user_data)
-{
-    if (!buffer || length <= 0) return 0;
-    auto& logger_buffer = *static_cast<LoggerBuffer*>(user_data);
+uno_int logger_stream_callback(const char *buffer, uno_int length, void *user_data) {
+    if (!buffer || length <= 0) {
+        return 0;
+    }
+    auto &logger_buffer = *static_cast<LoggerBuffer *>(user_data);
     logger_buffer.pending.append(buffer, static_cast<size_t>(length));
 
     size_t pos = 0;
@@ -99,8 +96,7 @@ uno_int logger_stream_callback(const char* buffer, uno_int length, void* user_da
     return length;
 }
 
-const char* uno_optimization_status_to_string(uno_int status)
-{
+const char *uno_optimization_status_to_string(uno_int status) {
     if (status == UNO_SUCCESS) {
         return "UNO_SUCCESS";
     } else if (status == UNO_ITERATION_LIMIT) {
@@ -118,8 +114,7 @@ const char* uno_optimization_status_to_string(uno_int status)
     }
 }
 
-const char* uno_solution_status_to_string(uno_int status)
-{
+const char *uno_solution_status_to_string(uno_int status) {
     if (status == UNO_NOT_OPTIMAL) {
         return "UNO_NOT_OPTIMAL";
     } else if (status == UNO_FEASIBLE_KKT_POINT) {
@@ -143,39 +138,40 @@ const char* uno_solution_status_to_string(uno_int status)
 
 struct UnoSolverData {
     UnoAdapter adapter;
-    void* solver = nullptr;
-    void* model = nullptr;
+    void *solver = nullptr;
+    void *model = nullptr;
     LoggerBuffer logger_buffer;
     f64 total_wall_nano = 0.0;
 
-    explicit UnoSolverData(NLP::NLP& nlp)
-        : adapter(nlp), solver(uno_create_solver())
-    {}
+    explicit UnoSolverData(NLP::NLP &nlp)
+        : adapter(nlp),
+          solver(uno_create_solver()) {}
 
-    ~UnoSolverData()
-    {
-        if (model) uno_destroy_model(model);
-        if (solver) uno_destroy_solver(solver);
+    ~UnoSolverData() {
+        if (model) {
+            uno_destroy_model(model);
+        }
+        if (solver) {
+            uno_destroy_solver(solver);
+        }
     }
 };
 
-UnoSolver::UnoSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings)
-    : NLPSolver(nlp, solver_settings), udata(new UnoSolverData(nlp))
-{
+UnoSolver::UnoSolver(NLP::NLP &nlp, NLP::NLPSolverSettings &solver_settings)
+    : NLPSolver(nlp, solver_settings),
+      udata(new UnoSolverData(nlp)) {
     if (!udata->solver) {
         Log::error("[Uno Interface] Failed to create Uno solver.");
         abort();
     }
 }
 
-UnoSolver::~UnoSolver()
-{
+UnoSolver::~UnoSolver() {
     delete udata;
 }
 
-void UnoSolver::optimize()
-{
-    ScopedTimer<UnoTimingNode, UnoSolver*> timer("UnoSolver::optimize", this);
+void UnoSolver::optimize() {
+    ScopedTimer<UnoTimingNode, UnoSolver *> timer("UnoSolver::optimize", this);
     const auto start = std::chrono::high_resolution_clock::now();
 
     if (udata->model) {
@@ -186,7 +182,9 @@ void UnoSolver::optimize()
     try {
         set_settings();
         udata->model = udata->adapter.create_model();
-        if (!udata->model) abort();
+        if (!udata->model) {
+            abort();
+        }
 
         udata->adapter.reset_timing();
         uno_optimize(udata->solver, udata->model);
@@ -194,7 +192,7 @@ void UnoSolver::optimize()
 
         log_status();
         udata->adapter.finalize_solution(udata->solver, get_return_code());
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         flush_logger_buffer(udata->logger_buffer);
         Log::error("[Uno Interface] Unhandled exception: {}", e.what());
         std::abort();
@@ -204,12 +202,10 @@ void UnoSolver::optimize()
         std::abort();
     }
 
-    udata->total_wall_nano = std::chrono::duration<f64, std::nano>(
-        std::chrono::high_resolution_clock::now() - start).count();
+    udata->total_wall_nano = std::chrono::duration<f64, std::nano>(std::chrono::high_resolution_clock::now() - start).count();
 }
 
-void UnoSolver::set_settings()
-{
+void UnoSolver::set_settings() {
     uno_set_logger_stream_callback(&logger_stream_callback, &udata->logger_buffer);
 
     const std::string preset = solver_settings.get_or_default<std::string>(NLP::Option::UnoPreset);
@@ -240,20 +236,17 @@ void UnoSolver::set_settings()
     uno_set_solver_bool_option(udata->solver, "print_solution", false);
 }
 
-NLP::ReturnCode UnoSolver::get_return_code() const
-{
-    void* solver = udata->solver;
+NLP::ReturnCode UnoSolver::get_return_code() const {
+    void *solver = udata->solver;
 
     const uno_int optimization_status = uno_get_optimization_status(solver);
-    const uno_int solution_status     = uno_get_solution_status(solver);
+    const uno_int solution_status = uno_get_solution_status(solver);
 
     if (optimization_status == UNO_ITERATION_LIMIT) {
         return NLP::ReturnCode::ITERATION_LIMIT_EXCEEDED;
     } else if (optimization_status == UNO_TIME_LIMIT) {
         return NLP::ReturnCode::TIME_LIMIT_EXCEEDED;
-    } else if (optimization_status == UNO_EVALUATION_ERROR ||
-               optimization_status == UNO_ALGORITHMIC_ERROR ||
-               optimization_status == UNO_USER_TERMINATION) {
+    } else if (optimization_status == UNO_EVALUATION_ERROR || optimization_status == UNO_ALGORITHMIC_ERROR || optimization_status == UNO_USER_TERMINATION) {
         return NLP::ReturnCode::GENERIC_FAILURE;
     } else if (optimization_status != UNO_SUCCESS) {
         return NLP::ReturnCode::GENERIC_FAILURE;
@@ -265,8 +258,7 @@ NLP::ReturnCode UnoSolver::get_return_code() const
         return NLP::ReturnCode::ACCEPTABLE;
     } else if (solution_status == UNO_FEASIBLE_SMALL_STEP) {
         return NLP::ReturnCode::STEP_TOO_SMALL;
-    } else if (solution_status == UNO_INFEASIBLE_STATIONARY_POINT ||
-               solution_status == UNO_INFEASIBLE_SMALL_STEP) {
+    } else if (solution_status == UNO_INFEASIBLE_STATIONARY_POINT || solution_status == UNO_INFEASIBLE_SMALL_STEP) {
         return NLP::ReturnCode::INFEASIBLE;
     } else if (solution_status == UNO_UNBOUNDED) {
         return NLP::ReturnCode::DIVERGENCE;
@@ -277,89 +269,58 @@ NLP::ReturnCode UnoSolver::get_return_code() const
     }
 }
 
-void UnoSolver::log_status() const
-{
-    void* solver = udata->solver;
+void UnoSolver::log_status() const {
+    void *solver = udata->solver;
 
     const uno_int optimization_status = uno_get_optimization_status(solver);
-    const uno_int solution_status     = uno_get_solution_status(solver);
+    const uno_int solution_status = uno_get_solution_status(solver);
 
-    const char* optimization_status_name = uno_optimization_status_to_string(optimization_status);
-    const char* solution_status_name = uno_solution_status_to_string(solution_status);
+    const char *optimization_status_name = uno_optimization_status_to_string(optimization_status);
+    const char *solution_status_name = uno_solution_status_to_string(solution_status);
 
     if (optimization_status == 0) {
-        Log::success(
-            "[Uno Interface] optimization status: {}, solution status: {}.",
-            optimization_status_name,
-            solution_status_name
-        );
+        Log::success("[Uno Interface] optimization status: {}, solution status: {}.", optimization_status_name, solution_status_name);
     } else {
-        Log::error(
-            "[Uno Interface] optimization status: {}, solution status: {}.",
-            optimization_status_name,
-            solution_status_name
-        );
+        Log::error("[Uno Interface] optimization status: {}, solution status: {}.", optimization_status_name, solution_status_name);
     }
 }
 
-int UnoSolver::get_iterations() const
-{
+int UnoSolver::get_iterations() const {
     return static_cast<int>(uno_get_number_iterations(udata->solver));
 }
 
-f64 UnoSolver::get_total_time() const
-{
+f64 UnoSolver::get_total_time() const {
     return udata->total_wall_nano;
 }
 
-f64 UnoSolver::get_solver_time() const
-{
+f64 UnoSolver::get_solver_time() const {
     return std::max(0.0, get_total_time() - get_callback_time());
 }
 
-f64 UnoSolver::get_callback_time() const
-{
+f64 UnoSolver::get_callback_time() const {
     return udata->adapter.get_callback_timing().total_nano();
 }
 
-UnoTimingNode::UnoTimingNode(std::string n, TimingNode* p, UnoSolver* uno_solver)
-    : TimingNode(n, p), uno_solver(uno_solver)
-{}
+UnoTimingNode::UnoTimingNode(std::string n, TimingNode *p, UnoSolver *uno_solver)
+    : TimingNode(n, p),
+      uno_solver(uno_solver) {}
 
-void UnoTimingNode::finalize()
-{
-    const auto& timing = uno_solver->udata->adapter.get_callback_timing();
+void UnoTimingNode::finalize() {
+    const auto &timing = uno_solver->udata->adapter.get_callback_timing();
     const f64 total_nano = uno_solver->udata->total_wall_nano;
     const f64 callback_nano = timing.total_nano();
     const f64 internal_nano = std::max(0.0, total_nano - callback_nano);
 
     VirtualTimer timer_wall_total("Uno Total", total_nano);
     {
-        {
-            VirtualTimer timer_wall_uno_self("Uno Internal", internal_nano);
-        }
+        { VirtualTimer timer_wall_uno_self("Uno Internal", internal_nano); }
         {
             VirtualTimer timer_wall_func("Uno Callbacks", callback_nano);
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_f("Objective",
-                    timing.objective_nano, static_cast<int>(timing.objective_count));
-            }
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_grad_f("Objective Gradient",
-                    timing.objective_gradient_nano, static_cast<int>(timing.objective_gradient_count));
-            }
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_g_eq("Equality Constraints",
-                    timing.constraints_nano, static_cast<int>(timing.constraints_count));
-            }
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_eq("Jacobian Equality Constraints",
-                    timing.jacobian_nano, static_cast<int>(timing.jacobian_count));
-            }
-            {
-                VirtualTimer<CountedTimingNode, int> timer_wall_lag_hes("Lagrangian Hessian",
-                    timing.hessian_nano, static_cast<int>(timing.hessian_count));
-            }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_f("Objective", timing.objective_nano, static_cast<int>(timing.objective_count)); }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_grad_f("Objective Gradient", timing.objective_gradient_nano, static_cast<int>(timing.objective_gradient_count)); }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_g_eq("Equality Constraints", timing.constraints_nano, static_cast<int>(timing.constraints_count)); }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_jac_g_eq("Jacobian Equality Constraints", timing.jacobian_nano, static_cast<int>(timing.jacobian_count)); }
+            { VirtualTimer<CountedTimingNode, int> timer_wall_lag_hes("Lagrangian Hessian", timing.hessian_nano, static_cast<int>(timing.hessian_count)); }
         }
     }
 }

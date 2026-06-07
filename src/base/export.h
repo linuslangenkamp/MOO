@@ -22,17 +22,17 @@
 #define MOO_EXPORT_H
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-  #if defined(MOO_DLL_EXPORT)
-    #define MOO_EXPORT __declspec(dllexport)
-  #else
-    #define MOO_EXPORT __declspec(dllimport)
-  #endif
+#if defined(MOO_DLL_EXPORT)
+#define MOO_EXPORT __declspec(dllexport)
 #else
-  #if __GNUC__ >= 4
-    #define MOO_EXPORT __attribute__((visibility("default")))
-  #else
-    #define MOO_EXPORT
-  #endif
+#define MOO_EXPORT __declspec(dllimport)
+#endif
+#else
+#if __GNUC__ >= 4
+#define MOO_EXPORT __attribute__((visibility("default")))
+#else
+#define MOO_EXPORT
+#endif
 #endif
 
 #endif // MOO_EXPORT_H

@@ -21,8 +21,8 @@
 #ifndef MOO_FMI_STRATEGIES_H
 #define MOO_FMI_STRATEGIES_H
 
-#include <base/util.h>
 #include <base/export.h>
+#include <base/util.h>
 
 #include <nlp/instances/gdop/strategies.h>
 
@@ -32,11 +32,12 @@ namespace FMI {
 
 class NominalScalingFactory : public GDOP::ScalingFactory {
 public:
-    FMIData& fmi_data;
+    FMIData &fmi_data;
 
-    NominalScalingFactory(FMIData& fmi_data_) : fmi_data(fmi_data_) {};
+    NominalScalingFactory(FMIData &fmi_data_)
+        : fmi_data(fmi_data_){};
 
-    std::shared_ptr<NLP::Scaling> operator()(const GDOP::GDOP& gdop) override;
+    std::shared_ptr<NLP::Scaling> operator()(const GDOP::GDOP &gdop) override;
 };
 
 } // namespace FMI

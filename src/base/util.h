@@ -21,12 +21,12 @@
 #ifndef MOO_UTIL_H
 #define MOO_UTIL_H
 
+#include <any>
+#include <cmath>
+#include <cstdio>
 #include <functional>
 #include <iostream>
-#include <cstdio>
 #include <vector>
-#include <cmath>
-#include <any>
 
 /* simple typedef for the Number */
 typedef double f64;
@@ -41,12 +41,14 @@ const f64 MINUS_INFINITY = -std::numeric_limits<f64>::max();
 const size_t MAX_SIZE = std::numeric_limits<size_t>::max();
 
 template <typename T>
-inline int int_size(const std::vector<T>& vec) {
+inline int int_size(const std::vector<T> &vec) {
     return static_cast<int>(vec.size());
 }
 
 template <typename T>
-inline T sign(T value) { return (value > 0 ? 1.0 : -1.0); }
+inline T sign(T value) {
+    return (value > 0 ? 1.0 : -1.0);
+}
 
 template <typename T>
 inline T apply_threshold_floor(T value, T tol, T min_magnitude) {

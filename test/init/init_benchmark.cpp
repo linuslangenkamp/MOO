@@ -24,8 +24,8 @@
 
 #include <base/log.h>
 #include <nlp/instances/init/init.h>
-#include <nlp/solvers/uno/solver.h>
 #include <nlp/solvers/nlp_solver_settings.h>
+#include <nlp/solvers/uno/solver.h>
 
 namespace {
 
@@ -33,26 +33,22 @@ constexpr int SPECIES = 250;
 constexpr int REACTIONS = SPECIES - 2;
 constexpr f64 PARAMETER_PERTURBATION = 1e-1;
 
-f64 measured_parameter(int i)
-{
+f64 measured_parameter(int i) {
     return 1.0 - PARAMETER_PERTURBATION * std::sin(static_cast<f64>(i + 1) / static_cast<f64>(SPECIES));
 }
 
-f64 phase(int i)
-{
+f64 phase(int i) {
     return static_cast<f64>(i + 1) / static_cast<f64>(SPECIES);
 }
 
-f64 distorted_parameter(int i, f64 p)
-{
+f64 distorted_parameter(int i, f64 p) {
     const f64 x = p - 1.0;
     const f64 trap = std::sin(36.0 * x + 8.0 * phase(i));
 
     return 1.0 + x * (1.0 + 2.0 * x * x + 0.25 * trap * trap);
 }
 
-f64 d_distorted_parameter_dp(int i, f64 p)
-{
+f64 d_distorted_parameter_dp(int i, f64 p) {
     const f64 x = p - 1.0;
     const f64 angle = 36.0 * x + 8.0 * phase(i);
     const f64 trap = std::sin(angle);
@@ -61,19 +57,13 @@ f64 d_distorted_parameter_dp(int i, f64 p)
     return 1.0 + 6.0 * x * x + 0.25 * trap * trap + 0.5 * x * trap * d_trap;
 }
 
-std::string vector_sample(const FixedVector<f64>& values)
-{
-    return fmt::format("[{}, {}, {}, ..., {}]",
-                       values[0],
-                       values[1],
-                       values[2],
-                       values[values.int_size() - 1]);
+std::string vector_sample(const FixedVector<f64> &values) {
+    return fmt::format("[{}, {}, {}, ..., {}]", values[0], values[1], values[2], values[values.int_size() - 1]);
 }
 
 class ChemicalEquilibriumChain : public Init::Problem {
 public:
-    ChemicalEquilibriumChain()
-    {
+    ChemicalEquilibriumChain() {
         formulation.y_size = SPECIES;
         formulation.p_size = REACTIONS;
         formulation.f_size = REACTIONS;
@@ -116,15 +106,13 @@ public:
         }
     }
 
-    void eval_f(const f64* c, const f64* p, f64* f) override
-    {
+    void eval_f(const f64 *c, const f64 *p, f64 *f) override {
         for (int r = 0; r < REACTIONS; r++) {
             f[r] = c[r] * c[r + 1] - distorted_parameter(r, p[r]) * c[r + 2];
         }
     }
 
-    void eval_jacobian_f(const f64* c, const f64* p, f64* jac_f_values) override
-    {
+    void eval_jacobian_f(const f64 *c, const f64 *p, f64 *jac_f_values) override {
         int nz = 0;
 
         for (int r = 0; r < REACTIONS; r++) {
@@ -136,10 +124,9 @@ public:
     }
 };
 
-Init::Result solve(ChemicalEquilibriumChain& problem)
-{
+Init::Result solve(ChemicalEquilibriumChain &problem) {
     char argv0[] = "test_init_benchmark";
-    char* argv[] = {argv0};
+    char *argv[] = {argv0};
 
     NLP::NLPSolverSettings settings(1, argv);
     settings.set(NLP::Option::Hessian, NLP::HessianOption::LBFGS);
@@ -154,8 +141,7 @@ Init::Result solve(ChemicalEquilibriumChain& problem)
     return init.get_result();
 }
 
-void finalize_solution_parameter_correction(const Init::Result& result)
-{
+void finalize_solution_parameter_correction(const Init::Result &result) {
     Log::info("\nInit benchmark: nonlinear parameter-correction chemical-equilibrium chain");
     Log::info("  f_max_error = {}", result.f_max_error);
     Log::info("  c* sample   = {}", vector_sample(result.y));
@@ -176,8 +162,7 @@ void finalize_solution_parameter_correction(const Init::Result& result)
 
 } // namespace
 
-int main()
-{
+int main() {
     ChemicalEquilibriumChain correction_problem;
     Init::Result correction_result = solve(correction_problem);
     finalize_solution_parameter_correction(correction_result);

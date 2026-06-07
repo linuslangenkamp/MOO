@@ -21,8 +21,8 @@
 #ifndef MOO_NLP_H
 #define MOO_NLP_H
 
-#include <base/fixed_vector.h>
 #include <base/export.h>
+#include <base/fixed_vector.h>
 #include <base/log.h>
 
 #include "nlp_scaling.h"
@@ -30,17 +30,17 @@
 namespace NLP {
 
 enum class ReturnCode {
-    GENERIC_FAILURE          = -7,
-    FEASIBILITY_RECOVERED    = -6,
+    GENERIC_FAILURE = -7,
+    FEASIBILITY_RECOVERED = -6,
     ITERATION_LIMIT_EXCEEDED = -5,
-    TIME_LIMIT_EXCEEDED      = -4,
-    RESTORATION_FAILED       = -3,
-    INFEASIBLE               = -2,
-    DIVERGENCE               = -1,
-    OPTIMAL                  = 0,
-    ACCEPTABLE               = 1,
-    STEP_TOO_SMALL           = 2,
-    UNKNOWN_SUCCESS          = 3
+    TIME_LIMIT_EXCEEDED = -4,
+    RESTORATION_FAILED = -3,
+    INFEASIBLE = -2,
+    DIVERGENCE = -1,
+    OPTIMAL = 0,
+    ACCEPTABLE = 1,
+    STEP_TOO_SMALL = 2,
+    UNKNOWN_SUCCESS = 3
 };
 
 /**
@@ -78,25 +78,25 @@ public:
      * @brief Gets the total number of variables in the NLP.
      * @return The number of variables.
      */
-    inline int get_number_vars()         const { return number_vars; }
+    inline int get_number_vars() const { return number_vars; }
 
     /**
      * @brief Gets the total number of constraints in the NLP.
      * @return The number of constraints.
      */
-    inline int get_number_constraints()  const { return number_constraints; }
+    inline int get_number_constraints() const { return number_constraints; }
 
     /**
      * @brief Gets the number of non-zero elements in the Jacobian matrix.
      * @return The number of non-zero elements in the Jacobian.
      */
-    inline int get_nnz_jac()             const { return nnz_jac; }
+    inline int get_nnz_jac() const { return nnz_jac; }
 
     /**
      * @brief Gets the number of non-zero elements in the Hessian matrix.
      * @return The number of non-zero elements in the Hessian.
      */
-    inline int get_nnz_hes()             const { return nnz_hes; }
+    inline int get_nnz_hes() const { return nnz_hes; }
 
     // ============ User Callbacks (virtuals, are sorted in call order) ============
 
@@ -108,10 +108,7 @@ public:
      * @param[out] number_vars The total number of primal variables.
      * @param[out] number_constraints The total number of constraints.
      */
-    virtual void get_sizes(
-        int& number_vars,
-        int& number_constraints
-    ) = 0;
+    virtual void get_sizes(int &number_vars, int &number_constraints) = 0;
 
     /**
      * @brief Pure virtual method to get the number of non-zero elements in the Jacobian and Hessian.
@@ -121,10 +118,7 @@ public:
      * @param[out] nnz_jac The number of non-zero elements in the Jacobian matrix.
      * @param[out] nnz_hes The number of non-zero elements in the Hessian matrix.
      */
-    virtual void get_nnz(
-        int& nnz_jac,
-        int& nnz_hes
-    ) = 0;
+    virtual void get_nnz(int &nnz_jac, int &nnz_hes) = 0;
 
     /**
      * @brief Gets the scaling object for the NLP.
@@ -148,11 +142,7 @@ public:
      * @param[out] g_lb Lower bounds for the constraint functions \f$g(x)\f$.
      * @param[out] g_ub Upper bounds for the constraint functions \f$g(x)\f$.
      */
-    virtual void get_bounds(
-        FixedVector<f64>& x_lb,
-        FixedVector<f64>& x_ub,
-        FixedVector<f64>& g_lb,
-        FixedVector<f64>& g_ub) = 0;
+    virtual void get_bounds(FixedVector<f64> &x_lb, FixedVector<f64> &x_ub, FixedVector<f64> &g_lb, FixedVector<f64> &g_ub) = 0;
 
     /**
      * @brief Pure virtual method to get the initial guess for the NLP.
@@ -168,14 +158,13 @@ public:
      * @param[out] z_lb_init The initial guess for dual multipliers of lower variable bounds \f$z_{LB}\f$.
      * @param[out] z_ub_init The initial guess for dual multipliers of upper variable bounds \f$z_{UB}\f$.
      */
-    virtual void get_initial_guess(
-        bool init_x,
-        FixedVector<f64>& x_init,
-        bool init_lambda,
-        FixedVector<f64>& lambda_init,
-        bool init_z,
-        FixedVector<f64>& z_lb_init,
-        FixedVector<f64>& z_ub_init) = 0;
+    virtual void get_initial_guess(bool init_x,
+                                   FixedVector<f64> &x_init,
+                                   bool init_lambda,
+                                   FixedVector<f64> &lambda_init,
+                                   bool init_z,
+                                   FixedVector<f64> &z_lb_init,
+                                   FixedVector<f64> &z_ub_init) = 0;
 
     /**
      * @brief Pure virtual method to get the sparsity pattern of the Jacobian matrix.
@@ -187,9 +176,7 @@ public:
      * @param[out] i_row_jac The row indices of the non-zero elements.
      * @param[out] j_col_jac The column indices of the non-zero elements.
      */
-    virtual void get_jac_sparsity(
-        FixedVector<int>& i_row_jac,
-        FixedVector<int>& j_col_jac) = 0;
+    virtual void get_jac_sparsity(FixedVector<int> &i_row_jac, FixedVector<int> &j_col_jac) = 0;
 
     /**
      * @brief Pure virtual method to get the sparsity pattern of the Hessian matrix.
@@ -202,9 +189,7 @@ public:
      * @param[out] i_row_hes The row indices of the non-zero elements.
      * @param[out] j_col_hes The column indices of the non-zero elements.
      */
-    virtual void get_hes_sparsity(
-        FixedVector<int>& i_row_hes,
-        FixedVector<int>& j_col_hes) = 0;
+    virtual void get_hes_sparsity(FixedVector<int> &i_row_hes, FixedVector<int> &j_col_hes) = 0;
 
     /**
      * @brief Pure virtual method to evaluate the objective function \f$f(x)\f$.
@@ -213,10 +198,7 @@ public:
      * @param[in] curr_x The current primal variables \f$x\f$.
      * @param[out] curr_obj The evaluated objective function value \f$f(x)\f$.
      */
-    virtual void eval_f(
-        bool new_x,
-        const FixedVector<f64>& curr_x,
-        f64& curr_obj) = 0;
+    virtual void eval_f(bool new_x, const FixedVector<f64> &curr_x, f64 &curr_obj) = 0;
 
     /**
      * @brief Pure virtual method to evaluate the constraint functions \f$g(x)\f$.
@@ -225,10 +207,7 @@ public:
      * @param[in] curr_x The current primal variables \f$x\f$.
      * @param[out] curr_g The evaluated constraint function values \f$g(x)\f$.
      */
-        virtual void eval_g(
-        bool new_x,
-        const FixedVector<f64>& curr_x,
-        FixedVector<f64>& curr_g) = 0;
+    virtual void eval_g(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_g) = 0;
 
     /**
      * @brief Pure virtual method to evaluate the gradient of the objective function \f$\frac{df}{dx}\f$.
@@ -237,10 +216,7 @@ public:
      * @param[in] curr_x The current primal variables \f$x\f$.
      * @param[out] curr_grad_f The evaluated gradient of the objective function \f$\nabla f(x)\f$.
      */
-    virtual void eval_grad_f(
-        bool new_x,
-        const FixedVector<f64>& curr_x,
-        FixedVector<f64>& curr_grad_f) = 0;
+    virtual void eval_grad_f(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_grad_f) = 0;
 
     /**
      * @brief Pure virtual method to evaluate the Jacobian of the constraint functions \f$\frac{dg}{dx}\f$.
@@ -254,12 +230,7 @@ public:
      * @param[in] j_col_jac The column indices of the non-zero elements of the Jacobian.
      * @param[out] curr_jac The evaluated non-zero elements of the Jacobian matrix.
      */
-    virtual void eval_jac_g(
-        bool new_x,
-        const FixedVector<f64>& curr_x,
-        const FixedVector<int>& i_row_jac,
-        const FixedVector<int>& j_col_jac,
-        FixedVector<f64>& curr_jac) = 0;
+    virtual void eval_jac_g(bool new_x, const FixedVector<f64> &curr_x, const FixedVector<int> &i_row_jac, const FixedVector<int> &j_col_jac, FixedVector<f64> &curr_jac) = 0;
 
     /**
      * @brief Pure virtual method to evaluate the Hessian of the Lagrangian \f$\sigma_f \frac{d^2f}{dx^2} + \sum_{i=1}^{m} \lambda_i \frac{d^2(g_i)}{dx^2}\f$.
@@ -276,15 +247,14 @@ public:
      * @param[in] j_col_hes The column indices of the non-zero elements of the Hessian.
      * @param[out] curr_hes The evaluated non-zero elements of the Hessian matrix.
      */
-    virtual void eval_hes(
-        bool new_x,
-        const FixedVector<f64>& curr_x,
-        bool new_lambda,
-        const FixedVector<f64>& curr_lambda,
-        f64 curr_obj_factor,
-        const FixedVector<int>& i_row_hes,
-        const FixedVector<int>& j_col_hes,
-        FixedVector<f64>& curr_hes) = 0;
+    virtual void eval_hes(bool new_x,
+                          const FixedVector<f64> &curr_x,
+                          bool new_lambda,
+                          const FixedVector<f64> &curr_lambda,
+                          f64 curr_obj_factor,
+                          const FixedVector<int> &i_row_hes,
+                          const FixedVector<int> &j_col_hes,
+                          FixedVector<f64> &curr_hes) = 0;
 
     /**
      * @brief Pure virtual method to finalize the solution from the solver.
@@ -298,13 +268,12 @@ public:
      * @param[in] opt_z_lb The optimal dual multipliers for the lower variable bounds \f$z_{LB}^*\f$.
      * @param[in] opt_z_ub The optimal dual multipliers for the upper variable bounds \f$z_{UB}^*\f$.
      */
-    virtual void finalize_solution(
-        ReturnCode ret,
-        f64 opt_obj,
-        const FixedVector<f64>& opt_x,
-        const FixedVector<f64>& opt_lambda,
-        const FixedVector<f64>& opt_z_lb,
-        const FixedVector<f64>& opt_z_ub) = 0;
+    virtual void finalize_solution(ReturnCode ret,
+                                   f64 opt_obj,
+                                   const FixedVector<f64> &opt_x,
+                                   const FixedVector<f64> &opt_lambda,
+                                   const FixedVector<f64> &opt_z_lb,
+                                   const FixedVector<f64> &opt_z_ub) = 0;
 
     // ============ Solver API ============
 
@@ -323,12 +292,7 @@ public:
      * @param[out] solver_nnz_jac Number of non-zero elements in the Jacobian matrix \f$\frac{dg}{dx}\f$.
      * @param[out] solver_nnz_hes Number of non-zero elements in the Hessian matrix \f$\frac{d^2\mathcal{L}}{dx^2}\f$.
      */
-    void solver_get_info(
-        int& solver_number_vars,
-        int& solver_number_constraints,
-        int& solver_nnz_jac,
-        int& solver_nnz_hes
-    );
+    void solver_get_info(int &solver_number_vars, int &solver_number_constraints, int &solver_nnz_jac, int &solver_nnz_hes);
 
     /**
      * @brief Retrieves the bounds for variables and constraints for the solver.
@@ -344,11 +308,7 @@ public:
      * @param[out] solver_g_lb Pointer to an array where the scaled lower bounds of constraints \f$g^{LB}\f$ will be written.
      * @param[out] solver_g_ub Pointer to an array where the scaled upper bounds of constraints \f$g^{UB}\f$ will be written.
      */
-    void solver_get_bounds(
-        f64* solver_x_lb,
-        f64* solver_x_ub,
-        f64* solver_g_lb,
-        f64* solver_g_ub);
+    void solver_get_bounds(f64 *solver_x_lb, f64 *solver_x_ub, f64 *solver_g_lb, f64 *solver_g_ub);
 
     /**
      * @brief Retrieves the initial guess for the NLP problem for the solver.
@@ -368,14 +328,7 @@ public:
      * @param[out] solver_z_lb_init Pointer to an array where the scaled initial guess for dual multipliers of lower variable bounds \f$z_{LB}\f$ will be written.
      * @param[out] solver_z_ub_init Pointer to an array where the scaled initial guess for dual multipliers of upper variable bounds \f$z_{UB}\f$ will be written.
      */
-    void solver_get_initial_guess(
-        bool init_x,
-        f64* solver_x_init,
-        bool init_lambda,
-        f64* solver_lambda_init,
-        bool init_z,
-        f64* solver_z_lb_init,
-        f64* solver_z_ub_init);
+    void solver_get_initial_guess(bool init_x, f64 *solver_x_init, bool init_lambda, f64 *solver_lambda_init, bool init_z, f64 *solver_z_lb_init, f64 *solver_z_ub_init);
 
     /**
      * @brief Retrieves the sparsity pattern of the Jacobian matrix for the solver.
@@ -387,10 +340,7 @@ public:
      * @param[out] solver_i_row_jac Pointer to an array where the row indices of Jacobian non-zeros will be written.
      * @param[out] solver_j_col_jac Pointer to an array where the column indices of Jacobian non-zeros will be written.
      */
-    void solver_get_jac_sparsity(
-        int* solver_i_row_jac,
-        int* solver_j_col_jac
-    );
+    void solver_get_jac_sparsity(int *solver_i_row_jac, int *solver_j_col_jac);
 
     /**
      * @brief Retrieves the sparsity pattern of the Hessian matrix for the solver.
@@ -402,10 +352,7 @@ public:
      * @param[out] solver_i_row_hes Pointer to an array where the row indices of Hessian non-zeros will be written.
      * @param[out] solver_j_col_hes Pointer to an array where the column indices of Hessian non-zeros will be written.
      */
-    void solver_get_hes_sparsity(
-        int* solver_i_row_hes,
-        int* solver_j_col_hes
-    );
+    void solver_get_hes_sparsity(int *solver_i_row_hes, int *solver_j_col_hes);
 
     /**
      * @brief Evaluates the objective function \f$f(x)\f$ for the solver.
@@ -418,10 +365,7 @@ public:
      * @param[in] solver_x Pointer to an array containing the current primal variables \f$x\f$ (scaled by the solver).
      * @param[out] solver_obj_value The evaluated objective function value \f$f(x)\f$, scaled for the solver.
      */
-    void solver_eval_f(
-        bool new_x,
-        const f64* solver_x,
-        f64& solver_obj_value);
+    void solver_eval_f(bool new_x, const f64 *solver_x, f64 &solver_obj_value);
 
     /**
      * @brief Evaluates the gradient of the objective function \f$\frac{df}{dx}\f$ for the solver.
@@ -434,10 +378,7 @@ public:
      * @param[in] solver_x Pointer to an array containing the current primal variables \f$x\f$ (scaled by the solver).
      * @param[out] solver_grad_f Pointer to an array where the scaled gradient of the objective function \f$\nabla f(x)\f$ will be written.
      */
-    void solver_eval_grad_f(
-        bool new_x,
-        const f64* solver_x,
-        f64* solver_grad_f);
+    void solver_eval_grad_f(bool new_x, const f64 *solver_x, f64 *solver_grad_f);
 
     /**
      * @brief Evaluates the constraint functions \f$g(x)\f$ for the solver.
@@ -450,10 +391,7 @@ public:
      * @param[in] solver_x Pointer to an array containing the current primal variables \f$x\f$ (scaled by the solver).
      * @param[out] solver_g Pointer to an array where the scaled constraint function values \f$g(x)\f$ will be written.
      */
-    void solver_eval_g(
-        bool new_x,
-        const f64* solver_x,
-        f64* solver_g);
+    void solver_eval_g(bool new_x, const f64 *solver_x, f64 *solver_g);
 
     /**
      * @brief Evaluates the Jacobian of the constraint functions \f$\frac{dg}{dx}\f$ for the solver.
@@ -466,10 +404,7 @@ public:
      * @param[in] solver_x Pointer to an array containing the current primal variables \f$x\f$ (scaled by the solver).
      * @param[out] solver_jac Pointer to an array where the scaled non-zero elements of the Jacobian matrix will be written.
      */
-    void solver_eval_jac(
-        bool new_x,
-        const f64* solver_x,
-        f64* solver_jac);
+    void solver_eval_jac(bool new_x, const f64 *solver_x, f64 *solver_jac);
 
     /**
      * @brief Evaluates the Hessian of the Lagrangian \f$\sigma_f \frac{d^2f}{dx^2} + \sum_{i=1}^{m} \lambda_i \frac{d^2(g_i)}{dx^2}\f$ for the solver.
@@ -486,13 +421,7 @@ public:
      * @param[in] solver_obj_factor The scalar multiplier \f$\sigma_f\f$ for the objective function's Hessian (scaled by the solver).
      * @param[out] solver_hes Pointer to an array where the scaled non-zero elements of the Hessian matrix will be written.
      */
-    void solver_eval_hes(
-        bool new_x,
-        const f64* solver_x,
-        bool new_lambda,
-        const f64* solver_lambda,
-        const f64 solver_obj_factor,
-        f64* solver_hes);
+    void solver_eval_hes(bool new_x, const f64 *solver_x, bool new_lambda, const f64 *solver_lambda, const f64 solver_obj_factor, f64 *solver_hes);
 
     /**
      * @brief Finalizes the solution received from the solver.
@@ -512,13 +441,7 @@ public:
      * @param[in] solver_z_lb Pointer to an array containing the optimal dual multipliers for lower variable bounds \f$z_{LB}^*\f$ (scaled).
      * @param[in] solver_z_ub Pointer to an array containing the optimal dual multipliers for upper variable bounds \f$z_{UB}^*\f$ (scaled).
      */
-    void solver_finalize_solution(
-        ReturnCode ret,
-        const f64  solver_obj_value,
-        const f64* solver_x,
-        const f64* solver_lambda,
-        const f64* solver_z_lb,
-        const f64* solver_z_ub);
+    void solver_finalize_solution(ReturnCode ret, const f64 solver_obj_value, const f64 *solver_x, const f64 *solver_lambda, const f64 *solver_z_lb, const f64 *solver_z_ub);
 
     /**
      * @brief Allows the user to access the value of the objective function \f$f(x)\f$.
@@ -526,7 +449,6 @@ public:
     f64 get_objective_value() const;
 
 private:
-
     // ============ NLP Structures and Info ============
 
     int number_vars = 0;        // total number of variables in the NLP
@@ -535,9 +457,9 @@ private:
     int nnz_hes = 0;            // nnz Hessian in the NLP
 
     // current iterates
-    FixedVector<f64> curr_x;       // current NLP primal variables
-    FixedVector<f64> curr_lambda;  // current NLP dual variables
-    f64              curr_sigma_f; // current objective weight in hessian
+    FixedVector<f64> curr_x;      // current NLP primal variables
+    FixedVector<f64> curr_lambda; // current NLP dual variables
+    f64 curr_sigma_f;             // current objective weight in hessian
 
     // variable bounds
     FixedVector<f64> x_lb; // lower bounds on NLP variables
@@ -580,32 +502,30 @@ private:
     // this is the case, because the Lagrangian Hessian does not allow for to scale f and g independently after evaluation
     // so the only possibility is to apply this scaling a priori by updating the duals and sigma_f
 
-    inline void unscale_dual_bounds(const f64* z_L, const f64* z_U) {
+    inline void unscale_dual_bounds(const f64 *z_L, const f64 *z_U) {
         scaling->unscale_x(z_L, z_lb.raw(), number_vars);
         scaling->unscale_x(z_U, z_ub.raw(), number_vars);
     }
 
-    inline void update_unscale_curr_x(bool new_x, const f64* x) {
-        if (new_x) scaling->unscale_x(x, curr_x.raw(), number_vars);
+    inline void update_unscale_curr_x(bool new_x, const f64 *x) {
+        if (new_x) {
+            scaling->unscale_x(x, curr_x.raw(), number_vars);
+        }
     }
 
-    inline void update_unscale_curr_lambda(bool new_lambda, const f64* lambda) {
-        if (new_lambda) scaling->scale_g(lambda, curr_lambda.raw(), number_constraints);
+    inline void update_unscale_curr_lambda(bool new_lambda, const f64 *lambda) {
+        if (new_lambda) {
+            scaling->scale_g(lambda, curr_lambda.raw(), number_constraints);
+        }
     }
 
-    inline void unscale_curr_lambda(f64* lambda) {
-        scaling->unscale_g(curr_lambda.raw(), lambda, number_constraints);
-    }
+    inline void unscale_curr_lambda(f64 *lambda) { scaling->unscale_g(curr_lambda.raw(), lambda, number_constraints); }
 
-    inline void unscale_curr_sigma_f(const f64* sigma_f) {
-        scaling->scale_f(sigma_f, &curr_sigma_f);
-    }
+    inline void unscale_curr_sigma_f(const f64 *sigma_f) { scaling->scale_f(sigma_f, &curr_sigma_f); }
 
-    inline void unscale_objective(const f64* obj) {
-        scaling->unscale_f(obj, &curr_obj);
-    }
+    inline void unscale_objective(const f64 *obj) { scaling->unscale_f(obj, &curr_obj); }
 };
 
 } // namespace NLP
 
-#endif  // MOO_NLP_H
+#endif // MOO_NLP_H

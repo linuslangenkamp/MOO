@@ -23,9 +23,9 @@
 
 #include <memory>
 
-#include <nlp/nlp_solver.h>
 #include <base/export.h>
 #include <base/timing.h>
+#include <nlp/nlp_solver.h>
 
 namespace IpoptSolver {
 
@@ -36,7 +36,7 @@ class MOO_EXPORT IpoptSolver : public NLP::NLPSolver {
     friend IpoptTimingNode;
 
 public:
-    IpoptSolver(NLP::NLP& nlp, NLP::NLPSolverSettings& solver_settings);
+    IpoptSolver(NLP::NLP &nlp, NLP::NLPSolverSettings &solver_settings);
 
     virtual ~IpoptSolver();
 
@@ -50,17 +50,17 @@ public:
     f64 get_callback_time() const override;
 
 private:
-   IpoptSolverData* ipdata;
+    IpoptSolverData *ipdata;
 };
 
 class IpoptTimingNode : public TimingNode {
-    IpoptSolver* ipopt_solver;
+    IpoptSolver *ipopt_solver;
     int total_iterations = 0;
 
     // TODO: maybe more here in the future?
 
 public:
-    IpoptTimingNode(std::string n, TimingNode* p = nullptr, IpoptSolver* ipopt_solver = nullptr);
+    IpoptTimingNode(std::string n, TimingNode *p = nullptr, IpoptSolver *ipopt_solver = nullptr);
 
     void finalize() override;
 };

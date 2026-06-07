@@ -29,7 +29,7 @@ namespace Linalg {
  * @param size      Vector length
  * @param x         Vector ptr
  */
-void square(int size, f64* x) {
+void square(int size, f64 *x) {
     for (int i = 0; i < size; i++) {
         x[i] *= x[i];
     }
@@ -43,7 +43,7 @@ void square(int size, f64* x) {
  * @param y         Second Vector ptr
  * @return f64   transpose(vec1) * vec2
  */
-f64 dot(int size, const f64* x, const f64* y) {
+f64 dot(int size, const f64 *x, const f64 *y) {
     f64 ret = 0.0;
     for (int i = 0; i < size; i++) {
         ret += x[i] * y[i];
@@ -60,9 +60,7 @@ f64 dot(int size, const f64* x, const f64* y) {
  * @param vector  Pointer to input vector (size)
  * @param out     Pointer to output vector (size)
  */
-void matrix_vector(int size, char format, const f64* matrix,
-                   const f64* vector, f64* out)
-{
+void matrix_vector(int size, char format, const f64 *matrix, const f64 *vector, f64 *out) {
     std::memset(out, 0, size * sizeof(f64));
 
     if (format == 'C' || format == 'c') {
@@ -82,30 +80,28 @@ void matrix_vector(int size, char format, const f64* matrix,
     }
 }
 
-void diagmat_vec(const f64* D, bool invD, const f64* x, int size, f64* out) {
+void diagmat_vec(const f64 *D, bool invD, const f64 *x, int size, f64 *out) {
     int i;
 
     if (invD) {
         for (i = 0; i < size; i++) {
             out[i] = x[i] / D[i];
         }
-    }
-    else {
+    } else {
         for (i = 0; i < size; i++) {
             out[i] = D[i] * x[i];
         }
     }
 }
 
-void diagmat_vec_inplace(const f64* D, bool invD, f64* x, int size) {
+void diagmat_vec_inplace(const f64 *D, bool invD, f64 *x, int size) {
     int i;
 
     if (invD) {
         for (i = 0; i < size; i++) {
             x[i] /= D[i];
         }
-    }
-    else {
+    } else {
         for (i = 0; i < size; i++) {
             x[i] *= D[i];
         }
@@ -123,15 +119,14 @@ void diagmat_vec_inplace(const f64* D, bool invD, f64* x, int size) {
  * @param invD      Invert Matrix D
  * @param out       Vector to fill
  */
-void diag_scaled_axpy(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
+void diag_scaled_axpy(int size, const f64 *x, const f64 *y, const f64 *D, f64 beta, bool invD, f64 *out) {
     int i;
 
     if (invD) {
         for (i = 0; i < size; i++) {
             out[i] = (x[i] + beta * y[i]) / D[i];
         }
-    }
-    else {
+    } else {
         for (i = 0; i < size; i++) {
             out[i] = D[i] * (x[i] + beta * y[i]);
         }
@@ -149,17 +144,16 @@ void diag_scaled_axpy(int size, const f64* x, const f64* y, const f64* D, f64 be
  * @param invD      Invert Matrix D
  * @param out       Vector to fill
  */
-void diag_matrix_vector(int size, const f64* x, const f64* y, const f64* D, f64 beta, bool invD, f64* out) {
+void diag_matrix_vector(int size, const f64 *x, const f64 *y, const f64 *D, f64 beta, bool invD, f64 *out) {
     int i;
 
     if (invD) {
         for (i = 0; i < size; i++) {
             out[i] = x[i] / D[i] + beta * y[i];
         }
-    }
-    else {
+    } else {
         for (i = 0; i < size; i++) {
-            out[i] =  D[i] * x[i] + beta * y[i];
+            out[i] = D[i] * x[i] + beta * y[i];
         }
     }
 }
