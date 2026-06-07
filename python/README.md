@@ -118,6 +118,35 @@ run = model.run(
 Uno selection is wired through the shared solver interface. Solver-backend
 availability still depends on how MOO was configured and built.
 
+## Codegen Strategy
+
+Generated derivative callbacks use direct sparse AD kernels by default. This
+means the generated C writes Jacobian and Hessian sparse buffers directly
+instead of evaluating a full JVP/HVP once for every sparse entry. For very
+large sparse blocks, `auto` can switch to colored compressed JVP/HVP evaluation
+when the color count is much smaller than the requested sparse buffer.
+
+```python
+model.codegen("auto")          # structure=auto, local=auto
+model.codegen("loop")          # structure=loop, local=auto
+model.codegen("direct")        # structure=auto, local=direct
+model.codegen("colored")       # structure=auto, local=colored
+model.codegen("basis")         # structure=auto, local=basis
+model.codegen("loop-direct")   # structure=loop, local=direct
+model.codegen("loop-colored")  # structure=loop, local=colored
+model.codegen(structure="loop", local="colored")
+```
+
+The structure axis controls whether repeated blocks remain C loops. The local
+axis controls how each repeated block's local derivative kernel is generated.
+For tiny local blocks, `auto` usually chooses direct sparse kernels; for larger
+sparse local blocks, forced or automatic colored kernels use compressed JVP/HVP
+evaluation inside the loop.
+
+Each `generate(...)` call writes `codegen_report.txt` next to the generated C
+file. The report includes derivative nnz, coloring counts, selected strategy,
+and generated C size.
+
 ## GDOP Example
 
 ```python
@@ -237,6 +266,41 @@ NLP models support variables, bounds, guesses, nominals, runtime parameters,
 one objective, bounded constraints, exact sparse Jacobians, and exact staged
 Hessian callbacks.
 
+For large repeated NLPs, use the structured helpers so MOO generates compact C
+loops instead of fully unrolled scalar code:
+
+```python
+from moo import nlp_model
+
+m = nlp_model("banded")
+x = m.add_variables("x", 500, lb=-10.0, ub=10.0, guess=0.1)
+
+m.minimize_sum(500, lambda i: (x[i] - 1.0) ** 2, name="tracking")
+m.minimize_sum(499, lambda i: 0.01 * x[i] * x[i + 1], name="coupling")
+m.add_constraints(499, lambda i: x[i] + x[i + 1], lb=-5.0, ub=5.0, name="band")
+
+m.codegen("auto").generate("build/moo/banded")
+```
+
+Mapped objective and constraint blocks emit one local AD kernel and C loops
+for value, Jacobian, and Hessian accumulation. `codegen_report.txt` lists the
+mapped block count, repetitions, global derivative nnz, and selected `loop`
+strategy.
+
+Multi-output mapped constraints are useful when one repeated block has a large
+local sparse Jacobian:
+
+```python
+m.add_constraints_map(
+    blocks,
+    lambda i: [(x[i + j] + x[i + j + 1]) ** 2 for j in range(block_size - 1)],
+    lb=-1.0,
+    ub=25.0,
+    name="band_block",
+)
+m.codegen("loop-colored")
+```
+
 ## Results
 
 `optimize()` and `run()` return an `OptimizationRun`:
@@ -337,13 +401,14 @@ links against `libmoo` and enters the matching MOO C interface:
 The AD layer emits:
 
 - value functions;
-- JVP functions for sparse Jacobian filling;
-- staged HVP functions for sparse Hessian filling;
+- direct sparse Jacobian/Hessian functions by coefficient extraction;
+- JVP and staged HVP functions for colored compressed or debug fallback filling;
 - structural sparsity used to allocate C callback buffers.
 
-For Hessian callbacks, generated C prepares the staged HVP cache once at the
-fixed primal/lambda point, then applies basis directions against that cache to
-fill MOO's sparse Hessian buffer.
+For direct Hessian callbacks, generated C evaluates only the requested sparse
+Hessian coefficients. For colored or basis callbacks, generated C prepares the
+staged HVP cache once at the fixed primal/lambda point and reuses it for all
+directions.
 
 ## Low-Level AD Bindings
 
@@ -391,15 +456,17 @@ lower-level C++ and C interface references.
 - `examples/moo/init_simple.py`: minimal Init problem with solution `y = 1`,
   `p = 2`.
 - `examples/moo/nlp_qp.py`: minimal standard convex QP.
+- `examples/moo/nlp_sparse_benchmark.py`: sparse NLP code-size comparison for
+  auto, direct sparse, colored compressed, and basis-loop derivative codegen.
 - `examples/moo/ad_bindings.py`: low-level AD binding demo.
 
 ## Current Scope
 
 This frontend is usable for small and medium generated problems and for
-developing MOO's native AD/codegen path. The current sparse Jacobian and
-Hessian callbacks are exact, but they fill sparse buffers by applying generated
-JVP/HVP code to basis directions. Direct sparse derivative kernels are a
-natural next optimization.
+developing MOO's native AD/codegen path. Sparse Jacobian and Hessian callbacks
+are exact. The default path emits direct sparse derivative kernels; colored
+compressed callbacks and the old basis-direction fallback are available through
+`model.codegen(...)`.
 
 External data callbacks, richer solver-specific option objects, and more
 advanced mesh-refinement controls are not yet exposed as high-level Python

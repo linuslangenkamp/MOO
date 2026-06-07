@@ -2,7 +2,7 @@
 
 MOO AD is the in-tree automatic differentiation and C-code-emission layer used
 by the Python modeling frontend. It is implemented by the C++17 header
-`advec.h` and optional pybind11 bindings exposed as `moo.ad`.
+`ad.h` and optional pybind11 bindings exposed as `moo.ad`.
 
 The library builds symbolic expression graphs for vector-valued functions,
 transforms those graphs with forward and reverse AD, evaluates them with a VM,
@@ -23,6 +23,8 @@ problem interfaces.
 - Staged VM evaluation for repeated HVP directions.
 - One-shot C code emission with `to_c`.
 - Staged C code emission with separate `_prepare` and `_apply` functions.
+- Direct sparse derivative C emission for selected Jacobian/Hessian entries.
+- Greedy column coloring for compressed derivative evaluation.
 - Structural Jacobian and Hessian sparsity from optimized derivative graphs.
 - Python bindings for graph construction, AD transforms, evaluation, sparsity,
   and C emission.
@@ -30,9 +32,9 @@ problem interfaces.
 ## C++ Quick Start
 
 ```cpp
-#include "advec.h"
+#include "ad.h"
 
-using namespace advec;
+using namespace ad;
 
 Graph g;
 auto x = g.inputs("x", 2);
@@ -157,9 +159,9 @@ void hvp_apply(const hvp_cache_t* cache,
                double* out);
 ```
 
-MOO's generated Hessian callbacks use this staged form. They prepare the cache
-once for the fixed primal point and fixed Lagrangian multipliers, then apply
-basis directions to fill sparse Hessian entries.
+MOO uses this staged form for colored compressed Hessian callbacks and for the
+debug basis fallback. Direct sparse Hessian callbacks use coefficient
+extraction instead and emit the requested sparse values directly.
 
 ## Structural Sparsity
 
@@ -199,6 +201,43 @@ pat.contract_outputs()
 SparsityPattern::lower_triangular(pairs)
 SparsityPattern::symmetrize(pairs)
 ```
+
+## Direct Sparse Derivative Emission
+
+For sparse solver callbacks, emit derivative buffers directly:
+
+```cpp
+auto J = jacobian_sparsity(F, "x").to_pairs();
+auto Grad = reverse_diff(F, "lambda", "x");
+auto HVP = forward_diff(Grad, "x", "v");
+auto H = hessian_sparsity(HVP, "v");
+
+std::cout << to_sparse_jacobian_c(F, "x", J, "jac_values");
+std::cout << to_sparse_hessian_c(HVP, "v", H, "hes_values");
+```
+
+These functions extract coefficients from graphs that are linear in a
+direction/seed parameter. The generated C outputs exactly the requested sparse
+entries in the requested COO order. This is the preferred path for MOO's
+generated NLP, Init, and GDOP callbacks.
+
+## Coloring
+
+For large sparse derivative buffers, MOO can also evaluate compressed
+directions. The AD layer exposes greedy column coloring over a sparsity pattern:
+
+```cpp
+auto J = jacobian_sparsity(F, "x").to_pairs();
+auto colors = greedy_column_coloring(J, F.input_size("x"));
+```
+
+The Python binding exposes the same operation through `GraphFunction.coloring`.
+MOO's high-level code generator uses this metadata for
+`model.codegen("colored")` and may choose it automatically for large sparse
+blocks. Colored callbacks seed all columns of one color, run one JVP or staged
+HVP apply, and scatter the requested sparse entries through static metadata
+arrays. Direct sparse coefficient kernels remain the default for small and
+medium blocks because they produce smaller, faster C in those cases.
 
 ## Python Bindings
 
@@ -271,6 +310,9 @@ print(f.jacobian_sparsity("x"))
 print(hvp.hessian_sparsity("v"))
 print(f.to_c("demo_value"))
 print(hvp.to_staged_c("demo_hvp", "v"))
+print(f.to_sparse_jacobian_c("x", f.jacobian_sparsity("x"), "demo_jac"))
+print(hvp.to_sparse_hessian_c("v", hvp.hessian_sparsity("v"), "demo_hes"))
+print(f.coloring(f.jacobian_sparsity("x"), 3))
 ```
 
 Python dictionaries are keyed by group name. Values must have the exact size
@@ -292,7 +334,7 @@ y = x[0] ** 2
 
 ## Building C++ Examples
 
-`advec.h` is header-only:
+`ad.h` is header-only:
 
 ```bash
 g++ -std=c++17 -O2 -Isrc/ad src/ad/example_hvp.cpp -o example_hvp

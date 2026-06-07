@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 
 @dataclass
@@ -81,6 +82,13 @@ class SolverSettings:
 
 
 class SolverMixin:
+    def codegen(self, strategy: str = "auto", structure: str | None = None, local: str | None = None):
+        structure_mode, local_mode = parse_codegen_strategy(strategy, structure, local)
+        self.codegen_strategy = strategy.strip().lower() if isinstance(strategy, str) else "auto"
+        self.codegen_structure_strategy = structure_mode
+        self.codegen_local_strategy = local_mode
+        return self
+
     def solver(
         self,
         backend: str = "Ipopt",
@@ -113,3 +121,55 @@ class SolverMixin:
         if hasattr(self, "derivative_test"):
             self.derivative_test = derivative_test
         return self
+
+
+def derivative_mode(strategy: str, pairs: Iterable[tuple[int, int]], colors: list[int]) -> str:
+    sparse_pairs = list(pairs)
+    if not sparse_pairs:
+        return "direct"
+    if strategy == "basis":
+        return "basis"
+    if strategy == "direct":
+        return "direct"
+    if strategy == "colored":
+        return "colored"
+
+    used_colors = {
+        colors[col]
+        for _, col in sparse_pairs
+        if 0 <= col < len(colors) and colors[col] >= 0
+    }
+    if len(sparse_pairs) >= 256 and 0 < 4 * len(used_colors) < len(sparse_pairs):
+        return "colored"
+    return "direct"
+
+
+def parse_codegen_strategy(strategy: str = "auto", structure: str | None = None, local: str | None = None) -> tuple[str, str]:
+    normalized = strategy.strip().lower()
+    aliases = {
+        "auto": ("auto", "auto"),
+        "loop": ("loop", "auto"),
+        "direct": ("auto", "direct"),
+        "colored": ("auto", "colored"),
+        "basis": ("auto", "basis"),
+        "loop-auto": ("loop", "auto"),
+        "loop-direct": ("loop", "direct"),
+        "loop-colored": ("loop", "colored"),
+        "loop-basis": ("loop", "basis"),
+        "scalar-auto": ("scalar", "auto"),
+        "scalar-direct": ("scalar", "direct"),
+        "scalar-colored": ("scalar", "colored"),
+        "scalar-basis": ("scalar", "basis"),
+    }
+    if normalized not in aliases:
+        raise ValueError(f"Unknown codegen strategy {strategy!r}; expected one of {sorted(aliases)}")
+    structure_mode, local_mode = aliases[normalized]
+    if structure is not None:
+        structure_mode = structure.strip().lower()
+    if local is not None:
+        local_mode = local.strip().lower()
+    if structure_mode not in {"auto", "loop", "scalar"}:
+        raise ValueError("codegen structure must be one of 'auto', 'loop', or 'scalar'")
+    if local_mode not in {"auto", "direct", "colored", "basis"}:
+        raise ValueError("codegen local must be one of 'auto', 'direct', 'colored', or 'basis'")
+    return structure_mode, local_mode

@@ -30,8 +30,13 @@ class EmittedFunction:
     value: str
     jvp: str
     hvp: str
+    jac: str
+    hes: str
     jac_sparsity: list[tuple[int, int]]
     hes_sparsity: list[tuple[int, int]]
+    jac_colors: list[int]
+    hes_colors: list[int]
+    report: dict[str, object]
 
 
 def _safe_env(builder: ad.GraphBuilder, variables: dict[str, object]) -> dict[str, object]:
@@ -80,12 +85,34 @@ def emit_function(
     jvp = fn.forward_diff(input_name, "v")
     grad = fn.reverse_diff("lambda", input_name)
     hvp = grad.forward_diff(input_name, "v")
+    jac_sparsity = fn.jacobian_sparsity(input_name)
+    hes_sparsity = hvp.hessian_sparsity("v")
+    jac_coloring = fn.coloring(jac_sparsity, input_size)
+
+    # HVP output row r depends on every symmetric Hessian entry H[r,c], so
+    # color against the full symmetric pattern even though callbacks request
+    # only the lower-triangular values.
+    # TODO: this is very conservative, we should create a proper star-coloring, or even stronger
+    #       colorings as in ColPack library, which may even require certain recoveries
+    hes_coloring = hvp.coloring(hvp.hessian_sparsity_full("v"), input_size)
     return EmittedFunction(
         value=fn.to_c(value_name),
         jvp=jvp.to_c(jvp_name),
         hvp=hvp.to_staged_c(hvp_name, "v"),
-        jac_sparsity=fn.jacobian_sparsity(input_name),
-        hes_sparsity=hvp.hessian_sparsity("v"),
+        jac=fn.to_sparse_jacobian_c(input_name, jac_sparsity, f"{jvp_name}_sparse"),
+        hes=hvp.to_sparse_hessian_c("v", hes_sparsity, f"{hvp_name}_sparse"),
+        jac_sparsity=jac_sparsity,
+        hes_sparsity=hes_sparsity,
+        jac_colors=list(jac_coloring["colors"]),
+        hes_colors=list(hes_coloring["colors"]),
+        report={
+            "kernel_source": "symbolic_coefficients",
+            "outputs": len(out),
+            "jacobian_nnz": len(jac_sparsity),
+            "jacobian_colors": jac_coloring["color_count"],
+            "hessian_nnz": len(hes_sparsity),
+            "hessian_colors": hes_coloring["color_count"],
+        },
     )
 
 

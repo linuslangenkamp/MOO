@@ -18,8 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef MOO_ADVEC_H
-#define MOO_ADVEC_H
+#ifndef MOO_AD_H
+#define MOO_AD_H
 
 #include <algorithm>
 #include <cassert>
@@ -42,11 +42,11 @@
 #include <utility>
 #include <vector>
 
-namespace advec
+namespace ad
 {
 
 // -----------------------------------------------------------------------------
-// Header-only symbolic graph AD for vector-valued functions.
+// Header-only symbolic graph AD
 //
 // Design summary:
 //   - Build vector functions as DAGs.
@@ -386,6 +386,8 @@ struct GraphFunction
     int output_size() const { return static_cast<int>(outputs.size()); }
 };
 
+inline GraphFunction optimize(const GraphFunction &f);
+
 inline void add_unique_group(std::vector<std::pair<std::string, int>> &groups, const std::string &name, int size)
 {
     for (auto &g : groups)
@@ -397,6 +399,30 @@ inline void add_unique_group(std::vector<std::pair<std::string, int>> &groups, c
         }
     }
     groups.push_back({name, size});
+}
+
+inline int input_group_size(const GraphFunction &f, const std::string &name)
+{
+    for (auto [n, s] : f.input_groups)
+    {
+        if (n == name)
+        {
+            return s;
+        }
+    }
+    return 0;
+}
+
+inline int param_group_size(const GraphFunction &f, const std::string &name)
+{
+    for (auto [n, s] : f.param_groups)
+    {
+        if (n == name)
+        {
+            return s;
+        }
+    }
+    return 0;
 }
 
 inline GraphFunction function_from(Graph &&graph, const NamedVector &inputs, const std::vector<Expr> &outputs, const std::vector<NamedVector> &params = {})
@@ -420,7 +446,7 @@ inline GraphFunction function_from(Graph &&graph, const NamedVector &inputs, con
             f.params.push_back(e.id);
         }
     }
-    return f;
+    return optimize(f);
 }
 
 // -----------------------------------------------------------------------------
@@ -758,7 +784,10 @@ inline std::vector<NodeId> topo_used(const Graph &g, const std::vector<NodeId> &
 
 inline GraphFunction optimize(const GraphFunction &f)
 {
-    auto order = topo_used(f.graph, f.outputs);
+    std::vector<NodeId> roots = f.outputs;
+    roots.insert(roots.end(), f.inputs.begin(), f.inputs.end());
+    roots.insert(roots.end(), f.params.begin(), f.params.end());
+    auto order = topo_used(f.graph, roots);
     OptimizingBuilder b;
     std::unordered_map<NodeId, Expr> map;
 
@@ -818,17 +847,11 @@ inline GraphFunction optimize(const GraphFunction &f)
     out.graph = std::move(b.g);
     for (auto id : f.inputs)
     {
-        if (map.count(id))
-        {
-            out.inputs.push_back(map.at(id).id);
-        }
+        out.inputs.push_back(map.at(id).id);
     }
     for (auto id : f.params)
     {
-        if (map.count(id))
-        {
-            out.params.push_back(map.at(id).id);
-        }
+        out.params.push_back(map.at(id).id);
     }
     for (auto id : f.outputs)
     {
@@ -1159,6 +1182,331 @@ inline GraphFunction reverse_diff(const GraphFunction &f, const std::string &lam
     }
     out.graph = std::move(b.g);
     return optimize(out);
+}
+
+// -----------------------------------------------------------------------------
+// Sparse derivative graph extraction.
+//
+// JVP and HVP graphs are linear in their direction/seed parameter by
+// construction.  This routine extracts requested coefficients of that linear
+// parameter and returns a new function whose outputs are the sparse derivative
+// values directly.
+// -----------------------------------------------------------------------------
+
+struct SparseDerivativePlan
+{
+    std::vector<std::pair<int, int>> pattern;
+    std::vector<int> column_color;
+    int color_count = 0;
+    std::string strategy = "direct";
+};
+
+inline std::vector<int> greedy_column_coloring(int column_count, const std::vector<std::pair<int, int>> &pattern)
+{
+    std::vector<std::unordered_set<int>> rows_by_col(column_count);
+    std::unordered_map<int, std::vector<int>> cols_by_row;
+    for (auto [row, col] : pattern)
+    {
+        if (col >= 0 && col < column_count)
+        {
+            cols_by_row[row].push_back(col);
+        }
+    }
+    std::vector<std::unordered_set<int>> adjacency(column_count);
+    for (auto &[row, cols] : cols_by_row)
+    {
+        (void)row;
+        std::sort(cols.begin(), cols.end());
+        cols.erase(std::unique(cols.begin(), cols.end()), cols.end());
+        for (std::size_t i = 0; i < cols.size(); ++i)
+        {
+            for (std::size_t j = i + 1; j < cols.size(); ++j)
+            {
+                adjacency[cols[i]].insert(cols[j]);
+                adjacency[cols[j]].insert(cols[i]);
+            }
+        }
+    }
+
+    std::vector<int> order(column_count);
+    for (int i = 0; i < column_count; ++i)
+    {
+        order[i] = i;
+    }
+    std::sort(order.begin(), order.end(), [&](int a, int b)
+    {
+        if (adjacency[a].size() != adjacency[b].size())
+        {
+            return adjacency[a].size() > adjacency[b].size();
+        }
+        return a < b;
+    });
+
+    std::vector<int> color(column_count, -1);
+    for (int col : order)
+    {
+        std::unordered_set<int> used;
+        for (int other : adjacency[col])
+        {
+            if (color[other] >= 0)
+            {
+                used.insert(color[other]);
+            }
+        }
+        int c = 0;
+        while (used.count(c))
+        {
+            ++c;
+        }
+        color[col] = c;
+    }
+    return color;
+}
+
+inline SparseDerivativePlan derivative_plan(int column_count, const std::vector<std::pair<int, int>> &pattern)
+{
+    SparseDerivativePlan plan;
+    plan.pattern = pattern;
+    plan.column_color = greedy_column_coloring(column_count, pattern);
+    plan.color_count = 0;
+    for (int c : plan.column_color)
+    {
+        plan.color_count = std::max(plan.color_count, c + 1);
+    }
+    plan.strategy = (plan.color_count > 0 && plan.color_count < static_cast<int>(pattern.size())) ? "direct" : "direct";
+    return plan;
+}
+
+struct LinearForm
+{
+    Expr constant;
+    std::map<int, Expr> coeff;
+};
+
+inline bool has_coeff(const LinearForm &f)
+{
+    return !f.coeff.empty();
+}
+
+inline LinearForm make_constant_form(Expr e)
+{
+    LinearForm out;
+    out.constant = e;
+    return out;
+}
+
+inline LinearForm linear_add(OptimizingBuilder &b, const LinearForm &a, const LinearForm &c, double sign = 1.0)
+{
+    LinearForm out;
+    out.constant = sign > 0.0 ? b.add(a.constant, c.constant) : b.sub(a.constant, c.constant);
+    out.coeff = a.coeff;
+    for (auto &[idx, expr] : c.coeff)
+    {
+        auto it = out.coeff.find(idx);
+        Expr term = sign > 0.0 ? expr : b.neg(expr);
+        if (it == out.coeff.end())
+        {
+            out.coeff.emplace(idx, term);
+        }
+        else
+        {
+            it->second = b.add(it->second, term);
+        }
+    }
+    return out;
+}
+
+inline LinearForm linear_scale(OptimizingBuilder &b, const LinearForm &a, Expr scale)
+{
+    LinearForm out;
+    out.constant = b.mul(a.constant, scale);
+    for (auto &[idx, expr] : a.coeff)
+    {
+        out.coeff.emplace(idx, b.mul(expr, scale));
+    }
+    return out;
+}
+
+inline GraphFunction sparse_coefficients(const GraphFunction &fn,
+                                         const std::string &seed_name,
+                                         const std::vector<std::pair<int, int>> &entries)
+{
+    auto f = optimize(fn);
+    const int seed_size = param_group_size(f, seed_name);
+    if (seed_size <= 0)
+    {
+        throw std::runtime_error("sparse_coefficients: unknown seed parameter group: " + seed_name);
+    }
+
+    OptimizingBuilder b;
+    std::vector<LinearForm> form(f.graph.nodes.size());
+    std::vector<Expr> cloned(f.graph.nodes.size());
+    auto zero = b.constant(0.0);
+    auto one = b.constant(1.0);
+
+    auto require_constant = [&](const LinearForm &lf, const char *op) -> Expr
+    {
+        if (has_coeff(lf))
+        {
+            throw std::runtime_error(std::string("sparse_coefficients: nonlinear seed use in ") + op);
+        }
+        return lf.constant;
+    };
+
+    std::vector<NodeId> roots = f.outputs;
+    roots.insert(roots.end(), f.inputs.begin(), f.inputs.end());
+    roots.insert(roots.end(), f.params.begin(), f.params.end());
+    for (NodeId i : topo_used(f.graph, roots))
+    {
+        const auto &n = f.graph.nodes[i];
+        switch (n.op)
+        {
+            case Op::Constant:
+                cloned[i] = b.constant(n.value);
+                form[i] = make_constant_form(cloned[i]);
+                break;
+            case Op::Input:
+                cloned[i] = b.input(n.name, n.index);
+                form[i] = make_constant_form(cloned[i]);
+                break;
+            case Op::Param:
+                if (n.name == seed_name)
+                {
+                    cloned[i] = zero;
+                    form[i] = make_constant_form(zero);
+                    form[i].coeff[n.index] = one;
+                }
+                else
+                {
+                    cloned[i] = b.param(n.name, n.index);
+                    form[i] = make_constant_form(cloned[i]);
+                }
+                break;
+            case Op::Add:
+                form[i] = linear_add(b, form[n.a], form[n.b], 1.0);
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Sub:
+                form[i] = linear_add(b, form[n.a], form[n.b], -1.0);
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Neg:
+                form[i] = linear_scale(b, form[n.a], b.constant(-1.0));
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Mul:
+            {
+                bool la = has_coeff(form[n.a]);
+                bool lb = has_coeff(form[n.b]);
+                if (la && lb)
+                {
+                    throw std::runtime_error("sparse_coefficients: nonlinear seed use in multiplication");
+                }
+                if (la)
+                {
+                    form[i] = linear_scale(b, form[n.a], form[n.b].constant);
+                }
+                else if (lb)
+                {
+                    form[i] = linear_scale(b, form[n.b], form[n.a].constant);
+                }
+                else
+                {
+                    form[i] = make_constant_form(b.mul(form[n.a].constant, form[n.b].constant));
+                }
+                cloned[i] = form[i].constant;
+                break;
+            }
+            case Op::Div:
+            {
+                if (has_coeff(form[n.b]))
+                {
+                    throw std::runtime_error("sparse_coefficients: nonlinear seed use in division denominator");
+                }
+                Expr denom = form[n.b].constant;
+                form[i].constant = b.div(form[n.a].constant, denom);
+                for (auto &[idx, expr] : form[n.a].coeff)
+                {
+                    form[i].coeff.emplace(idx, b.div(expr, denom));
+                }
+                cloned[i] = form[i].constant;
+                break;
+            }
+            case Op::Sin:
+                form[i] = make_constant_form(b.unary(Op::Sin, require_constant(form[n.a], "sin")));
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Cos:
+                form[i] = make_constant_form(b.unary(Op::Cos, require_constant(form[n.a], "cos")));
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Tan:
+                form[i] = make_constant_form(b.unary(Op::Tan, require_constant(form[n.a], "tan")));
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Exp:
+                form[i] = make_constant_form(b.unary(Op::Exp, require_constant(form[n.a], "exp")));
+                cloned[i] = form[i].constant;
+                break;
+            case Op::Log:
+                form[i] = make_constant_form(b.unary(Op::Log, require_constant(form[n.a], "log")));
+                cloned[i] = form[i].constant;
+                break;
+            case Op::PowConst:
+                form[i] = make_constant_form(b.pow_const(require_constant(form[n.a], "pow_const"), n.value));
+                cloned[i] = form[i].constant;
+                break;
+        }
+    }
+
+    GraphFunction out;
+    out.input_groups = f.input_groups;
+    for (auto id : f.inputs)
+    {
+        out.inputs.push_back(cloned[id].id);
+    }
+    for (auto [name, size] : f.param_groups)
+    {
+        if (name != seed_name)
+        {
+            add_unique_group(out.param_groups, name, size);
+        }
+    }
+    for (auto id : f.params)
+    {
+        const auto &n = f.graph.nodes[id];
+        if (n.op == Op::Param && n.name != seed_name)
+        {
+            out.params.push_back(cloned[id].id);
+        }
+    }
+    for (auto [row, col] : entries)
+    {
+        if (row < 0 || row >= static_cast<int>(f.outputs.size()) || col < 0 || col >= seed_size)
+        {
+            throw std::runtime_error("sparse_coefficients: requested entry out of range");
+        }
+        const auto &coeff = form[f.outputs[row]].coeff;
+        auto it = coeff.find(col);
+        out.outputs.push_back(it == coeff.end() ? zero.id : it->second.id);
+    }
+    out.graph = std::move(b.g);
+    return optimize(out);
+}
+
+inline GraphFunction sparse_jacobian_function(const GraphFunction &F,
+                                              const std::string &wrt,
+                                              const std::vector<std::pair<int, int>> &entries,
+                                              const std::string &direction_name = "v")
+{
+    return sparse_coefficients(forward_diff(F, wrt, direction_name), direction_name, entries);
+}
+
+inline GraphFunction sparse_hessian_function(const GraphFunction &HVP,
+                                             const std::string &direction_name,
+                                             const std::vector<std::pair<int, int>> &entries)
+{
+    return sparse_coefficients(HVP, direction_name, entries);
 }
 
 // -----------------------------------------------------------------------------
@@ -1504,7 +1852,6 @@ struct CEmitter
     static void emit_function(const GraphFunction &fn, const std::string &name, std::ostream &os)
     {
         auto f = optimize(fn);
-        os << "#include <math.h>\n\n";
         os << "void " << name << "(\n";
         for (auto [n, s] : f.input_groups)
         {
@@ -1551,7 +1898,6 @@ struct CEmitter
     {
         StagedVM svm(fn, direction_name);
         const auto &f = svm.f;
-        os << "#include <math.h>\n\n";
         os << "typedef struct {\n";
         for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i)
         {
@@ -1685,28 +2031,54 @@ inline std::string to_staged_c(const GraphFunction &f, const std::string &basena
     CEmitter::emit_staged(f, basename, direction_name, os);
     return os.str();
 }
+
+inline std::string to_sparse_coefficients_c(const GraphFunction &linear_f,
+                                            const std::string &seed_name,
+                                            const std::vector<std::pair<int, int>> &entries,
+                                            const std::string &name)
+{
+    return to_c(sparse_coefficients(linear_f, seed_name, entries), name);
+}
+
+inline std::string to_sparse_jacobian_c(const GraphFunction &F,
+                                        const std::string &wrt,
+                                        const std::vector<std::pair<int, int>> &entries,
+                                        const std::string &name,
+                                        const std::string &direction_name = "v")
+{
+    return to_c(sparse_jacobian_function(F, wrt, entries, direction_name), name);
+}
+
+inline std::string to_sparse_hessian_c(const GraphFunction &HVP,
+                                       const std::string &direction_name,
+                                       const std::vector<std::pair<int, int>> &entries,
+                                       const std::string &name)
+{
+    return to_c(sparse_hessian_function(HVP, direction_name, entries), name);
+}
+
 // -----------------------------------------------------------------------------
 // Structural sparsity via graph reachability on an already-differentiated graph.
 //
 // Philosophy:
-//   Build the highest-order graph you need (Grad, HVP, …), then ask it
+//   Build the highest-order graph you need (Grad, HVP, ...), then ask it
 //   "which outputs structurally depend on which components of group G?"
 //   The optimizer has already folded genuine zeros to Op::Constant(0.0),
 //   so reachability on the optimized graph is exact structural sparsity.
 //
 // Primary primitive:
 //   structural_sparsity(f, name)
-//     — name is an Input group  → use for Jacobian  (pass F,   probe "x")
-//     — name is a Param  group  → use for Hessian   (pass HVP, probe "v")
+//     — name is an Input group  -> use for Jacobian  (pass F,   probe "x")
+//     — name is a Param  group  -> use for Hessian   (pass HVP, probe "v")
 //
 // Convenience wrappers:
-//   jacobian_sparsity(F,   "x")           → SparsityPattern
-//   hessian_sparsity (HVP, "v")           → lower-triangular (row,col) pairs
-//   hessian_sparsity_full(HVP, "v")       → full symmetric   (row,col) pairs
+//   jacobian_sparsity(F,   "x")           -> SparsityPattern
+//   hessian_sparsity (HVP, "v")           -> lower-triangular (row,col) pairs
+//   hessian_sparsity_full(HVP, "v")       -> full symmetric   (row,col) pairs
 //
 // SparsityPattern post-processing (chainable on the returned pattern):
 //   .to_pairs()          — raw (output, var) pairs
-//   .contract_outputs()  — (output, var) → (row, col) deduplicated
+//   .contract_outputs()  — (output, var) -> (row, col) deduplicated
 //                          valid when output_i IS x_i (gradient functions)
 //
 // Static helpers on SparsityPattern:
@@ -1773,7 +2145,7 @@ struct SparsityPattern
         return pairs;
     }
 
-    // Add (j,i) for every (i,j), keep unique → full symmetric set.
+    // Add (j,i) for every (i,j), keep unique -> full symmetric set.
     static std::vector<std::pair<int, int>> symmetrize(std::vector<std::pair<int, int>> pairs)
     {
         const std::size_t n = pairs.size();
@@ -1804,34 +2176,6 @@ struct SparsityPattern
 inline std::ostream &operator<<(std::ostream &os, const SparsityPattern &p)
 {
     return os << p.str();
-}
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-inline int input_group_size(const GraphFunction &f, const std::string &name)
-{
-    for (auto [n, size] : f.input_groups)
-    {
-        if (n == name)
-        {
-            return size;
-        }
-    }
-    return 0;
-}
-
-inline int param_group_size(const GraphFunction &f, const std::string &name)
-{
-    for (auto [n, size] : f.param_groups)
-    {
-        if (n == name)
-        {
-            return size;
-        }
-    }
-    return 0;
 }
 
 // -----------------------------------------------------------------------------
@@ -1926,9 +2270,9 @@ inline SparsityPattern structural_sparsity(const GraphFunction &fn, const std::s
 //   Grad = reverse_diff(F, "lambda", "x")
 //   HVP  = forward_diff(Grad, "x", "v")
 //
-//   jacobian_sparsity(F)           probe Input "x"  → (output, col) pattern
-//   hessian_sparsity(HVP)          probe Param "v"  → lower-triangle (row,col)
-//   hessian_sparsity_full(HVP)     probe Param "v"  → full symmetric  (row,col)
+//   jacobian_sparsity(F)           probe Input "x"  -> (output, col) pattern
+//   hessian_sparsity(HVP)          probe Param "v"  -> lower-triangle (row,col)
+//   hessian_sparsity_full(HVP)     probe Param "v"  -> full symmetric  (row,col)
 // -----------------------------------------------------------------------------
 
 // Jacobian: pass F, probe the input group.
@@ -1951,6 +2295,6 @@ inline std::vector<std::pair<int, int>> hessian_sparsity_full(const GraphFunctio
     return SparsityPattern::symmetrize(structural_sparsity(HVP, v_name).contract_outputs());
 }
 
-} // namespace advec
+} // namespace ad
 
-#endif // AD_ADVEC_H
+#endif // MOO_AD_H

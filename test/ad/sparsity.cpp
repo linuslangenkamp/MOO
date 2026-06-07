@@ -18,14 +18,14 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include <advec.h>
+#include <ad.h>
 
 #include <iostream>
 #include <vector>
 
 int main()
 {
-    using namespace advec;
+    using namespace ad;
 
     Graph g;
     auto x = g.inputs("x", 3);

@@ -35,6 +35,7 @@ from .model import (
     log,
     pow_const,
     sin,
+    sum_expr,
     tan,
 )
 
@@ -70,6 +71,7 @@ __all__ = [
     "ResultTable",
     "read_results",
     "sin",
+    "sum_expr",
     "cos",
     "tan",
     "exp",

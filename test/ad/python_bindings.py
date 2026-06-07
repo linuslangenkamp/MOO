@@ -37,3 +37,6 @@ prepared = hvp.prepare(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.
 assert prepared.apply([0.0, 0.0, 1.0]) == [0.0, 0.0, 0.0]
 assert "void linear_value" in f.to_c("linear_value")
 assert "linear_hvp_prepare" in hvp.to_staged_c("linear_hvp", "v")
+assert "void linear_jac" in f.to_sparse_jacobian_c("x", f.jacobian_sparsity("x"), "linear_jac")
+assert "void linear_hes" in hvp.to_sparse_hessian_c("v", hvp.hessian_sparsity("v"), "linear_hes")
+assert f.coloring(f.jacobian_sparsity("x"), 3)["color_count"] == 2

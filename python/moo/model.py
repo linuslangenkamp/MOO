@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .ad_codegen import emit_function, emit_value_function
-from .common import SolverMixin, SolverSettings
+from .common import SolverMixin, SolverSettings, derivative_mode
 from .results import GDOPResult, OptimizationRun, read_results
 
 
@@ -82,6 +82,8 @@ class Expr:
 
     def _binary(self, other: object, op: str) -> "Expr":
         rhs = as_expr(other)
+        if op == "+":
+            return SumExpr.from_terms([self, rhs])
         return Expr(
             f"({self.lfg} {op} {rhs.lfg})" if self.lfg is not None and rhs.lfg is not None else None,
             f"({self.mr} {op} {rhs.mr})" if self.mr is not None and rhs.mr is not None else None,
@@ -119,6 +121,57 @@ class Expr:
 
     def __pow__(self, power: float | int) -> "Expr":
         return pow_const(self, power)
+
+
+def _balanced_join(parts: list[str], op: str) -> str:
+    if not parts:
+        return "0.0"
+    layer = parts
+    while len(layer) > 1:
+        nxt = []
+        for i in range(0, len(layer), 2):
+            if i + 1 < len(layer):
+                nxt.append(f"({layer[i]} {op} {layer[i + 1]})")
+            else:
+                nxt.append(layer[i])
+        layer = nxt
+    return layer[0]
+
+
+class SumExpr(Expr):
+    def __init__(self, terms: list[Expr]):
+        self.terms = terms
+
+    @staticmethod
+    def from_terms(terms: list[Expr]) -> Expr:
+        flat: list[Expr] = []
+        for term in terms:
+            expr = as_expr(term)
+            if isinstance(expr, SumExpr):
+                flat.extend(expr.terms)
+            elif expr.lfg == "0.0" and expr.mr == "0.0":
+                continue
+            else:
+                flat.append(expr)
+        if not flat:
+            return Expr.const(0.0)
+        if len(flat) == 1:
+            return flat[0]
+        return SumExpr(flat)
+
+    @property
+    def lfg(self) -> str | None:
+        parts = [term.lfg for term in self.terms]
+        if any(part is None for part in parts):
+            return None
+        return _balanced_join([part for part in parts if part is not None], "+")
+
+    @property
+    def mr(self) -> str | None:
+        parts = [term.mr for term in self.terms]
+        if any(part is None for part in parts):
+            return None
+        return _balanced_join([part for part in parts if part is not None], "+")
 
 
 def as_expr(value: object) -> Expr:
@@ -164,6 +217,10 @@ def pow_const(value: object, power: float | int) -> Expr:
     )
 
 
+def sum_expr(values: Iterable[object]) -> Expr:
+    return SumExpr.from_terms([as_expr(value) for value in values])
+
+
 @dataclass
 class Variable:
     name: str
@@ -186,6 +243,9 @@ class GDOPModel(SolverMixin):
     def __init__(self, name: str):
         self.name = _clean_name(name)
         self.solver_settings = SolverSettings()
+        self.codegen_strategy = "auto"
+        self.codegen_structure_strategy = "auto"
+        self.codegen_local_strategy = "auto"
         self.states: list[Variable] = []
         self.controls: list[Variable] = []
         self.parameters: list[Variable] = []
@@ -346,6 +406,7 @@ class GDOPModel(SolverMixin):
         h_path = out_path / f"{self.name}.h"
         c_path.write_text(self._render_c(emitted, standalone_main), encoding="utf-8")
         h_path.write_text(self._render_h(), encoding="utf-8")
+        self._write_codegen_report(out_path, emitted, c_path)
         return c_path, h_path
 
     def compile(
@@ -502,13 +563,23 @@ class GDOPModel(SolverMixin):
             "LFG_VALUE": lfg.value,
             "LFG_JVP": lfg.jvp,
             "LFG_HVP": lfg.hvp,
+            "LFG_JAC": lfg.jac,
+            "LFG_HES": lfg.hes,
             "LFG_JAC_SPARSITY": lfg.jac_sparsity,
             "LFG_HES_SPARSITY": lfg.hes_sparsity,
+            "LFG_JAC_COLORS": lfg.jac_colors,
+            "LFG_HES_COLORS": lfg.hes_colors,
+            "LFG_REPORT": lfg.report,
             "MR_VALUE": mr.value,
             "MR_JVP": mr.jvp,
             "MR_HVP": mr.hvp,
+            "MR_JAC": mr.jac,
+            "MR_HES": mr.hes,
             "MR_JAC_SPARSITY": mr.jac_sparsity,
             "MR_HES_SPARSITY": mr.hes_sparsity,
+            "MR_JAC_COLORS": mr.jac_colors,
+            "MR_HES_COLORS": mr.hes_colors,
+            "MR_REPORT": mr.report,
             "ODE_VALUE": ode_value,
             "ODE_JAC_SPARSITY": ode_jac,
         }
@@ -541,6 +612,10 @@ class GDOPModel(SolverMixin):
         lfg_hes = self._pairs(emitted.get("LFG_HES_SPARSITY", ""))
         mr_jac = self._pairs(emitted.get("MR_JAC_SPARSITY", ""))
         mr_hes = self._pairs(emitted.get("MR_HES_SPARSITY", ""))
+        lfg_jac_colors = emitted.get("LFG_JAC_COLORS", [])
+        lfg_hes_colors = emitted.get("LFG_HES_COLORS", [])
+        mr_jac_colors = emitted.get("MR_JAC_COLORS", [])
+        mr_hes_colors = emitted.get("MR_HES_COLORS", [])
         ode_jac = [(row, col) for row, col in self._pairs(emitted.get("ODE_JAC_SPARSITY", "")) if col < self.x_size]
 
         def coo(name: str, pairs: list[tuple[int, int]], buf_indices: list[int] | None = None) -> str:
@@ -585,18 +660,78 @@ class GDOPModel(SolverMixin):
 
         lfg_lambda_size = self.x_size + len(self.path_constraints)
         mr_lambda_size = len(self.boundary_constraints)
+        lfg_jac_mode = derivative_mode(self.codegen_local_strategy, lfg_jac, lfg_jac_colors if isinstance(lfg_jac_colors, list) else [])
+        lfg_hes_mode = derivative_mode(self.codegen_local_strategy, lfg_hes, lfg_hes_colors if isinstance(lfg_hes_colors, list) else [])
+        mr_jac_mode = derivative_mode(self.codegen_local_strategy, mr_jac, mr_jac_colors if isinstance(mr_jac_colors, list) else [])
+        mr_hes_mode = derivative_mode(self.codegen_local_strategy, mr_hes, mr_hes_colors if isinstance(mr_hes_colors, list) else [])
 
-        code_sections = "\n".join(
-            emitted.get(key, "")
-            for key in ["LFG_VALUE", "LFG_JVP", "LFG_HVP", "MR_VALUE", "MR_JVP", "MR_HVP", "ODE_VALUE"]
-        )
+        section_keys = ["LFG_VALUE"]
+        section_keys.append("LFG_JAC" if lfg_jac_mode == "direct" else "LFG_JVP")
+        section_keys.append("LFG_HES" if lfg_hes_mode == "direct" else "LFG_HVP")
+        section_keys.append("MR_VALUE")
+        section_keys.append("MR_JAC" if mr_jac_mode == "direct" else "MR_JVP")
+        section_keys.append("MR_HES" if mr_hes_mode == "direct" else "MR_HVP")
+        section_keys.append("ODE_VALUE")
+        deduped_section_keys = list(dict.fromkeys(section_keys))
+        code_sections = "\n".join(emitted.get(key, "") for key in deduped_section_keys)
         main = f"""
 int main(int argc, char** argv) {{
     return main_{self.name}(argc, argv);
 }}
 """ if standalone_main else ""
+        if lfg_jac_mode == "direct":
+            lfg_jac_body = "    moo_lfg_jvp_sparse(z, globl_rp, tau, out);"
+        elif lfg_jac_mode == "colored":
+            lfg_jac_body = f"""    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[{max(lfg_eval_count, 1)}] = {{0}};
+{self._render_colored_jvp_fill("moo_lfg_jvp", "z", "globl_rp", "tau", lfg_jac, lfg_jac_colors if isinstance(lfg_jac_colors, list) else [])}"""
+        else:
+            lfg_jac_body = f"""    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[{max(lfg_eval_count, 1)}] = {{0}};
+{self._render_jvp_fill("moo_lfg_jvp", "z", "globl_rp", "tau", lfg_jac, lfg_eval_count)}"""
+        if lfg_hes_mode == "direct":
+            lfg_hes_body = f"""    f64 tmp[{max(len(lfg_hes), 1)}] = {{0}};
+    moo_lfg_hvp_sparse(z, seed, globl_rp, tau, tmp);
+{self._render_sparse_hes_scatter(lfg_hes, lfg_hes_buf_indices, True)}"""
+        elif lfg_hes_mode == "colored":
+            lfg_hes_body = f"""    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[Z_SIZE] = {{0}};
+    moo_lfg_hvp_cache_t cache;
+    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);
+{self._render_colored_hvp_fill("moo_lfg_hvp", lfg_hes, lfg_hes_buf_indices, lfg_hes_colors if isinstance(lfg_hes_colors, list) else [], True)}"""
+        else:
+            lfg_hes_body = f"""    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[Z_SIZE] = {{0}};
+    moo_lfg_hvp_cache_t cache;
+    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);
+{self._render_hvp_fill("moo_lfg_hvp", "z", "globl_rp", "tau", lfg_hes, lfg_hes_buf_indices, self.z_size, True)}"""
+        if mr_jac_mode == "direct":
+            mr_jac_body = "    moo_mr_jvp_sparse(b, globl_rp, out);"
+        elif mr_jac_mode == "colored":
+            mr_jac_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
+    f64 tmp[{max(mr_eval_count, 1)}] = {{0}};
+{self._render_colored_jvp_fill("moo_mr_jvp", "b", "globl_rp", None, mr_jac, mr_jac_colors if isinstance(mr_jac_colors, list) else [])}"""
+        else:
+            mr_jac_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
+    f64 tmp[{max(mr_eval_count, 1)}] = {{0}};
+{self._render_jvp_fill("moo_mr_jvp", "b", "globl_rp", None, mr_jac, mr_eval_count)}"""
+        if mr_hes_mode == "direct":
+            mr_hes_body = "    moo_mr_hvp_sparse(b, seed, globl_rp, out);"
+        elif mr_hes_mode == "colored":
+            mr_hes_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
+    f64 tmp[{max(self.mr_size, 1)}] = {{0}};
+    moo_mr_hvp_cache_t cache;
+    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);
+{self._render_colored_hvp_fill("moo_mr_hvp", mr_hes, list(range(len(mr_hes))), mr_hes_colors if isinstance(mr_hes_colors, list) else [], False)}"""
+        else:
+            mr_hes_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
+    f64 tmp[{max(self.mr_size, 1)}] = {{0}};
+    moo_mr_hvp_cache_t cache;
+    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);
+{self._render_hvp_fill("moo_mr_hvp", "b", "globl_rp", None, mr_hes, list(range(len(mr_hes))), self.mr_size, False)}"""
 
         return f"""#include <float.h>
+#include <math.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -657,25 +792,19 @@ static void eval_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* o
 static void jac_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* out, void* user_data) {{
     f64 z[Z_SIZE];
     f64 tau[1] = {{ t }};
-    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[{max(lfg_eval_count, 1)}] = {{0}};
     pack_z(xu, p, z);
-{self._render_jvp_fill("moo_lfg_jvp", "z", "globl_rp", "tau", lfg_jac, lfg_eval_count)}
+{lfg_jac_body}
 }}
 
 static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, f64* out_pp, void* user_data) {{
     f64 z[Z_SIZE];
     f64 tau[1] = {{ t }};
     f64 seed[{max(lfg_eval_count, 1)}] = {{0}};
-    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[Z_SIZE] = {{0}};
-    moo_lfg_hvp_cache_t cache;
     pack_z(xu, p, z);
     int seed_offset = 0;
     if (HAS_LAGRANGE) {{ seed[0] = obj_factor; seed_offset = 1; }}
     for (int i = 0; i < {lfg_lambda_size}; ++i) {{ seed[seed_offset + i] = lambda[i]; }}
-    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);
-{self._render_hvp_fill("moo_lfg_hvp", "z", "globl_rp", "tau", lfg_hes, lfg_hes_buf_indices, self.z_size, True)}
+{lfg_hes_body}
 }}
 
 static void eval_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {{
@@ -691,22 +820,17 @@ static void eval_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf
 
 static void jac_mr(const f64* xu0, const f64* xuf, const f64* p, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {{
     f64 b[{max(self.mr_size, 1)}];
-    f64 v[{max(self.mr_size, 1)}] = {{0}};
-    f64 tmp[{max(mr_eval_count, 1)}] = {{0}};
     memcpy(b, xu0, XU_SIZE * sizeof(f64));
     memcpy(b + XU_SIZE, xuf, XU_SIZE * sizeof(f64));
     memcpy(b + 2 * XU_SIZE, p, P_SIZE * sizeof(f64));
     b[2 * XU_SIZE + P_SIZE] = t0;
     b[2 * XU_SIZE + P_SIZE + 1] = tf;
-{self._render_jvp_fill("moo_mr_jvp", "b", "globl_rp", None, mr_jac, mr_eval_count)}
+{mr_jac_body}
 }}
 
 static void hes_mr(const f64* xu0, const f64* xuf, const f64* p, const f64* lambda, const f64 obj_factor, f64 t0, f64 tf, const f64* data_t0, const f64* data_tf, f64* out, void* user_data) {{
     f64 b[{max(self.mr_size, 1)}];
     f64 seed[{max(mr_eval_count, 1)}] = {{0}};
-    f64 v[{max(self.mr_size, 1)}] = {{0}};
-    f64 tmp[{max(self.mr_size, 1)}] = {{0}};
-    moo_mr_hvp_cache_t cache;
     memcpy(b, xu0, XU_SIZE * sizeof(f64));
     memcpy(b + XU_SIZE, xuf, XU_SIZE * sizeof(f64));
     memcpy(b + 2 * XU_SIZE, p, P_SIZE * sizeof(f64));
@@ -715,8 +839,7 @@ static void hes_mr(const f64* xu0, const f64* xuf, const f64* p, const f64* lamb
     int seed_offset = 0;
     if (HAS_MAYER) {{ seed[0] = obj_factor; seed_offset = 1; }}
     for (int i = 0; i < {mr_lambda_size}; ++i) {{ seed[seed_offset + i] = lambda[i]; }}
-    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);
-{self._render_hvp_fill("moo_mr_hvp", "b", "globl_rp", None, mr_hes, list(range(len(mr_hes))), self.mr_size, False)}
+{mr_hes_body}
 }}
 
 static void ode_eval_f(const f64* x, const f64* u, const f64* p, f64 t, const f64* data, f64* f, void* user_data) {{
@@ -828,6 +951,85 @@ int main_{self.name}(int argc, char** argv) {{
             lines.append(f"    v[{col}] = 0.0;")
         return "\n".join(lines) or "    (void)out;"
 
+    def _render_colored_jvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], colors: list[int]) -> str:
+        call = f"{fn}({input_name}, {rp}, v, tmp);" if tau is None else f"{fn}({input_name}, {rp}, tau, v, tmp);"
+        return self._render_colored_fill(
+            pairs,
+            list(range(len(pairs))),
+            colors,
+            call,
+            False,
+        )
+
+    def _render_colored_hvp_fill(self, fn: str, pairs: list[tuple[int, int]], buf_indices: list[int], colors: list[int], split_pp: bool) -> str:
+        return self._render_colored_fill(
+            pairs,
+            buf_indices,
+            colors,
+            f"{fn}_apply(&cache, v, tmp);",
+            split_pp,
+        )
+
+    def _render_colored_fill(self, pairs: list[tuple[int, int]], buf_indices: list[int], colors: list[int], call: str, split_pp: bool) -> str:
+        if not pairs:
+            return "    (void)out;"
+        by_color: dict[int, list[tuple[int, int, int]]] = {}
+        for (row, col), buf in zip(pairs, buf_indices):
+            color = colors[col] if 0 <= col < len(colors) else col
+            by_color.setdefault(color, []).append((buf, row, col))
+        ordered_colors = sorted(by_color)
+        color_cols: list[int] = []
+        color_offsets = [0]
+        scatter_buf: list[int] = []
+        scatter_row: list[int] = []
+        scatter_pp: list[str] = []
+        scatter_offsets = [0]
+        for color in ordered_colors:
+            entries = by_color[color]
+            cols = sorted({col for _, _, col in entries})
+            color_cols.extend(cols)
+            color_offsets.append(len(color_cols))
+            for buf, row, col in entries:
+                scatter_buf.append(buf)
+                scatter_row.append(row)
+                is_pp = split_pp and row >= self.x_size + self.u_size and col >= self.x_size + self.u_size
+                scatter_pp.append("true" if is_pp else "false")
+            scatter_offsets.append(len(scatter_buf))
+        if not split_pp:
+            return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
+    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
+    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
+    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
+    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
+    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
+        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
+        {call}
+        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
+        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
+    }}"""
+        return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
+    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
+    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
+    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
+    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
+    static const bool scatter_pp[{max(len(scatter_pp), 1)}] = {{ {', '.join(scatter_pp) or 'false'} }};
+    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
+        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
+        {call}
+        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{
+            if (scatter_pp[i]) {{ out_pp[scatter_buf[i]] += tmp[scatter_row[i]]; }}
+            else {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
+        }}
+        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
+    }}"""
+
+    def _render_sparse_hes_scatter(self, pairs: list[tuple[int, int]], buf_indices: list[int], split_pp: bool) -> str:
+        lines = []
+        for idx, ((row, col), buf) in enumerate(zip(pairs, buf_indices)):
+            target = f"out_pp[{buf}] +=" if split_pp and row >= self.x_size + self.u_size and col >= self.x_size + self.u_size else f"out[{buf}] ="
+            lines.append(f"    {target} tmp[{idx}];")
+        return "\n".join(lines) or "    (void)out;"
+
     def _render_ode_jac_copy(self, ode_jac: list[tuple[int, int]], lfg_jac: list[tuple[int, int]]) -> str:
         lines = []
         f_offset = 1 if self.lagrange is not None else 0
@@ -857,6 +1059,24 @@ int main_{self.name}(int argc, char** argv);
 
 #endif
 """
+
+    def _write_codegen_report(self, out_path: Path, emitted: dict[str, object], c_path: Path) -> None:
+        lines = [
+            f"model={self.name}",
+            "problem=GDOP",
+            f"strategy={self.codegen_strategy}",
+            f"structure_strategy={self.codegen_structure_strategy}",
+            f"local_strategy={self.codegen_local_strategy}",
+            f"generated_c_bytes={c_path.stat().st_size}",
+        ]
+        for prefix in ("LFG", "MR"):
+            report = emitted.get(f"{prefix}_REPORT", {})
+            jac_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get(f"{prefix}_JAC_SPARSITY", []), emitted.get(f"{prefix}_JAC_COLORS", []))
+            hes_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get(f"{prefix}_HES_SPARSITY", []), emitted.get(f"{prefix}_HES_COLORS", []))
+            lines.extend([f"{prefix.lower()}_jacobian_mode={jac_mode}", f"{prefix.lower()}_hessian_mode={hes_mode}"])
+            if isinstance(report, dict):
+                lines.extend(f"{prefix.lower()}_{key}={value}" for key, value in sorted(report.items()))
+        (out_path / "codegen_report.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 Model = GDOPModel

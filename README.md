@@ -159,10 +159,20 @@ complete examples.
 
 MOO AD lives in `src/ad`. It is a symbolic expression-graph AD layer with C++
 and Python APIs. It supports graph evaluation, forward and reverse AD,
-Hessian-vector products, sparsity extraction, one-shot C emission, and staged
-C emission for Hessian callbacks.
+Hessian-vector products, sparsity extraction, one-shot C emission, direct
+sparse derivative emission, greedy coloring metadata, and staged C emission
+for repeated Hessian-vector products.
 
 The Python frontend uses these bindings directly during code generation.
+Generated derivative callbacks use direct sparse AD kernels by default.
+`model.codegen("auto")` uses loop-preserving structured codegen for mapped NLP
+blocks, keeps small and medium scalar derivative blocks on direct sparse
+kernels, and can switch large highly-compressible scalar blocks to colored
+compressed JVP/HVP evaluation. Structured NLP blocks can also force the local
+kernel mode with `model.codegen("loop-direct")` or
+`model.codegen("loop-colored")`. `model.codegen("basis")` keeps the old
+one-direction-per-entry path available for debugging. Every generated model
+writes a `codegen_report.txt` beside the C file.
 
 See `src/ad/README.md` for the AD user guide.
 

@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .ad_codegen import emit_function
-from .common import SolverMixin, SolverSettings
+from .common import SolverMixin, SolverSettings, derivative_mode
 from .model import Expr, as_expr, _arr, _c_bool, _clean_name, _num
 from .results import InitResult, OptimizationRun, read_results
 
@@ -70,6 +70,9 @@ class InitModel(SolverMixin):
     def __init__(self, name: str):
         self.name = _clean_name(name)
         self.solver_settings = SolverSettings()
+        self.codegen_strategy = "auto"
+        self.codegen_structure_strategy = "auto"
+        self.codegen_local_strategy = "auto"
         self.variables: list[InitVar] = []
         self.parameters: list[InitVar] = []
         self.runtime_parameters: list[tuple[str, float]] = []
@@ -138,6 +141,7 @@ class InitModel(SolverMixin):
         h_path = out_path / f"{self.name}.h"
         c_path.write_text(self._render_c(emitted, standalone_main), encoding="utf-8")
         h_path.write_text(self._render_h(), encoding="utf-8")
+        self._write_codegen_report(out_path, emitted, c_path)
         return c_path, h_path
 
     def compile(self, out_dir: str | os.PathLike[str], build_dir: str | os.PathLike[str] = "build", repo_root: str | os.PathLike[str] | None = None, generate: bool = False) -> Path:
@@ -224,13 +228,20 @@ class InitModel(SolverMixin):
             "VALUE": emitted.value,
             "JVP": emitted.jvp,
             "HVP": emitted.hvp,
+            "JAC": emitted.jac,
+            "HES": emitted.hes,
             "JAC_SPARSITY": emitted.jac_sparsity,
             "HES_SPARSITY": emitted.hes_sparsity,
+            "JAC_COLORS": emitted.jac_colors,
+            "HES_COLORS": emitted.hes_colors,
+            "REPORT": emitted.report,
         }
 
     def _render_c(self, emitted: dict[str, str], standalone_main: bool) -> str:
         jac = self._pairs(emitted.get("JAC_SPARSITY", ""))
         hes = self._pairs(emitted.get("HES_SPARSITY", ""))
+        jac_colors = emitted.get("JAC_COLORS", [])
+        hes_colors = emitted.get("HES_COLORS", [])
         obj_jac = [(0, col) for row, col in jac if row == 0]
         f_jac = [(row - 1, col) for row, col in jac if 1 <= row < 1 + len(self.f_constraints)]
         g_jac = [(row - 1 - len(self.f_constraints), col) for row, col in jac if row >= 1 + len(self.f_constraints)]
@@ -258,8 +269,51 @@ int main(int argc, char** argv) {{
     return main_{self.name}(argc, argv);
 }}
 """ if standalone_main else ""
+        jac_mode = derivative_mode(self.codegen_local_strategy, jac, jac_colors if isinstance(jac_colors, list) else [])
+        hes_mode = derivative_mode(self.codegen_local_strategy, hes, hes_colors if isinstance(hes_colors, list) else [])
+        sections = []
+        sections.append("JAC" if jac_mode == "direct" else "JVP")
+        sections.append("HES" if hes_mode == "direct" else "HVP")
+        derivative_sections = "\n".join(
+            emitted.get(key, "")
+            for key in sections
+        )
+        if jac_mode == "direct":
+            jac_body = "    moo_init_jvp_sparse(z, rp, out);"
+        elif jac_mode == "colored":
+            jac_body = f"""    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[OUT_SIZE] = {{0}};
+{self._render_colored_jac_fill(jac, jac_colors if isinstance(jac_colors, list) else [])}"""
+        else:
+            jac_body = f"""    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[OUT_SIZE] = {{0}};
+{self._render_jac_fill(jac)}"""
+        if hes_mode == "direct":
+            hes_body = """    f64 seed[OUT_SIZE] = {0};
+    seed[0] = obj_factor;
+    for (int i = 0; i < F_SIZE + G_SIZE; ++i) { seed[1 + i] = lambda[i]; }
+    moo_init_hvp_sparse(z, seed, rp, out);"""
+        elif hes_mode == "colored":
+            hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
+    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[Z_SIZE] = {{0}};
+    moo_init_hvp_cache_t cache;
+    seed[0] = obj_factor;
+    for (int i = 0; i < F_SIZE + G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
+    moo_init_hvp_prepare(z, seed, rp, &cache);
+{self._render_colored_hes_fill(hes, hes_colors if isinstance(hes_colors, list) else [])}"""
+        else:
+            hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
+    f64 v[Z_SIZE] = {{0}};
+    f64 tmp[Z_SIZE] = {{0}};
+    moo_init_hvp_cache_t cache;
+    seed[0] = obj_factor;
+    for (int i = 0; i < F_SIZE + G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
+    moo_init_hvp_prepare(z, seed, rp, &cache);
+{self._render_hes_fill(hes)}"""
 
         return f"""#include <float.h>
+#include <math.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -275,8 +329,7 @@ int main(int argc, char** argv) {{
 #define OUT_SIZE (1 + F_SIZE + G_SIZE)
 
 {emitted.get("VALUE", "")}
-{emitted.get("JVP", "")}
-{emitted.get("HVP", "")}
+{derivative_sections}
 static f64 globl_rp[RP_SIZE] = {{ {', '.join(_num(v) for _, v in self.runtime_parameters)} }};
 static f64 globl_y0[Y_SIZE] = {{ {', '.join(_num(v.guess) for v in self.variables)} }};
 static f64 globl_p0[P_SIZE] = {{ {', '.join(_num(v.base) for v in self.parameters)} }};
@@ -300,20 +353,11 @@ static void eval_all(const f64* z, const f64* rp, f64* out, void* user_data) {{
 }}
 
 static void jac_all(const f64* z, const f64* rp, f64* out, void* user_data) {{
-    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[OUT_SIZE] = {{0}};
-{self._render_jac_fill(jac)}
+{jac_body}
 }}
 
 static void hes_all(const f64* z, const f64* rp, const f64* lambda, f64 obj_factor, f64* out, void* user_data) {{
-    f64 seed[OUT_SIZE] = {{0}};
-    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[Z_SIZE] = {{0}};
-    moo_init_hvp_cache_t cache;
-    seed[0] = obj_factor;
-    for (int i = 0; i < F_SIZE + G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_init_hvp_prepare(z, seed, rp, &cache);
-{self._render_hes_fill(hes)}
+{hes_body}
 }}
 
 static c_init_callbacks_t globl_callbacks = {{ eval_all, jac_all, hes_all }};
@@ -365,6 +409,56 @@ int main_{self.name}(int argc, char** argv) {{
             lines += [f"    v[{col}] = 1.0;", "    moo_init_hvp_apply(&cache, v, tmp);", f"    out[{idx}] = tmp[{row}];", f"    v[{col}] = 0.0;"]
         return "\n".join(lines) or "    (void)out;"
 
+    def _render_colored_jac_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
+        return self._render_colored_fill(
+            pairs,
+            colors,
+            "moo_init_jvp(z, rp, v, tmp);",
+            lambda idx, row, col: f"    out[{idx}] = tmp[{row}];",
+        )
+
+    def _render_colored_hes_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
+        return self._render_colored_fill(
+            pairs,
+            colors,
+            "moo_init_hvp_apply(&cache, v, tmp);",
+            lambda idx, row, col: f"    out[{idx}] = tmp[{row}];",
+        )
+
+    def _render_colored_fill(self, pairs: list[tuple[int, int]], colors: list[int], call: str, scatter) -> str:
+        if not pairs:
+            return "    (void)out;"
+        by_color: dict[int, list[tuple[int, int, int]]] = {}
+        for idx, (row, col) in enumerate(pairs):
+            color = colors[col] if 0 <= col < len(colors) else col
+            by_color.setdefault(color, []).append((idx, row, col))
+        ordered_colors = sorted(by_color)
+        color_cols: list[int] = []
+        color_offsets = [0]
+        scatter_buf: list[int] = []
+        scatter_row: list[int] = []
+        scatter_offsets = [0]
+        for color in ordered_colors:
+            entries = by_color[color]
+            cols = sorted({col for _, _, col in entries})
+            color_cols.extend(cols)
+            color_offsets.append(len(color_cols))
+            for idx, row, _ in entries:
+                scatter_buf.append(idx)
+                scatter_row.append(row)
+            scatter_offsets.append(len(scatter_buf))
+        return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
+    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
+    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
+    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
+    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
+    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
+        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
+        {call}
+        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
+        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
+    }}"""
+
     def _render_h(self) -> str:
         guard = f"MOO_INIT_CODEGEN_{self.name.upper()}_H"
         return f"""#ifndef {guard}
@@ -382,3 +476,20 @@ int main_{self.name}(int argc, char** argv);
 
 #endif
 """
+
+    def _write_codegen_report(self, out_path: Path, emitted: dict[str, object], c_path: Path) -> None:
+        report = emitted.get("REPORT", {})
+        lines = [
+            f"model={self.name}",
+            "problem=Init",
+            f"strategy={self.codegen_strategy}",
+            f"structure_strategy={self.codegen_structure_strategy}",
+            f"local_strategy={self.codegen_local_strategy}",
+            f"generated_c_bytes={c_path.stat().st_size}",
+        ]
+        jac_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get("JAC_SPARSITY", []), emitted.get("JAC_COLORS", []))
+        hes_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get("HES_SPARSITY", []), emitted.get("HES_COLORS", []))
+        lines.extend([f"jacobian_mode={jac_mode}", f"hessian_mode={hes_mode}"])
+        if isinstance(report, dict):
+            lines.extend(f"derivative_{key}={value}" for key, value in sorted(report.items()))
+        (out_path / "codegen_report.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
