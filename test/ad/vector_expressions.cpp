@@ -160,6 +160,32 @@ int main() {
         std::cerr << "collocation-like HVP did not preserve vector structure\n";
         return 1;
     }
+    auto cjac_pairs = jacobian_sparsity(CF, "x").to_pairs();
+    auto cjac_fn = sparse_jacobian_function(CF, "x", cjac_pairs);
+    double cxv[3] = {1.0, 0.3, -2.0};
+    std::vector<double> cjac_values(cjac_pairs.size(), 0.0);
+    VM(cjac_fn).evaluate(EvalEnv().input("x", cxv), cjac_values.data());
+    for (std::size_t i = 0; i < cjac_pairs.size(); ++i) {
+        const auto [row, col] = cjac_pairs[i];
+        double expected = CD(row, col);
+        if (row == 0 && col == 0) {
+            expected -= 0.5 * cxv[0];
+        } else if (row == 1 && col == 1) {
+            expected -= 0.25 * std::cos(cxv[1]);
+        } else if (row == 2 && col == 2) {
+            expected -= 0.25;
+        }
+        if (!near(cjac_values[i], expected)) {
+            std::cerr << "unexpected mixed residual sparse Jacobian entry (" << row << ", " << col << "): " << cjac_values[i] << " expected " << expected << "\n";
+            return 1;
+        }
+    }
+    auto cjac_c = to_sparse_jacobian_c(CF, "x", cjac_pairs, "collocation_mixed_jac");
+    if (cjac_c.find("void collocation_mixed_jac") == std::string::npos || cjac_c.find("constant_index") == std::string::npos ||
+        cjac_c.find("constant_value") == std::string::npos || cjac_c.find("cos(") == std::string::npos) {
+        std::cerr << "generated mixed residual sparse Jacobian C did not keep matrix constants and nonlinear terms together\n";
+        return 1;
+    }
     GraphFunctionBuilder vjp_builder;
     auto vx = vjp_builder.inputs("x", 2);
     DenseMatrix A(2, 2, {1.0, 2.0, 3.0, 4.0});
@@ -339,6 +365,12 @@ int main() {
     auto kron_c = to_c(KF, "kron_eye_value");
     if (kron_c.find("void kron_eye_value") == std::string::npos || kron_c.find("kron_mat") == std::string::npos || kron_c.find("moo_ad_kron_eye_matvec") == std::string::npos) {
         std::cerr << "generated kron-eye C did not use vector-aware lowering\n";
+        return 1;
+    }
+    auto kron_jac_c = to_sparse_jacobian_c(KF, "x", jacobian_sparsity(KF, "x").to_pairs(), "kron_eye_jac");
+    if (kron_jac_c.find("void kron_eye_jac") == std::string::npos || kron_jac_c.find("constant_index") == std::string::npos ||
+        kron_jac_c.find("constant_value") == std::string::npos) {
+        std::cerr << "generated kron-eye sparse Jacobian C did not use vector-aware coefficient lowering\n";
         return 1;
     }
     auto KVJP = reverse_diff(KF, "lambda", "x");

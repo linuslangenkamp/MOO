@@ -165,6 +165,368 @@ std::string int_array_c(const std::string &indent, const std::string &name, cons
     return os.str();
 }
 
+struct CoeffKey {
+    int vector_id = -1;
+    int element = -1;
+    int seed_col = -1;
+
+    bool operator==(const CoeffKey &other) const { return vector_id == other.vector_id && element == other.element && seed_col == other.seed_col; }
+};
+
+struct CoeffKeyHash {
+    std::size_t operator()(const CoeffKey &key) const {
+        std::size_t h = std::hash<int>{}(key.vector_id);
+        h ^= std::hash<int>{}(key.element) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        h ^= std::hash<int>{}(key.seed_col) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+struct SeedLinearAnalysis {
+    OptimizingBuilder builder;
+    std::vector<LinearForm> forms;
+    std::vector<Expr> cloned;
+    Expr zero;
+    std::unordered_map<CoeffKey, Expr, CoeffKeyHash> vector_coeff_cache;
+};
+
+bool expr_constant(const Graph &graph, Expr expr, double *value = nullptr) {
+    if (!expr || expr.id < 0 || expr.id >= static_cast<NodeId>(graph.nodes.size())) {
+        return false;
+    }
+    const auto &node = graph.nodes[static_cast<std::size_t>(expr.id)];
+    if (node.op != Op::Constant) {
+        return false;
+    }
+    if (value) {
+        *value = node.value;
+    }
+    return true;
+}
+
+Expr require_seed_constant(SeedLinearAnalysis &analysis, const LinearForm &form, const char *op) {
+    if (has_coeff(form)) {
+        throw std::runtime_error(std::string("vector sparse coefficients: nonlinear seed use in ") + op);
+    }
+    return form.constant;
+}
+
+SeedLinearAnalysis analyze_seed_linear_forms(const GraphFunction &f, const std::string &seed_name) {
+    SeedLinearAnalysis analysis;
+    analysis.forms.resize(f.graph.nodes.size());
+    analysis.cloned.resize(f.graph.nodes.size());
+    analysis.zero = analysis.builder.constant(0.0);
+    Expr one = analysis.builder.constant(1.0);
+
+    std::vector<NodeId> roots = f.outputs;
+    roots.insert(roots.end(), f.inputs.begin(), f.inputs.end());
+    roots.insert(roots.end(), f.params.begin(), f.params.end());
+    if (f.has_vector_structure()) {
+        std::vector<char> seen(f.vector_nodes.size(), false);
+        std::function<void(int)> add_vector_roots = [&](int vector_id) {
+            if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size()) || seen[static_cast<std::size_t>(vector_id)]) {
+                return;
+            }
+            seen[static_cast<std::size_t>(vector_id)] = true;
+            const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+            roots.insert(roots.end(), node.values.begin(), node.values.end());
+            if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Concat) {
+                add_vector_roots(node.a);
+                add_vector_roots(node.b);
+            } else if (node.op == VectorOp::Scale || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec ||
+                       node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
+                add_vector_roots(node.a);
+            }
+        };
+        add_vector_roots(f.output_vector);
+        add_vector_roots(f.input_vector);
+        for (int vector_id : f.param_vectors) {
+            add_vector_roots(vector_id);
+        }
+    }
+    for (NodeId i : topo_used(f.graph, roots)) {
+        const auto &n = f.graph.nodes[static_cast<std::size_t>(i)];
+        switch (n.op) {
+            case Op::Constant:
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.builder.constant(n.value);
+                analysis.forms[static_cast<std::size_t>(i)] = make_constant_form(analysis.cloned[static_cast<std::size_t>(i)]);
+                break;
+            case Op::Input:
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.builder.input(n.name, n.index);
+                analysis.forms[static_cast<std::size_t>(i)] = make_constant_form(analysis.cloned[static_cast<std::size_t>(i)]);
+                break;
+            case Op::Param:
+                if (n.name == seed_name) {
+                    analysis.cloned[static_cast<std::size_t>(i)] = analysis.zero;
+                    analysis.forms[static_cast<std::size_t>(i)] = make_constant_form(analysis.zero);
+                    analysis.forms[static_cast<std::size_t>(i)].coeff[n.index] = one;
+                } else {
+                    analysis.cloned[static_cast<std::size_t>(i)] = analysis.builder.param(n.name, n.index);
+                    analysis.forms[static_cast<std::size_t>(i)] = make_constant_form(analysis.cloned[static_cast<std::size_t>(i)]);
+                }
+                break;
+            case Op::Add:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    linear_add(analysis.builder, analysis.forms[static_cast<std::size_t>(n.a)], analysis.forms[static_cast<std::size_t>(n.b)], 1.0);
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Sub:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    linear_add(analysis.builder, analysis.forms[static_cast<std::size_t>(n.a)], analysis.forms[static_cast<std::size_t>(n.b)], -1.0);
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Neg:
+                analysis.forms[static_cast<std::size_t>(i)] = linear_scale(analysis.builder, analysis.forms[static_cast<std::size_t>(n.a)], analysis.builder.constant(-1.0));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Mul: {
+                bool lhs_linear = has_coeff(analysis.forms[static_cast<std::size_t>(n.a)]);
+                bool rhs_linear = has_coeff(analysis.forms[static_cast<std::size_t>(n.b)]);
+                if (lhs_linear && rhs_linear) {
+                    throw std::runtime_error("vector sparse coefficients: nonlinear seed use in multiplication");
+                }
+                if (lhs_linear) {
+                    analysis.forms[static_cast<std::size_t>(i)] =
+                        linear_scale(analysis.builder, analysis.forms[static_cast<std::size_t>(n.a)], analysis.forms[static_cast<std::size_t>(n.b)].constant);
+                } else if (rhs_linear) {
+                    analysis.forms[static_cast<std::size_t>(i)] =
+                        linear_scale(analysis.builder, analysis.forms[static_cast<std::size_t>(n.b)], analysis.forms[static_cast<std::size_t>(n.a)].constant);
+                } else {
+                    analysis.forms[static_cast<std::size_t>(i)] =
+                        make_constant_form(analysis.builder.mul(analysis.forms[static_cast<std::size_t>(n.a)].constant, analysis.forms[static_cast<std::size_t>(n.b)].constant));
+                }
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            }
+            case Op::Div: {
+                if (has_coeff(analysis.forms[static_cast<std::size_t>(n.b)])) {
+                    throw std::runtime_error("vector sparse coefficients: nonlinear seed use in division denominator");
+                }
+                Expr denom = analysis.forms[static_cast<std::size_t>(n.b)].constant;
+                LinearForm form;
+                form.constant = analysis.builder.div(analysis.forms[static_cast<std::size_t>(n.a)].constant, denom);
+                for (auto &[idx, expr] : analysis.forms[static_cast<std::size_t>(n.a)].coeff) {
+                    form.coeff.emplace(idx, analysis.builder.div(expr, denom));
+                }
+                analysis.forms[static_cast<std::size_t>(i)] = std::move(form);
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            }
+            case Op::Sin:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    make_constant_form(analysis.builder.unary(Op::Sin, require_seed_constant(analysis, analysis.forms[static_cast<std::size_t>(n.a)], "sin")));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Cos:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    make_constant_form(analysis.builder.unary(Op::Cos, require_seed_constant(analysis, analysis.forms[static_cast<std::size_t>(n.a)], "cos")));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Tan:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    make_constant_form(analysis.builder.unary(Op::Tan, require_seed_constant(analysis, analysis.forms[static_cast<std::size_t>(n.a)], "tan")));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Exp:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    make_constant_form(analysis.builder.unary(Op::Exp, require_seed_constant(analysis, analysis.forms[static_cast<std::size_t>(n.a)], "exp")));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::Log:
+                analysis.forms[static_cast<std::size_t>(i)] =
+                    make_constant_form(analysis.builder.unary(Op::Log, require_seed_constant(analysis, analysis.forms[static_cast<std::size_t>(n.a)], "log")));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+            case Op::PowConst:
+                analysis.forms[static_cast<std::size_t>(i)] = make_constant_form(
+                    analysis.builder.pow_const(require_seed_constant(analysis, analysis.forms[static_cast<std::size_t>(n.a)], "pow_const"), n.value));
+                analysis.cloned[static_cast<std::size_t>(i)] = analysis.forms[static_cast<std::size_t>(i)].constant;
+                break;
+        }
+    }
+    return analysis;
+}
+
+Expr scalar_coeff(SeedLinearAnalysis &analysis, NodeId id, int seed_col) {
+    const auto &coeff = analysis.forms[static_cast<std::size_t>(id)].coeff;
+    auto it = coeff.find(seed_col);
+    return it == coeff.end() ? analysis.zero : it->second;
+}
+
+Expr vector_coeff(const GraphFunction &f, SeedLinearAnalysis &analysis, int vector_id, int element, int seed_col) {
+    if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
+        throw std::runtime_error("vector sparse coefficients: invalid vector node id");
+    }
+    const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+    if (element < 0 || element >= node.size) {
+        throw std::runtime_error("vector sparse coefficients: vector element out of bounds");
+    }
+    CoeffKey key{vector_id, element, seed_col};
+    auto cached = analysis.vector_coeff_cache.find(key);
+    if (cached != analysis.vector_coeff_cache.end()) {
+        return cached->second;
+    }
+
+    auto sum_scaled = [&](Expr acc, double scale, Expr term) {
+        if (expr_constant(analysis.builder.g, term)) {
+            double value = 0.0;
+            expr_constant(analysis.builder.g, term, &value);
+            if (exactly(value, 0.0)) {
+                return acc;
+            }
+        }
+        Expr scaled = exactly(scale, 1.0) ? term : analysis.builder.mul(analysis.builder.constant(scale), term);
+        return analysis.builder.add(acc, scaled);
+    };
+
+    Expr result = analysis.zero;
+    switch (node.op) {
+        case VectorOp::Values:
+            result = scalar_coeff(analysis, node.values[static_cast<std::size_t>(element)], seed_col);
+            break;
+        case VectorOp::Add:
+            result = analysis.builder.add(vector_coeff(f, analysis, node.a, element, seed_col), vector_coeff(f, analysis, node.b, element, seed_col));
+            break;
+        case VectorOp::Sub:
+            result = analysis.builder.sub(vector_coeff(f, analysis, node.a, element, seed_col), vector_coeff(f, analysis, node.b, element, seed_col));
+            break;
+        case VectorOp::Scale:
+            result = analysis.builder.mul(analysis.builder.constant(node.scale), vector_coeff(f, analysis, node.a, element, seed_col));
+            break;
+        case VectorOp::Slice:
+            result = vector_coeff(f, analysis, node.a, node.start + element * node.stride, seed_col);
+            break;
+        case VectorOp::Concat: {
+            const int lhs_size = f.vector_nodes[static_cast<std::size_t>(node.a)].size;
+            if (element < lhs_size) {
+                result = vector_coeff(f, analysis, node.a, element, seed_col);
+            } else {
+                result = vector_coeff(f, analysis, node.b, element - lhs_size, seed_col);
+            }
+            break;
+        }
+        case VectorOp::DenseMatVec:
+            for (int col = 0; col < node.matrix.cols; ++col) {
+                result = sum_scaled(result, node.matrix(element, col), vector_coeff(f, analysis, node.a, col, seed_col));
+            }
+            break;
+        case VectorOp::SparseMatVec:
+            for (int k = 0; k < node.sparse_matrix.nnz(); ++k) {
+                if (node.sparse_matrix.row_indices[static_cast<std::size_t>(k)] == element) {
+                    result = sum_scaled(result, node.sparse_matrix.values[static_cast<std::size_t>(k)],
+                                        vector_coeff(f, analysis, node.a, node.sparse_matrix.col_indices[static_cast<std::size_t>(k)], seed_col));
+                }
+            }
+            break;
+        case VectorOp::KronEyeMatVec: {
+            const int row = element / node.eye_size;
+            const int inner = element % node.eye_size;
+            for (int col = 0; col < node.matrix.cols; ++col) {
+                result = sum_scaled(result, node.matrix(row, col), vector_coeff(f, analysis, node.a, col * node.eye_size + inner, seed_col));
+            }
+            break;
+        }
+    }
+    analysis.vector_coeff_cache.emplace(key, result);
+    return result;
+}
+
+std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction &linear_f,
+                                                            const std::string &seed_name,
+                                                            const std::vector<std::pair<int, int>> &entries,
+                                                            const std::string &name) {
+    auto f = optimize(linear_f);
+    if (!f.has_vector_structure() || f.output_vector < 0 || f.output_vector >= static_cast<int>(f.vector_nodes.size()) ||
+        f.vector_nodes[static_cast<std::size_t>(f.output_vector)].size != f.output_size()) {
+        return std::nullopt;
+    }
+
+    const int seed_size = param_group_size(f, seed_name);
+    if (seed_size <= 0) {
+        return std::nullopt;
+    }
+
+    SeedLinearAnalysis analysis = analyze_seed_linear_forms(f, seed_name);
+    std::vector<int> constant_indices;
+    std::vector<double> constant_values;
+    std::vector<std::pair<int, Expr>> dynamic_values;
+    constant_indices.reserve(entries.size());
+    constant_values.reserve(entries.size());
+
+    for (std::size_t out_i = 0; out_i < entries.size(); ++out_i) {
+        const auto [row, col] = entries[out_i];
+        if (row < 0 || row >= f.output_size() || col < 0 || col >= seed_size) {
+            throw std::runtime_error("vector sparse coefficients: requested entry out of range");
+        }
+        Expr coeff = vector_coeff(f, analysis, f.output_vector, row, col);
+        double value = 0.0;
+        if (expr_constant(analysis.builder.g, coeff, &value)) {
+            if (!exactly(value, 0.0)) {
+                constant_indices.push_back(static_cast<int>(out_i));
+                constant_values.push_back(value);
+            }
+        } else {
+            dynamic_values.push_back({static_cast<int>(out_i), coeff});
+        }
+    }
+
+    std::ostringstream os;
+    os << "void " << name << "(\n";
+    for (auto [group_name, size] : f.input_groups) {
+        os << "    const double* " << group_name << ",\n";
+    }
+    for (auto [group_name, size] : f.param_groups) {
+        if (group_name != seed_name) {
+            os << "    const double* " << group_name << ",\n";
+        }
+    }
+    os << "    double* out\n) {\n";
+    os << "    for (int i = 0; i < " << entries.size() << "; ++i) { out[i] = 0.0; }\n";
+    if (!constant_indices.empty()) {
+        os << int_array_c("    ", "constant_index", constant_indices);
+        os << double_array_c("    ", "constant_value", constant_values);
+        os << "    for (int i = 0; i < " << constant_indices.size() << "; ++i) { out[constant_index[i]] = constant_value[i]; }\n";
+    }
+
+    std::vector<NodeId> dynamic_roots;
+    dynamic_roots.reserve(dynamic_values.size());
+    for (auto &[idx, expr] : dynamic_values) {
+        (void)idx;
+        dynamic_roots.push_back(expr.id);
+    }
+    auto ref = [&](NodeId id) -> std::string {
+        const auto &node = analysis.builder.g.nodes[static_cast<std::size_t>(id)];
+        if (node.op == Op::Input || node.op == Op::Param) {
+            return CEmitter::node_ref(node);
+        }
+        if (node.op == Op::Constant) {
+            return CEmitter::number(node.value);
+        }
+        return "t" + std::to_string(id);
+    };
+    for (NodeId id : topo_used(analysis.builder.g, dynamic_roots)) {
+        const auto &node = analysis.builder.g.nodes[static_cast<std::size_t>(id)];
+        if (node.op == Op::Input || node.op == Op::Param || node.op == Op::Constant) {
+            continue;
+        }
+        os << "    double t" << id << " = " << CEmitter::expr_rhs(analysis.builder.g, id, ref) << ";\n";
+    }
+    for (auto &[idx, expr] : dynamic_values) {
+        os << "    out[" << idx << "] = " << ref(expr.id) << ";\n";
+    }
+    os << "}\n";
+    return os.str();
+}
+
+bool vector_sparse_error_can_fallback(const std::runtime_error &err) {
+    const std::string message = err.what();
+    const std::string prefix = "vector sparse coefficients:";
+    if (message.rfind(prefix, 0) != 0) {
+        return false;
+    }
+    return message.find("requested entry out of range") == std::string::npos;
+}
+
 } // namespace
 
 bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &name, std::ostream &os) {
@@ -509,6 +871,15 @@ std::string to_staged_c(const GraphFunction &f, const std::string &basename, con
 }
 
 std::string to_sparse_coefficients_c(const GraphFunction &linear_f, const std::string &seed_name, const std::vector<std::pair<int, int>> &entries, const std::string &name) {
+    try {
+        if (auto vector_code = try_vector_sparse_coefficients_c(linear_f, seed_name, entries, name)) {
+            return *vector_code;
+        }
+    } catch (const std::runtime_error &err) {
+        if (!vector_sparse_error_can_fallback(err)) {
+            throw;
+        }
+    }
     return to_c(sparse_coefficients(linear_f, seed_name, entries), name);
 }
 
@@ -517,11 +888,11 @@ std::string to_sparse_jacobian_c(const GraphFunction &F,
                                  const std::vector<std::pair<int, int>> &entries,
                                  const std::string &name,
                                  const std::string &direction_name) {
-    return to_c(sparse_jacobian_function(F, wrt, entries, direction_name), name);
+    return to_sparse_coefficients_c(forward_diff(F, wrt, direction_name), direction_name, entries, name);
 }
 
 std::string to_sparse_hessian_c(const GraphFunction &HVP, const std::string &direction_name, const std::vector<std::pair<int, int>> &entries, const std::string &name) {
-    return to_c(sparse_hessian_function(HVP, direction_name, entries), name);
+    return to_sparse_coefficients_c(HVP, direction_name, entries, name);
 }
 
 } // namespace ad
