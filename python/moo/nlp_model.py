@@ -31,11 +31,13 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from .callback_codegen import (
-    color_metadata,
     render_hessian_callback_body,
     render_jacobian_callback_body,
     render_local_colored_hes_lines,
     render_local_colored_jac_lines,
+    render_local_direct_constraint_jac_lines,
+    render_local_direct_hes_lines,
+    render_local_direct_objective_jac_lines,
     static_int_array,
 )
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
@@ -858,7 +860,7 @@ int main_{self.name}(int argc, char** argv) {{
                         lines.append(f"{indent}xl[{local_idx}] = x[{base} + rep * {step}];")
                 else:
                     name = f"{prefix}_gidx_{local_idx}"
-                    lines.append(self._static_int_array(name, globals_for_reps, indent))
+                    lines.append(static_int_array(name, globals_for_reps, indent))
                     lines.append(f"{indent}xl[{local_idx}] = x[{name}[rep]];")
             return lines
 
@@ -931,7 +933,7 @@ int main_{self.name}(int argc, char** argv) {{
         if scalar is not None and scalar.jac_sparsity:
             jac_lines.append(f"    f64 scalar_jac[{max(len(scalar.jac_sparsity), 1)}];")
             jac_lines.append("    moo_nlp_scalar_jvp_sparse(x, rp, scalar_jac);")
-            jac_lines.append(self._static_int_array("scalar_jac_buf", scalar_jac_buf, "    "))
+            jac_lines.append(static_int_array("scalar_jac_buf", scalar_jac_buf, "    "))
             for local_buf, _ in enumerate(scalar.jac_sparsity):
                 jac_lines.append(f"    out[scalar_jac_buf[{local_buf}]] += scalar_jac[{local_buf}];")
         for idx, (block, local) in enumerate(local_objectives):
@@ -941,15 +943,24 @@ int main_{self.name}(int argc, char** argv) {{
             jac_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
             jac_lines.extend(gather_lines(block, "        ", f"obj_jac_{idx}"))
             obj_jbuf = jac_buf_table(block, local, objective=True)
-            jac_lines.append(self._static_int_array(f"obj_{idx}_jbuf", obj_jbuf, "        "))
+            jac_lines.append(static_int_array(f"obj_{idx}_jbuf", obj_jbuf, "        "))
             if local.jac_mode == "direct":
-                jac_lines.append(f"        f64 tmp[{max(len(local.jac_sparsity), 1)}];")
-                jac_lines.append(f"        moo_nlp_obj_map_{idx}_jvp_sparse(xl, rp, tmp);")
-                for local_buf, (row, col) in enumerate(local.jac_sparsity):
-                    if row == 0:
-                        jac_lines.append(f"        out[obj_{idx}_jbuf[rep * {len(local.jac_sparsity)} + {local_buf}]] += tmp[{local_buf}];")
+                jac_lines.extend(render_local_direct_objective_jac_lines(f"moo_nlp_obj_map_{idx}_jvp", local.jac_sparsity, f"obj_{idx}_jbuf", "        "))
             else:
-                jac_lines.extend(self._render_local_colored_jac_lines(f"moo_nlp_obj_map_{idx}_jvp", local, block, None, "out", "rep", accumulate=True, indent="        ", jbuf_name=f"obj_{idx}_jbuf"))
+                jac_lines.extend(
+                    render_local_colored_jac_lines(
+                        f"moo_nlp_obj_map_{idx}_jvp",
+                        local.jac_sparsity,
+                        local.jac_colors,
+                        block.local_size,
+                        1,
+                        "out",
+                        "rep",
+                        accumulate=True,
+                        indent="        ",
+                        jbuf_name=f"obj_{idx}_jbuf",
+                    )
+                )
             jac_lines.append("    }")
 
         g_buf_cursor = len(obj_jac)
@@ -961,12 +972,22 @@ int main_{self.name}(int argc, char** argv) {{
                 jac_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
                 jac_lines.extend(gather_lines(block, "        ", f"g_jac_{idx}"))
                 if local.jac_mode == "direct":
-                    jac_lines.append(f"        f64 tmp[{max(len(local.jac_sparsity), 1)}];")
-                    jac_lines.append(f"        moo_nlp_g_map_{idx}_jvp_sparse(xl, rp, tmp);")
-                    for local_buf, _ in enumerate(local.jac_sparsity):
-                        jac_lines.append(f"        out[{g_buf_cursor} + rep * {len(local.jac_sparsity)} + {local_buf}] = tmp[{local_buf}];")
+                    jac_lines.extend(render_local_direct_constraint_jac_lines(f"moo_nlp_g_map_{idx}_jvp", local.jac_sparsity, g_buf_cursor, "        "))
                 else:
-                    jac_lines.extend(self._render_local_colored_jac_lines(f"moo_nlp_g_map_{idx}_jvp", local, block, None, "out", "rep", accumulate=False, indent="        ", base_buf=g_buf_cursor))
+                    jac_lines.extend(
+                        render_local_colored_jac_lines(
+                            f"moo_nlp_g_map_{idx}_jvp",
+                            local.jac_sparsity,
+                            local.jac_colors,
+                            block.local_size,
+                            block.output_size,
+                            "out",
+                            "rep",
+                            accumulate=False,
+                            indent="        ",
+                            base_buf=g_buf_cursor,
+                        )
+                    )
                 jac_lines.append("    }")
                 g_buf_cursor += block.count * len(local.jac_sparsity)
 
@@ -982,7 +1003,7 @@ int main_{self.name}(int argc, char** argv) {{
                 hes_lines.append(f"    scalar_seed[1 + {i}] = lambda[{i}];")
             hes_lines.append(f"    f64 scalar_hes[{max(len(scalar.hes_sparsity), 1)}];")
             hes_lines.append("    moo_nlp_scalar_hvp_sparse(x, scalar_seed, rp, scalar_hes);")
-            hes_lines.append(self._static_int_array("scalar_hbuf", scalar_hbuf, "    "))
+            hes_lines.append(static_int_array("scalar_hbuf", scalar_hbuf, "    "))
             for local_buf, _ in enumerate(scalar.hes_sparsity):
                 hes_lines.append(f"    out[scalar_hbuf[{local_buf}]] += scalar_hes[{local_buf}];")
         for idx, (block, local) in enumerate(local_objectives):
@@ -993,14 +1014,11 @@ int main_{self.name}(int argc, char** argv) {{
             hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
             hes_lines.extend(gather_lines(block, "        ", f"obj_hes_{idx}"))
             if local.hes_mode == "direct":
-                hes_lines.append(f"        f64 tmp[{max(len(local.hes_sparsity), 1)}];")
-                hes_lines.append(f"        moo_nlp_obj_map_{idx}_hvp_sparse(xl, seed, rp, tmp);")
                 hbuf = hes_buf_table(block, local)
-                hes_lines.append(self._static_int_array(f"obj_{idx}_hbuf", hbuf, "        "))
-                for local_buf, _ in enumerate(local.hes_sparsity):
-                    hes_lines.append(f"        out[obj_{idx}_hbuf[rep * {len(local.hes_sparsity)} + {local_buf}]] += tmp[{local_buf}];")
+                hes_lines.append(static_int_array(f"obj_{idx}_hbuf", hbuf, "        "))
+                hes_lines.extend(render_local_direct_hes_lines(f"moo_nlp_obj_map_{idx}_hvp", local.hes_sparsity, f"obj_{idx}_hbuf", "tmp", "        "))
             else:
-                hes_lines.extend(self._render_local_colored_hes_lines(f"moo_nlp_obj_map_{idx}_hvp", local, block, hes_buf_table(block, local), indent="        "))
+                hes_lines.extend(render_local_colored_hes_lines(f"moo_nlp_obj_map_{idx}_hvp", local.hes_sparsity, local.hes_colors, block.local_size, hes_buf_table(block, local), "        "))
             hes_lines.append("    }")
 
         g_base = len(self.constraints)
@@ -1010,17 +1028,14 @@ int main_{self.name}(int argc, char** argv) {{
                 hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
                 hes_lines.extend(gather_lines(block, "        ", f"g_hes_{idx}"))
                 hbuf = hes_buf_table(block, local)
-                hes_lines.append(self._static_int_array(f"g_{idx}_hbuf", hbuf, "        "))
+                hes_lines.append(static_int_array(f"g_{idx}_hbuf", hbuf, "        "))
                 for local_row in range(block.output_size):
                     hes_lines.append(f"        for (int seed_i = 0; seed_i < {block.output_size}; ++seed_i) {{ seed[seed_i] = 0.0; }}")
                     hes_lines.append(f"        seed[{local_row}] = lambda[{g_base} + rep * {block.output_size} + {local_row}];")
                     if local.hes_mode == "direct":
-                        hes_lines.append(f"        f64 tmp_{local_row}[{max(len(local.hes_sparsity), 1)}];")
-                        hes_lines.append(f"        moo_nlp_g_map_{idx}_hvp_sparse(xl, seed, rp, tmp_{local_row});")
-                        for local_buf, _ in enumerate(local.hes_sparsity):
-                            hes_lines.append(f"        out[g_{idx}_hbuf[rep * {len(local.hes_sparsity)} + {local_buf}]] += tmp_{local_row}[{local_buf}];")
+                        hes_lines.extend(render_local_direct_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, f"g_{idx}_hbuf", f"tmp_{local_row}", "        "))
                     else:
-                        hes_lines.extend(self._render_local_colored_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local, block, hbuf, indent="        ", seed_row=local_row, hbuf_name=f"g_{idx}_hbuf"))
+                        hes_lines.extend(render_local_colored_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, local.hes_colors, block.local_size, hbuf, "        ", hbuf_name=f"g_{idx}_hbuf"))
                 hes_lines.append("    }")
             g_base += block.count * block.output_size
 
@@ -1093,31 +1108,6 @@ int main_{self.name}(int argc, char** argv) {{
 }}
 {main}
 """
-
-    def _local_color_metadata(self, pairs: list[tuple[int, int]], colors: list[int]) -> tuple[list[int], list[int], list[int], list[int], list[int]]:
-        return color_metadata(pairs, colors)
-
-    def _static_int_array(self, name: str, values: list[int], indent: str) -> str:
-        return static_int_array(name, values, indent)
-
-    def _render_local_colored_jac_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, obj_buf_by_col: dict[int, int] | None, out_name: str, rep_name: str, accumulate: bool, indent: str, base_buf: int = 0, jbuf_name: str | None = None) -> list[str]:
-        output_size = block.output_size if isinstance(block, MappedConstraintBlock) else 1
-        return render_local_colored_jac_lines(
-            fn,
-            local.jac_sparsity,
-            local.jac_colors,
-            block.local_size,
-            output_size,
-            out_name,
-            rep_name,
-            accumulate,
-            indent,
-            base_buf=base_buf,
-            jbuf_name=jbuf_name,
-        )
-
-    def _render_local_colored_hes_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, hbuf: list[int], indent: str, seed_row: int = 0, hbuf_name: str | None = None) -> list[str]:
-        return render_local_colored_hes_lines(fn, local.hes_sparsity, local.hes_colors, block.local_size, hbuf, indent, hbuf_name=hbuf_name)
 
     def _render_h(self) -> str:
         guard = f"MOO_NLP_CODEGEN_{self.name.upper()}_H"
