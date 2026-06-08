@@ -133,7 +133,7 @@ def _load_radau(max_stages: int = 10) -> dict[int, RadauConstants]:
     return constants
 
 
-RADAU: dict[int, RadauConstants] = _load_radau(25)
+RADAU: dict[int, RadauConstants] = _load_radau(100)
 
 
 def radauIIA(stages: int) -> RadauConstants:
