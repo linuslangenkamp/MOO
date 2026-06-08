@@ -31,7 +31,7 @@ from typing import Iterable
 
 from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
-from .expressions import Expr, VarNode, as_expr
+from .expressions import Expr, as_expr
 from . import paths
 from .local_function import InputGroup, LocalGraphFunction
 from .model import BaseModel, _arr, _c_bool, _num
@@ -57,8 +57,8 @@ class InitConstraint:
 
 class InitParameter(Expr):
     def __init__(self, idx: int, base: float):
-        node = VarNode("z", int(idx))
-        super().__init__(node, node)
+        variable = Expr.variable("z", int(idx))
+        super().__init__(variable._build, mr_build=variable._mr_build, symbol=variable.symbol, mr_symbol=variable.mr_symbol)
         self._base = base
 
     @property

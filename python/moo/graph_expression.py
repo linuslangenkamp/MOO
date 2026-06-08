@@ -20,9 +20,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
 
 from . import ad
+from .expressions import GraphBuildContext
 
 
 @dataclass
@@ -44,39 +44,20 @@ class GraphExpressionEmitter:
         self.builder = builder
         self.ad = ad
         self.variables = variables
-        self._vector_cache: dict[object, object] = {}
+        self.context = GraphBuildContext(builder, variables)
 
     def output(self, output: object) -> GraphExpression:
         if output is None:
             return GraphExpression(None, None, "empty")
-        vector_node = getattr(output, "vector_node", None)
-        if vector_node is not None:
-            return GraphExpression(None, self.vector_node(vector_node), "native_vector_expr")
-        node = getattr(output, "lfg_node", None)
-        if node is not None:
-            return GraphExpression(self.node(node), None, "native_expr")
+        if hasattr(output, "build_graph_vector"):
+            return GraphExpression(None, output.build_graph_vector(self.context), "native_backend_vector")
+        if hasattr(output, "build_graph"):
+            return GraphExpression(output.build_graph(self.context), None, "native_backend_scalar")
         if isinstance(output, (int, float)):
             return GraphExpression(self.builder.constant(float(output)), None, "native_constant")
         if isinstance(output, str):
             raise TypeError("String AD emission has been removed; pass Expr objects instead")
         raise TypeError(f"Cannot emit AD for output of type {type(output)!r}")
-
-    def node(self, node: object):
-        if node is None:
-            return None
-        if hasattr(node, "to_graph"):
-            return node.to_graph(self)
-        raise TypeError(f"Unsupported AD expression node type {type(node)!r}")
-
-    def vector_node(self, node: object):
-        cached = self._vector_cache.get(node)
-        if cached is not None:
-            return cached
-        if hasattr(node, "to_graph_vector"):
-            value = node.to_graph_vector(self)
-            self._vector_cache[node] = value
-            return value
-        raise TypeError(f"Unsupported AD vector expression node type {type(node)!r}")
 
     def balanced_sum(self, terms: list[object]):
         if not terms:
@@ -88,14 +69,3 @@ class GraphExpressionEmitter:
                 nxt.append(layer[i] + layer[i + 1] if i + 1 < len(layer) else layer[i])
             layer = nxt
         return layer[0]
-
-
-VariableMapper = Callable[[str, int], object | None]
-
-
-def remap_expression_node(node: object | None, variable_mapper: VariableMapper) -> object | None:
-    if node is None:
-        return None
-    if hasattr(node, "remap"):
-        return node.remap(variable_mapper)
-    raise TypeError(f"Unsupported expression node type {type(node)!r}")

@@ -9,350 +9,143 @@
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-# You should have received a copy of the GNU Lesser General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Callable
 
 
-_MISSING = object()
+GraphScalarBuilder = Callable[[object], object]
+GraphVectorBuilder = Callable[[object], object]
 
 
-class ExprNode:
-    def to_text(self) -> str | None:
-        raise NotImplementedError
+class GraphBuildContext:
+    def __init__(self, builder: object, variables: dict[str, object]):
+        self.builder = builder
+        self.variables = variables
 
-    def to_graph(self, compiler):
-        raise NotImplementedError
+    def scalar(self, group: str, index: int):
+        try:
+            return self.variables[group][int(index)]
+        except KeyError as exc:
+            raise KeyError(f"unknown graph variable group {group!r}") from exc
 
-    def remap(self, variable_mapper: Callable[[str, int], object | None]):
-        raise NotImplementedError
+    def vector(self, values: list[object]):
+        return self.builder.vector(values)
 
-
-class VectorNode:
-    def to_graph_vector(self, compiler):
-        raise NotImplementedError
-
-    def remap(self, variable_mapper: Callable[[str, int], object | None]):
-        raise NotImplementedError
-
-
-@dataclass(frozen=True)
-class ValuesVectorNode(VectorNode):
-    values: tuple[ExprNode, ...]
-
-    def to_graph_vector(self, compiler):
-        return compiler.builder.vector([compiler.node(value) for value in self.values])
-
-    def remap(self, variable_mapper):
-        return ValuesVectorNode(tuple(_remap_node(value, variable_mapper) for value in self.values))
+    def constant(self, value: float):
+        return self.builder.constant(float(value))
 
 
-@dataclass(frozen=True)
-class BinaryVectorNode(VectorNode):
-    op: str
-    lhs: VectorNode
-    rhs: VectorNode
+class RemapContext:
+    def __init__(self, parent: GraphBuildContext, mapper: Callable[[str, int], tuple[str, int] | None]):
+        self.parent = parent
+        self.builder = parent.builder
+        self.mapper = mapper
 
-    def to_graph_vector(self, compiler):
-        lhs = compiler.vector_node(self.lhs)
-        rhs = compiler.vector_node(self.rhs)
-        if self.op == "+":
-            return compiler.builder.vector_add(lhs, rhs)
-        if self.op == "-":
-            return compiler.builder.vector_sub(lhs, rhs)
-        raise ValueError(f"Unsupported vector binary op {self.op!r}")
+    def scalar(self, group: str, index: int):
+        mapped = self.mapper(group, int(index))
+        if mapped is None:
+            return self.parent.scalar(group, int(index))
+        return self.parent.scalar(mapped[0], mapped[1])
 
-    def remap(self, variable_mapper):
-        return BinaryVectorNode(self.op, self.lhs.remap(variable_mapper), self.rhs.remap(variable_mapper))
+    def vector(self, values: list[object]):
+        return self.builder.vector(values)
+
+    def constant(self, value: float):
+        return self.builder.constant(float(value))
 
 
 @dataclass(frozen=True)
-class ScaleVectorNode(VectorNode):
-    factor: float
-    rhs: VectorNode
-
-    def to_graph_vector(self, compiler):
-        return compiler.builder.vector_scale(float(self.factor), compiler.vector_node(self.rhs))
-
-    def remap(self, variable_mapper):
-        return ScaleVectorNode(float(self.factor), self.rhs.remap(variable_mapper))
-
-
-@dataclass(frozen=True)
-class SliceVectorNode(VectorNode):
-    rhs: VectorNode
-    start: int
-    length: int
-    stride: int = 1
-
-    def to_graph_vector(self, compiler):
-        return compiler.builder.slice(compiler.vector_node(self.rhs), int(self.start), int(self.length), int(self.stride))
-
-    def remap(self, variable_mapper):
-        return SliceVectorNode(self.rhs.remap(variable_mapper), int(self.start), int(self.length), int(self.stride))
-
-
-@dataclass(frozen=True)
-class ConcatVectorNode(VectorNode):
-    lhs: VectorNode
-    rhs: VectorNode
-
-    def to_graph_vector(self, compiler):
-        return compiler.builder.concat(compiler.vector_node(self.lhs), compiler.vector_node(self.rhs))
-
-    def remap(self, variable_mapper):
-        return ConcatVectorNode(self.lhs.remap(variable_mapper), self.rhs.remap(variable_mapper))
-
-
-@dataclass(frozen=True)
-class DenseMatVecVectorNode(VectorNode):
-    matrix_values: tuple[tuple[float, ...], ...]
-    rhs: tuple[ExprNode, ...]
-
-    def to_graph_vector(self, compiler):
-        rhs = [compiler.node(term) for term in self.rhs]
-        return compiler.builder.dense_matvec_values([list(row) for row in self.matrix_values], rhs)
-
-    def remap(self, variable_mapper):
-        return DenseMatVecVectorNode(
-            self.matrix_values,
-            tuple(_remap_node(term, variable_mapper) for term in self.rhs),
-        )
-
-
-@dataclass(frozen=True)
-class SparseMatVecVectorNode(VectorNode):
-    rows: tuple[int, ...]
-    cols: tuple[int, ...]
-    vals: tuple[float, ...]
-    shape: tuple[int, int]
-    rhs: tuple[ExprNode, ...]
-
-    def to_graph_vector(self, compiler):
-        rhs = [compiler.node(term) for term in self.rhs]
-        return compiler.builder.sparse_matvec_values(list(self.rows), list(self.cols), list(self.vals), tuple(self.shape), rhs)
-
-    def remap(self, variable_mapper):
-        return SparseMatVecVectorNode(
-            self.rows,
-            self.cols,
-            self.vals,
-            self.shape,
-            tuple(_remap_node(term, variable_mapper) for term in self.rhs),
-        )
-
-
-@dataclass(frozen=True)
-class KronEyeMatVecVectorNode(VectorNode):
-    base_values: tuple[tuple[float, ...], ...]
-    eye_size: int
-    rhs: tuple[ExprNode, ...]
-
-    def to_graph_vector(self, compiler):
-        rhs = [compiler.node(term) for term in self.rhs]
-        return compiler.builder.kron_eye_matvec_values([list(row) for row in self.base_values], int(self.eye_size), rhs)
-
-    def remap(self, variable_mapper):
-        return KronEyeMatVecVectorNode(
-            self.base_values,
-            int(self.eye_size),
-            tuple(_remap_node(term, variable_mapper) for term in self.rhs),
-        )
-
-
-@dataclass(frozen=True)
-class VectorAtNode(ExprNode):
-    vector: VectorNode
-    index: int
-
-    def to_text(self) -> str | None:
-        return None
-
-    def to_graph(self, compiler):
-        return compiler.builder.at(compiler.vector_node(self.vector), int(self.index))
-
-    def remap(self, variable_mapper):
-        return VectorAtNode(self.vector.remap(variable_mapper), int(self.index))
-
-
-@dataclass(frozen=True)
-class ConstNode(ExprNode):
-    value: float
-
-    def to_text(self) -> str:
-        return repr(float(self.value))
-
-    def to_graph(self, compiler):
-        return compiler.builder.constant(float(self.value))
-
-    def remap(self, variable_mapper):
-        return self
-
-
-@dataclass(frozen=True)
-class VarNode(ExprNode):
+class Symbol:
     group: str
     index: int
 
-    def to_text(self) -> str:
-        return f"{self.group}[{int(self.index)}]"
-
-    def to_graph(self, compiler):
-        return compiler.variables[self.group][int(self.index)]
-
-    def remap(self, variable_mapper):
-        mapped = variable_mapper(self.group, int(self.index))
-        return self if mapped is None else mapped
-
-
-@dataclass(frozen=True)
-class SumNode(ExprNode):
-    terms: tuple[ExprNode, ...]
-
-    def to_text(self) -> str | None:
-        parts = [term.to_text() for term in self.terms]
-        if any(part is None for part in parts):
-            return None
-        return _balanced_join([part for part in parts if part is not None], "+")
-
-    def to_graph(self, compiler):
-        return compiler.balanced_sum([term.to_graph(compiler) for term in self.terms])
-
-    def remap(self, variable_mapper):
-        return SumNode(tuple(_remap_node(term, variable_mapper) for term in self.terms))
-
-
-@dataclass(frozen=True)
-class BinNode(ExprNode):
-    op: str
-    lhs: ExprNode
-    rhs: ExprNode
-
-    def to_text(self) -> str | None:
-        lhs = self.lhs.to_text()
-        rhs = self.rhs.to_text()
-        if lhs is None or rhs is None:
-            return None
-        return f"({lhs} {self.op} {rhs})"
-
-    def to_graph(self, compiler):
-        lhs = self.lhs.to_graph(compiler)
-        rhs = self.rhs.to_graph(compiler)
-        if self.op == "+":
-            return lhs + rhs
-        if self.op == "-":
-            return lhs - rhs
-        if self.op == "*":
-            return lhs * rhs
-        if self.op == "/":
-            return lhs / rhs
-        raise ValueError(f"Unsupported AD binary op {self.op!r}")
-
-    def remap(self, variable_mapper):
-        return BinNode(self.op, _remap_node(self.lhs, variable_mapper), _remap_node(self.rhs, variable_mapper))
-
-
-@dataclass(frozen=True)
-class UnaryNode(ExprNode):
-    name: str
-    arg: ExprNode
-
-    def to_text(self) -> str | None:
-        arg = self.arg.to_text()
-        if arg is None:
-            return None
-        return f"{self.name}({arg})" if self.name != "neg" else f"(-{arg})"
-
-    def to_graph(self, compiler):
-        arg = self.arg.to_graph(compiler)
-        if self.name == "neg":
-            return -arg
-        try:
-            fn = getattr(compiler.ad, self.name)
-        except AttributeError as exc:
-            raise ValueError(f"Unsupported AD unary op {self.name!r}") from exc
-        return fn(arg)
-
-    def remap(self, variable_mapper):
-        return UnaryNode(self.name, _remap_node(self.arg, variable_mapper))
-
-
-@dataclass(frozen=True)
-class PowConstNode(ExprNode):
-    arg: ExprNode
-    power: float
-
-    def to_text(self) -> str | None:
-        arg = self.arg.to_text()
-        if arg is None:
-            return None
-        return f"pow_const({arg}, {repr(float(self.power))})"
-
-    def to_graph(self, compiler):
-        return compiler.ad.pow_const(self.arg.to_graph(compiler), float(self.power))
-
-    def remap(self, variable_mapper):
-        return PowConstNode(_remap_node(self.arg, variable_mapper), self.power)
-
-
-def _remap_node(node: object | None, variable_mapper):
-    if node is None:
-        return None
-    if isinstance(node, ExprNode):
-        return node.remap(variable_mapper)
-    raise TypeError(f"Unsupported expression node type {type(node)!r}")
-
 
 class Expr:
-    def __init__(self, lfg_node: object | None = None, mr_node: object = _MISSING):
-        self.lfg_node = lfg_node
-        self.mr_node = lfg_node if mr_node is _MISSING else mr_node
-
-    @property
-    def lfg(self) -> str | None:
-        return _node_to_text(self.lfg_node)
-
-    @property
-    def mr(self) -> str | None:
-        return _node_to_text(self.mr_node)
+    def __init__(
+        self,
+        build: GraphScalarBuilder | None = None,
+        *,
+        mr_build: GraphScalarBuilder | None = None,
+        symbol: Symbol | None = None,
+        mr_symbol: Symbol | None = None,
+        const_value: float | None = None,
+        graph_scalar: object | None = None,
+    ):
+        self._build = build
+        self._mr_build = build if mr_build is None else mr_build
+        self.symbol = symbol
+        self.mr_symbol = symbol if mr_symbol is None else mr_symbol
+        self.const_value = const_value
+        self.graph_scalar = graph_scalar
 
     @staticmethod
     def const(value: float | int) -> "Expr":
-        node = ConstNode(float(value))
-        return Expr(node, node)
-
-    def is_zero(self) -> bool:
-        return (
-            self.lfg_node is not None
-            and self.mr_node is not None
-            and isinstance(self.lfg_node, ConstNode)
-            and isinstance(self.mr_node, ConstNode)
-            and float(self.lfg_node.value) == 0.0
-            and float(self.mr_node.value) == 0.0
-        )
+        value = float(value)
+        return Expr(lambda ctx, value=value: ctx.constant(value), const_value=value)
 
     @staticmethod
-    def variable(group: str, idx: int, mr_node: object = _MISSING) -> "Expr":
-        node = VarNode(group, int(idx))
-        return Expr(node, node if mr_node is _MISSING else mr_node)
+    def variable(group: str, idx: int, *, mr_group: str | None = None, mr_idx: int | None = None, graph_scalar: object | None = None) -> "Expr":
+        idx = int(idx)
+        symbol = Symbol(group, idx)
+        mr_symbol = Symbol(mr_group, int(mr_idx if mr_idx is not None else idx)) if mr_group is not None else symbol
+        return Expr(
+            lambda ctx, group=group, idx=idx: ctx.scalar(group, idx),
+            mr_build=lambda ctx, group=mr_symbol.group, idx=mr_symbol.index: ctx.scalar(group, idx),
+            symbol=symbol,
+            mr_symbol=mr_symbol,
+            graph_scalar=graph_scalar,
+        )
+
+    def build_graph(self, ctx: GraphBuildContext):
+        if self.graph_scalar is not None:
+            return self.graph_scalar
+        if self._build is None:
+            raise ValueError("expression has no graph representation")
+        return self._build(ctx)
+
+    def build_mr_graph(self, ctx: GraphBuildContext):
+        if self._mr_build is None:
+            raise ValueError("expression has no boundary graph representation")
+        return self._mr_build(ctx)
+
+    def remap_mr(self, mapper: Callable[[str, int], tuple[str, int] | None]) -> "Expr":
+        return Expr(lambda ctx: self.build_mr_graph(RemapContext(ctx, mapper)))
+
+    def is_zero(self) -> bool:
+        return self.const_value == 0.0
 
     def _binary(self, other: object, op: str) -> "Expr":
         rhs = as_expr(other)
-        if op == "+":
-            return SumExpr.from_terms([self, rhs])
-        lfg_node = BinNode(op, self.lfg_node, rhs.lfg_node) if self.lfg_node is not None and rhs.lfg_node is not None else None
-        mr_node = BinNode(op, self.mr_node, rhs.mr_node) if self.mr_node is not None and rhs.mr_node is not None else None
-        return Expr(lfg_node, mr_node)
+
+        def apply(lhs_value, rhs_value):
+            if op == "+":
+                return lhs_value + rhs_value
+            if op == "-":
+                return lhs_value - rhs_value
+            if op == "*":
+                return lhs_value * rhs_value
+            if op == "/":
+                return lhs_value / rhs_value
+            raise ValueError(f"unsupported binary operation {op!r}")
+
+        graph_scalar = None
+        if self.graph_scalar is not None and rhs.graph_scalar is not None:
+            graph_scalar = apply(self.graph_scalar, rhs.graph_scalar)
+
+        const_value = None
+        if self.const_value is not None and rhs.const_value is not None:
+            const_value = float(apply(self.const_value, rhs.const_value))
+
+        return Expr(
+            lambda ctx: apply(self.build_graph(ctx), rhs.build_graph(ctx)),
+            mr_build=lambda ctx: apply(self.build_mr_graph(ctx), rhs.build_mr_graph(ctx)),
+            const_value=const_value,
+            graph_scalar=graph_scalar,
+        )
 
     def __add__(self, other: object) -> "Expr":
         return self._binary(other, "+")
@@ -379,52 +172,37 @@ class Expr:
         return as_expr(other)._binary(self, "/")
 
     def __neg__(self) -> "Expr":
+        graph_scalar = -self.graph_scalar if self.graph_scalar is not None else None
+        const_value = -self.const_value if self.const_value is not None else None
         return Expr(
-            UnaryNode("neg", self.lfg_node) if self.lfg_node is not None else None,
-            UnaryNode("neg", self.mr_node) if self.mr_node is not None else None,
+            lambda ctx: -self.build_graph(ctx),
+            mr_build=lambda ctx: -self.build_mr_graph(ctx),
+            const_value=const_value,
+            graph_scalar=graph_scalar,
         )
 
     def __pow__(self, power: float | int) -> "Expr":
         return pow_const(self, power)
 
 
-def _balanced_join(parts: list[str], op: str) -> str:
-    if not parts:
-        return "0.0"
-    layer = parts
-    while len(layer) > 1:
-        nxt = []
-        for i in range(0, len(layer), 2):
-            if i + 1 < len(layer):
-                nxt.append(f"({layer[i]} {op} {layer[i + 1]})")
-            else:
-                nxt.append(layer[i])
-        layer = nxt
-    return layer[0]
-
-
-def _node_to_text(node: object | None) -> str | None:
-    if node is None:
-        return None
-    if isinstance(node, ExprNode):
-        return node.to_text()
-    return None
-
-
 class SumExpr(Expr):
     def __init__(self, terms: list[Expr]):
         self.terms = terms
+        super().__init__(
+            lambda ctx: _balanced_backend_sum(ctx, [term.build_graph(ctx) for term in self.terms]),
+            mr_build=lambda ctx: _balanced_backend_sum(ctx, [term.build_mr_graph(ctx) for term in self.terms]),
+            const_value=sum(term.const_value for term in self.terms) if all(term.const_value is not None for term in self.terms) else None,
+            graph_scalar=_sum_graph_scalars(self.terms),
+        )
 
     @staticmethod
-    def from_terms(terms: list[Expr]) -> Expr:
+    def from_terms(terms: Iterable[object]) -> Expr:
         flat: list[Expr] = []
         for term in terms:
             expr = as_expr(term)
             if isinstance(expr, SumExpr):
                 flat.extend(expr.terms)
-            elif expr.is_zero():
-                continue
-            else:
+            elif not expr.is_zero():
                 flat.append(expr)
         if not flat:
             return Expr.const(0.0)
@@ -432,38 +210,33 @@ class SumExpr(Expr):
             return flat[0]
         return SumExpr(flat)
 
-    @property
-    def lfg(self) -> str | None:
-        parts = [term.lfg for term in self.terms]
-        if any(part is None for part in parts):
-            return None
-        return _balanced_join([part for part in parts if part is not None], "+")
 
-    @property
-    def mr(self) -> str | None:
-        parts = [term.mr for term in self.terms]
-        if any(part is None for part in parts):
-            return None
-        return _balanced_join([part for part in parts if part is not None], "+")
+def _sum_graph_scalars(terms: list[Expr]):
+    if not terms or any(term.graph_scalar is None for term in terms):
+        return None
+    out = terms[0].graph_scalar
+    for term in terms[1:]:
+        out = out + term.graph_scalar
+    return out
 
-    @property
-    def lfg_node(self):
-        nodes = [term.lfg_node for term in self.terms]
-        if any(node is None for node in nodes):
-            return None
-        return SumNode(tuple(nodes))
 
-    @property
-    def mr_node(self):
-        nodes = [term.mr_node for term in self.terms]
-        if any(node is None for node in nodes):
-            return None
-        return SumNode(tuple(nodes))
+def _balanced_backend_sum(ctx: GraphBuildContext, terms: list[object]):
+    if not terms:
+        return ctx.constant(0.0)
+    layer = terms
+    while len(layer) > 1:
+        nxt = []
+        for i in range(0, len(layer), 2):
+            nxt.append(layer[i] + layer[i + 1] if i + 1 < len(layer) else layer[i])
+        layer = nxt
+    return layer[0]
 
 
 def as_expr(value: object) -> Expr:
     if isinstance(value, Expr):
         return value
+    if _is_graph_scalar(value):
+        return Expr(graph_scalar=value)
     if isinstance(value, (int, float)):
         return Expr.const(value)
     raise TypeError(f"Cannot convert {type(value)!r} to Expr")
@@ -471,10 +244,22 @@ def as_expr(value: object) -> Expr:
 
 def _unary(name: str, value: object) -> Expr:
     expr = as_expr(value)
+    graph_scalar = None
+    if expr.graph_scalar is not None:
+        from . import ad
+
+        graph_scalar = getattr(ad, name)(expr.graph_scalar)
     return Expr(
-        UnaryNode(name, expr.lfg_node) if expr.lfg_node is not None else None,
-        UnaryNode(name, expr.mr_node) if expr.mr_node is not None else None,
+        lambda ctx: getattr(_ad_module(), name)(expr.build_graph(ctx)),
+        mr_build=lambda ctx: getattr(_ad_module(), name)(expr.build_mr_graph(ctx)),
+        graph_scalar=graph_scalar,
     )
+
+
+def _ad_module():
+    from . import ad
+
+    return ad
 
 
 def sin(value: object) -> Expr:
@@ -499,88 +284,77 @@ def log(value: object) -> Expr:
 
 def pow_const(value: object, power: float | int) -> Expr:
     expr = as_expr(value)
+    power = float(power)
+    graph_scalar = None
+    if expr.graph_scalar is not None:
+        graph_scalar = _ad_module().pow_const(expr.graph_scalar, power)
+    const_value = expr.const_value ** power if expr.const_value is not None else None
     return Expr(
-        PowConstNode(expr.lfg_node, float(power)) if expr.lfg_node is not None else None,
-        PowConstNode(expr.mr_node, float(power)) if expr.mr_node is not None else None,
+        lambda ctx: _ad_module().pow_const(expr.build_graph(ctx), power),
+        mr_build=lambda ctx: _ad_module().pow_const(expr.build_mr_graph(ctx), power),
+        const_value=const_value,
+        graph_scalar=graph_scalar,
     )
 
 
 def sum_expr(values: Iterable[object]) -> Expr:
-    return SumExpr.from_terms([as_expr(value) for value in values])
+    return SumExpr.from_terms(values)
 
 
-def _vector_at_expr(vector_node: VectorNode | None, row_index: int, fallback: Expr) -> Expr:
-    if vector_node is None:
-        return fallback
-    node = VectorAtNode(vector_node, int(row_index))
-    return Expr(node, node)
+def _is_graph_scalar(value: object) -> bool:
+    try:
+        from . import ad
+    except ImportError:
+        return False
+    return isinstance(value, ad.GraphScalar)
 
 
-def _dense_matvec_element_expr(matrix_values: list[list[float]], row_index: int, rhs: list[Expr], vector_node: VectorNode | None) -> Expr:
-    fallback = sum_expr(weight * value for weight, value in zip(matrix_values[row_index], rhs))
-    return _vector_at_expr(vector_node, row_index, fallback)
+def _is_graph_vector(value: object) -> bool:
+    try:
+        from . import ad
+    except ImportError:
+        return False
+    return isinstance(value, ad.GraphVector)
 
 
-def _sparse_matvec_element_expr(rows: list[int], cols: list[int], vals: list[float], row_index: int, rhs: list[Expr], vector_node: VectorNode | None) -> Expr:
-    buckets: list[tuple[float, Expr]] = [(val, rhs[col]) for row, col, val in zip(rows, cols, vals) if int(row) == int(row_index)]
-    fallback = sum_expr(val * value for val, value in buckets)
-    return _vector_at_expr(vector_node, row_index, fallback)
-
-
-def _kron_eye_matvec_element_expr(base_values: list[list[float]], eye_size: int, row_index: int, rhs: list[Expr], vector_node: VectorNode | None) -> Expr:
-    eye = int(eye_size)
-    base_row = int(row_index) // eye
-    inner = int(row_index) % eye
-    fallback = sum_expr(weight * rhs[col * eye + inner] for col, weight in enumerate(base_values[base_row]))
-    return _vector_at_expr(vector_node, row_index, fallback)
-
-
-def _is_vector_like(value: object) -> bool:
-    return isinstance(value, (VectorExpr, BlockVectorExpr)) or bool(getattr(value, "__moo_vector__", False))
-
-
-def _as_vector_node(value: object) -> VectorNode | None:
+def _as_graph_vector(value: object):
     if isinstance(value, VectorExpr):
-        return value.vector_node
+        return value.graph_vector
     if isinstance(value, BlockVectorExpr):
-        return value.flatten().vector_node
-    if getattr(value, "__moo_vector__", False):
-        return vec(value).vector_node
-    if isinstance(value, (list, tuple)):
-        return vec(value).vector_node
+        return value.flatten().graph_vector
+    if _is_graph_vector(value):
+        return value
     return None
 
 
-def _expr_node_for_vector_value(value: Expr) -> ExprNode | None:
-    return value.lfg_node if value.lfg_node is not None else value.mr_node
-
-
-def _values_vector_node(values: list[Expr]) -> VectorNode | None:
-    nodes = [_expr_node_for_vector_value(value) for value in values]
-    if any(node is None for node in nodes):
-        return None
-    return ValuesVectorNode(tuple(node for node in nodes if node is not None))
-
-
 class VectorExpr:
-    def __init__(self, values: Iterable[object], vector_node: VectorNode | None = None):
+    def __init__(self, values: Iterable[object], graph_vector: object | None = None, vector_build: GraphVectorBuilder | None = None):
         self.values = [as_expr(value) for value in values]
-        self.vector_node = vector_node if vector_node is not None else _values_vector_node(self.values)
+        self.graph_vector = graph_vector
+        self._vector_build = vector_build
 
     def __len__(self) -> int:
         return len(self.values)
 
     def __getitem__(self, idx):
         if isinstance(idx, slice):
-            start, stop, stride = idx.indices(len(self.values))
             values = self.values[idx]
-            length = len(values)
-            vector_node = SliceVectorNode(self.vector_node, start, length, stride) if self.vector_node is not None else None
-            return VectorExpr(values, vector_node)
+            vector_build = None
+            if self._vector_build is not None:
+                start, _stop, stride = idx.indices(len(self.values))
+                vector_build = lambda ctx, start=start, length=len(values), stride=stride: ctx.builder.slice(self.build_graph_vector(ctx), start, length, stride)
+            return VectorExpr(values, vector_build=vector_build)
         return self.values[idx]
 
     def __iter__(self):
         return iter(self.values)
+
+    def build_graph_vector(self, ctx: GraphBuildContext):
+        if self.graph_vector is not None:
+            return self.graph_vector
+        if self._vector_build is not None:
+            return self._vector_build(ctx)
+        return ctx.vector([value.build_graph(ctx) for value in self.values])
 
     def block(self, index: int, size: int) -> "VectorExpr":
         if size <= 0:
@@ -589,8 +363,7 @@ class VectorExpr:
         stop = start + size
         if start < 0 or stop > len(self.values):
             raise IndexError(index)
-        vector_node = SliceVectorNode(self.vector_node, start, size, 1) if self.vector_node is not None else None
-        return VectorExpr(self.values[start:stop], vector_node)
+        return self[start:stop]
 
     def blocks(self, size: int) -> "BlockVectorExpr":
         if size <= 0:
@@ -604,17 +377,34 @@ class VectorExpr:
             rhs_values = _as_vector_values(other)
             if len(rhs_values) != len(self.values):
                 raise ValueError("vector sizes must match")
-            lhs_node = self.vector_node
-            rhs_node = _as_vector_node(other)
-            vector_node = None
-            if lhs_node is not None and rhs_node is not None and op in {"+", "-"}:
-                vector_node = BinaryVectorNode(op, rhs_node, lhs_node) if reverse else BinaryVectorNode(op, lhs_node, rhs_node)
-            if reverse:
-                return VectorExpr([as_expr(rhs)._binary(lhs, op) for lhs, rhs in zip(self.values, rhs_values)], vector_node)
-            return VectorExpr([lhs._binary(rhs, op) for lhs, rhs in zip(self.values, rhs_values)], vector_node)
-        if reverse:
-            return VectorExpr([as_expr(other)._binary(lhs, op) for lhs in self.values])
-        return VectorExpr([lhs._binary(other, op) for lhs in self.values])
+            lhs_graph = self.graph_vector
+            rhs_graph = _as_graph_vector(other)
+            graph_vector = None
+            if lhs_graph is not None and rhs_graph is not None and op in {"+", "-"}:
+                if reverse and op == "+":
+                    graph_vector = rhs_graph + lhs_graph
+                elif reverse and op == "-":
+                    graph_vector = rhs_graph - lhs_graph
+                elif op == "+":
+                    graph_vector = lhs_graph + rhs_graph
+                else:
+                    graph_vector = lhs_graph - rhs_graph
+
+            def vector_build(ctx):
+                lhs = self.build_graph_vector(ctx)
+                rhs = vec(other).build_graph_vector(ctx)
+                if reverse:
+                    lhs, rhs = rhs, lhs
+                if op == "+":
+                    return ctx.builder.vector_add(lhs, rhs)
+                if op == "-":
+                    return ctx.builder.vector_sub(lhs, rhs)
+                return ctx.vector([a._binary(b, op).build_graph(ctx) for a, b in zip(vec(other).values, self.values)] if reverse else [a._binary(b, op).build_graph(ctx) for a, b in zip(self.values, rhs_values)])
+
+            values = [as_expr(rhs)._binary(lhs, op) for lhs, rhs in zip(self.values, rhs_values)] if reverse else [lhs._binary(rhs, op) for lhs, rhs in zip(self.values, rhs_values)]
+            return VectorExpr(values, graph_vector=graph_vector, vector_build=vector_build if op in {"+", "-"} else None)
+        values = [as_expr(other)._binary(lhs, op) for lhs in self.values] if reverse else [lhs._binary(other, op) for lhs in self.values]
+        return VectorExpr(values)
 
     def __add__(self, other: object) -> "VectorExpr":
         return self._binary(other, "+")
@@ -631,34 +421,26 @@ class VectorExpr:
     def __mul__(self, other: object) -> "VectorExpr":
         if _is_vector_like(other):
             return self._binary(other, "*")
-        vector_node = ScaleVectorNode(float(other), self.vector_node) if self.vector_node is not None and isinstance(other, (int, float)) else None
-        return VectorExpr([value * other for value in self.values], vector_node)
+        factor = float(other)
+        graph_vector = self.graph_vector * factor if self.graph_vector is not None else None
+        return VectorExpr([value * factor for value in self.values], graph_vector=graph_vector, vector_build=lambda ctx, factor=factor: ctx.builder.vector_scale(factor, self.build_graph_vector(ctx)))
 
     def __rmul__(self, other: object) -> "VectorExpr":
         return self.__mul__(other)
 
     def __truediv__(self, other: object) -> "VectorExpr":
-        vector_node = ScaleVectorNode(1.0 / float(other), self.vector_node) if self.vector_node is not None and isinstance(other, (int, float)) else None
-        return VectorExpr([value / other for value in self.values], vector_node)
+        return self.__mul__(1.0 / float(other))
 
     def __neg__(self) -> "VectorExpr":
-        vector_node = ScaleVectorNode(-1.0, self.vector_node) if self.vector_node is not None else None
-        return VectorExpr([-value for value in self.values], vector_node)
+        return self.__mul__(-1.0)
 
 
 class BlockVectorExpr:
     def __init__(self, blocks: Iterable[object]):
-        values = []
-        block_size: int | None = None
-        for block in blocks:
-            vector_block = vec(block)
-            if block_size is None:
-                block_size = len(vector_block)
-            elif len(vector_block) != block_size:
-                raise ValueError("all blocks must have equal length")
-            values.append(vector_block)
-        self.values = values
-        self.block_size = block_size or 0
+        self.values = [vec(block) for block in blocks]
+        self.block_size = len(self.values[0]) if self.values else 0
+        if any(len(block) != self.block_size for block in self.values):
+            raise ValueError("all blocks must have equal length")
 
     def __len__(self) -> int:
         return len(self.values)
@@ -673,29 +455,16 @@ class BlockVectorExpr:
 
     def flatten(self) -> VectorExpr:
         values = [value for block in self.values for value in block]
-        node = None
-        block_nodes = [block.vector_node for block in self.values]
-        if all(block_node is not None for block_node in block_nodes):
-            node = block_nodes[0]
-            for block_node in block_nodes[1:]:
-                node = ConcatVectorNode(node, block_node)
-        return VectorExpr(values, node)
+        return VectorExpr(values, vector_build=lambda ctx: _concat_vectors(ctx, [block.build_graph_vector(ctx) for block in self.values]))
 
     def _binary(self, other: object, op: str, reverse: bool = False) -> "BlockVectorExpr":
         if isinstance(other, BlockVectorExpr):
             if len(other) != len(self) or other.block_size != self.block_size:
                 raise ValueError("block vector sizes must match")
-            if reverse:
-                return BlockVectorExpr([rhs._binary(lhs, op) for lhs, rhs in zip(self.values, other.values)])
-            return BlockVectorExpr([lhs._binary(rhs, op) for lhs, rhs in zip(self.values, other.values)])
+            return BlockVectorExpr([rhs._binary(lhs, op) for lhs, rhs in zip(self.values, other.values)] if reverse else [lhs._binary(rhs, op) for lhs, rhs in zip(self.values, other.values)])
         if _is_vector_like(other) or isinstance(other, (list, tuple)):
             return self._binary(vec(other).blocks(self.block_size), op, reverse=reverse)
-        if reverse:
-            return BlockVectorExpr([
-                VectorExpr([as_expr(other)._binary(value, op) for value in block])
-                for block in self.values
-            ])
-        return BlockVectorExpr([block._binary(other, op) for block in self.values])
+        return BlockVectorExpr([VectorExpr([as_expr(other)._binary(value, op) for value in block]) for block in self.values] if reverse else [block._binary(other, op) for block in self.values])
 
     def __add__(self, other: object) -> "BlockVectorExpr":
         return self._binary(other, "+")
@@ -722,6 +491,15 @@ class BlockVectorExpr:
         return BlockVectorExpr([-block for block in self.values])
 
 
+def _concat_vectors(ctx: GraphBuildContext, vectors: list[object]):
+    if not vectors:
+        return ctx.vector([])
+    out = vectors[0]
+    for vector_value in vectors[1:]:
+        out = ctx.builder.concat(out, vector_value)
+    return out
+
+
 class ExprMatrix:
     def __init__(self, values: object, vector: bool = False):
         raw = _tolist(values)
@@ -741,32 +519,27 @@ class ExprMatrix:
             if self.is_vector:
                 if len(self.values) != len(other):
                     raise ValueError("dot dimensions do not match")
-                return VectorExpr([
-                    sum_expr(weight * block[row] for weight, block in zip(self.values, other))
-                    for row in range(other.block_size)
-                ])
+                return VectorExpr([sum_expr(weight * block[row] for weight, block in zip(self.values, other)) for row in range(other.block_size)])
             if self.values and len(self.values[0]) != len(other):
                 raise ValueError("matrix/block-vector dimensions do not match")
-            return BlockVectorExpr([
-                VectorExpr([
-                    sum_expr(weight * block[row] for weight, block in zip(matrix_row, other))
-                    for row in range(other.block_size)
-                ])
-                for matrix_row in self.values
-            ])
-        rhs = _as_vector_values(other)
+            return BlockVectorExpr([VectorExpr([sum_expr(weight * block[row] for weight, block in zip(matrix_row, other)) for row in range(other.block_size)]) for matrix_row in self.values])
+        rhs = vec(other)
         if self.is_vector:
             if len(self.values) != len(rhs):
                 raise ValueError("dot dimensions do not match")
             return sum_expr(weight * value for weight, value in zip(self.values, rhs))
         if self.values and len(self.values[0]) != len(rhs):
             raise ValueError("matrix/vector dimensions do not match")
-        frozen_matrix = tuple(tuple(float(value) for value in row) for row in self.values)
-        rhs_nodes = [_expr_node_for_vector_value(value) for value in rhs]
-        vector_node = DenseMatVecVectorNode(frozen_matrix, tuple(rhs_nodes)) if all(node is not None for node in rhs_nodes) else None
+        graph_rhs = _as_graph_vector(rhs)
+        graph_vector = None
+        if graph_rhs is not None:
+            # GraphVector matvec is available only through the active builder; keep
+            # the callable path as the canonical representation.
+            graph_vector = None
         return VectorExpr(
-            [_dense_matvec_element_expr(self.values, row_index, rhs, vector_node) for row_index, _row in enumerate(self.values)],
-            vector_node,
+            [sum_expr(weight * value for weight, value in zip(row, rhs)) for row in self.values],
+            graph_vector=graph_vector,
+            vector_build=lambda ctx, matrix_values=self.values, rhs=rhs: ctx.builder.dense_matvec(matrix_values, rhs.build_graph_vector(ctx)),
         )
 
     def otimes_eye(self, size: int) -> "KroneckerEyeMatrix":
@@ -791,23 +564,15 @@ class SparseMatrixExpr:
             raise ValueError("sparse rows, cols, and vals must have equal length")
 
     def __matmul__(self, other: object) -> VectorExpr:
-        rhs = _as_vector_values(other)
+        rhs = vec(other)
         if len(rhs) != self.shape[1]:
             raise ValueError("sparse matrix/vector dimensions do not match")
         for row, col in zip(self.rows, self.cols):
             if row < 0 or row >= self.shape[0] or col < 0 or col >= self.shape[1]:
                 raise ValueError("sparse matrix entry out of shape bounds")
-        rhs_nodes = [_expr_node_for_vector_value(value) for value in rhs]
-        vector_node = SparseMatVecVectorNode(
-            tuple(self.rows),
-            tuple(self.cols),
-            tuple(self.vals),
-            self.shape,
-            tuple(rhs_nodes),
-        ) if all(node is not None for node in rhs_nodes) else None
         return VectorExpr(
-            [_sparse_matvec_element_expr(self.rows, self.cols, self.vals, row_index, rhs, vector_node) for row_index in range(self.shape[0])],
-            vector_node,
+            [_sparse_row_expr(self.rows, self.cols, self.vals, row, rhs.values) for row in range(self.shape[0])],
+            vector_build=lambda ctx, self=self, rhs=rhs: ctx.builder.sparse_matvec(self.rows, self.cols, self.vals, self.shape, rhs.build_graph_vector(ctx)),
         )
 
 
@@ -816,30 +581,35 @@ class KroneckerEyeMatrix:
         if base.is_vector:
             raise ValueError("KroneckerEyeMatrix requires a matrix base")
         self.base = base
-        self.eye_size = eye_size
+        self.eye_size = int(eye_size)
         self.is_vector = False
         self.values = None
 
-    def __matmul__(self, other: object):
+    def __matmul__(self, other: object) -> VectorExpr:
         rhs = vec(other)
         expected = len(self.base.values[0]) * self.eye_size if self.base.values else 0
         if len(rhs) != expected:
             raise ValueError("kron-eye matrix/vector dimensions do not match")
-        frozen_base = tuple(tuple(float(value) for value in row) for row in self.base.values)
-        rhs_nodes = [_expr_node_for_vector_value(value) for value in rhs.values]
-        vector_node = KronEyeMatVecVectorNode(frozen_base, self.eye_size, tuple(rhs_nodes)) if all(node is not None for node in rhs_nodes) else None
+        rows = len(self.base.values) * self.eye_size
         return VectorExpr(
-            [
-                _kron_eye_matvec_element_expr(self.base.values, self.eye_size, row_index, rhs.values, vector_node)
-                for row_index in range(len(self.base.values) * self.eye_size)
-            ],
-            vector_node,
+            [_kron_row_expr(self.base.values, self.eye_size, row, rhs.values) for row in range(rows)],
+            vector_build=lambda ctx, self=self, rhs=rhs: ctx.builder.kron_eye_matvec(self.base.values, self.eye_size, rhs.build_graph_vector(ctx)),
         )
 
     def kron_eye(self, size: int) -> "KroneckerEyeMatrix":
-        if size != self.eye_size:
+        if int(size) != self.eye_size:
             raise ValueError("nested kron_eye is not supported")
         return self
+
+
+def _sparse_row_expr(rows: list[int], cols: list[int], vals: list[float], row_index: int, rhs: list[Expr]) -> Expr:
+    return sum_expr(val * rhs[col] for row, col, val in zip(rows, cols, vals) if int(row) == int(row_index))
+
+
+def _kron_row_expr(base_values: list[list[float]], eye_size: int, row_index: int, rhs: list[Expr]) -> Expr:
+    base_row = int(row_index) // int(eye_size)
+    inner = int(row_index) % int(eye_size)
+    return sum_expr(weight * rhs[col * int(eye_size) + inner] for col, weight in enumerate(base_values[base_row]))
 
 
 def _tolist(values: object):
@@ -848,16 +618,22 @@ def _tolist(values: object):
     return values
 
 
+def _is_vector_like(value: object) -> bool:
+    return isinstance(value, (VectorExpr, BlockVectorExpr)) or bool(getattr(value, "__moo_vector__", False)) or _is_graph_vector(value)
+
+
 def _as_vector_values(values: object) -> list[Expr]:
     if isinstance(values, VectorExpr):
         return list(values.values)
     if isinstance(values, BlockVectorExpr):
         return _as_vector_values(values.flatten())
+    if _is_graph_vector(values):
+        return [as_expr(value) for value in values.values]
     if getattr(values, "__moo_vector__", False):
         return [values[i] for i in range(len(values))]
     raw = _tolist(values)
     if isinstance(raw, (list, tuple)):
-        flattened = []
+        flattened: list[Expr] = []
         for value in raw:
             if _is_vector_like(value):
                 flattened.extend(_as_vector_values(value))
@@ -872,6 +648,8 @@ def _as_vector_values(values: object) -> list[Expr]:
 def vec(values: object) -> VectorExpr:
     if isinstance(values, VectorExpr):
         return values
+    if _is_graph_vector(values):
+        return VectorExpr(values.values, graph_vector=values)
     return VectorExpr(_as_vector_values(values))
 
 

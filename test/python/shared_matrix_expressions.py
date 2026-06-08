@@ -22,7 +22,7 @@ import shutil
 
 import moo.ad as ad
 from moo import Expr, gdop_model, init_model, matrix, nlp_model, sparse_matrix, vec
-from moo.expressions import BinNode, DenseMatVecVectorNode, ExprNode, KronEyeMatVecVectorNode, SparseMatVecVectorNode, SumNode, VectorAtNode
+from moo.graph_expression import GraphExpressionEmitter
 
 
 def assert_backend_dense_matvec_jvp() -> None:
@@ -63,6 +63,33 @@ def assert_backend_vector_composition() -> None:
     assert got == [2.5, 4.0]
 
 
+def assert_graph_expression_emitter_unwraps_backend_handles() -> None:
+    builder = ad.GraphFunctionBuilder()
+    x = builder.inputs("x", 2)
+    emitter = GraphExpressionEmitter(builder, {"x": x})
+
+    scalar = Expr(graph_scalar=x[0] + 2.0)
+    emitted_scalar = emitter.output(scalar)
+    assert emitted_scalar.source == "native_backend_scalar"
+    assert emitted_scalar.value is not None
+    assert emitted_scalar.vector is None
+
+    vector_expr = vec(x)
+    shifted = vector_expr + vector_expr
+    emitted_vector = emitter.output(shifted)
+    assert emitted_vector.source == "native_backend_vector"
+    assert emitted_vector.value is None
+    assert emitted_vector.vector is not None
+
+    matvec = matrix([[1.0, 2.0], [3.0, 4.0]]) @ vec(x)
+    emitted_matvec = emitter.output(matvec)
+    assert emitted_matvec.source == "native_backend_vector"
+    assert emitted_matvec.vector is not None
+
+    fn = builder.function(x, emitted_vector.vector)
+    assert fn.evaluate(inputs={"x": [3.0, 4.0]}) == [6.0, 8.0]
+
+
 def assert_backend_sparse_matvec_jvp() -> None:
     builder = ad.GraphFunctionBuilder()
     x = builder.inputs("x", 4)
@@ -91,20 +118,24 @@ def assert_dense_matvec_structure() -> None:
     M = matrix([[1.0, 2.0], [3.0, 4.0]])
     x = vec([Expr.variable("x", 0), Expr.variable("x", 1)])
     y = M @ x
-    assert isinstance(y.vector_node, DenseMatVecVectorNode)
-    assert isinstance(y[0].lfg_node, VectorAtNode)
-    assert isinstance(y[1].lfg_node, VectorAtNode)
-    assert y[0].lfg_node.vector is y[1].lfg_node.vector
+    builder = ad.GraphFunctionBuilder()
+    xb = builder.inputs("x", 2)
+    emitted = GraphExpressionEmitter(builder, {"x": xb}).output(y)
+    assert emitted.source == "native_backend_vector"
+    fn = builder.function(xb, emitted.vector)
+    assert fn.has_vector_structure
 
 
 def assert_sparse_matvec_structure() -> None:
     S = sparse_matrix([0, 0, 1], [0, 2, 1], [2.0, -1.0, 3.0], (2, 3))
     x = vec([Expr.variable("x", 0), Expr.variable("x", 1), Expr.variable("x", 2)])
     y = S @ x
-    assert isinstance(y.vector_node, SparseMatVecVectorNode)
-    assert isinstance(y[0].lfg_node, VectorAtNode)
-    assert isinstance(y[1].lfg_node, VectorAtNode)
-    assert y[0].lfg_node.vector is y[1].lfg_node.vector
+    builder = ad.GraphFunctionBuilder()
+    xb = builder.inputs("x", 3)
+    emitted = GraphExpressionEmitter(builder, {"x": xb}).output(y)
+    assert emitted.source == "native_backend_vector"
+    fn = builder.function(xb, emitted.vector)
+    assert fn.has_vector_structure
 
 
 def assert_kron_eye_matvec_structure() -> None:
@@ -112,25 +143,26 @@ def assert_kron_eye_matvec_structure() -> None:
     x = vec([Expr.variable("x", i) for i in range(6)])
     y = K @ x
     assert len(y) == 4
-    assert isinstance(y.vector_node, KronEyeMatVecVectorNode)
-    assert isinstance(y[0].lfg_node, VectorAtNode)
-    assert isinstance(y[3].lfg_node, VectorAtNode)
-    assert y[0].lfg_node.vector is y[3].lfg_node.vector
+    builder = ad.GraphFunctionBuilder()
+    xb = builder.inputs("x", 6)
+    emitted = GraphExpressionEmitter(builder, {"x": xb}).output(y)
+    assert emitted.source == "native_backend_vector"
+    fn = builder.function(xb, emitted.vector)
+    assert fn.has_vector_structure
 
 
-def assert_python_expression_nodes_are_typed() -> None:
+def assert_python_expressions_are_backend_buildable() -> None:
     x0 = Expr.variable("x", 0)
     x1 = Expr.variable("x", 1)
     product = (x0 + 2.0) * x1
     summed = x0 + x1 + 3.0
     y = matrix([[1.0, 2.0]]) @ vec([x0, x1])
-
-    assert isinstance(product.lfg_node, BinNode)
-    assert isinstance(summed.lfg_node, SumNode)
-    assert isinstance(y[0].lfg_node, VectorAtNode)
-    for node in (product.lfg_node, summed.lfg_node, y[0].lfg_node):
-        assert isinstance(node, ExprNode)
-        assert not isinstance(node, tuple)
+    builder = ad.GraphFunctionBuilder()
+    xb = builder.inputs("x", 2)
+    emitter = GraphExpressionEmitter(builder, {"x": xb})
+    assert emitter.output(product).source == "native_backend_scalar"
+    assert emitter.output(summed).source == "native_backend_scalar"
+    assert emitter.output(y).source == "native_backend_vector"
 
 
 def assert_dense_matvec_matches_scalar_fallback(out: Path) -> None:
@@ -219,12 +251,13 @@ def main() -> None:
         shutil.rmtree(out)
     assert_backend_dense_matvec_jvp()
     assert_backend_vector_composition()
+    assert_graph_expression_emitter_unwraps_backend_handles()
     assert_backend_sparse_matvec_jvp()
     assert_backend_kron_eye_matvec_jvp()
     assert_dense_matvec_structure()
     assert_sparse_matvec_structure()
     assert_kron_eye_matvec_structure()
-    assert_python_expression_nodes_are_typed()
+    assert_python_expressions_are_backend_buildable()
     assert_dense_matvec_matches_scalar_fallback(out)
     assert_sparse_matvec_matches_scalar_fallback(out)
     assert_dense_matvec_solve_matches_scalar(out)

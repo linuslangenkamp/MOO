@@ -42,6 +42,8 @@ from .callback_codegen import (
 )
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from . import paths
+from . import ad
+from .ad_codegen import emit_function_from_builder
 from .expressions import (
     BlockVectorExpr,
     Expr,
@@ -86,6 +88,7 @@ class MappedObjectiveBlock:
     local_size: int
     local_globals: list[list[int]]
     expr: Expr
+    body: Callable[[LoopIndex], object] | None = None
 
     @property
     def count(self) -> int:
@@ -102,6 +105,7 @@ class MappedConstraintBlock:
     lb: float
     ub: float
     nominal: float = 1.0
+    body: Callable[[LoopIndex], object] | None = None
 
     @property
     def expr(self) -> Expr:
@@ -279,6 +283,8 @@ class NLPModel(BaseModel):
         self._loop_indices: list[int] | None = None
         self._loop_globals: dict[tuple[int, ...], int] | None = None
         self._loop_global_lists: list[list[int]] | None = None
+        self._loop_backend_values: list[object] | None = None
+        self._loop_replay: bool = False
 
     @property
     def x_size(self) -> int:
@@ -311,7 +317,7 @@ class NLPModel(BaseModel):
         self._start_loop_context(indices)
         expr = as_expr(body(idx))
         local_globals = self._finish_loop_context()
-        self.mapped_objectives.append(MappedObjectiveBlock(name or f"obj_map{len(self.mapped_objectives)}", indices, len(local_globals), local_globals, expr))
+        self.mapped_objectives.append(MappedObjectiveBlock(name or f"obj_map{len(self.mapped_objectives)}", indices, len(local_globals), local_globals, expr, body))
 
     def add_constraint(self, expr: object, lb: float = -math.inf, ub: float = math.inf, eq: float | None = None, name: str | None = None, nominal: float = 1.0) -> None:
         low, high = (eq, eq) if eq is not None else (lb, ub)
@@ -334,17 +340,22 @@ class NLPModel(BaseModel):
         idx = LoopIndex()
         self._start_loop_context(indices)
         raw = body(idx)
-        if isinstance(raw, VectorExpr):
-            exprs = [raw]
-        elif isinstance(raw, BlockVectorExpr):
-            exprs = [raw.flatten()]
-        elif isinstance(raw, (list, tuple)):
-            exprs = [raw_vec] if isinstance((raw_vec := vec(raw)), VectorExpr) and any(isinstance(item, (VectorExpr, BlockVectorExpr, list, tuple)) for item in raw) else [as_expr(expr) for expr in raw]
-        else:
-            exprs = [as_expr(raw)]
+        exprs = self._mapped_constraint_outputs(raw)
         local_globals = self._finish_loop_context()
         block_name = name or f"g_map{len(self.mapped_constraints)}"
-        self.mapped_constraints.append(MappedConstraintBlock(block_name, indices, len(local_globals), local_globals, exprs, low, high, nominal))
+        self.mapped_constraints.append(MappedConstraintBlock(block_name, indices, len(local_globals), local_globals, exprs, low, high, nominal, body))
+
+    def _mapped_constraint_outputs(self, raw: object) -> list[object]:
+        if isinstance(raw, VectorExpr):
+            return [raw]
+        if isinstance(raw, BlockVectorExpr):
+            return [raw.flatten()]
+        if isinstance(raw, (list, tuple)):
+            raw_vec = vec(raw)
+            if isinstance(raw_vec, VectorExpr) and any(isinstance(item, (VectorExpr, BlockVectorExpr, list, tuple)) for item in raw):
+                return [raw_vec]
+            return [as_expr(expr) for expr in raw]
+        return [as_expr(raw)]
 
     def sumsqr(self, values: NLPVector | VectorExpr) -> Expr:
         from .expressions import sum_expr
@@ -364,10 +375,14 @@ class NLPModel(BaseModel):
         key = tuple(globals_for_reps)
         local = self._loop_globals.get(key)
         if local is None:
+            if self._loop_replay:
+                raise RuntimeError("mapped block replay used a variable pattern that was not present during initial tracing")
             local = len(self._loop_globals)
             self._loop_globals[key] = local
             assert self._loop_global_lists is not None
             self._loop_global_lists.append(globals_for_reps)
+        if self._loop_backend_values is not None:
+            return Expr.variable("xl", local, graph_scalar=self._loop_backend_values[local])
         return Expr.variable("xl", local)
 
     def _normalize_loop_indices(self, indices: int | Iterable[int]) -> list[int]:
@@ -382,15 +397,29 @@ class NLPModel(BaseModel):
         self._loop_indices = indices
         self._loop_globals = {}
         self._loop_global_lists = []
+        self._loop_backend_values = None
+        self._loop_replay = False
+
+    def _start_loop_replay_context(self, indices: list[int], local_globals: list[list[int]], backend_values: list[object]) -> None:
+        self._loop_indices = indices
+        self._loop_globals = {tuple(values): local for local, values in enumerate(local_globals)}
+        self._loop_global_lists = [list(values) for values in local_globals]
+        self._loop_backend_values = backend_values
+        self._loop_replay = True
 
     def _finish_loop_context(self) -> list[list[int]]:
         if self._loop_globals is None or self._loop_global_lists is None:
             raise RuntimeError("internal loop context is not active")
         local_globals = self._loop_global_lists
+        self._clear_loop_context()
+        return local_globals
+
+    def _clear_loop_context(self) -> None:
         self._loop_indices = None
         self._loop_globals = None
         self._loop_global_lists = None
-        return local_globals
+        self._loop_backend_values = None
+        self._loop_replay = False
 
     def generate(self, out_dir: str | os.PathLike[str], repo_root: str | os.PathLike[str] | None = None, standalone_main: bool = True) -> tuple[Path, Path]:
         self._validate()
@@ -500,13 +529,38 @@ class NLPModel(BaseModel):
         return names
 
     def _emit_local_block(self, prefix: str, block: MappedObjectiveBlock | MappedConstraintBlock) -> LocalBlockEmission:
-        outputs = [block.expr] if isinstance(block, MappedObjectiveBlock) else list(block.exprs)
-        emitted = LocalGraphFunction(
-            name=prefix,
-            input=InputGroup("xl", block.local_size),
-            outputs=outputs,
-            params=[InputGroup("rp", len(self.runtime_parameters))],
-        ).emit()
+        if block.body is not None:
+            builder = ad.GraphFunctionBuilder()
+            xl = builder.inputs("xl", block.local_size)
+            rp = builder.params("rp", len(self.runtime_parameters))
+            self._start_loop_replay_context(block.indices, block.local_globals, [xl[i] for i in range(block.local_size)])
+            try:
+                raw = block.body(LoopIndex())
+                outputs = [as_expr(raw)] if isinstance(block, MappedObjectiveBlock) else self._mapped_constraint_outputs(raw)
+                replayed_globals = self._finish_loop_context()
+            except Exception:
+                self._clear_loop_context()
+                raise
+            if replayed_globals != block.local_globals:
+                raise RuntimeError("mapped block replay changed local variable ordering")
+            emitted = emit_function_from_builder(
+                builder,
+                "xl",
+                xl,
+                outputs,
+                {"rp": rp},
+                f"{prefix}_value",
+                f"{prefix}_jvp",
+                f"{prefix}_hvp",
+            )
+        else:
+            outputs = [block.expr] if isinstance(block, MappedObjectiveBlock) else list(block.exprs)
+            emitted = LocalGraphFunction(
+                name=prefix,
+                input=InputGroup("xl", block.local_size),
+                outputs=outputs,
+                params=[InputGroup("rp", len(self.runtime_parameters))],
+            ).emit()
         jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
         hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
         return LocalBlockEmission(

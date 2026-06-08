@@ -29,8 +29,7 @@ from pathlib import Path
 
 from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
-from .expressions import Expr, SumExpr, VarNode, as_expr, cos, exp, log, pow_const, sin, sum_expr, tan
-from .graph_expression import remap_expression_node
+from .expressions import Expr, as_expr, cos, exp, log, pow_const, sin, sum_expr, tan
 from .local_function import InputGroup, LocalGraphFunction, LocalValueFunction
 from .model import BaseModel, _arr, _c_bool, _double_arr, _num
 from . import paths
@@ -125,28 +124,26 @@ class GDOPModel(BaseModel):
         idx = len(self.states)
         self.states.append(Variable(name or f"x{idx}", lb, ub, start, nominal, start, final))
         self.dynamics.append(None)
-        return Expr.variable("z", idx, mr_node=VarNode("xf", idx))
+        return Expr.variable("z", idx, mr_group="xf", mr_idx=idx)
 
     def initial(self, var: Expr) -> Expr:
-        node = var.mr_node
-        if node is None:
-            raise ValueError("Expression has no boundary representation")
-        if not isinstance(node, VarNode) or node.group not in {"xf", "uf"}:
+        symbol = var.mr_symbol
+        if symbol is None or symbol.group not in {"xf", "uf"}:
             raise ValueError("initial() currently expects a single state/control variable")
-        group = "x0" if node.group == "xf" else "u0"
-        return Expr(None, VarNode(group, int(node.index)))
+        group = "x0" if symbol.group == "xf" else "u0"
+        return Expr.variable(group, int(symbol.index))
 
     def add_control(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> Expr:
         idx = len(self.controls)
         z_idx = self.x_size + idx
         self.controls.append(Variable(name or f"u{idx}", lb, ub, guess, nominal))
-        return Expr.variable("z", z_idx, mr_node=VarNode("uf", idx))
+        return Expr.variable("z", z_idx, mr_group="uf", mr_idx=idx)
 
     def add_parameter(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> Expr:
         idx = len(self.parameters)
         z_idx = self.x_size + self.u_size + idx
         self.parameters.append(Variable(name or f"p{idx}", lb, ub, guess, nominal))
-        return Expr.variable("z", z_idx, mr_node=VarNode("p", idx))
+        return Expr.variable("z", z_idx, mr_group="p", mr_idx=idx)
 
     def add_runtime_parameter(self, name: str, value: float) -> Expr:
         idx = len(self.runtime_parameters)
@@ -155,21 +152,21 @@ class GDOPModel(BaseModel):
 
     @property
     def time(self) -> Expr:
-        return Expr(VarNode("tau", 0), None)
+        return Expr.variable("tau", 0)
 
     @property
     def t0(self) -> Expr:
-        return Expr(None, VarNode("t0", 0))
+        return Expr.variable("t0", 0)
 
     @property
     def tf(self) -> Expr:
-        return Expr(None, VarNode("tf", 0))
+        return Expr.variable("tf", 0)
 
     def set_dynamics(self, state: Expr, rhs: object) -> None:
-        node = state.lfg_node
-        if not isinstance(node, VarNode) or node.group != "z":
+        symbol = state.symbol
+        if symbol is None or symbol.group != "z":
             raise ValueError("set_dynamics expects a state variable returned by add_state")
-        idx = int(node.index)
+        idx = int(symbol.index)
         if idx >= self.x_size:
             raise ValueError("set_dynamics expects a state variable")
         self.dynamics[idx] = as_expr(rhs)
@@ -313,20 +310,17 @@ class GDOPModel(BaseModel):
         }
         return offsets[group] + (0 if group in {"t0", "tf"} else idx)
 
-    def _map_mr_variable(self, group: str, idx: int) -> object | None:
+    def _map_mr_variable(self, group: str, idx: int) -> tuple[str, int] | None:
         if group == "rp":
             return None
         if group in {"x0", "u0", "xf", "uf", "p", "t0", "tf"}:
-            return VarNode("b", self._mr_offset(group, idx))
+            return ("b", self._mr_offset(group, idx))
         raise ValueError(f"Unsupported GDOP boundary variable group {group!r}")
 
     def _resolve_mr_expr(self, expr: Expr | None) -> Expr | None:
         if expr is None:
             return None
-        lowered = remap_expression_node(expr.mr_node, self._map_mr_variable)
-        if lowered is None:
-            raise ValueError("Boundary/Mayer expression cannot be represented in GDOP boundary variables")
-        return Expr(lowered, lowered)
+        return expr.remap_mr(self._map_mr_variable)
 
     def _emit_ad(self) -> dict[str, str | list[tuple[int, int]]]:
         lfg_outputs = []

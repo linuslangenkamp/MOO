@@ -55,7 +55,17 @@ def build_graph_function(
     builder = ad.GraphFunctionBuilder()
     x = builder.inputs(input_name, input_size)
     param_vectors = {name: builder.params(name, size) for name, size in params}
-    compiler = GraphExpressionEmitter(builder, {input_name: x, **param_vectors})
+    return build_graph_function_from_builder(builder, input_name, x, outputs, param_vectors)
+
+
+def build_graph_function_from_builder(
+    builder: object,
+    input_name: str,
+    input_vector: object,
+    outputs: list[object],
+    param_vectors: dict[str, object],
+) -> BuiltGraphFunction:
+    compiler = GraphExpressionEmitter(builder, {input_name: input_vector, **param_vectors})
 
     out = []
     vector_out = None
@@ -77,8 +87,9 @@ def build_graph_function(
             if not sources:
                 sources.add("native_constant")
 
-    source_summary = "native_expr" if sources and sources <= {"native_expr", "native_vector_expr", "native_constant", "empty"} else "unknown"
-    fn = builder.function(x, vector_out if vector_out is not None else builder.vector(out), list(param_vectors.values()))
+    native_sources = {"native_expr", "native_vector_expr", "native_backend_scalar", "native_backend_vector", "native_constant", "empty"}
+    source_summary = "native_expr" if sources and sources <= native_sources else "unknown"
+    fn = builder.function(input_vector, vector_out if vector_out is not None else builder.vector(out), list(param_vectors.values()))
     return BuiltGraphFunction(
         function=fn,
         report={
@@ -92,16 +103,7 @@ def build_graph_function(
     )
 
 
-def emit_function(
-    input_name: str,
-    input_size: int,
-    outputs: list[object],
-    params: list[tuple[str, int]],
-    value_name: str,
-    jvp_name: str,
-    hvp_name: str,
-) -> EmittedFunction:
-    built = build_graph_function(input_name, input_size, outputs, params)
+def _emit_built_function(built: BuiltGraphFunction, input_name: str, value_name: str, jvp_name: str, hvp_name: str) -> EmittedFunction:
     fn = built.function
     plan = fn.exact_derivative_plan(input_name, "v", "lambda")
     jvp = plan["jvp"]
@@ -131,6 +133,33 @@ def emit_function(
         hes_colors=hes_colors,
         report=report,
     )
+
+
+def emit_function_from_builder(
+    builder: object,
+    input_name: str,
+    input_vector: object,
+    outputs: list[object],
+    param_vectors: dict[str, object],
+    value_name: str,
+    jvp_name: str,
+    hvp_name: str,
+) -> EmittedFunction:
+    built = build_graph_function_from_builder(builder, input_name, input_vector, outputs, param_vectors)
+    return _emit_built_function(built, input_name, value_name, jvp_name, hvp_name)
+
+
+def emit_function(
+    input_name: str,
+    input_size: int,
+    outputs: list[object],
+    params: list[tuple[str, int]],
+    value_name: str,
+    jvp_name: str,
+    hvp_name: str,
+) -> EmittedFunction:
+    built = build_graph_function(input_name, input_size, outputs, params)
+    return _emit_built_function(built, input_name, value_name, jvp_name, hvp_name)
 
 
 def emit_value_function(
