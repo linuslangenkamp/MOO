@@ -1045,7 +1045,7 @@ int main_{self.name}(int argc, char** argv) {{
                 jac_lines.append("    }")
                 g_buf_cursor += block.count * len(local.jac_sparsity)
 
-        hes_lines = [f"    for (int i = 0; i < HES_SIZE; ++i) {{ out[i] = 0.0; }}", f"    f64 seed[{local_seed_size}] = {{0}};"]
+        hes_lines = [f"    for (int i = 0; i < HES_SIZE; ++i) {{ out[i] = 0.0; }}"]
         if scalar is not None and scalar.hes_sparsity:
             scalar_hbuf = []
             for row, col in scalar.hes_sparsity:
@@ -1063,8 +1063,9 @@ int main_{self.name}(int argc, char** argv) {{
         for idx, (block, local) in enumerate(local_objectives):
             if not local.hes_sparsity:
                 continue
-            hes_lines.append("    seed[0] = obj_factor;")
             hes_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
+            hes_lines.append(f"        f64 seed[{local_seed_size}] = {{0}};")
+            hes_lines.append("        seed[0] = obj_factor;")
             hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
             hes_lines.extend(gather_lines(block, "        ", f"obj_hes_{idx}"))
             if local.hes_mode == "direct":
@@ -1079,17 +1080,18 @@ int main_{self.name}(int argc, char** argv) {{
         for idx, (block, local) in enumerate(local_constraints):
             if local.hes_sparsity:
                 hes_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
+                hes_lines.append(f"        f64 seed[{local_seed_size}] = {{0}};")
                 hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
                 hes_lines.extend(gather_lines(block, "        ", f"g_hes_{idx}"))
                 hbuf = hes_buf_table(block, local)
                 hes_lines.append(static_int_array(f"g_{idx}_hbuf", hbuf, "        "))
-                for local_row in range(block.output_size):
-                    hes_lines.append(f"        for (int seed_i = 0; seed_i < {block.output_size}; ++seed_i) {{ seed[seed_i] = 0.0; }}")
-                    hes_lines.append(f"        seed[{local_row}] = lambda[{g_base} + rep * {block.output_size} + {local_row}];")
-                    if local.hes_mode == "direct":
-                        hes_lines.extend(render_local_direct_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, f"g_{idx}_hbuf", f"tmp_{local_row}", "        "))
-                    else:
-                        hes_lines.extend(render_local_colored_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, local.hes_colors, block.local_size, hbuf, "        ", hbuf_name=f"g_{idx}_hbuf"))
+                hes_lines.append(f"        for (int seed_i = 0; seed_i < {block.output_size}; ++seed_i) {{")
+                hes_lines.append(f"            seed[seed_i] = lambda[{g_base} + rep * {block.output_size} + seed_i];")
+                hes_lines.append("        }")
+                if local.hes_mode == "direct":
+                    hes_lines.extend(render_local_direct_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, f"g_{idx}_hbuf", "tmp_h", "        "))
+                else:
+                    hes_lines.extend(render_local_colored_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, local.hes_colors, block.local_size, hbuf, "        ", hbuf_name=f"g_{idx}_hbuf"))
                 hes_lines.append("    }")
             g_base += block.count * block.output_size
 

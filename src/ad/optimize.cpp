@@ -162,6 +162,26 @@ Expr OptimizingBuilder::mul(Expr x, Expr y) {
             return neg(x);
         }
     }
+    if (is_const(x, &cx)) {
+        const auto &ny = g.nodes[y.id];
+        double nested_const;
+        if (ny.op == Op::Mul && is_const(Expr(&g, ny.a), &nested_const)) {
+            return mul(constant(cx * nested_const), Expr(&g, ny.b));
+        }
+        if (ny.op == Op::Mul && is_const(Expr(&g, ny.b), &nested_const)) {
+            return mul(constant(cx * nested_const), Expr(&g, ny.a));
+        }
+    }
+    if (is_const(y, &cy)) {
+        const auto &nx = g.nodes[x.id];
+        double nested_const;
+        if (nx.op == Op::Mul && is_const(Expr(&g, nx.a), &nested_const)) {
+            return mul(constant(cy * nested_const), Expr(&g, nx.b));
+        }
+        if (nx.op == Op::Mul && is_const(Expr(&g, nx.b), &nested_const)) {
+            return mul(constant(cy * nested_const), Expr(&g, nx.a));
+        }
+    }
     Node n;
     n.op = Op::Mul;
     n.a = x.id;
@@ -179,6 +199,33 @@ Expr OptimizingBuilder::div(Expr x, Expr y) {
     }
     if (is_const(y, &cy) && exactly(cy, 1.0)) {
         return x;
+    }
+    const auto &nx = g.nodes[x.id];
+    const auto &ny = g.nodes[y.id];
+    if (ny.op == Op::Mul) {
+        if (x.id == ny.a) {
+            return div(constant(1.0), Expr(&g, ny.b));
+        }
+        if (x.id == ny.b) {
+            return div(constant(1.0), Expr(&g, ny.a));
+        }
+    }
+    if (nx.op == Op::Mul && ny.op == Op::Mul) {
+        if (nx.a == ny.a) {
+            return div(Expr(&g, nx.b), Expr(&g, ny.b));
+        }
+        if (nx.a == ny.b) {
+            return div(Expr(&g, nx.b), Expr(&g, ny.a));
+        }
+        if (nx.b == ny.a) {
+            return div(Expr(&g, nx.a), Expr(&g, ny.b));
+        }
+        if (nx.b == ny.b) {
+            return div(Expr(&g, nx.a), Expr(&g, ny.a));
+        }
+    }
+    if (is_const(y, &cy)) {
+        return mul(x, constant(1.0 / cy));
     }
     Node n;
     n.op = Op::Div;

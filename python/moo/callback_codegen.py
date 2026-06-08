@@ -200,34 +200,47 @@ def render_local_colored_jac_lines(
 
 
 def render_local_direct_objective_jac_lines(fn: str, pairs: list[tuple[int, int]], jbuf_name: str, indent: str) -> list[str]:
+    if not pairs:
+        return []
     lines = [
         f"{indent}f64 tmp[{max(len(pairs), 1)}];",
         f"{indent}{fn}_sparse(xl, rp, tmp);",
     ]
-    for local_buf, (row, _) in enumerate(pairs):
-        if row == 0:
-            lines.append(f"{indent}out[{jbuf_name}[rep * {len(pairs)} + {local_buf}]] += tmp[{local_buf}];")
+    if all(row == 0 for row, _ in pairs):
+        lines.extend([
+            f"{indent}for (int local_buf = 0; local_buf < {len(pairs)}; ++local_buf) {{",
+            f"{indent}    out[{jbuf_name}[rep * {len(pairs)} + local_buf]] += tmp[local_buf];",
+            f"{indent}}}",
+        ])
+    else:
+        for local_buf, (row, _) in enumerate(pairs):
+            if row == 0:
+                lines.append(f"{indent}out[{jbuf_name}[rep * {len(pairs)} + {local_buf}]] += tmp[{local_buf}];")
     return lines
 
 
 def render_local_direct_constraint_jac_lines(fn: str, pairs: list[tuple[int, int]], base_buf: int, indent: str) -> list[str]:
-    lines = [
+    if not pairs:
+        return []
+    return [
         f"{indent}f64 tmp[{max(len(pairs), 1)}];",
         f"{indent}{fn}_sparse(xl, rp, tmp);",
+        f"{indent}for (int local_buf = 0; local_buf < {len(pairs)}; ++local_buf) {{",
+        f"{indent}    out[{base_buf} + rep * {len(pairs)} + local_buf] = tmp[local_buf];",
+        f"{indent}}}",
     ]
-    for local_buf, _ in enumerate(pairs):
-        lines.append(f"{indent}out[{base_buf} + rep * {len(pairs)} + {local_buf}] = tmp[{local_buf}];")
-    return lines
 
 
 def render_local_direct_hes_lines(fn: str, pairs: list[tuple[int, int]], hbuf_name: str, tmp_name: str, indent: str) -> list[str]:
-    lines = [
+    if not pairs:
+        return []
+    return [
         f"{indent}f64 {tmp_name}[{max(len(pairs), 1)}];",
         f"{indent}{fn}_sparse(xl, seed, rp, {tmp_name});",
+        f"{indent}for (int local_buf = 0; local_buf < {len(pairs)}; ++local_buf) {{",
+        f"{indent}    out[{hbuf_name}[rep * {len(pairs)} + local_buf]] += {tmp_name}[local_buf];",
+        f"{indent}}}",
     ]
-    for local_buf, _ in enumerate(pairs):
-        lines.append(f"{indent}out[{hbuf_name}[rep * {len(pairs)} + {local_buf}]] += {tmp_name}[{local_buf}];")
-    return lines
 
 
 def render_local_colored_hes_lines(

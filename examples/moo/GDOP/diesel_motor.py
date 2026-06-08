@@ -161,8 +161,8 @@ def build_model(name: str = "DieselMotor"):
     model.add_mayer(mayer(w_ice, p_im, p_em, w_tc))
     model.add_lagrange(diesel_terms(w_ice, p_im, p_em, w_tc, u_f, u_wg)["dot_m_f"])
     model.set_time_fixed(t0=0.0, tf=0.5)
-    model.mesh(intervals=50, nodes=3)
-    model.mesh_refinement(2, 5)
+    model.mesh(intervals=100, nodes=3)
+    model.mesh_refinement(0, 0)
     model.solver(tolerance=1e-12)
     return model
 
