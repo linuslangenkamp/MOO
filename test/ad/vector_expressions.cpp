@@ -111,6 +111,54 @@ int main() {
         return 1;
     }
 
+    auto MixedVJP = reverse_diff(F, "lambda", "x");
+    if (!MixedVJP.has_vector_structure()) {
+        std::cerr << "mixed vector VJP did not preserve vector structure\n";
+        return 1;
+    }
+    double mixed_lambda[2] = {5.0, 7.0};
+    double mixed_grad[4] = {0.0, 0.0, 0.0, 0.0};
+    VM(MixedVJP).evaluate(EvalEnv().input("x", xv).param("u", uv).param("lambda", mixed_lambda), mixed_grad);
+    if (!near(mixed_grad[0], 26.0) || !near(mixed_grad[1], 38.0) || !near(mixed_grad[2], 15.0) || !near(mixed_grad[3], 3.5)) {
+        std::cerr << "unexpected mixed vector VJP: " << mixed_grad[0] << ", " << mixed_grad[1] << ", " << mixed_grad[2] << ", " << mixed_grad[3] << "\n";
+        return 1;
+    }
+    auto MixedHVP = forward_diff(MixedVJP, "x", "v");
+    if (!MixedHVP.has_vector_structure()) {
+        std::cerr << "mixed vector HVP did not preserve vector structure\n";
+        return 1;
+    }
+    double mixed_hvp[4] = {0.0, 0.0, 0.0, 0.0};
+    VM(MixedHVP).evaluate(EvalEnv().input("x", xv).param("u", uv).param("lambda", mixed_lambda).param("v", vv), mixed_hvp);
+    if (!near(mixed_hvp[0], 0.0) || !near(mixed_hvp[1], 0.0) || !near(mixed_hvp[2], 7.5) || !near(mixed_hvp[3], 0.0)) {
+        std::cerr << "unexpected mixed vector HVP: " << mixed_hvp[0] << ", " << mixed_hvp[1] << ", " << mixed_hvp[2] << ", " << mixed_hvp[3] << "\n";
+        return 1;
+    }
+
+    GraphFunctionBuilder coll_builder;
+    auto cx = coll_builder.inputs("x", 3);
+    DenseMatrix CD(3, 3, {1.0, -2.0, 0.5, 0.0, 3.0, 4.0, -1.0, 0.0, 2.0});
+    auto lin = coll_builder.dense_matvec(CD, cx);
+    auto rhs = coll_builder.vector({coll_builder.at(cx, 0) * coll_builder.at(cx, 0), sin(coll_builder.at(cx, 1)), coll_builder.at(cx, 2)});
+    auto CF = coll_builder.function(cx, coll_builder.sub(lin, coll_builder.scale(0.25, rhs)));
+    auto CVJP = reverse_diff(CF, "lambda", "x");
+    if (!CVJP.has_vector_structure()) {
+        std::cerr << "collocation-like VJP did not preserve vector structure\n";
+        return 1;
+    }
+    bool coll_vjp_saw_dense = false;
+    for (const auto &node : CVJP.vector_nodes) {
+        coll_vjp_saw_dense = coll_vjp_saw_dense || node.op == VectorOp::DenseMatVec;
+    }
+    if (!coll_vjp_saw_dense) {
+        std::cerr << "collocation-like VJP did not keep dense transpose structured\n";
+        return 1;
+    }
+    auto CHVP = forward_diff(CVJP, "x", "v");
+    if (!CHVP.has_vector_structure()) {
+        std::cerr << "collocation-like HVP did not preserve vector structure\n";
+        return 1;
+    }
     GraphFunctionBuilder vjp_builder;
     auto vx = vjp_builder.inputs("x", 2);
     DenseMatrix A(2, 2, {1.0, 2.0, 3.0, 4.0});
@@ -247,7 +295,6 @@ int main() {
         std::cerr << "linear sparse matvec HVP produced nonzero Hessian sparsity\n";
         return 1;
     }
-
     GraphFunctionBuilder kron_builder;
     auto kx = kron_builder.inputs("x", 6);
     DenseMatrix K(2, 3, {1.0, 2.0, 0.0, -1.0, 0.0, 4.0});
@@ -308,6 +355,5 @@ int main() {
         std::cerr << "unexpected kron-eye matvec VJP: " << kgout[0] << ", " << kgout[1] << ", " << kgout[2] << ", " << kgout[3] << ", " << kgout[4] << ", " << kgout[5] << "\n";
         return 1;
     }
-
     return 0;
 }

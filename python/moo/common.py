@@ -14,7 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
@@ -124,20 +124,8 @@ class SolverMixin:
 
 
 def select_derivative_callback_mode(strategy: str, pairs: Iterable[tuple[int, int]], colors: list[int]) -> str:
-    sparse_pairs = list(pairs)
-    if not sparse_pairs:
-        return "direct"
-    if strategy == "direct":
-        return "direct"
+    _ = (pairs, colors)
     if strategy == "colored":
-        return "colored"
-
-    used_colors = {
-        colors[col]
-        for _, col in sparse_pairs
-        if 0 <= col < len(colors) and colors[col] >= 0
-    }
-    if len(sparse_pairs) >= 256 and 0 < 4 * len(used_colors) < len(sparse_pairs):
         return "colored"
     return "direct"
 

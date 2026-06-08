@@ -14,12 +14,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Lesser General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-
-// TODO: make scaling accept NLP, only call after init x has been set?
-//       => create more sophisticated scalings : `https://elib.dlr.de/93327/1/Performance_analysis_of_linear_and_nonlinear_techniques.pdf`
 
 #include "nlp.h"
 

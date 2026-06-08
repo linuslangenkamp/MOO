@@ -14,7 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Lesser General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
@@ -77,7 +77,6 @@ SparseDerivativePlan derivative_plan(int column_count, const std::vector<std::pa
     if (pattern.empty()) {
         plan.column_color.assign(static_cast<std::size_t>(std::max(column_count, 0)), -1);
         plan.color_count = 0;
-        plan.strategy = "direct";
         return plan;
     }
     plan.column_color = greedy_column_coloring(column_count, pattern);
@@ -85,7 +84,6 @@ SparseDerivativePlan derivative_plan(int column_count, const std::vector<std::pa
     for (int c : plan.column_color) {
         plan.color_count = std::max(plan.color_count, c + 1);
     }
-    plan.strategy = (plan.color_count > 0 && plan.color_count < static_cast<int>(pattern.size())) ? "direct" : "direct";
     return plan;
 }
 

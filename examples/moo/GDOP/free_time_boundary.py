@@ -14,7 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
@@ -24,28 +24,23 @@ from moo import gdop_model
 
 
 def build_model():
-    model = gdop_model("free_time_codegen")
-    x = model.add_state("x", start=1.0, final=0.0)
-    u = model.add_control("u", lb=-1.0, ub=1.0)
-    p = model.add_parameter("p", lb=0.0, ub=2.0)
+    model = gdop_model("free_time_boundary_codegen")
+    x = model.add_state("x", start=0.0, final=0.0)
 
     model.set_time_free(
-        t0_guess=0.0,
-        tf_guess=2.0,
-        t0_bounds=(0.0, 0.0),
-        tf_bounds=(0.0, 1.0),
+        t0_bounds=(0.0, 2.0),
+        tf_bounds=(2.0, 8.0),
     )
-    model.mesh(intervals=25, nodes=3)
+    model.mesh(intervals=10, nodes=3)
 
-    model.set_dynamics(x, -x**2 - p * u)
-    model.add_lagrange(u**2)
-    model.add_mayer(model.tf)
-    model.solver(tolerance=1e-12)
+    model.set_dynamics(x, 0.0)
+    model.add_boundary((model.tf - model.t0) - 2.0, eq=0.0)
+    model.add_mayer((model.t0 - 1.0) * (model.t0 - 1.0) + (model.tf - 3.0) * (model.tf - 3.0))
+    model.solver(tolerance=1e-12, derivative_test=True)
     return model
 
 
 if __name__ == "__main__":
-    out = Path("build/moo/free_time")
-    result = build_model().run(out)
-    result.result.plot.all(save=out / "solution.png", nodestyle="+", linestyle="")
+    out = Path("build/moo/free_time_boundary")
+    result = build_model().run(out, solver="Ipopt")
     raise SystemExit(result.returncode)

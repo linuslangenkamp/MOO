@@ -14,33 +14,38 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
 from pathlib import Path
 
-from moo import init_model
+from moo import gdop_model
 
 
 def build_model():
-    model = init_model("init_simple_codegen")
-    y = model.add_variable("y", guess=0.0)
-    p = model.add_parameter("p", lb=0.0, ub=5.0, base=1.0)
-    dp = model.delta(p)
+    model = gdop_model("free_time_codegen")
+    x = model.add_state("x", start=1.0, final=0.0)
+    u = model.add_control("u", lb=-1.0, ub=1.0)
+    p = model.add_parameter("p", lb=0.0, ub=2.0)
 
-    model.add_f(y**2 + p - 0.5)
-    model.add_g(y - p, lb=0.0)
-    model.set_objective(dp * dp)
+    model.set_time_free(
+        t0_guess=0.0,
+        tf_guess=2.0,
+        t0_bounds=(0.0, 0.0),
+        tf_bounds=(0.0, 1.0),
+    )
+    model.mesh(intervals=25, nodes=3)
 
-    model.solver(backend="Ipopt", tolerance=1e-10, derivative_test=True, qp=True)
-
+    model.set_dynamics(x, -x**2 - p * u)
+    model.add_lagrange(u**2)
+    model.add_mayer(model.tf)
+    model.solver(tolerance=1e-12)
     return model
 
 
 if __name__ == "__main__":
-    out = Path("build/moo/init_simple")
+    out = Path("build/moo/free_time")
     result = build_model().run(out)
-    print(result.result.variables, flush=True)
-    print(result.result.parameters, flush=True)
+    result.result.plot.all(save=out / "solution.png", nodestyle="+", linestyle="")
     raise SystemExit(result.returncode)

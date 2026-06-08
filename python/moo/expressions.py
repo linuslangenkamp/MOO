@@ -9,6 +9,14 @@
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
 from __future__ import annotations
 
@@ -332,6 +340,7 @@ class VectorExpr:
         self.values = [as_expr(value) for value in values]
         self.graph_vector = graph_vector
         self._vector_build = vector_build
+        self._build_cache: dict[int, object] = {}
 
     def __len__(self) -> int:
         return len(self.values)
@@ -352,9 +361,15 @@ class VectorExpr:
     def build_graph_vector(self, ctx: GraphBuildContext):
         if self.graph_vector is not None:
             return self.graph_vector
+        cache_key = id(ctx)
+        if cache_key in self._build_cache:
+            return self._build_cache[cache_key]
         if self._vector_build is not None:
-            return self._vector_build(ctx)
-        return ctx.vector([value.build_graph(ctx) for value in self.values])
+            result = self._vector_build(ctx)
+        else:
+            result = ctx.vector([value.build_graph(ctx) for value in self.values])
+        self._build_cache[cache_key] = result
+        return result
 
     def block(self, index: int, size: int) -> "VectorExpr":
         if size <= 0:

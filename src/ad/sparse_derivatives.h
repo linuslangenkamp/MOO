@@ -14,7 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Lesser General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
@@ -29,7 +29,6 @@ struct SparseDerivativePlan {
     std::vector<std::pair<int, int>> pattern;
     std::vector<int> column_color;
     int color_count = 0;
-    std::string strategy = "direct";
 };
 
 std::vector<int> greedy_column_coloring(int column_count, const std::vector<std::pair<int, int>> &pattern);

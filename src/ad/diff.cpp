@@ -14,7 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
+// You should have received a copy of the GNU Lesser General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
@@ -169,6 +169,107 @@ bool direct_values_group(const GraphFunction &f, const FunctionVectorNode &node,
         }
     }
     return true;
+}
+
+std::vector<Expr> scalar_vjp_for_values(const GraphFunction &f,
+                                        OptimizingBuilder &b,
+                                        const std::vector<Expr> &primal,
+                                        const std::vector<NodeId> &values,
+                                        const std::vector<Expr> &seeds,
+                                        const std::string &wrt_input_name) {
+    if (values.size() != seeds.size()) {
+        throw std::runtime_error("scalar_vjp_for_values: value and seed sizes must match");
+    }
+
+    auto zero = b.constant(0.0);
+    std::vector<std::vector<Expr>> adj_terms(f.graph.nodes.size());
+    auto add_adj = [&](NodeId id, Expr term) {
+        if (id >= 0) {
+            adj_terms[static_cast<std::size_t>(id)].push_back(term);
+        }
+    };
+    auto sum_terms = [&](const std::vector<Expr> &terms) -> Expr {
+        if (terms.empty()) {
+            return zero;
+        }
+        Expr s = terms[0];
+        for (std::size_t i = 1; i < terms.size(); ++i) {
+            s = b.add(s, terms[i]);
+        }
+        return s;
+    };
+
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        add_adj(values[i], seeds[i]);
+    }
+
+    for (NodeId i = static_cast<NodeId>(f.graph.nodes.size()) - 1; i >= 0; --i) {
+        if (adj_terms[static_cast<std::size_t>(i)].empty()) {
+            if (i == 0) {
+                break;
+            }
+            continue;
+        }
+        const auto &n = f.graph.nodes[static_cast<std::size_t>(i)];
+        Expr adj = sum_terms(adj_terms[static_cast<std::size_t>(i)]);
+        switch (n.op) {
+            case Op::Constant:
+            case Op::Input:
+            case Op::Param:
+                break;
+            case Op::Add:
+                add_adj(n.a, adj);
+                add_adj(n.b, adj);
+                break;
+            case Op::Sub:
+                add_adj(n.a, adj);
+                add_adj(n.b, b.neg(adj));
+                break;
+            case Op::Mul:
+                add_adj(n.a, b.mul(adj, primal[static_cast<std::size_t>(n.b)]));
+                add_adj(n.b, b.mul(adj, primal[static_cast<std::size_t>(n.a)]));
+                break;
+            case Op::Div:
+                add_adj(n.a, b.div(adj, primal[static_cast<std::size_t>(n.b)]));
+                add_adj(n.b, b.neg(b.div(b.mul(adj, primal[static_cast<std::size_t>(n.a)]),
+                                         b.mul(primal[static_cast<std::size_t>(n.b)], primal[static_cast<std::size_t>(n.b)]))));
+                break;
+            case Op::Neg:
+                add_adj(n.a, b.neg(adj));
+                break;
+            case Op::Sin:
+                add_adj(n.a, b.mul(adj, b.unary(Op::Cos, primal[static_cast<std::size_t>(n.a)])));
+                break;
+            case Op::Cos:
+                add_adj(n.a, b.neg(b.mul(adj, b.unary(Op::Sin, primal[static_cast<std::size_t>(n.a)]))));
+                break;
+            case Op::Tan:
+                add_adj(n.a, b.mul(adj, b.add(b.constant(1.0), b.mul(primal[static_cast<std::size_t>(i)], primal[static_cast<std::size_t>(i)]))));
+                break;
+            case Op::Exp:
+                add_adj(n.a, b.mul(adj, primal[static_cast<std::size_t>(i)]));
+                break;
+            case Op::Log:
+                add_adj(n.a, b.div(adj, primal[static_cast<std::size_t>(n.a)]));
+                break;
+            case Op::PowConst:
+                add_adj(n.a, b.mul(adj, b.mul(b.constant(n.value), b.pow_const(primal[static_cast<std::size_t>(n.a)], n.value - 1.0))));
+                break;
+        }
+        if (i == 0) {
+            break;
+        }
+    }
+
+    std::vector<Expr> out;
+    out.reserve(static_cast<std::size_t>(input_group_size(f, wrt_input_name)));
+    for (auto id : f.inputs) {
+        const auto &n = f.graph.nodes[static_cast<std::size_t>(id)];
+        if (n.op == Op::Input && n.name == wrt_input_name) {
+            out.push_back(sum_terms(adj_terms[static_cast<std::size_t>(id)]));
+        }
+    }
+    return out;
 }
 
 struct ReverseVectorBuilder {
@@ -375,7 +476,11 @@ struct ReverseVectorOutput {
     std::vector<FunctionVectorNode> nodes;
 };
 
-ReverseVectorOutput reverse_vector_output(const GraphFunction &f, OptimizingBuilder &builder, const std::string &lambda_name, const std::string &wrt_input_name) {
+ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
+                                          OptimizingBuilder &builder,
+                                          const std::vector<Expr> &primal,
+                                          const std::string &lambda_name,
+                                          const std::string &wrt_input_name) {
     ReverseVectorOutput result;
     if (!f.has_vector_structure()) {
         return result;
@@ -404,13 +509,25 @@ ReverseVectorOutput reverse_vector_output(const GraphFunction &f, OptimizingBuil
             continue;
         }
         const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+        for (int term : adj_terms[static_cast<std::size_t>(vector_id)]) {
+            if (vb.nodes[static_cast<std::size_t>(term)].size != node.size) {
+                throw std::runtime_error("reverse vector adjoint size mismatch at vector node " + std::to_string(vector_id) + ": node size " + std::to_string(node.size) +
+                                         ", adjoint size " + std::to_string(vb.nodes[static_cast<std::size_t>(term)].size));
+            }
+        }
         int adj = vb.combine(adj_terms[static_cast<std::size_t>(vector_id)]);
         switch (node.op) {
             case VectorOp::Values:
-                if (direct_values_group(f, node, Op::Input, wrt_input_name)) {
+                if (direct_values_group(f, node, Op::Input, wrt_input_name) && node.size == input_group_size(f, wrt_input_name)) {
                     wrt_output = wrt_output < 0 ? adj : vb.add_add(wrt_output, adj);
                 } else if (!node.is_input_group && !node.is_param_group) {
-                    ok = false;
+                    auto scalar_grad = scalar_vjp_for_values(f, builder, primal, node.values, vb.lower(adj), wrt_input_name);
+                    if (static_cast<int>(scalar_grad.size()) != input_group_size(f, wrt_input_name)) {
+                        ok = false;
+                    } else {
+                        int scalar_adj = vb.add_values(scalar_grad);
+                        wrt_output = wrt_output < 0 ? scalar_adj : vb.add_add(wrt_output, scalar_adj);
+                    }
                 }
                 break;
             case VectorOp::Add:
@@ -677,7 +794,7 @@ GraphFunction reverse_diff(const GraphFunction &f, const std::string &lambda_nam
             out.outputs.push_back(sum_terms(adj_terms[id]).id);
         }
     }
-    auto vector_output = reverse_vector_output(f, b, lambda_name, wrt_input_name);
+    auto vector_output = reverse_vector_output(f, b, primal, lambda_name, wrt_input_name);
     if (vector_output.output >= 0) {
         out.vector_nodes = std::move(vector_output.nodes);
         out.output_vector = vector_output.output;

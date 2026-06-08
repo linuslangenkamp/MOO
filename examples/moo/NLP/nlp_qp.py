@@ -14,29 +14,28 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
 from pathlib import Path
 
-from moo import gdop_model
+from moo import nlp_model
 
 
 def build_model():
-    model = gdop_model("linear_gdop_codegen")
-    x = model.add_state("x", start=0.0, final=1.0)
-    u = model.add_control("u", lb=0.0)
+    model = nlp_model("nlp_qp_codegen")
+    x = model.add_variable("x", lb=-10.0, ub=10.0, guess=1.0)
+    y = model.add_variable("y", lb=-10.0, ub=10.0, guess=1.0)
 
-    model.set_time_fixed(t0=0.0, tf=1.0)
-    model.mesh(intervals=25, nodes=3)
-    model.set_dynamics(x, x + u)
-    model.add_lagrange(-2.0 * x + u)
-    model.solver(tolerance=1e-12, derivative_test=True)
+    model.minimize((x - 1.0) ** 2 + (y - 2.0) ** 2)
+    model.add_constraint(x + y, eq=2.0, name="sum")
+    model.solver(backend="Uno", tolerance=1e-12, derivative_test=True)
     return model
 
 
 if __name__ == "__main__":
-    out = Path("build/moo/linear_gdop")
+    out = Path("build/moo/nlp_qp")
     result = build_model().run(out, solver="Ipopt")
+    print(result.result.variables, flush=True)
     raise SystemExit(result.returncode)

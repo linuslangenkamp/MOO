@@ -14,7 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
@@ -24,31 +24,19 @@ from moo import gdop_model
 
 
 def build_model():
-    model = gdop_model("representative_codegen")
+    model = gdop_model("linear_gdop_codegen")
+    x = model.add_state("x", start=0.0, final=1.0)
+    u = model.add_control("u", lb=0.0)
 
-    gain = model.add_runtime_parameter("gain", 2.0)
-    x = model.add_state("x", start=1.0, final=0.0)
-    y = model.add_state("y", start=0.0)
-    u = model.add_control("u")
-    v = model.add_control("v")
-    p = model.add_parameter("p", lb=0.0, ub=4.0, guess=1.0)
-
-    model.set_time_fixed(tf=1.0)
-    model.mesh(intervals=20, nodes=3)
-
-    model.set_dynamics(x, u)
-    model.set_dynamics(y, p + v)
-
-    model.add_path(v, eq=0.0)
-    model.add_boundary(y - gain, eq=0.0)
-
-    model.add_lagrange((u + 1.0) * (u + 1.0) + v * v + (p - gain) * (p - gain))
-    model.add_mayer((x * x) + ((y - gain) * (y - gain)) + ((p - gain) * (p - gain)))
+    model.set_time_fixed(t0=0.0, tf=1.0)
+    model.mesh(intervals=25, nodes=3)
+    model.set_dynamics(x, x + u)
+    model.add_lagrange(-2.0 * x + u)
     model.solver(tolerance=1e-12, derivative_test=True)
     return model
 
 
 if __name__ == "__main__":
-    out = Path("build/moo/representative")
+    out = Path("build/moo/linear_gdop")
     result = build_model().run(out, solver="Ipopt")
     raise SystemExit(result.returncode)

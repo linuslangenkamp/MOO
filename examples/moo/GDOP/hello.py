@@ -14,7 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
@@ -24,28 +24,19 @@ from moo import gdop_model
 
 
 def build_model():
-    model = gdop_model("BatchReactor")
-    x1 = model.add_state("x1", start=1.0)
-    x2 = model.add_state("x2", start=0.0)
-    u = model.add_control("u", lb=0.0, ub=5.0)
+    model = gdop_model("hello_codegen")
+    x = model.add_state("x", start=1.0, final=0.0)
+    u = model.add_control("u")
 
-    model.set_time_fixed(t0=0.0, tf=1.0)
-    model.mesh(intervals=250, nodes=3)
-
-    model.set_dynamics(x1, -(u + u**2 / 2) * x1)
-    model.set_dynamics(x2, u * x1)
-
-    model.add_mayer(-x2)
-
-    model.mesh_refinement(0, 0)
-
-    model.solver(tolerance=1e-12)
-
+    model.set_time_fixed(tf=1.0)
+    model.mesh(intervals=25, nodes=3)
+    model.set_dynamics(x, x + u)
+    model.add_lagrange(u * u + x * x)
+    model.solver(tolerance=1e-12, derivative_test=True)
     return model
 
 
 if __name__ == "__main__":
-    out = Path("build/moo/batchReactor")
-    result = build_model().run(out)
-    result.result.plot.all(save=out / "solution.png")
+    out = Path("build/moo/hello")
+    result = build_model().run(out, solver="Ipopt")
     raise SystemExit(result.returncode)
