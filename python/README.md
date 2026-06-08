@@ -130,7 +130,6 @@ when the color count is much smaller than the requested sparse buffer.
 model.codegen("auto")     # choose direct or colored derivative callbacks
 model.codegen("direct")   # force direct sparse derivative callbacks
 model.codegen("colored")  # force colored compressed JVP/HVP callbacks
-model.codegen("basis")    # debug fallback using basis directions
 ```
 
 Explicit mapped NLP blocks remain C loops because they are model structure, not
@@ -552,12 +551,12 @@ The AD layer emits:
 
 - value functions;
 - direct sparse Jacobian/Hessian functions by coefficient extraction;
-- JVP and staged HVP functions for colored compressed or debug fallback filling;
+- JVP and staged HVP functions for colored compressed filling;
 - structural sparsity used to allocate C callback buffers.
 
 For direct Hessian callbacks, generated C evaluates only the requested sparse
-Hessian coefficients. For colored or basis callbacks, generated C prepares the
-staged HVP cache once at the fixed primal/lambda point and reuses it for all
+Hessian coefficients. For colored callbacks, generated C prepares the staged
+HVP cache once at the fixed primal/lambda point and reuses it for all
 directions.
 
 ## Low-Level AD Bindings
@@ -607,16 +606,15 @@ lower-level C++ and C interface references.
   `p = 2`.
 - `examples/moo/nlp_qp.py`: minimal standard convex QP.
 - `examples/moo/nlp_sparse_benchmark.py`: sparse NLP code-size comparison for
-  auto, direct sparse, colored compressed, and basis-loop derivative codegen.
+  auto, direct sparse, and colored compressed derivative codegen.
 - `examples/moo/ad_bindings.py`: low-level AD binding demo.
 
 ## Current Scope
 
 This frontend is usable for small and medium generated problems and for
 developing MOO's native AD/codegen path. Sparse Jacobian and Hessian callbacks
-are exact. The default path emits direct sparse derivative graph functions; colored
-compressed callbacks and the old basis-direction fallback are available through
-`model.codegen(...)`.
+are exact. The default path emits direct sparse derivative graph functions;
+colored compressed callbacks are available through `model.codegen(...)`.
 
 External data callbacks, richer solver-specific option objects, and more
 advanced mesh-refinement controls are not yet exposed as high-level Python

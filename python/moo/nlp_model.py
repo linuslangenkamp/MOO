@@ -32,9 +32,8 @@ from typing import Callable, Sequence
 
 from .callback_codegen import (
     color_metadata,
-    render_basis_hvp_fill,
-    render_basis_jvp_fill,
-    render_colored_fill,
+    render_hessian_callback_body,
+    render_jacobian_callback_body,
     render_local_colored_hes_lines,
     render_local_colored_jac_lines,
     static_int_array,
@@ -705,39 +704,32 @@ int main(int argc, char** argv) {{
             emitted.get(key, "")
             for key in sections
         )
-        if jac_mode == "direct":
-            jac_body = "    moo_nlp_jvp_sparse(x, rp, out);"
-        elif jac_mode == "colored":
-            jac_body = f"""    f64 v[X_SIZE] = {{0}};
-    f64 tmp[OUT_SIZE] = {{0}};
-{self._render_colored_jac_fill(jac, emitted.get("JAC_COLORS", []) if isinstance(emitted.get("JAC_COLORS", []), list) else [])}"""
-        else:
-            jac_body = f"""    f64 v[X_SIZE] = {{0}};
-    f64 tmp[OUT_SIZE] = {{0}};
-{self._render_jac_fill(jac)}"""
-        if hes_mode == "direct":
-            hes_body = """    f64 seed[OUT_SIZE] = {0};
+        jac_body = render_jacobian_callback_body(
+            jac_mode,
+            "moo_nlp_jvp_sparse(x, rp, out);",
+            "X_SIZE",
+            "OUT_SIZE",
+            jac,
+            emitted.get("JAC_COLORS", []) if isinstance(emitted.get("JAC_COLORS", []), list) else [],
+            "moo_nlp_jvp(x, rp, v, tmp);",
+        )
+        hes_body = render_hessian_callback_body(
+            hes_mode,
+            """    f64 seed[OUT_SIZE] = {0};
     seed[0] = obj_factor;
     for (int i = 0; i < G_SIZE; ++i) { seed[1 + i] = lambda[i]; }
-    moo_nlp_hvp_sparse(x, seed, rp, out);"""
-        elif hes_mode == "colored":
-            hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
-    f64 v[X_SIZE] = {{0}};
-    f64 tmp[X_SIZE] = {{0}};
+    moo_nlp_hvp_sparse(x, seed, rp, out);""",
+            "X_SIZE",
+            "X_SIZE",
+            hes,
+            emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [],
+            """    f64 seed[OUT_SIZE] = {0};
     moo_nlp_hvp_cache_t cache;
     seed[0] = obj_factor;
     for (int i = 0; i < G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_nlp_hvp_prepare(x, seed, rp, &cache);
-{self._render_colored_hes_fill(hes, emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [])}"""
-        else:
-            hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
-    f64 v[X_SIZE] = {{0}};
-    f64 tmp[X_SIZE] = {{0}};
-    moo_nlp_hvp_cache_t cache;
-    seed[0] = obj_factor;
-    for (int i = 0; i < G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_nlp_hvp_prepare(x, seed, rp, &cache);
-{self._render_hes_fill(hes)}"""
+    moo_nlp_hvp_prepare(x, seed, rp, &cache);""",
+            "moo_nlp_hvp_apply(&cache, v, tmp);",
+        )
 
         return f"""#include <float.h>
 #include <stdbool.h>
@@ -1102,9 +1094,6 @@ int main_{self.name}(int argc, char** argv) {{
 {main}
 """
 
-    def _render_jac_fill(self, pairs: list[tuple[int, int]]) -> str:
-        return render_basis_jvp_fill(pairs, "moo_nlp_jvp(x, rp, v, tmp);")
-
     def _local_color_metadata(self, pairs: list[tuple[int, int]], colors: list[int]) -> tuple[list[int], list[int], list[int], list[int], list[int]]:
         return color_metadata(pairs, colors)
 
@@ -1129,23 +1118,6 @@ int main_{self.name}(int argc, char** argv) {{
 
     def _render_local_colored_hes_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, hbuf: list[int], indent: str, seed_row: int = 0, hbuf_name: str | None = None) -> list[str]:
         return render_local_colored_hes_lines(fn, local.hes_sparsity, local.hes_colors, block.local_size, hbuf, indent, hbuf_name=hbuf_name)
-
-    def _render_hes_fill(self, pairs: list[tuple[int, int]]) -> str:
-        return render_basis_hvp_fill(pairs, "moo_nlp_hvp_apply(&cache, v, tmp);")
-
-    def _render_colored_jac_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return render_colored_fill(
-            pairs,
-            colors,
-            "moo_nlp_jvp(x, rp, v, tmp);",
-        )
-
-    def _render_colored_hes_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return render_colored_fill(
-            pairs,
-            colors,
-            "moo_nlp_hvp_apply(&cache, v, tmp);",
-        )
 
     def _render_h(self) -> str:
         guard = f"MOO_NLP_CODEGEN_{self.name.upper()}_H"

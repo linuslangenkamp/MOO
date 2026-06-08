@@ -84,8 +84,8 @@ class SolverSettings:
 class SolverMixin:
     def codegen(self, derivative_strategy: str = "auto"):
         strategy = derivative_strategy.strip().lower()
-        if strategy not in {"auto", "direct", "colored", "basis"}:
-            raise ValueError("codegen derivative_strategy must be one of 'auto', 'direct', 'colored', or 'basis'")
+        if strategy not in {"auto", "direct", "colored"}:
+            raise ValueError("codegen derivative_strategy must be one of 'auto', 'direct', or 'colored'")
         self.derivative_strategy = strategy
         return self
 
@@ -127,8 +127,6 @@ def select_derivative_callback_mode(strategy: str, pairs: Iterable[tuple[int, in
     sparse_pairs = list(pairs)
     if not sparse_pairs:
         return "direct"
-    if strategy == "basis":
-        return "basis"
     if strategy == "direct":
         return "direct"
     if strategy == "colored":
@@ -160,4 +158,3 @@ def parse_sparsity_pairs(value: object) -> list[tuple[int, int]]:
             out.append((int(row), int(col)))
         return out
     raise TypeError(f"Cannot parse sparsity pairs from {type(value)!r}")
-

@@ -27,7 +27,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .callback_codegen import render_basis_hvp_fill, render_basis_jvp_fill, render_colored_fill
+from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from .expressions import Expr, SumExpr, VarNode, as_expr, cos, exp, log, pow_const, sin, sum_expr, tan
 from .graph_expression import remap_expression_node
@@ -467,56 +467,52 @@ int main(int argc, char** argv) {{
     return main_{self.name}(argc, argv);
 }}
 """ if standalone_main else ""
-        if lfg_jac_mode == "direct":
-            lfg_jac_body = "    moo_lfg_jvp_sparse(z, globl_rp, tau, out);"
-        elif lfg_jac_mode == "colored":
-            lfg_jac_body = f"""    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[{max(lfg_eval_count, 1)}] = {{0}};
-{self._render_colored_jvp_fill("moo_lfg_jvp", "z", "globl_rp", "tau", lfg_jac, lfg_jac_colors if isinstance(lfg_jac_colors, list) else [])}"""
-        else:
-            lfg_jac_body = f"""    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[{max(lfg_eval_count, 1)}] = {{0}};
-{self._render_jvp_fill("moo_lfg_jvp", "z", "globl_rp", "tau", lfg_jac, lfg_eval_count)}"""
-        if lfg_hes_mode == "direct":
-            lfg_hes_body = f"""    f64 tmp[{max(len(lfg_hes), 1)}] = {{0}};
+        lfg_jac_body = render_jacobian_callback_body(
+            lfg_jac_mode,
+            "moo_lfg_jvp_sparse(z, globl_rp, tau, out);",
+            "Z_SIZE",
+            str(max(lfg_eval_count, 1)),
+            lfg_jac,
+            lfg_jac_colors if isinstance(lfg_jac_colors, list) else [],
+            "moo_lfg_jvp(z, globl_rp, tau, v, tmp);",
+        )
+        lfg_hes_body = render_hessian_callback_body(
+            lfg_hes_mode,
+            f"""    f64 tmp[{max(len(lfg_hes), 1)}] = {{0}};
     moo_lfg_hvp_sparse(z, seed, globl_rp, tau, tmp);
-{self._render_sparse_hes_scatter(lfg_hes, lfg_hes_buf_indices, True)}"""
-        elif lfg_hes_mode == "colored":
-            lfg_hes_body = f"""    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[Z_SIZE] = {{0}};
-    moo_lfg_hvp_cache_t cache;
-    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);
-{self._render_colored_hvp_fill("moo_lfg_hvp", lfg_hes, lfg_hes_buf_indices, lfg_hes_colors if isinstance(lfg_hes_colors, list) else [], True)}"""
-        else:
-            lfg_hes_body = f"""    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[Z_SIZE] = {{0}};
-    moo_lfg_hvp_cache_t cache;
-    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);
-{self._render_hvp_fill("moo_lfg_hvp", "z", "globl_rp", "tau", lfg_hes, lfg_hes_buf_indices, self.z_size, True)}"""
-        if mr_jac_mode == "direct":
-            mr_jac_body = "    moo_mr_jvp_sparse(b, globl_rp, out);"
-        elif mr_jac_mode == "colored":
-            mr_jac_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
-    f64 tmp[{max(mr_eval_count, 1)}] = {{0}};
-{self._render_colored_jvp_fill("moo_mr_jvp", "b", "globl_rp", None, mr_jac, mr_jac_colors if isinstance(mr_jac_colors, list) else [])}"""
-        else:
-            mr_jac_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
-    f64 tmp[{max(mr_eval_count, 1)}] = {{0}};
-{self._render_jvp_fill("moo_mr_jvp", "b", "globl_rp", None, mr_jac, mr_eval_count)}"""
-        if mr_hes_mode == "direct":
-            mr_hes_body = "    moo_mr_hvp_sparse(b, seed, globl_rp, out);"
-        elif mr_hes_mode == "colored":
-            mr_hes_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
-    f64 tmp[{max(self.mr_size, 1)}] = {{0}};
-    moo_mr_hvp_cache_t cache;
-    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);
-{self._render_colored_hvp_fill("moo_mr_hvp", mr_hes, list(range(len(mr_hes))), mr_hes_colors if isinstance(mr_hes_colors, list) else [], False)}"""
-        else:
-            mr_hes_body = f"""    f64 v[{max(self.mr_size, 1)}] = {{0}};
-    f64 tmp[{max(self.mr_size, 1)}] = {{0}};
-    moo_mr_hvp_cache_t cache;
-    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);
-{self._render_hvp_fill("moo_mr_hvp", "b", "globl_rp", None, mr_hes, list(range(len(mr_hes))), self.mr_size, False)}"""
+{self._render_sparse_hes_scatter(lfg_hes, lfg_hes_buf_indices, True)}""",
+            "Z_SIZE",
+            "Z_SIZE",
+            lfg_hes,
+            lfg_hes_colors if isinstance(lfg_hes_colors, list) else [],
+            """    moo_lfg_hvp_cache_t cache;
+    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);""",
+            "moo_lfg_hvp_apply(&cache, v, tmp);",
+            buf_indices=lfg_hes_buf_indices,
+            split_pp=True,
+            pp_start=self.x_size + self.u_size,
+        )
+        mr_jac_body = render_jacobian_callback_body(
+            mr_jac_mode,
+            "moo_mr_jvp_sparse(b, globl_rp, out);",
+            str(max(self.mr_size, 1)),
+            str(max(mr_eval_count, 1)),
+            mr_jac,
+            mr_jac_colors if isinstance(mr_jac_colors, list) else [],
+            "moo_mr_jvp(b, globl_rp, v, tmp);",
+        )
+        mr_hes_body = render_hessian_callback_body(
+            mr_hes_mode,
+            "    moo_mr_hvp_sparse(b, seed, globl_rp, out);",
+            str(max(self.mr_size, 1)),
+            str(max(self.mr_size, 1)),
+            mr_hes,
+            mr_hes_colors if isinstance(mr_hes_colors, list) else [],
+            """    moo_mr_hvp_cache_t cache;
+    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);""",
+            "moo_mr_hvp_apply(&cache, v, tmp);",
+            buf_indices=list(range(len(mr_hes))),
+        )
 
         return f"""#include <float.h>
 #include <math.h>
@@ -718,38 +714,6 @@ int main_{self.name}(int argc, char** argv) {{
 }}
 {main}
 """
-
-    def _render_jvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], out_size: int) -> str:
-        call = f"{fn}({input_name}, {rp}, v, tmp);" if tau is None else f"{fn}({input_name}, {rp}, tau, v, tmp);"
-        return render_basis_jvp_fill(pairs, call)
-
-    def _render_hvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], buf_indices: list[int], n: int, split_pp: bool) -> str:
-        return render_basis_hvp_fill(
-            pairs,
-            f"{fn}_apply(&cache, v, tmp);",
-            buf_indices=buf_indices,
-            split_pp=split_pp,
-            pp_start=self.x_size + self.u_size,
-        )
-
-    def _render_colored_jvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        call = f"{fn}({input_name}, {rp}, v, tmp);" if tau is None else f"{fn}({input_name}, {rp}, tau, v, tmp);"
-        return render_colored_fill(
-            pairs,
-            colors,
-            call,
-            buf_indices=list(range(len(pairs))),
-        )
-
-    def _render_colored_hvp_fill(self, fn: str, pairs: list[tuple[int, int]], buf_indices: list[int], colors: list[int], split_pp: bool) -> str:
-        return render_colored_fill(
-            pairs,
-            colors,
-            f"{fn}_apply(&cache, v, tmp);",
-            buf_indices=buf_indices,
-            split_pp=split_pp,
-            pp_start=self.x_size + self.u_size,
-        )
 
     def _render_sparse_hes_scatter(self, pairs: list[tuple[int, int]], buf_indices: list[int], split_pp: bool) -> str:
         lines = []

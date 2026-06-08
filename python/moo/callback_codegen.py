@@ -49,29 +49,6 @@ def color_metadata(pairs: list[tuple[int, int]], colors: list[int]) -> tuple[lis
     return color_offsets, color_cols, scatter_offsets, scatter_idx, scatter_row, scatter_col
 
 
-def render_basis_jvp_fill(pairs: list[tuple[int, int]], call: str, indent: str = "    ") -> str:
-    lines = []
-    for idx, (row, col) in enumerate(pairs):
-        lines += [f"{indent}v[{col}] = 1.0;", f"{indent}{call}", f"{indent}out[{idx}] = tmp[{row}];", f"{indent}v[{col}] = 0.0;"]
-    return "\n".join(lines) or f"{indent}(void)out;"
-
-
-def render_basis_hvp_fill(
-    pairs: list[tuple[int, int]],
-    call: str,
-    buf_indices: list[int] | None = None,
-    split_pp: bool = False,
-    pp_start: int = 0,
-    indent: str = "    ",
-) -> str:
-    lines = []
-    indices = list(range(len(pairs))) if buf_indices is None else buf_indices
-    for (row, col), buf in zip(pairs, indices):
-        target = f"out_pp[{buf}] +=" if split_pp and row >= pp_start and col >= pp_start else f"out[{buf}] ="
-        lines += [f"{indent}v[{col}] = 1.0;", f"{indent}{call}", f"{indent}{target} tmp[{row}];", f"{indent}v[{col}] = 0.0;"]
-    return "\n".join(lines) or f"{indent}(void)out;"
-
-
 def render_colored_fill(
     pairs: list[tuple[int, int]],
     colors: list[int],
@@ -134,6 +111,50 @@ def render_colored_fill(
 {indent}    }}
 {indent}    for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
 {indent}}}"""
+
+
+def render_jacobian_callback_body(
+    mode: str,
+    direct_call: str,
+    input_size: str,
+    output_size: str,
+    pairs: list[tuple[int, int]],
+    colors: list[int],
+    colored_call: str,
+) -> str:
+    if mode == "direct":
+        return f"    {direct_call}"
+    return f"""    f64 v[{input_size}] = {{0}};
+    f64 tmp[{output_size}] = {{0}};
+{render_colored_fill(pairs, colors, colored_call)}"""
+
+
+def render_hessian_callback_body(
+    mode: str,
+    direct_body: str,
+    input_size: str,
+    tmp_size: str,
+    pairs: list[tuple[int, int]],
+    colors: list[int],
+    prepare_body: str,
+    apply_call: str,
+    buf_indices: list[int] | None = None,
+    split_pp: bool = False,
+    pp_start: int = 0,
+) -> str:
+    if mode == "direct":
+        return direct_body
+    return f"""    f64 v[{input_size}] = {{0}};
+    f64 tmp[{tmp_size}] = {{0}};
+{prepare_body}
+{render_colored_fill(
+        pairs,
+        colors,
+        apply_call,
+        buf_indices=buf_indices,
+        split_pp=split_pp,
+        pp_start=pp_start,
+    )}"""
 
 
 def render_local_colored_jac_lines(

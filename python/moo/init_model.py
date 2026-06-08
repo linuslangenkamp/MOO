@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from .callback_codegen import render_basis_hvp_fill, render_basis_jvp_fill, render_colored_fill
+from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from .expressions import Expr, VarNode, as_expr
 from . import paths
@@ -265,39 +265,32 @@ int main(int argc, char** argv) {{
             emitted.get(key, "")
             for key in sections
         )
-        if jac_mode == "direct":
-            jac_body = "    moo_init_jvp_sparse(z, rp, out);"
-        elif jac_mode == "colored":
-            jac_body = f"""    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[OUT_SIZE] = {{0}};
-{self._render_colored_jac_fill(jac, emitted.get("JAC_COLORS", []) if isinstance(emitted.get("JAC_COLORS", []), list) else [])}"""
-        else:
-            jac_body = f"""    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[OUT_SIZE] = {{0}};
-{self._render_jac_fill(jac)}"""
-        if hes_mode == "direct":
-            hes_body = """    f64 seed[OUT_SIZE] = {0};
+        jac_body = render_jacobian_callback_body(
+            jac_mode,
+            "moo_init_jvp_sparse(z, rp, out);",
+            "Z_SIZE",
+            "OUT_SIZE",
+            jac,
+            emitted.get("JAC_COLORS", []) if isinstance(emitted.get("JAC_COLORS", []), list) else [],
+            "moo_init_jvp(z, rp, v, tmp);",
+        )
+        hes_body = render_hessian_callback_body(
+            hes_mode,
+            """    f64 seed[OUT_SIZE] = {0};
     seed[0] = obj_factor;
     for (int i = 0; i < F_SIZE + G_SIZE; ++i) { seed[1 + i] = lambda[i]; }
-    moo_init_hvp_sparse(z, seed, rp, out);"""
-        elif hes_mode == "colored":
-            hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
-    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[Z_SIZE] = {{0}};
+    moo_init_hvp_sparse(z, seed, rp, out);""",
+            "Z_SIZE",
+            "Z_SIZE",
+            hes,
+            emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [],
+            """    f64 seed[OUT_SIZE] = {0};
     moo_init_hvp_cache_t cache;
     seed[0] = obj_factor;
     for (int i = 0; i < F_SIZE + G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_init_hvp_prepare(z, seed, rp, &cache);
-{self._render_colored_hes_fill(hes, emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [])}"""
-        else:
-            hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
-    f64 v[Z_SIZE] = {{0}};
-    f64 tmp[Z_SIZE] = {{0}};
-    moo_init_hvp_cache_t cache;
-    seed[0] = obj_factor;
-    for (int i = 0; i < F_SIZE + G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_init_hvp_prepare(z, seed, rp, &cache);
-{self._render_hes_fill(hes)}"""
+    moo_init_hvp_prepare(z, seed, rp, &cache);""",
+            "moo_init_hvp_apply(&cache, v, tmp);",
+        )
 
         return f"""#include <float.h>
 #include <math.h>
@@ -383,26 +376,6 @@ int main_{self.name}(int argc, char** argv) {{
 }}
 {main}
 """
-
-    def _render_jac_fill(self, pairs: list[tuple[int, int]]) -> str:
-        return render_basis_jvp_fill(pairs, "moo_init_jvp(z, rp, v, tmp);")
-
-    def _render_hes_fill(self, pairs: list[tuple[int, int]]) -> str:
-        return render_basis_hvp_fill(pairs, "moo_init_hvp_apply(&cache, v, tmp);")
-
-    def _render_colored_jac_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return render_colored_fill(
-            pairs,
-            colors,
-            "moo_init_jvp(z, rp, v, tmp);",
-        )
-
-    def _render_colored_hes_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return render_colored_fill(
-            pairs,
-            colors,
-            "moo_init_hvp_apply(&cache, v, tmp);",
-        )
 
     def _render_h(self) -> str:
         guard = f"MOO_INIT_CODEGEN_{self.name.upper()}_H"

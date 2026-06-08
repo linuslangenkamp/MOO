@@ -85,13 +85,6 @@ def report_get(report: dict, key: str, default: str = "-") -> str:
     return report.get(key, default)
 
 
-def apply_codegen(model, strategy):
-    if isinstance(strategy, str):
-        return model.codegen(strategy)
-
-    return model.codegen(**strategy)
-
-
 def run_status(result):
     if hasattr(result, "status"):
         return result.status
@@ -109,7 +102,7 @@ def codegen_summary_row(label: str, report: dict, n: int) -> dict:
     return {
         "formulation": label,
         "n": n,
-        "strategy": report_get(report, "strategy"),
+        "strategy": report_get(report, "derivative_strategy"),
         "structure": report_get(report, "structure_mode"),
         "local jac": report_get(report, "local_jacobian_mode"),
         "local hess": report_get(report, "local_hessian_mode"),
@@ -163,10 +156,10 @@ if __name__ == "__main__":
             "strategy": "auto",
         },
         {
-            "label": "loop",
-            "model_name": "nlp_sparse_loop",
-            "out_dir": Path("build/moo/nlp_sparse_loop"),
-            "strategy": "loop",
+            "label": "auto",
+            "model_name": "nlp_sparse_auto",
+            "out_dir": Path("build/moo/nlp_sparse_auto"),
+            "strategy": "auto",
         },
         {
             "label": "direct",
@@ -180,12 +173,6 @@ if __name__ == "__main__":
             "out_dir": Path("build/moo/nlp_sparse_colored"),
             "strategy": "colored",
         },
-        {
-            "label": "basis",
-            "model_name": "nlp_sparse_basis",
-            "out_dir": Path("build/moo/nlp_sparse_basis"),
-            "strategy": "basis",
-        },
     ]
 
     generated_cases = []
@@ -197,7 +184,7 @@ if __name__ == "__main__":
         build_elapsed = perf_counter() - t0
 
         t0 = perf_counter()
-        generated = apply_codegen(model, case["strategy"])
+        generated = model.codegen(case["strategy"])
         c_path, _ = generated.generate(case["out_dir"])
         codegen_elapsed = perf_counter() - t0
 

@@ -175,11 +175,9 @@ and explicit index lists. Explicit mapped blocks remain C loops because they are
 model structure, not a codegen mode. `model.codegen("auto")` keeps small and
 medium local derivative blocks on direct sparse graph functions and can switch
 highly-compressible local blocks to colored compressed JVP/HVP evaluation. Use
-`model.codegen("direct")`, `model.codegen("colored")`, or
-`model.codegen("basis")` to force derivative callback generation.
-`model.codegen("basis")` keeps a legacy trivial coloring path available
-for debugging. Every generated model writes a `codegen_report.txt` beside the
-C file.
+`model.codegen("direct")` or `model.codegen("colored")` to force derivative
+callback generation. Every generated model writes a `codegen_report.txt` beside
+the C file.
 
 See `src/ad/README.md` for the AD user guide.
 
