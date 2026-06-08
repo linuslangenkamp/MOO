@@ -28,7 +28,7 @@ also requires the optional AD Python bindings:
 
 ```bash
 cmake -S . -B build -DMOO_WITH_PYTHON_BINDINGS=ON
-cmake --build build --target moo _ad
+cmake --build build --target moo mooad _ad
 PYTHONPATH=python python3 examples/moo/hello.py
 ```
 
@@ -49,19 +49,19 @@ python3 -m venv .venv
 
 ## Common Workflow
 
-All model types share the same lifecycle:
-
-```python
-out = "build/moo/my_problem"
-c_path, h_path = model.generate(out)
-exe_path = model.compile(out)
-run = model.optimize(out)
-```
-
 For the usual generate-compile-solve workflow, use `run(...)`:
 
 ```python
-run = model.run("build/moo/my_problem")
+out = "build/moo/my_problem"
+run = model.run(out)
+```
+
+The lower-level steps are still available for codegen and benchmarking examples:
+
+```python
+c_path, h_path = model.generate(out)
+exe_path = model.compile(out)
+run = model.optimize(out)
 ```
 
 `run()` is a convenience alias for `optimize(..., generate=True)`.
@@ -120,7 +120,7 @@ availability still depends on how MOO was configured and built.
 
 ## Codegen Strategy
 
-Generated derivative callbacks use direct sparse AD kernels by default. This
+Generated derivative callbacks use direct sparse AD graph functions by default. This
 means the generated C writes Jacobian and Hessian sparse buffers directly
 instead of evaluating a full JVP/HVP once for every sparse entry. For very
 large sparse blocks, `auto` can switch to colored compressed JVP/HVP evaluation
@@ -134,18 +134,96 @@ model.codegen("colored")       # structure=auto, local=colored
 model.codegen("basis")         # structure=auto, local=basis
 model.codegen("loop-direct")   # structure=loop, local=direct
 model.codegen("loop-colored")  # structure=loop, local=colored
-model.codegen(structure="loop", local="colored")
+model.codegen(structure="loop", local="colored", linear_algebra="loop")
 ```
 
 The structure axis controls whether repeated blocks remain C loops. The local
-axis controls how each repeated block's local derivative kernel is generated.
-For tiny local blocks, `auto` usually chooses direct sparse kernels; for larger
-sparse local blocks, forced or automatic colored kernels use compressed JVP/HVP
+axis controls how each repeated block's local derivative graph function is generated.
+The linear algebra axis is shared by all problem types and records whether
+matrix/vector local graph-function expressions should prefer looped or scalar lowering.
+For tiny local blocks, `auto` usually chooses direct sparse graph functions; for larger
+sparse local blocks, forced or automatic colored graph functions use compressed JVP/HVP
 evaluation inside the loop.
 
 Each `generate(...)` call writes `codegen_report.txt` next to the generated C
 file. The report includes derivative nnz, coloring counts, selected strategy,
 and generated C size.
+
+## Shared Local Matrix And Vector Expressions
+
+NLP, Init, and GDOP all use the same local expression layer. Matrix and vector
+expressions are therefore available in raw NLP constraints, Init objective and
+residuals, and GDOP Lagrange/dynamics/path/Mayer/boundary graph functions:
+
+```python
+from moo import matrix, vec
+
+M = matrix([[1.0, 2.0], [3.0, 4.0]])
+y = M @ vec([x0, x1])
+```
+
+Use `sparse_matrix(...)` for sparse constant operators, and
+`matrix(D).otimes_eye(nx) @ blockvec(...)` for block-state operators.
+
+## Structured NLP Blocks
+
+For large NLPs, write repeated structure explicitly so generated C keeps C
+loops around repeated local graph functions:
+
+```python
+from moo import nlp_model
+
+m = nlp_model("banded")
+x = m.add_variables("x", 500, lb=-10.0, ub=10.0)
+
+m.minimize_sum(range(500), lambda i: (x[i] - 1.0) ** 2)
+m.add_constraints(
+    range(499),
+    lambda i: x[i] + x[i + 1],
+    lb=-5.0,
+    ub=5.0,
+    name="band",
+)
+m.codegen("loop-direct")
+```
+
+Variable vectors support normal Python views:
+
+```python
+x[5:]
+x[::2]
+x[5:20:3]
+```
+
+Inside mapped blocks, use `vec`, `blockvec`, `vector`, and `matrix` for local
+vector algebra. `matrix(D).otimes_eye(nx)` is represented as a structured
+Kronecker operator, so it does not materialize the zero-heavy expanded matrix
+in Python:
+
+```python
+from moo import blockvec, matrix, vec
+
+D_otimes_I = matrix(D).otimes_eye(nx)
+
+def nodes(k):
+    return blockvec([x_prev(k)] + [x_stage(k, j) for j in range(stages)])
+
+def defect(k, j):
+    X = nodes(k)
+    dX = D_otimes_I @ X
+    return dX[j + 1] - h * f(X[j + 1], u_stage(k, j))
+
+m.add_constraints(
+    range(intervals),
+    lambda k: [value for j in range(stages) for value in defect(k, j)],
+    eq=0.0,
+    name="collocation",
+)
+```
+
+This is intentionally generic. MOO does not require a collocation-specific
+helper; Radau, finite-difference, shooting, and hand-written sparse NLPs can use
+the same expression, matrix, block-vector, and mapped-constraint primitives.
 
 ## GDOP Example
 
@@ -326,9 +404,9 @@ Radau IIA, i.e. rescaled flipped Legendre-Gauss-Radau, constants from `data/fLGR
 stages 1 through 25:
 
 ```python
-from moo import matrix, radau, vector
+from moo import matrix, radauIIA, vector
 
-r = radau(3)
+r = radauIIA(3)
 D = matrix(r.D)     # differentiation matrix, including the previous value column
 B = vector(r.B)     # quadrature weights
 C = r.C             # collocation nodes
@@ -337,17 +415,18 @@ W = r.W             # barycentric weights
 W0 = r.W0           # barycentric weights including 0
 ```
 
-For vector-valued states, `D.otimes_eye(nx)` builds the Kronecker product
-`D otimes I_nx`, so collocation defects can stay close to the mathematical
-form:
+For vector-valued states, `D.otimes_eye(nx)` creates a structured
+`D otimes I_nx` operator. It works directly on `blockvec(...)`, so the Python
+model does not materialize the expanded zero-heavy Kronecker matrix:
 
 ```python
 D_otimes_I = matrix(r.D).otimes_eye(2)
-block = vec([x_previous, x_stage_0, x_stage_1, x_stage_2])
-defect_j = (D_otimes_I @ block)[2 * j:2 * j + 2] - h * f(block[2 * j:2 * j + 2], u_j)
+X = blockvec([x_previous, x_stage_0, x_stage_1, x_stage_2])
+dX = D_otimes_I @ X
+defect_j = dX[j + 1] - h * f(X[j + 1], u_j)
 ```
 
-Mapped objective and constraint blocks emit one local AD kernel and C loops
+Mapped objective and constraint blocks emit one local AD graph function and C loops
 for value, Jacobian, and Hessian accumulation. `codegen_report.txt` lists the
 mapped block count, repetitions, global derivative nnz, and selected `loop`
 strategy.
@@ -494,9 +573,9 @@ staged VM evaluation, sparsity queries, and C emission:
 ```python
 from moo import ad
 
-g = ad.GraphBuilder()
+g = ad.GraphFunctionBuilder()
 x = g.inputs("x", 3)
-f = g.function(x, [2.0 * x[0] - x[1] + 3.0, x[2] * x[2] + 1.0])
+f = g.function(x, g.vector([2.0 * x[0] - x[1] + 3.0, x[2] * x[2] + 1.0]))
 
 grad = f.reverse_diff("lambda", "x")
 hvp = grad.forward_diff("x", "v")
@@ -540,7 +619,7 @@ lower-level C++ and C interface references.
 
 This frontend is usable for small and medium generated problems and for
 developing MOO's native AD/codegen path. Sparse Jacobian and Hessian callbacks
-are exact. The default path emits direct sparse derivative kernels; colored
+are exact. The default path emits direct sparse derivative graph functions; colored
 compressed callbacks and the old basis-direction fallback are available through
 `model.codegen(...)`.
 

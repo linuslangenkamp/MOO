@@ -82,11 +82,15 @@ class SolverSettings:
 
 
 class SolverMixin:
-    def codegen(self, strategy: str = "auto", structure: str | None = None, local: str | None = None):
+    def codegen(self, strategy: str = "auto", structure: str | None = None, local: str | None = None, linear_algebra: str | None = None):
         structure_mode, local_mode = parse_codegen_strategy(strategy, structure, local)
+        linear_algebra_mode = "auto" if linear_algebra is None else linear_algebra.strip().lower()
+        if linear_algebra_mode not in {"auto", "loop", "scalar"}:
+            raise ValueError("codegen linear_algebra must be one of 'auto', 'loop', or 'scalar'")
         self.codegen_strategy = strategy.strip().lower() if isinstance(strategy, str) else "auto"
         self.codegen_structure_strategy = structure_mode
         self.codegen_local_strategy = local_mode
+        self.codegen_linear_algebra_strategy = linear_algebra_mode
         return self
 
     def solver(
@@ -142,6 +146,24 @@ def derivative_mode(strategy: str, pairs: Iterable[tuple[int, int]], colors: lis
     if len(sparse_pairs) >= 256 and 0 < 4 * len(used_colors) < len(sparse_pairs):
         return "colored"
     return "direct"
+
+
+def parse_sparsity_pairs(value: object) -> list[tuple[int, int]]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [(int(row), int(col)) for row, col in value]
+    if isinstance(value, tuple):
+        return [(int(row), int(col)) for row, col in value]
+    if isinstance(value, str):
+        out = []
+        for line in value.splitlines():
+            if not line.strip():
+                continue
+            row, col = line.split(",", 1)
+            out.append((int(row), int(col)))
+        return out
+    raise TypeError(f"Cannot parse sparsity pairs from {type(value)!r}")
 
 
 def parse_codegen_strategy(strategy: str = "auto", structure: str | None = None, local: str | None = None) -> tuple[str, str]:

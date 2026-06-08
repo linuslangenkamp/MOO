@@ -29,13 +29,8 @@ def build_model():
     p = model.add_parameter("p", lb=0.0, ub=5.0, base=1.0)
     dp = model.delta(p)
 
-    # strict model equations (equality = 0)
     model.add_f(y**2 + p - 0.5)
-
-    # additional constraints (inequality)
     model.add_g(y - p, lb=0.0)
-
-    # objective
     model.set_objective(dp * dp)
 
     model.solver(backend="Ipopt", tolerance=1e-10, derivative_test=True, qp=True)
@@ -45,10 +40,7 @@ def build_model():
 
 if __name__ == "__main__":
     out = Path("build/moo/init_simple")
-    model = build_model()
-    c_path, h_path = model.generate(out)
-    exe_path = model.compile(out)
-    result = model.optimize(out)
+    result = build_model().run(out)
     print(result.result.variables, flush=True)
     print(result.result.parameters, flush=True)
     raise SystemExit(result.returncode)

@@ -118,7 +118,7 @@ def codegen_summary_row(label: str, report: dict, n: int) -> dict:
         "C bytes": report_get(report, "generated_c_bytes"),
         "Jac nnz": report_get(report, "derivative_jacobian_nnz"),
         "Hess nnz": report_get(report, "derivative_hessian_nnz"),
-        "kernel": report_get(report, "derivative_kernel_source"),
+        "graph": report_get(report, "derivative_graph_source"),
     }
 
 

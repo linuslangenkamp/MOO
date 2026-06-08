@@ -20,7 +20,7 @@
 
 from pathlib import Path
 
-from moo import matrix, nlp_model, radauIIA, vec
+from moo import blockvec, matrix, nlp_model, radauIIA, vec
 
 
 STAGES = 3
@@ -32,6 +32,7 @@ def f(x, u):
         -(u[0] + 0.5 * u[0] * u[0]) * x[0],
         u[0] * x[0],
     ])
+
 
 def M(x, u):
     return -x[1]
@@ -52,7 +53,7 @@ def build_model(name: str, intervals: int = 50, segments: int = 1):
 
     x1 = model.add_variables("x1", intervals * STAGES, guess=1.0, lb=0.0, ub=1.0)
     x2 = model.add_variables("x2", intervals * STAGES, guess=0.0, lb=0.0, ub=1.0)
-    u  = model.add_variables("u", n_controls, guess=2.0, lb=0.0, ub=5.0)
+    u = model.add_variables("u", n_controls, guess=2.0, lb=0.0, ub=5.0)
 
     h = 1.0 / intervals
     D_otimes_I = matrix(r.D).otimes_eye(STATE_DIM)
@@ -67,44 +68,34 @@ def build_model(name: str, intervals: int = 50, segments: int = 1):
     def controls(interval):
         return vec([u[interval // segments]])
 
-    def state_block(previous, interval):
-        return vec([previous] + [state(interval, stage) for stage in range(STAGES)])
+    def state_nodes(previous, interval):
+        return blockvec([previous] + [state(interval, stage) for stage in range(STAGES)])
 
-    def collocation_state(block, stage):
-        return block.block(stage + 1, STATE_DIM)
-
-    def collocation_derivative(block, stage):
-        return (D_otimes_I @ block).block(stage + 1, STATE_DIM)
-
-    def defect(interval, stage, block):
-        x_stage = collocation_state(block, stage)
-        return collocation_derivative(block, stage) - h * f(x_stage, controls(interval))
+    def collocation_defects(previous, interval):
+        nodes = state_nodes(previous, interval)
+        derivative = D_otimes_I @ nodes
+        return blockvec([
+            derivative.block(stage + 1, STATE_DIM) - h * f(nodes[stage + 1], controls(interval))
+            for stage in range(STAGES)
+        ])
 
     model.add_constraints(
         range(0, 1),
-        lambda interval: [
-            value
-            for stage in range(STAGES)
-            for value in defect(interval, stage, state_block(x_initial, interval))
-        ],
+        lambda interval: collocation_defects(x_initial, interval),
         eq=0.0,
         name="initial_collocation",
     )
 
     model.add_constraints(
         range(1, intervals),
-        lambda interval: [
-            value
-            for stage in range(STAGES)
-            for value in defect(interval, stage, state_block(state(interval - 1, STAGES - 1), interval))
-        ],
+        lambda interval: collocation_defects(state(interval - 1, STAGES - 1), interval),
         eq=0.0,
         name="collocation",
     )
 
     model.minimize(M(state(intervals - 1, STAGES - 1), controls(intervals - 1)), name="final_x2")
 
-    model.codegen("loop-direct")
+    model.codegen("loop-direct", linear_algebra="loop")
     model.solver(tolerance=1e-12)
 
     return model
@@ -159,10 +150,7 @@ if __name__ == "__main__":
     intervals = 100
     segments = 2
 
-    model = build_model("BatchReactorPiecewise", intervals=intervals, segments=segments)
-    c_path, h_path = model.generate(out)
-    exe_path = model.compile(out)
-    run = model.optimize(out)
+    run = build_model("BatchReactorPiecewise", intervals=intervals, segments=segments).run(out)
 
     print(plot_solution(run, out, intervals, segments))
     raise SystemExit(run.returncode)

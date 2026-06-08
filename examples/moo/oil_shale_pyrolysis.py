@@ -22,13 +22,14 @@ from pathlib import Path
 
 from moo import gdop_model, exp
 
+
 def build_model():
     model = gdop_model("OilShalePyrolysis")
 
-    x1 = model.add_state("kerogen", start=1)
-    x2 = model.add_state("pyrolytic bitumen", start=0)
-    x3 = model.add_state("oil & gas", start=0)
-    x4 = model.add_state("organic carbon", start=0)
+    x1 = model.add_state("kerogen", start=1.0)
+    x2 = model.add_state("pyrolytic bitumen", start=0.0)
+    x3 = model.add_state("oil & gas", start=0.0)
+    x4 = model.add_state("organic carbon", start=0.0)
 
     T = model.add_control(
         "temperature",
@@ -64,5 +65,5 @@ def build_model():
 if __name__ == "__main__":
     out = Path("build/moo/oilShalePyrolysis")
     result = build_model().run(out)
-    result.result.plot.all(show=True)
+    result.result.plot.all(save=out / "solution.png")
     raise SystemExit(result.returncode)

@@ -1,13 +1,39 @@
 # MOO AD
 
 MOO AD is the in-tree automatic differentiation and C-code-emission layer used
-by the Python modeling frontend. It is implemented by the C++17 header
-`ad.h` and optional pybind11 bindings exposed as `moo.ad`.
+by the Python modeling frontend. Its public C++ API is the umbrella header
+`ad.h`; non-template implementation code is provided by the `mooad` library.
+Optional pybind11 bindings expose the same layer as `moo.ad`.
 
 The library builds symbolic expression graphs for vector-valued functions,
 transforms those graphs with forward and reverse AD, evaluates them with a VM,
 queries structural sparsity, and emits C kernels that can be linked into MOO
 problem interfaces.
+
+## Source Layout
+
+`ad.h` is intentionally small and should remain the include used by downstream
+code:
+
+```cpp
+#include <ad.h>
+```
+
+The implementation is split by responsibility:
+
+- `core.h`: graph, scalar expression, vector expression, matrix constants, and
+  graph-function builder types.
+- `optimize.h`: optimizing builder, constant folding, CSE, and graph remapping.
+- `diff.h`: graph cloning plus forward and reverse AD transforms.
+- `sparse_derivatives.h`: coloring metadata and sparse derivative coefficient
+  extraction.
+- `vm.h`: value VM and staged HVP VM.
+- `codegen.h` / `codegen.cpp`: generated-C emission entrypoints.
+- `sparsity.h`: structural sparsity queries and exact derivative planning.
+
+Headers contain public types and declarations. Non-template implementation is
+compiled into `libmooad`, so downstream users should include `ad.h` and link
+`mooad`.
 
 ## What It Provides
 
@@ -36,15 +62,14 @@ problem interfaces.
 
 using namespace ad;
 
-Graph g;
+GraphFunctionBuilder g;
 auto x = g.inputs("x", 2);
+auto y = g.vector({
+    sin(g.at(x, 0)),
+    g.at(x, 0) * g.at(x, 0) + exp(g.at(x, 1)),
+});
 
-std::vector<Expr> y = {
-    sin(x[0]),
-    x[0] * x[0] + exp(x[1]),
-};
-
-GraphFunction F = function_from(std::move(g), x, y);
+GraphFunction F = g.function(x, y);
 ```
 
 A `GraphFunction` is a first-class value. You can evaluate it, differentiate
@@ -245,7 +270,7 @@ Build the optional bindings with:
 
 ```bash
 cmake -S . -B build -DMOO_WITH_PYTHON_BINDINGS=ON
-cmake --build build --target _ad
+cmake --build build --target mooad _ad
 PYTHONPATH=python python3 examples/moo/ad_bindings.py
 ```
 
@@ -254,9 +279,9 @@ The Python API mirrors the C++ graph API:
 ```python
 from moo import ad
 
-g = ad.GraphBuilder()
+g = ad.GraphFunctionBuilder()
 x = g.inputs("x", 3)
-f = g.function(x, [2.0 * x[0] - x[1] + 3.0, x[2] * x[2] + 1.0])
+f = g.function(x, g.vector([2.0 * x[0] - x[1] + 3.0, x[2] * x[2] + 1.0]))
 
 grad = f.reverse_diff("lambda", "x")
 hvp = grad.forward_diff("x", "v")
@@ -334,12 +359,13 @@ y = x[0] ** 2
 
 ## Building C++ Examples
 
-`ad.h` is header-only:
+Use `ad.h` as the public include and link against `libmooad`:
 
 ```bash
-g++ -std=c++17 -O2 -Isrc/ad src/ad/example_hvp.cpp -o example_hvp
+cmake --build build --target mooad
+g++ -std=c++17 -O2 -Isrc/ad src/ad/example_hvp.cpp -Lbuild -lmooad -Wl,-rpath,$PWD/build -o example_hvp
 ./example_hvp
 ```
 
-No third-party library is needed for the C++ header itself. pybind11 is only
-needed for the optional Python module.
+After installation, downstream code can include `<ad.h>` and link `mooad`.
+pybind11 is only needed when building the optional Python module.

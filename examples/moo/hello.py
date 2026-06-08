@@ -38,8 +38,5 @@ def build_model():
 
 if __name__ == "__main__":
     out = Path("build/moo/hello")
-    model = build_model()
-    c_path, h_path = model.generate(out)
-    exe_path = model.compile(out)
-    result = model.optimize(out, solver="Ipopt")
+    result = build_model().run(out, solver="Ipopt")
     raise SystemExit(result.returncode)

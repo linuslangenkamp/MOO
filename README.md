@@ -84,7 +84,7 @@ For Python modeling and code generation, configure with:
 
 ```bash
 cmake -S . -B build -DMOO_WITH_PYTHON_BINDINGS=ON
-cmake --build build --target moo _ad
+cmake --build build --target moo mooad _ad
 ```
 
 ### Build
@@ -158,22 +158,26 @@ complete examples.
 ## Native AD
 
 MOO AD lives in `src/ad`. It is a symbolic expression-graph AD layer with C++
-and Python APIs. It supports graph evaluation, forward and reverse AD,
+and Python APIs. The public C++ include is `ad.h`; C++ users link the
+`mooad` library. It supports graph evaluation, forward and reverse AD,
 Hessian-vector products, sparsity extraction, one-shot C emission, direct
 sparse derivative emission, greedy coloring metadata, and staged C emission
 for repeated Hessian-vector products.
 
 The Python frontend uses these bindings directly during code generation.
-Generated derivative callbacks use direct sparse AD kernels by default.
-`model.codegen("auto")` uses loop-preserving structured codegen for mapped NLP
-blocks, keeps small and medium local derivative blocks on direct sparse
-kernels, and can switch highly-compressible local blocks to colored compressed
-JVP/HVP evaluation. Structured NLP maps accept `range(...)`, stepped ranges,
-and explicit index lists; variable vectors support strided views such as
-`x[5:]` and `x[::2]`; block bodies can use `moo.vec`, `moo.vector`, and
-`moo.matrix` for vector constraints and `D @ x` style expressions. Structured
-NLP blocks can also force the local kernel mode with
-`model.codegen("loop-direct")` or `model.codegen("loop-colored")`.
+Generated derivative callbacks use direct sparse AD graph functions by default. NLP,
+Init, and GDOP share the same local expression layer for scalar, vector, block
+vector, and matrix expressions. Problem frontends keep their own high-level
+APIs, but expressions such as `M @ x`, `D @ x`, and
+`matrix(D).otimes_eye(nx) @ blockvec(X)` are common local graph-function syntax.
+Raw NLP additionally exposes mapped blocks over `range(...)`, stepped ranges,
+and explicit index lists. `model.codegen("auto")` preserves explicit loops,
+keeps small and medium local derivative blocks on direct sparse graph functions, and
+can switch highly-compressible local blocks to colored compressed JVP/HVP
+evaluation. Use `model.codegen("loop-direct")`,
+`model.codegen("loop-colored")`, or
+`model.codegen(structure="loop", local="colored", linear_algebra="loop")`
+to force specific local graph-function choices.
 `model.codegen("basis")` keeps a legacy trivial coloring path available
 for debugging. Every generated model writes a `codegen_report.txt` beside the
 C file.

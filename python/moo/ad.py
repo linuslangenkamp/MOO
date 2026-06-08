@@ -22,10 +22,10 @@ from __future__ import annotations
 
 try:
     from ._ad import (
-        Expr,
         Function,
-        GraphBuilder,
-        Vector,
+        GraphFunctionBuilder,
+        GraphScalar,
+        GraphVector,
         cos,
         exp,
         log,
@@ -42,10 +42,10 @@ except ImportError as exc:
 
 
 __all__ = [
-    "Expr",
     "Function",
-    "GraphBuilder",
-    "Vector",
+    "GraphFunctionBuilder",
+    "GraphScalar",
+    "GraphVector",
     "sin",
     "cos",
     "tan",

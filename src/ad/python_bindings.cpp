@@ -36,23 +36,28 @@ namespace py = pybind11;
 
 namespace {
 
-struct PyExpr {
-    std::shared_ptr<ad::Graph> graph;
-    ad::Expr expr;
-
-    PyExpr() = default;
-    PyExpr(std::shared_ptr<ad::Graph> graph, ad::Expr expr)
-        : graph(std::move(graph)),
-          expr(expr) {}
-};
-
-struct PyVector {
-    std::string name;
-    std::vector<PyExpr> values;
-};
-
 struct PyFunction {
     ad::GraphFunction fn;
+};
+
+struct PyGraphScalar {
+    std::shared_ptr<ad::GraphFunctionBuilder> builder;
+    ad::Expr expr;
+
+    PyGraphScalar() = default;
+    PyGraphScalar(std::shared_ptr<ad::GraphFunctionBuilder> builder_in, ad::Expr expr_in)
+        : builder(std::move(builder_in)),
+          expr(expr_in) {}
+};
+
+struct PyGraphVector {
+    std::shared_ptr<ad::GraphFunctionBuilder> builder;
+    ad::VectorExpr expr;
+
+    PyGraphVector() = default;
+    PyGraphVector(std::shared_ptr<ad::GraphFunctionBuilder> builder_in, ad::VectorExpr expr_in)
+        : builder(std::move(builder_in)),
+          expr(expr_in) {}
 };
 
 using NamedValues = std::unordered_map<std::string, std::vector<double>>;
@@ -63,130 +68,213 @@ struct PyPreparedFunction {
     ad::StagedVM::Prepared prepared;
 };
 
-class PyGraphBuilder {
+class PyGraphFunctionBuilder {
 public:
-    PyGraphBuilder()
-        : graph(std::make_shared<ad::Graph>()) {}
+    PyGraphFunctionBuilder()
+        : builder(std::make_shared<ad::GraphFunctionBuilder>()) {}
 
-    PyExpr constant(double value) { return PyExpr(graph, graph->constant(value)); }
-
-    PyVector inputs(const std::string &name, int size) {
-        auto vec = graph->inputs(name, size);
-        return wrap_vector(vec);
-    }
-
-    PyVector params(const std::string &name, int size) {
-        auto vec = graph->params(name, size);
-        return wrap_vector(vec);
-    }
-
-    PyFunction function(const PyVector &inputs, const std::vector<PyExpr> &outputs, const std::vector<PyVector> &params = {}) {
+    PyGraphScalar constant(double value) {
         ensure_alive();
-        ad::NamedVector native_inputs = unwrap_vector(inputs);
-        std::vector<ad::Expr> native_outputs;
-        native_outputs.reserve(outputs.size());
-        for (const auto &out : outputs) {
-            require_same(out);
-            native_outputs.push_back(out.expr);
-        }
-        std::vector<ad::NamedVector> native_params;
+        return PyGraphScalar(builder, builder->constant(value));
+    }
+
+    PyGraphVector inputs(const std::string &name, int size) {
+        ensure_alive();
+        return PyGraphVector(builder, builder->inputs(name, size));
+    }
+
+    PyGraphVector params(const std::string &name, int size) {
+        ensure_alive();
+        return PyGraphVector(builder, builder->params(name, size));
+    }
+
+    PyGraphVector vector(const std::vector<PyGraphScalar> &values) {
+        ensure_alive();
+        return PyGraphVector(builder, builder->vector(unwrap_scalars(values)));
+    }
+
+    PyGraphVector dense_matvec(const std::vector<std::vector<double>> &matrix, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphVector(builder, builder->dense_matvec(make_dense_matrix(matrix), rhs.expr));
+    }
+
+    PyGraphVector dense_matvec_values(const std::vector<std::vector<double>> &matrix, const std::vector<PyGraphScalar> &rhs) {
+        ensure_alive();
+        auto rhs_vector = builder->vector(unwrap_scalars(rhs));
+        return PyGraphVector(builder, builder->dense_matvec(make_dense_matrix(matrix), rhs_vector));
+    }
+
+    PyGraphVector sparse_matvec(const std::vector<int> &rows, const std::vector<int> &cols, const std::vector<double> &values, const std::pair<int, int> &shape, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphVector(builder, builder->sparse_matvec(ad::SparseMatrix(shape.first, shape.second, rows, cols, values), rhs.expr));
+    }
+
+    PyGraphVector sparse_matvec_values(const std::vector<int> &rows,
+                                       const std::vector<int> &cols,
+                                       const std::vector<double> &values,
+                                       const std::pair<int, int> &shape,
+                                       const std::vector<PyGraphScalar> &rhs) {
+        ensure_alive();
+        auto rhs_vector = builder->vector(unwrap_scalars(rhs));
+        return PyGraphVector(builder, builder->sparse_matvec(ad::SparseMatrix(shape.first, shape.second, rows, cols, values), rhs_vector));
+    }
+
+    PyGraphVector kron_eye_matvec(const std::vector<std::vector<double>> &base, int eye_size, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphVector(builder, builder->kron_eye_matvec(make_dense_matrix(base), eye_size, rhs.expr));
+    }
+
+    PyGraphVector kron_eye_matvec_values(const std::vector<std::vector<double>> &base, int eye_size, const std::vector<PyGraphScalar> &rhs) {
+        ensure_alive();
+        auto rhs_vector = builder->vector(unwrap_scalars(rhs));
+        return PyGraphVector(builder, builder->kron_eye_matvec(make_dense_matrix(base), eye_size, rhs_vector));
+    }
+
+    PyGraphVector vector_add(const PyGraphVector &lhs, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(lhs);
+        require_same(rhs);
+        return PyGraphVector(builder, builder->add(lhs.expr, rhs.expr));
+    }
+
+    PyGraphVector vector_sub(const PyGraphVector &lhs, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(lhs);
+        require_same(rhs);
+        return PyGraphVector(builder, builder->sub(lhs.expr, rhs.expr));
+    }
+
+    PyGraphVector vector_scale(double factor, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphVector(builder, builder->scale(factor, rhs.expr));
+    }
+
+    PyGraphVector concat(const PyGraphVector &lhs, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(lhs);
+        require_same(rhs);
+        return PyGraphVector(builder, builder->concat(lhs.expr, rhs.expr));
+    }
+
+    PyGraphVector slice(const PyGraphVector &rhs, int start, int length, int stride = 1) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphVector(builder, builder->slice(rhs.expr, start, length, stride));
+    }
+
+    PyGraphScalar at(const PyGraphVector &rhs, int index) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphScalar(builder, builder->at(rhs.expr, index));
+    }
+
+    PyFunction function(const PyGraphVector &inputs, const PyGraphVector &outputs, const std::vector<PyGraphVector> &params = {}) {
+        ensure_alive();
+        require_same(inputs);
+        require_same(outputs);
+        std::vector<ad::VectorExpr> native_params;
         native_params.reserve(params.size());
         for (const auto &param : params) {
-            native_params.push_back(unwrap_vector(param));
+            require_same(param);
+            native_params.push_back(param.expr);
         }
-
         PyFunction out;
-        out.fn = ad::function_from(std::move(*graph), native_inputs, native_outputs, native_params);
-        graph.reset();
+        out.fn = builder->function(inputs.expr, outputs.expr, native_params);
+        builder.reset();
         return out;
     }
 
 private:
-    std::shared_ptr<ad::Graph> graph;
+    std::shared_ptr<ad::GraphFunctionBuilder> builder;
 
     void ensure_alive() const {
-        if (!graph) {
-            throw std::runtime_error("GraphBuilder has already been frozen into a Function");
+        if (!builder) {
+            throw std::runtime_error("GraphFunctionBuilder has already been frozen into a Function");
         }
     }
 
-    void require_same(const PyExpr &expr) const {
+    void require_same(const PyGraphScalar &expr) const {
         ensure_alive();
-        if (expr.graph.get() != graph.get()) {
-            throw std::runtime_error("expression belongs to a different graph");
+        if (expr.builder.get() != builder.get()) {
+            throw std::runtime_error("scalar expression belongs to a different graph function builder");
         }
     }
 
-    PyVector wrap_vector(const ad::NamedVector &native) {
-        PyVector out;
-        out.name = native.name;
-        out.values.reserve(native.values.size());
-        for (const auto &expr : native.values) {
-            out.values.emplace_back(graph, expr);
+    void require_same(const PyGraphVector &expr) const {
+        ensure_alive();
+        if (expr.builder.get() != builder.get()) {
+            throw std::runtime_error("vector expression belongs to a different graph function builder");
+        }
+    }
+
+    std::vector<ad::Expr> unwrap_scalars(const std::vector<PyGraphScalar> &values) const {
+        std::vector<ad::Expr> out;
+        out.reserve(values.size());
+        for (const auto &value : values) {
+            require_same(value);
+            out.push_back(value.expr);
         }
         return out;
     }
 
-    ad::NamedVector unwrap_vector(const PyVector &vec) const {
-        ad::NamedVector out;
-        out.name = vec.name;
-        out.values.reserve(vec.values.size());
-        for (const auto &expr : vec.values) {
-            require_same(expr);
-            out.values.push_back(expr.expr);
+    static ad::DenseMatrix make_dense_matrix(const std::vector<std::vector<double>> &matrix) {
+        int rows = static_cast<int>(matrix.size());
+        int cols = rows == 0 ? 0 : static_cast<int>(matrix.front().size());
+        std::vector<double> flat;
+        flat.reserve(static_cast<std::size_t>(rows * std::max(cols, 0)));
+        for (const auto &row : matrix) {
+            if (static_cast<int>(row.size()) != cols) {
+                throw std::runtime_error("dense matrix rows must have equal length");
+            }
+            flat.insert(flat.end(), row.begin(), row.end());
         }
-        return out;
+        return ad::DenseMatrix(rows, cols, std::move(flat));
     }
 };
 
-PyExpr require_expr(py::handle value, const PyExpr &reference) {
-    if (py::isinstance<PyExpr>(value)) {
-        return value.cast<PyExpr>();
+PyGraphScalar require_graph_scalar(py::handle value, const PyGraphScalar &reference) {
+    if (py::isinstance<PyGraphScalar>(value)) {
+        return value.cast<PyGraphScalar>();
     }
     if (py::isinstance<py::float_>(value) || py::isinstance<py::int_>(value)) {
-        return PyExpr(reference.graph, reference.graph->constant(py::cast<double>(value)));
+        return PyGraphScalar(reference.builder, reference.builder->constant(py::cast<double>(value)));
     }
-    throw py::type_error("expected AD expression or numeric constant");
+    throw py::type_error("expected AD graph scalar or numeric constant");
 }
 
-PyExpr binary(py::handle lhs, py::handle rhs, ad::Op op) {
-    PyExpr a;
-    PyExpr b;
-    if (py::isinstance<PyExpr>(lhs)) {
-        a = lhs.cast<PyExpr>();
-        b = require_expr(rhs, a);
-    } else if (py::isinstance<PyExpr>(rhs)) {
-        b = rhs.cast<PyExpr>();
-        a = require_expr(lhs, b);
+PyGraphScalar graph_binary(py::handle lhs, py::handle rhs, ad::Op op) {
+    PyGraphScalar a;
+    PyGraphScalar b;
+    if (py::isinstance<PyGraphScalar>(lhs)) {
+        a = lhs.cast<PyGraphScalar>();
+        b = require_graph_scalar(rhs, a);
+    } else if (py::isinstance<PyGraphScalar>(rhs)) {
+        b = rhs.cast<PyGraphScalar>();
+        a = require_graph_scalar(lhs, b);
     } else {
-        throw py::type_error("at least one operand must be an AD expression");
+        throw py::type_error("at least one operand must be an AD graph scalar");
     }
-    if (a.graph.get() != b.graph.get()) {
-        throw std::runtime_error("expressions belong to different graphs");
+    if (a.builder.get() != b.builder.get()) {
+        throw std::runtime_error("graph scalar expressions belong to different graph function builders");
     }
-    return PyExpr(a.graph, a.graph->binary(op, a.expr, b.expr));
+    return PyGraphScalar(a.builder, a.expr.g->binary(op, a.expr, b.expr));
 }
 
-PyExpr unary(const PyExpr &x, ad::Op op) {
-    return PyExpr(x.graph, x.graph->unary(op, x.expr));
+PyGraphScalar graph_unary(const PyGraphScalar &x, ad::Op op) {
+    return PyGraphScalar(x.builder, x.expr.g->unary(op, x.expr));
 }
 
 std::vector<std::pair<int, int>> structural_pairs(const PyFunction &fn, const std::string &wrt) {
     return ad::structural_sparsity(fn.fn, wrt).to_pairs();
 }
 
-int group_size(const std::vector<std::pair<std::string, int>> &groups, const std::string &name) {
-    for (const auto &group : groups) {
-        if (group.first == name) {
-            return group.second;
-        }
-    }
-    return -1;
-}
-
 void add_env_values(ad::EvalEnv &env, const PyFunction &fn, const NamedValues &inputs, const NamedValues &params) {
     for (const auto &[name, values] : inputs) {
-        int expected = group_size(fn.fn.input_groups, name);
+        int expected = fn.fn.input_group_size(name);
         if (expected < 0) {
             throw std::runtime_error("unknown input group: " + name);
         }
@@ -196,7 +284,7 @@ void add_env_values(ad::EvalEnv &env, const PyFunction &fn, const NamedValues &i
         env.input(name, values.data());
     }
     for (const auto &[name, values] : params) {
-        int expected = group_size(fn.fn.param_groups, name);
+        int expected = fn.fn.param_group_size(name);
         if (expected < 0) {
             throw std::runtime_error("unknown parameter group: " + name);
         }
@@ -240,68 +328,122 @@ std::vector<double> evaluate_vm(const PyFunction &fn, const NamedValues &inputs,
 PYBIND11_MODULE(_ad, m) {
     m.doc() = "MOO native AD bindings";
 
-    py::class_<PyExpr>(m, "Expr")
+    py::class_<PyGraphScalar>(m, "GraphScalar")
         .def(
             "__add__",
-            [](py::handle a, py::handle b) { return binary(a, b, ad::Op::Add); },
+            [](py::handle a, py::handle b) { return graph_binary(a, b, ad::Op::Add); },
             py::is_operator())
         .def(
             "__radd__",
-            [](py::handle a, py::handle b) { return binary(b, a, ad::Op::Add); },
+            [](py::handle a, py::handle b) { return graph_binary(b, a, ad::Op::Add); },
             py::is_operator())
         .def(
             "__sub__",
-            [](py::handle a, py::handle b) { return binary(a, b, ad::Op::Sub); },
+            [](py::handle a, py::handle b) { return graph_binary(a, b, ad::Op::Sub); },
             py::is_operator())
         .def(
             "__rsub__",
-            [](py::handle a, py::handle b) { return binary(b, a, ad::Op::Sub); },
+            [](py::handle a, py::handle b) { return graph_binary(b, a, ad::Op::Sub); },
             py::is_operator())
         .def(
             "__mul__",
-            [](py::handle a, py::handle b) { return binary(a, b, ad::Op::Mul); },
+            [](py::handle a, py::handle b) { return graph_binary(a, b, ad::Op::Mul); },
             py::is_operator())
         .def(
             "__rmul__",
-            [](py::handle a, py::handle b) { return binary(b, a, ad::Op::Mul); },
+            [](py::handle a, py::handle b) { return graph_binary(b, a, ad::Op::Mul); },
             py::is_operator())
         .def(
             "__truediv__",
-            [](py::handle a, py::handle b) { return binary(a, b, ad::Op::Div); },
+            [](py::handle a, py::handle b) { return graph_binary(a, b, ad::Op::Div); },
             py::is_operator())
         .def(
             "__rtruediv__",
-            [](py::handle a, py::handle b) { return binary(b, a, ad::Op::Div); },
+            [](py::handle a, py::handle b) { return graph_binary(b, a, ad::Op::Div); },
             py::is_operator())
         .def(
             "__neg__",
-            [](const PyExpr &x) { return unary(x, ad::Op::Neg); },
+            [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Neg); },
             py::is_operator())
-        .def("pow_const", [](const PyExpr &x, double p) { return PyExpr(x.graph, x.graph->pow_const(x.expr, p)); });
+        .def("pow_const", [](const PyGraphScalar &x, double p) { return PyGraphScalar(x.builder, x.expr.g->pow_const(x.expr, p)); });
 
-    py::class_<PyVector>(m, "Vector")
-        .def("__len__", [](const PyVector &v) { return v.values.size(); })
+    py::class_<PyGraphVector>(m, "GraphVector")
+        .def("__len__", [](const PyGraphVector &v) { return v.expr.size; })
         .def("__getitem__",
-             [](const PyVector &v, std::size_t i) {
-                 if (i >= v.values.size()) {
-                     throw py::index_error();
+             [](const PyGraphVector &v, int i) {
+                 if (!v.builder) {
+                     throw std::runtime_error("invalid graph vector");
                  }
-                 return v.values[i];
+                 if (i < 0) {
+                     i += v.expr.size;
+                 }
+                 return PyGraphScalar(v.builder, v.builder->at(v.expr, i));
              })
-        .def_property_readonly("name", [](const PyVector &v) { return v.name; })
-        .def_property_readonly("values", [](const PyVector &v) { return v.values; });
+        .def_property_readonly("values",
+                               [](const PyGraphVector &v) {
+                                   if (!v.builder) {
+                                       throw std::runtime_error("invalid graph vector");
+                                   }
+                                   std::vector<PyGraphScalar> out;
+                                   out.reserve(static_cast<std::size_t>(v.expr.size));
+                                   for (int i = 0; i < v.expr.size; ++i) {
+                                       out.emplace_back(v.builder, v.builder->at(v.expr, i));
+                                   }
+                                   return out;
+                               })
+        .def(
+            "__add__",
+            [](const PyGraphVector &lhs, const PyGraphVector &rhs) {
+                if (lhs.builder.get() != rhs.builder.get()) {
+                    throw std::runtime_error("graph vectors belong to different graph function builders");
+                }
+                return PyGraphVector(lhs.builder, lhs.builder->add(lhs.expr, rhs.expr));
+            },
+            py::is_operator())
+        .def(
+            "__sub__",
+            [](const PyGraphVector &lhs, const PyGraphVector &rhs) {
+                if (lhs.builder.get() != rhs.builder.get()) {
+                    throw std::runtime_error("graph vectors belong to different graph function builders");
+                }
+                return PyGraphVector(lhs.builder, lhs.builder->sub(lhs.expr, rhs.expr));
+            },
+            py::is_operator())
+        .def(
+            "__mul__",
+            [](const PyGraphVector &rhs, double factor) { return PyGraphVector(rhs.builder, rhs.builder->scale(factor, rhs.expr)); },
+            py::is_operator())
+        .def(
+            "__rmul__",
+            [](const PyGraphVector &rhs, double factor) { return PyGraphVector(rhs.builder, rhs.builder->scale(factor, rhs.expr)); },
+            py::is_operator());
 
-    py::class_<PyGraphBuilder>(m, "GraphBuilder")
+    py::class_<PyGraphFunctionBuilder>(m, "GraphFunctionBuilder")
         .def(py::init<>())
-        .def("constant", &PyGraphBuilder::constant)
-        .def("inputs", &PyGraphBuilder::inputs)
-        .def("params", &PyGraphBuilder::params)
-        .def("function", &PyGraphBuilder::function, py::arg("inputs"), py::arg("outputs"), py::arg("params") = std::vector<PyVector>{});
+        .def("constant", &PyGraphFunctionBuilder::constant)
+        .def("inputs", &PyGraphFunctionBuilder::inputs)
+        .def("params", &PyGraphFunctionBuilder::params)
+        .def("vector", &PyGraphFunctionBuilder::vector)
+        .def("dense_matvec", &PyGraphFunctionBuilder::dense_matvec)
+        .def("dense_matvec_values", &PyGraphFunctionBuilder::dense_matvec_values)
+        .def("sparse_matvec", &PyGraphFunctionBuilder::sparse_matvec)
+        .def("sparse_matvec_values", &PyGraphFunctionBuilder::sparse_matvec_values)
+        .def("kron_eye_matvec", &PyGraphFunctionBuilder::kron_eye_matvec)
+        .def("kron_eye_matvec_values", &PyGraphFunctionBuilder::kron_eye_matvec_values)
+        .def("vector_add", &PyGraphFunctionBuilder::vector_add)
+        .def("vector_sub", &PyGraphFunctionBuilder::vector_sub)
+        .def("vector_scale", &PyGraphFunctionBuilder::vector_scale)
+        .def("concat", &PyGraphFunctionBuilder::concat)
+        .def("slice", &PyGraphFunctionBuilder::slice, py::arg("rhs"), py::arg("start"), py::arg("length"), py::arg("stride") = 1)
+        .def("at", &PyGraphFunctionBuilder::at)
+        .def("function", &PyGraphFunctionBuilder::function, py::arg("inputs"), py::arg("outputs"), py::arg("params") = std::vector<PyGraphVector>{});
 
     py::class_<PyFunction>(m, "Function")
         .def_property_readonly("input_size", [](const PyFunction &f) { return f.fn.input_size(); })
         .def_property_readonly("param_size", [](const PyFunction &f) { return f.fn.param_size(); })
         .def_property_readonly("output_size", [](const PyFunction &f) { return f.fn.output_size(); })
+        .def_property_readonly("has_vector_structure", [](const PyFunction &f) { return f.fn.has_vector_structure(); })
+        .def_property_readonly("vector_node_count", [](const PyFunction &f) { return f.fn.vector_node_count(); })
         .def("evaluate", &evaluate_vm, py::arg("inputs") = NamedValues{}, py::arg("params") = NamedValues{})
         .def(
             "prepare",
@@ -325,7 +467,7 @@ PYBIND11_MODULE(_ad, m) {
                 ad::EvalEnv env;
                 add_env_values(env, f, inputs, params);
                 prepared.vm = std::make_shared<ad::StagedVM>(f.fn, direction);
-                int expected = group_size(f.fn.param_groups, direction);
+                int expected = f.fn.param_group_size(direction);
                 if (expected < 0) {
                     throw std::runtime_error("unknown direction parameter group: " + direction);
                 }
@@ -351,6 +493,26 @@ PYBIND11_MODULE(_ad, m) {
             [](const PyFunction &f, const std::string &lambda, const std::string &wrt) { return PyFunction{ad::reverse_diff(f.fn, lambda, wrt)}; },
             py::arg("lambda_name") = "lambda",
             py::arg("wrt") = "x")
+        .def(
+            "exact_derivative_plan",
+            [](const PyFunction &f, const std::string &wrt, const std::string &direction, const std::string &lambda_name) {
+                auto plan = ad::exact_derivative_plan(f.fn, wrt, direction, lambda_name);
+                py::dict out;
+                out["jvp"] = PyFunction{std::move(plan.jvp)};
+                out["grad"] = PyFunction{std::move(plan.grad)};
+                out["hvp"] = PyFunction{std::move(plan.hvp)};
+                out["jacobian_sparsity"] = std::move(plan.jacobian_sparsity);
+                out["hessian_sparsity"] = std::move(plan.hessian_sparsity);
+                out["hessian_full_sparsity"] = std::move(plan.hessian_full_sparsity);
+                out["jacobian_colors"] = std::move(plan.jacobian_colors);
+                out["hessian_colors"] = std::move(plan.hessian_colors);
+                out["jacobian_color_count"] = plan.jacobian_color_count;
+                out["hessian_color_count"] = plan.hessian_color_count;
+                return out;
+            },
+            py::arg("wrt") = "x",
+            py::arg("direction") = "v",
+            py::arg("lambda_name") = "lambda")
         .def("to_c", [](const PyFunction &f, const std::string &name) { return ad::to_c(f.fn, name); })
         .def(
             "to_staged_c",
@@ -423,10 +585,10 @@ PYBIND11_MODULE(_ad, m) {
             },
             py::arg("direction_values"));
 
-    m.def("sin", [](const PyExpr &x) { return unary(x, ad::Op::Sin); });
-    m.def("cos", [](const PyExpr &x) { return unary(x, ad::Op::Cos); });
-    m.def("tan", [](const PyExpr &x) { return unary(x, ad::Op::Tan); });
-    m.def("exp", [](const PyExpr &x) { return unary(x, ad::Op::Exp); });
-    m.def("log", [](const PyExpr &x) { return unary(x, ad::Op::Log); });
-    m.def("pow_const", [](const PyExpr &x, double p) { return PyExpr(x.graph, x.graph->pow_const(x.expr, p)); });
+    m.def("sin", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Sin); });
+    m.def("cos", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Cos); });
+    m.def("tan", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Tan); });
+    m.def("exp", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Exp); });
+    m.def("log", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Log); });
+    m.def("pow_const", [](const PyGraphScalar &x, double p) { return PyGraphScalar(x.builder, x.expr.g->pow_const(x.expr, p)); });
 }

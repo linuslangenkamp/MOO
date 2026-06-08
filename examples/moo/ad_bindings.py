@@ -21,18 +21,35 @@
 from moo import ad
 
 
-g = ad.GraphBuilder()
-x = g.inputs("x", 3)
-f = g.function(x, [2.0 * x[0] - x[1] + 3.0, x[2] * x[2] + 1.0])
+def nonlinear_demo():
+    g = ad.GraphFunctionBuilder()
+    x = g.inputs("x", 3)
+    f = g.function(x, g.vector([2.0 * x[0] - x[1] + 3.0, x[2] * x[2] + 1.0]))
 
-grad = f.reverse_diff("lambda", "x")
-hvp = grad.forward_diff("x", "v")
+    grad = f.reverse_diff("lambda", "x")
+    hvp = grad.forward_diff("x", "v")
 
-print(f.jacobian_sparsity("x"))
-print(hvp.hessian_sparsity("v"))
-print(f.evaluate(inputs={"x": [1.0, 2.0, 3.0]}))
-print(grad.evaluate(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0]}))
-print(hvp.evaluate(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0], "v": [0.0, 0.0, 1.0]}))
-prepared = hvp.prepare(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0]})
-print(prepared.apply([0.0, 0.0, 1.0]))
-print(f.to_c("demo_value"))
+    print(f.jacobian_sparsity("x"))
+    print(hvp.hessian_sparsity("v"))
+    print(f.evaluate(inputs={"x": [1.0, 2.0, 3.0]}))
+    print(grad.evaluate(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0]}))
+    print(hvp.evaluate(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0], "v": [0.0, 0.0, 1.0]}))
+    prepared = hvp.prepare(inputs={"x": [1.0, 2.0, 3.0]}, params={"lambda": [1.0, 1.0]})
+    print(prepared.apply([0.0, 0.0, 1.0]))
+
+
+def vector_operator_demo():
+    g = ad.GraphFunctionBuilder()
+    x = g.inputs("x", 6)
+    f = g.function(
+        x,
+        g.kron_eye_matvec([[1.0, 2.0, 0.0], [-1.0, 0.0, 4.0]], 2, x),
+    )
+
+    print(f.evaluate(inputs={"x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}))
+    print(f.to_c("kron_eye_value"))
+
+
+if __name__ == "__main__":
+    nonlinear_demo()
+    vector_operator_demo()

@@ -26,7 +26,7 @@ from moo import gdop_model
 def build_model():
     model = gdop_model("linear_gdop_codegen")
     x = model.add_state("x", start=0.0, final=1.0)
-    u = model.add_control("u", lb = 0)
+    u = model.add_control("u", lb=0.0)
 
     model.set_time_fixed(t0=0.0, tf=1.0)
     model.mesh(intervals=25, nodes=3)
@@ -38,8 +38,5 @@ def build_model():
 
 if __name__ == "__main__":
     out = Path("build/moo/linear_gdop")
-    model = build_model()
-    model.generate(out)
-    model.compile(out)
-    result = model.optimize(out, solver="Ipopt")
+    result = build_model().run(out, solver="Ipopt")
     raise SystemExit(result.returncode)

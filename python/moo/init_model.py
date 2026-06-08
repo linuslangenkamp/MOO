@@ -29,8 +29,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from .ad_codegen import emit_function
-from .common import SolverMixin, SolverSettings, derivative_mode
+from .callback_codegen import render_basis_hvp_fill, render_basis_jvp_fill, render_colored_fill
+from .common import SolverMixin, SolverSettings, derivative_mode, parse_sparsity_pairs
+from .expressions import VarNode
+from . import paths
+from .local_function import InputGroup, LocalGraphFunction
 from .model import Expr, as_expr, _arr, _c_bool, _clean_name, _num
 from .results import InitResult, OptimizationRun, read_results
 
@@ -54,7 +57,8 @@ class InitConstraint:
 
 class InitParameter(Expr):
     def __init__(self, idx: int, base: float):
-        super().__init__(f"z[{idx}]", f"z[{idx}]")
+        node = VarNode("z", int(idx))
+        super().__init__(f"z[{idx}]", f"z[{idx}]", node, node)
         self._base = base
 
     @property
@@ -73,6 +77,7 @@ class InitModel(SolverMixin):
         self.codegen_strategy = "auto"
         self.codegen_structure_strategy = "auto"
         self.codegen_local_strategy = "auto"
+        self.codegen_linear_algebra_strategy = "auto"
         self.variables: list[InitVar] = []
         self.parameters: list[InitVar] = []
         self.runtime_parameters: list[tuple[str, float]] = []
@@ -96,7 +101,7 @@ class InitModel(SolverMixin):
     def add_variable(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> Expr:
         idx = len(self.variables)
         self.variables.append(InitVar(name or f"y{idx}", lb, ub, guess, nominal))
-        return Expr(f"z[{idx}]", f"z[{idx}]")
+        return Expr.variable("z", idx)
 
     def add_parameter(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float | None = None, base: float | None = None, nominal: float = 1.0) -> InitParameter:
         if guess is None and base is None:
@@ -119,7 +124,7 @@ class InitModel(SolverMixin):
     def add_runtime_parameter(self, name: str, value: float) -> Expr:
         idx = len(self.runtime_parameters)
         self.runtime_parameters.append((name, value))
-        return Expr(f"rp[{idx}]", f"rp[{idx}]")
+        return Expr.variable("rp", idx)
 
     def set_objective(self, expr: object) -> None:
         self.objective = as_expr(expr)
@@ -133,8 +138,9 @@ class InitModel(SolverMixin):
 
     def generate(self, out_dir: str | os.PathLike[str], repo_root: str | os.PathLike[str] | None = None, standalone_main: bool = True) -> tuple[Path, Path]:
         self._validate()
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
         out_path = Path(out_dir)
+        if not out_path.is_absolute():
+            out_path = out_path.resolve()
         out_path.mkdir(parents=True, exist_ok=True)
         emitted = self._emit_ad()
         c_path = out_path / f"{self.name}.c"
@@ -145,36 +151,35 @@ class InitModel(SolverMixin):
         return c_path, h_path
 
     def compile(self, out_dir: str | os.PathLike[str], build_dir: str | os.PathLike[str] = "build", repo_root: str | os.PathLike[str] | None = None, generate: bool = False) -> Path:
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
         out_path = Path(out_dir)
-        abs_out_path = out_path if out_path.is_absolute() else root / out_path
-        c_path = out_path / f"{self.name}.c"
+        abs_out_path = out_path if out_path.is_absolute() else out_path.resolve()
+        c_path = abs_out_path / f"{self.name}.c"
         if generate or not c_path.exists():
-            c_path, _ = self.generate(out_path, root, standalone_main=True)
+            c_path, _ = self.generate(abs_out_path, repo_root, standalone_main=True)
         exe = abs_out_path / self.name
         cc = shutil.which("cc") or shutil.which("gcc")
         if cc is None:
             raise RuntimeError("No C compiler found in PATH")
-        build = Path(build_dir)
+        include = paths.include_dir()
+        lib_dir = paths.library_dir(build_dir)
         subprocess.run([
             cc, "-std=c99", "-O3",
-            f"-I{root / 'src'}",
+            f"-I{include}",
             f"-I{abs_out_path}",
-            str(root / c_path if not c_path.is_absolute() else c_path),
-            f"-L{root / build}",
+            str(c_path),
+            f"-L{lib_dir}",
             "-lmoo",
-            f"-Wl,-rpath,{root / build}",
+            f"-Wl,-rpath,{lib_dir}",
             "-lm",
             "-o", str(exe),
-        ], cwd=root, check=True)
+        ], check=True)
         return exe
 
     def optimize(self, out_dir: str | os.PathLike[str], build_dir: str | os.PathLike[str] = "build", repo_root: str | os.PathLike[str] | None = None, solver: str | None = None, solver_args: list[str] | None = None, capture: bool = False, generate: bool = False, run_cwd: str | os.PathLike[str] | None = None) -> OptimizationRun:
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
-        exe = self.compile(out_dir, build_dir=build_dir, repo_root=root, generate=generate)
-        cwd = Path(run_cwd) if run_cwd is not None else root / Path(build_dir)
+        exe = self.compile(out_dir, build_dir=build_dir, repo_root=repo_root, generate=generate)
+        cwd = Path(run_cwd) if run_cwd is not None else paths.library_dir(build_dir)
         if not cwd.is_absolute():
-            cwd = root / cwd
+            cwd = cwd.resolve()
         cwd.mkdir(parents=True, exist_ok=True)
         run_cmd = [str(exe)] + self._solver_args(solver, solver_args)
         if capture:
@@ -201,29 +206,16 @@ class InitModel(SolverMixin):
         if not self.variables and not self.parameters:
             raise ValueError("InitModel requires at least one variable or parameter")
 
-    def _pairs(self, text: str) -> list[tuple[int, int]]:
-        if isinstance(text, list):
-            return text
-        out = []
-        for line in text.splitlines():
-            if line.strip():
-                a, b = line.split(",", 1)
-                out.append((int(a), int(b)))
-        return out
-
     def _emit_ad(self) -> dict[str, str | list[tuple[int, int]]]:
-        outputs = [self.objective.lfg if self.objective is not None else "0.0"]
-        outputs.extend(expr.lfg for expr in self.f_constraints)
-        outputs.extend(c.expr.lfg for c in self.g_constraints)
-        emitted = emit_function(
-            "z",
-            self.z_size,
-            outputs,
-            [("rp", len(self.runtime_parameters))],
-            "moo_init_value",
-            "moo_init_jvp",
-            "moo_init_hvp",
-        )
+        outputs = [self.objective if self.objective is not None else 0.0]
+        outputs.extend(self.f_constraints)
+        outputs.extend(c.expr for c in self.g_constraints)
+        emitted = LocalGraphFunction(
+            name="moo_init",
+            input=InputGroup("z", self.z_size),
+            outputs=outputs,
+            params=[InputGroup("rp", len(self.runtime_parameters))],
+        ).emit()
         return {
             "VALUE": emitted.value,
             "JVP": emitted.jvp,
@@ -238,8 +230,8 @@ class InitModel(SolverMixin):
         }
 
     def _render_c(self, emitted: dict[str, str], standalone_main: bool) -> str:
-        jac = self._pairs(emitted.get("JAC_SPARSITY", ""))
-        hes = self._pairs(emitted.get("HES_SPARSITY", ""))
+        jac = parse_sparsity_pairs(emitted.get("JAC_SPARSITY", ""))
+        hes = parse_sparsity_pairs(emitted.get("HES_SPARSITY", ""))
         jac_colors = emitted.get("JAC_COLORS", [])
         hes_colors = emitted.get("HES_COLORS", [])
         obj_jac = [(0, col) for row, col in jac if row == 0]
@@ -398,66 +390,24 @@ int main_{self.name}(int argc, char** argv) {{
 """
 
     def _render_jac_fill(self, pairs: list[tuple[int, int]]) -> str:
-        lines = []
-        for idx, (row, col) in enumerate(pairs):
-            lines += [f"    v[{col}] = 1.0;", "    moo_init_jvp(z, rp, v, tmp);", f"    out[{idx}] = tmp[{row}];", f"    v[{col}] = 0.0;"]
-        return "\n".join(lines) or "    (void)out;"
+        return render_basis_jvp_fill(pairs, "moo_init_jvp(z, rp, v, tmp);")
 
     def _render_hes_fill(self, pairs: list[tuple[int, int]]) -> str:
-        lines = []
-        for idx, (row, col) in enumerate(pairs):
-            lines += [f"    v[{col}] = 1.0;", "    moo_init_hvp_apply(&cache, v, tmp);", f"    out[{idx}] = tmp[{row}];", f"    v[{col}] = 0.0;"]
-        return "\n".join(lines) or "    (void)out;"
+        return render_basis_hvp_fill(pairs, "moo_init_hvp_apply(&cache, v, tmp);")
 
     def _render_colored_jac_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return self._render_colored_fill(
+        return render_colored_fill(
             pairs,
             colors,
             "moo_init_jvp(z, rp, v, tmp);",
-            lambda idx, row, col: f"    out[{idx}] = tmp[{row}];",
         )
 
     def _render_colored_hes_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return self._render_colored_fill(
+        return render_colored_fill(
             pairs,
             colors,
             "moo_init_hvp_apply(&cache, v, tmp);",
-            lambda idx, row, col: f"    out[{idx}] = tmp[{row}];",
         )
-
-    def _render_colored_fill(self, pairs: list[tuple[int, int]], colors: list[int], call: str, scatter) -> str:
-        if not pairs:
-            return "    (void)out;"
-        by_color: dict[int, list[tuple[int, int, int]]] = {}
-        for idx, (row, col) in enumerate(pairs):
-            color = colors[col] if 0 <= col < len(colors) else col
-            by_color.setdefault(color, []).append((idx, row, col))
-        ordered_colors = sorted(by_color)
-        color_cols: list[int] = []
-        color_offsets = [0]
-        scatter_buf: list[int] = []
-        scatter_row: list[int] = []
-        scatter_offsets = [0]
-        for color in ordered_colors:
-            entries = by_color[color]
-            cols = sorted({col for _, _, col in entries})
-            color_cols.extend(cols)
-            color_offsets.append(len(color_cols))
-            for idx, row, _ in entries:
-                scatter_buf.append(idx)
-                scatter_row.append(row)
-            scatter_offsets.append(len(scatter_buf))
-        return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
-    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
-    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
-    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
-    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
-    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
-        {call}
-        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
-    }}"""
 
     def _render_h(self) -> str:
         guard = f"MOO_INIT_CODEGEN_{self.name.upper()}_H"
@@ -485,6 +435,7 @@ int main_{self.name}(int argc, char** argv);
             f"strategy={self.codegen_strategy}",
             f"structure_strategy={self.codegen_structure_strategy}",
             f"local_strategy={self.codegen_local_strategy}",
+            f"linear_algebra_strategy={self.codegen_linear_algebra_strategy}",
             f"generated_c_bytes={c_path.stat().st_size}",
         ]
         jac_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get("JAC_SPARSITY", []), emitted.get("JAC_COLORS", []))

@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import ad
+from .graph_expression import GraphExpressionEmitter
 
 
 @dataclass
@@ -39,62 +40,85 @@ class EmittedFunction:
     report: dict[str, object]
 
 
-def _safe_env(builder: ad.GraphBuilder, variables: dict[str, object]) -> dict[str, object]:
-    env: dict[str, object] = {
-        "__builtins__": {},
-        "sin": ad.sin,
-        "cos": ad.cos,
-        "tan": ad.tan,
-        "exp": ad.exp,
-        "log": ad.log,
-        "pow_const": ad.pow_const,
-    }
-    env.update(variables)
-    return env
+@dataclass
+class BuiltGraphFunction:
+    function: object
+    report: dict[str, object]
 
 
-def _as_expr(builder: ad.GraphBuilder, value: object):
-    if isinstance(value, (int, float)):
-        return builder.constant(float(value))
-    return value
+def build_graph_function(
+    input_name: str,
+    input_size: int,
+    outputs: list[object],
+    params: list[tuple[str, int]],
+) -> BuiltGraphFunction:
+    builder = ad.GraphFunctionBuilder()
+    x = builder.inputs(input_name, input_size)
+    param_vectors = {name: builder.params(name, size) for name, size in params}
+    compiler = GraphExpressionEmitter(builder, {input_name: x, **param_vectors})
+
+    out = []
+    vector_out = None
+    sources: set[str] = set()
+    for output in outputs:
+        compiled = compiler.output(output)
+        sources.add(compiled.source)
+        if compiled.vector is not None and compiled.value is None and vector_out is None and not out:
+            vector_out = compiled.vector
+        elif compiled.vector is not None:
+            for value in compiled.vector.values:
+                out.append(value)
+            vector_out = None
+        elif compiled.value is not None:
+            out.append(compiled.value)
+    if not out:
+        if vector_out is None:
+            out.append(builder.constant(0.0))
+            if not sources:
+                sources.add("native_constant")
+
+    source_summary = "native_expr" if sources and sources <= {"native_expr", "native_vector_expr", "native_constant", "empty"} else "unknown"
+    fn = builder.function(x, vector_out if vector_out is not None else builder.vector(out), list(param_vectors.values()))
+    return BuiltGraphFunction(
+        function=fn,
+        report={
+            "graph_source": source_summary,
+            "graph_sources": ",".join(sorted(sources)),
+            "outputs": len(vector_out) if vector_out is not None else len(out),
+            "has_vector_structure": bool(fn.has_vector_structure),
+            "vector_node_count": int(fn.vector_node_count),
+            "value_lowering": "vector" if bool(fn.has_vector_structure) else "scalar",
+        },
+    )
 
 
 def emit_function(
     input_name: str,
     input_size: int,
-    outputs: list[str | None],
+    outputs: list[object],
     params: list[tuple[str, int]],
     value_name: str,
     jvp_name: str,
     hvp_name: str,
 ) -> EmittedFunction:
-    builder = ad.GraphBuilder()
-    x = builder.inputs(input_name, input_size)
-    param_vectors = {name: builder.params(name, size) for name, size in params}
-    env = _safe_env(builder, {input_name: x, **param_vectors})
-
-    out = []
-    for code in outputs:
-        if code is None:
-            continue
-        out.append(_as_expr(builder, eval(code, env)))
-    if not out:
-        out.append(builder.constant(0.0))
-
-    fn = builder.function(x, out, list(param_vectors.values()))
-    jvp = fn.forward_diff(input_name, "v")
-    grad = fn.reverse_diff("lambda", input_name)
-    hvp = grad.forward_diff(input_name, "v")
-    jac_sparsity = fn.jacobian_sparsity(input_name)
-    hes_sparsity = hvp.hessian_sparsity("v")
-    jac_coloring = fn.coloring(jac_sparsity, input_size)
-
-    # HVP output row r depends on every symmetric Hessian entry H[r,c], so
-    # color against the full symmetric pattern even though callbacks request
-    # only the lower-triangular values.
-    # TODO: this is very conservative, we should create a proper star-coloring, or even stronger
-    #       colorings as in ColPack library, which may even require certain recoveries
-    hes_coloring = hvp.coloring(hvp.hessian_sparsity_full("v"), input_size)
+    built = build_graph_function(input_name, input_size, outputs, params)
+    fn = built.function
+    plan = fn.exact_derivative_plan(input_name, "v", "lambda")
+    jvp = plan["jvp"]
+    hvp = plan["hvp"]
+    jac_sparsity = list(plan["jacobian_sparsity"])
+    hes_sparsity = list(plan["hessian_sparsity"])
+    jac_colors = list(plan["jacobian_colors"])
+    hes_colors = list(plan["hessian_colors"])
+    report = dict(built.report)
+    report.update(
+        {
+            "jacobian_nnz": len(jac_sparsity),
+            "jacobian_colors": int(plan["jacobian_color_count"]),
+            "hessian_nnz": len(hes_sparsity),
+            "hessian_colors": int(plan["hessian_color_count"]),
+        }
+    )
     return EmittedFunction(
         value=fn.to_c(value_name),
         jvp=jvp.to_c(jvp_name),
@@ -103,34 +127,18 @@ def emit_function(
         hes=hvp.to_sparse_hessian_c("v", hes_sparsity, f"{hvp_name}_sparse"),
         jac_sparsity=jac_sparsity,
         hes_sparsity=hes_sparsity,
-        jac_colors=list(jac_coloring["colors"]),
-        hes_colors=list(hes_coloring["colors"]),
-        report={
-            "kernel_source": "symbolic_coefficients",
-            "outputs": len(out),
-            "jacobian_nnz": len(jac_sparsity),
-            "jacobian_colors": jac_coloring["color_count"],
-            "hessian_nnz": len(hes_sparsity),
-            "hessian_colors": hes_coloring["color_count"],
-        },
+        jac_colors=jac_colors,
+        hes_colors=hes_colors,
+        report=report,
     )
 
 
 def emit_value_function(
     input_name: str,
     input_size: int,
-    outputs: list[str | None],
+    outputs: list[object],
     params: list[tuple[str, int]],
     value_name: str,
 ) -> tuple[str, list[tuple[int, int]]]:
-    builder = ad.GraphBuilder()
-    x = builder.inputs(input_name, input_size)
-    param_vectors = {name: builder.params(name, size) for name, size in params}
-    env = _safe_env(builder, {input_name: x, **param_vectors})
-
-    out = [_as_expr(builder, eval(code, env)) for code in outputs if code is not None]
-    if not out:
-        out.append(builder.constant(0.0))
-
-    fn = builder.function(x, out, list(param_vectors.values()))
+    fn = build_graph_function(input_name, input_size, outputs, params).function
     return fn.to_c(value_name), fn.jacobian_sparsity(input_name)

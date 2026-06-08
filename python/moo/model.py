@@ -30,8 +30,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from .ad_codegen import emit_function, emit_value_function
-from .common import SolverMixin, SolverSettings, derivative_mode
+from .callback_codegen import render_basis_hvp_fill, render_basis_jvp_fill, render_colored_fill
+from .common import SolverMixin, SolverSettings, derivative_mode, parse_sparsity_pairs
+from .expressions import Expr, SumExpr, VarNode, as_expr, cos, exp, log, pow_const, sin, sum_expr, tan
+from .graph_expression import remap_expression_node
+from .local_function import InputGroup, LocalGraphFunction, LocalValueFunction
+from . import paths
 from .results import GDOPResult, OptimizationRun, read_results
 
 
@@ -70,157 +74,6 @@ def _double_arr(values: Iterable[float]) -> str:
     return f"(f64[]){{{', '.join(_num(v) for v in vals)}}}"
 
 
-class Expr:
-    def __init__(self, lfg: str | None, mr: str | None = None):
-        self.lfg = lfg
-        self.mr = lfg if mr is None else mr
-
-    @staticmethod
-    def const(value: float | int) -> "Expr":
-        text = repr(float(value))
-        return Expr(text, text)
-
-    def _binary(self, other: object, op: str) -> "Expr":
-        rhs = as_expr(other)
-        if op == "+":
-            return SumExpr.from_terms([self, rhs])
-        return Expr(
-            f"({self.lfg} {op} {rhs.lfg})" if self.lfg is not None and rhs.lfg is not None else None,
-            f"({self.mr} {op} {rhs.mr})" if self.mr is not None and rhs.mr is not None else None,
-        )
-
-    def __add__(self, other: object) -> "Expr":
-        return self._binary(other, "+")
-
-    def __radd__(self, other: object) -> "Expr":
-        return as_expr(other)._binary(self, "+")
-
-    def __sub__(self, other: object) -> "Expr":
-        return self._binary(other, "-")
-
-    def __rsub__(self, other: object) -> "Expr":
-        return as_expr(other)._binary(self, "-")
-
-    def __mul__(self, other: object) -> "Expr":
-        return self._binary(other, "*")
-
-    def __rmul__(self, other: object) -> "Expr":
-        return as_expr(other)._binary(self, "*")
-
-    def __truediv__(self, other: object) -> "Expr":
-        return self._binary(other, "/")
-
-    def __rtruediv__(self, other: object) -> "Expr":
-        return as_expr(other)._binary(self, "/")
-
-    def __neg__(self) -> "Expr":
-        return Expr(
-            f"(-{self.lfg})" if self.lfg is not None else None,
-            f"(-{self.mr})" if self.mr is not None else None,
-        )
-
-    def __pow__(self, power: float | int) -> "Expr":
-        return pow_const(self, power)
-
-
-def _balanced_join(parts: list[str], op: str) -> str:
-    if not parts:
-        return "0.0"
-    layer = parts
-    while len(layer) > 1:
-        nxt = []
-        for i in range(0, len(layer), 2):
-            if i + 1 < len(layer):
-                nxt.append(f"({layer[i]} {op} {layer[i + 1]})")
-            else:
-                nxt.append(layer[i])
-        layer = nxt
-    return layer[0]
-
-
-class SumExpr(Expr):
-    def __init__(self, terms: list[Expr]):
-        self.terms = terms
-
-    @staticmethod
-    def from_terms(terms: list[Expr]) -> Expr:
-        flat: list[Expr] = []
-        for term in terms:
-            expr = as_expr(term)
-            if isinstance(expr, SumExpr):
-                flat.extend(expr.terms)
-            elif expr.lfg == "0.0" and expr.mr == "0.0":
-                continue
-            else:
-                flat.append(expr)
-        if not flat:
-            return Expr.const(0.0)
-        if len(flat) == 1:
-            return flat[0]
-        return SumExpr(flat)
-
-    @property
-    def lfg(self) -> str | None:
-        parts = [term.lfg for term in self.terms]
-        if any(part is None for part in parts):
-            return None
-        return _balanced_join([part for part in parts if part is not None], "+")
-
-    @property
-    def mr(self) -> str | None:
-        parts = [term.mr for term in self.terms]
-        if any(part is None for part in parts):
-            return None
-        return _balanced_join([part for part in parts if part is not None], "+")
-
-
-def as_expr(value: object) -> Expr:
-    if isinstance(value, Expr):
-        return value
-    if isinstance(value, (int, float)):
-        return Expr.const(value)
-    raise TypeError(f"Cannot convert {type(value)!r} to Expr")
-
-
-def _unary(name: str, value: object) -> Expr:
-    expr = as_expr(value)
-    return Expr(
-        f"{name}({expr.lfg})" if expr.lfg is not None else None,
-        f"{name}({expr.mr})" if expr.mr is not None else None,
-    )
-
-def sin(value: object) -> Expr:
-    return _unary("sin", value)
-
-
-def cos(value: object) -> Expr:
-    return _unary("cos", value)
-
-
-def tan(value: object) -> Expr:
-    return _unary("tan", value)
-
-
-def exp(value: object) -> Expr:
-    return _unary("exp", value)
-
-
-def log(value: object) -> Expr:
-    return _unary("log", value)
-
-
-def pow_const(value: object, power: float | int) -> Expr:
-    expr = as_expr(value)
-    return Expr(
-        f"pow_const({expr.lfg}, {repr(float(power))})" if expr.lfg is not None else None,
-        f"pow_const({expr.mr}, {repr(float(power))})" if expr.mr is not None else None,
-    )
-
-
-def sum_expr(values: Iterable[object]) -> Expr:
-    return SumExpr.from_terms([as_expr(value) for value in values])
-
-
 @dataclass
 class Variable:
     name: str
@@ -246,6 +99,7 @@ class GDOPModel(SolverMixin):
         self.codegen_strategy = "auto"
         self.codegen_structure_strategy = "auto"
         self.codegen_local_strategy = "auto"
+        self.codegen_linear_algebra_strategy = "auto"
         self.states: list[Variable] = []
         self.controls: list[Variable] = []
         self.parameters: list[Variable] = []
@@ -333,51 +187,51 @@ class GDOPModel(SolverMixin):
         idx = len(self.states)
         self.states.append(Variable(name or f"x{idx}", lb, ub, start, nominal, start, final))
         self.dynamics.append(None)
-        return Expr(f"z[{idx}]", f"XF[{idx}]")
+        return Expr.variable("z", idx, mr=f"XF[{idx}]", mr_node=VarNode("xf", idx))
 
     def initial(self, var: Expr) -> Expr:
-        if var.mr is None:
+        node = var.mr_node
+        if node is None:
             raise ValueError("Expression has no boundary representation")
-        match = re.fullmatch(r"(XF|UF)\[(\d+)\]", var.mr)
-        if not match:
+        if not isinstance(node, VarNode) or node.group not in {"xf", "uf"}:
             raise ValueError("initial() currently expects a single state/control variable")
-        prefix, idx = match.group(1), int(match.group(2))
-        return Expr(None, f"{'X0' if prefix == 'XF' else 'U0'}[{idx}]")
+        group = "x0" if node.group == "xf" else "u0"
+        return Expr(None, None, None, VarNode(group, int(node.index)))
 
     def add_control(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> Expr:
         idx = len(self.controls)
         z_idx = self.x_size + idx
         self.controls.append(Variable(name or f"u{idx}", lb, ub, guess, nominal))
-        return Expr(f"z[{z_idx}]", f"UF[{idx}]")
+        return Expr.variable("z", z_idx, mr=f"UF[{idx}]", mr_node=VarNode("uf", idx))
 
     def add_parameter(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> Expr:
         idx = len(self.parameters)
         z_idx = self.x_size + self.u_size + idx
         self.parameters.append(Variable(name or f"p{idx}", lb, ub, guess, nominal))
-        return Expr(f"z[{z_idx}]", f"P[{idx}]")
+        return Expr.variable("z", z_idx, mr=f"P[{idx}]", mr_node=VarNode("p", idx))
 
     def add_runtime_parameter(self, name: str, value: float) -> Expr:
         idx = len(self.runtime_parameters)
         self.runtime_parameters.append((name, value))
-        return Expr(f"rp[{idx}]", f"rp[{idx}]")
+        return Expr.variable("rp", idx)
 
     @property
     def time(self) -> Expr:
-        return Expr("tau[0]", None)
+        return Expr("tau[0]", None, VarNode("tau", 0), None)
 
     @property
     def t0(self) -> Expr:
-        return Expr(None, "T0")
+        return Expr(None, "T0", None, VarNode("t0", 0))
 
     @property
     def tf(self) -> Expr:
-        return Expr(None, "TF")
+        return Expr(None, "TF", None, VarNode("tf", 0))
 
     def set_dynamics(self, state: Expr, rhs: object) -> None:
-        match = re.fullmatch(r"z\[(\d+)\]", state.lfg or "")
-        if not match:
+        node = state.lfg_node
+        if not isinstance(node, VarNode) or node.group != "z":
             raise ValueError("set_dynamics expects a state variable returned by add_state")
-        idx = int(match.group(1))
+        idx = int(node.index)
         if idx >= self.x_size:
             raise ValueError("set_dynamics expects a state variable")
         self.dynamics[idx] = as_expr(rhs)
@@ -398,8 +252,9 @@ class GDOPModel(SolverMixin):
 
     def generate(self, out_dir: str | os.PathLike[str], repo_root: str | os.PathLike[str] | None = None, standalone_main: bool = True) -> tuple[Path, Path]:
         self._validate()
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
         out_path = Path(out_dir)
+        if not out_path.is_absolute():
+            out_path = out_path.resolve()
         out_path.mkdir(parents=True, exist_ok=True)
         emitted = self._emit_ad()
         c_path = out_path / f"{self.name}.c"
@@ -416,32 +271,32 @@ class GDOPModel(SolverMixin):
         repo_root: str | os.PathLike[str] | None = None,
         generate: bool = False,
     ) -> Path:
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
         out_path = Path(out_dir)
-        abs_out_path = out_path if out_path.is_absolute() else root / out_path
-        c_path = out_path / f"{self.name}.c"
+        abs_out_path = out_path if out_path.is_absolute() else out_path.resolve()
+        c_path = abs_out_path / f"{self.name}.c"
         if generate or not c_path.exists():
-            c_path, _ = self.generate(out_path, root, standalone_main=True)
+            c_path, _ = self.generate(abs_out_path, repo_root, standalone_main=True)
 
         exe = abs_out_path / self.name
         cc = shutil.which("cc") or shutil.which("gcc")
         if cc is None:
             raise RuntimeError("No C compiler found in PATH")
-        build = Path(build_dir)
+        include = paths.include_dir()
+        lib_dir = paths.library_dir(build_dir)
         cmd = [
             cc,
             "-std=c99", "-O3",
-            f"-I{root / 'src'}",
+            f"-I{include}",
             f"-I{abs_out_path}",
-            str(root / c_path if not c_path.is_absolute() else c_path),
-            f"-L{root / build}",
+            str(c_path),
+            f"-L{lib_dir}",
             "-lmoo",
-            f"-Wl,-rpath,{root / build}",
+            f"-Wl,-rpath,{lib_dir}",
             "-lm",
             "-o",
             str(exe),
         ]
-        subprocess.run(cmd, cwd=root, check=True)
+        subprocess.run(cmd, check=True)
         return exe
 
     def optimize(
@@ -455,11 +310,10 @@ class GDOPModel(SolverMixin):
         generate: bool = False,
         run_cwd: str | os.PathLike[str] | None = None
     ) -> OptimizationRun:
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
-        exe = self.compile(out_dir, build_dir=build_dir, repo_root=root, generate=generate)
-        cwd = Path(run_cwd) if run_cwd is not None else root / Path(build_dir)
+        exe = self.compile(out_dir, build_dir=build_dir, repo_root=repo_root, generate=generate)
+        cwd = Path(run_cwd) if run_cwd is not None else paths.library_dir(build_dir)
         if not cwd.is_absolute():
-            cwd = root / cwd
+            cwd = cwd.resolve()
         cwd.mkdir(parents=True, exist_ok=True)
         run_cmd = [str(exe)] + self._solver_args(solver, solver_args)
         if capture:
@@ -506,59 +360,68 @@ class GDOPModel(SolverMixin):
         if missing:
             raise ValueError(f"Missing dynamics for state indices: {missing}")
 
-    def _pairs(self, text: str) -> list[tuple[int, int]]:
-        if isinstance(text, list):
-            return text
-        out = []
-        for line in text.splitlines():
-            if not line.strip():
-                continue
-            a, b = line.split(",", 1)
-            out.append((int(a), int(b)))
-        return out
+    def _resolve_lfg(self, expr: Expr | None) -> Expr | None:
+        return expr
 
-    def _resolve_lfg(self, code: str | None) -> str | None:
-        return code
+    def _mr_offset(self, group: str, idx: int) -> int:
+        offsets = {
+            "x0": 0,
+            "u0": self.x_size,
+            "xf": self.x_size + self.u_size,
+            "uf": 2 * self.x_size + self.u_size,
+            "p": 2 * (self.x_size + self.u_size),
+            "t0": 2 * (self.x_size + self.u_size) + self.p_size,
+            "tf": 2 * (self.x_size + self.u_size) + self.p_size + 1,
+        }
+        return offsets[group] + (0 if group in {"t0", "tf"} else idx)
+
+    def _map_mr_variable(self, group: str, idx: int) -> object | None:
+        if group == "rp":
+            return None
+        if group in {"x0", "u0", "xf", "uf", "p", "t0", "tf"}:
+            return VarNode("b", self._mr_offset(group, idx))
+        raise ValueError(f"Unsupported GDOP boundary variable group {group!r}")
+
+    def _resolve_mr_expr(self, expr: Expr | None) -> Expr | None:
+        if expr is None:
+            return None
+        lowered = remap_expression_node(expr.mr_node, self._map_mr_variable)
+        if lowered is None:
+            raise ValueError("Boundary/Mayer expression cannot be represented in GDOP boundary variables")
+        return Expr(None, None, lowered, lowered)
 
     def _emit_ad(self) -> dict[str, str | list[tuple[int, int]]]:
         lfg_outputs = []
         if self.lagrange is not None:
-            lfg_outputs.append(self._resolve_lfg(self.lagrange.lfg))
-        lfg_outputs.extend(self._resolve_lfg(rhs.lfg) for rhs in self.dynamics if rhs is not None)
-        lfg_outputs.extend(self._resolve_lfg(c.expr.lfg) for c in self.path_constraints)
+            lfg_outputs.append(self._resolve_lfg(self.lagrange))
+        lfg_outputs.extend(self._resolve_lfg(rhs) for rhs in self.dynamics if rhs is not None)
+        lfg_outputs.extend(self._resolve_lfg(c.expr) for c in self.path_constraints)
 
         mr_outputs = []
         if self.mayer is not None:
-            mr_outputs.append(self._resolve_mr(self.mayer.mr))
-        mr_outputs.extend(self._resolve_mr(c.expr.mr) for c in self.boundary_constraints)
+            mr_outputs.append(self._resolve_mr_expr(self.mayer))
+        mr_outputs.extend(self._resolve_mr_expr(c.expr) for c in self.boundary_constraints)
 
-        ode_outputs = [self._resolve_lfg(rhs.lfg) for rhs in self.dynamics if rhs is not None]
+        ode_outputs = [self._resolve_lfg(rhs) for rhs in self.dynamics if rhs is not None]
 
-        lfg = emit_function(
-            "z",
-            self.z_size,
-            lfg_outputs,
-            [("rp", len(self.runtime_parameters)), ("tau", 1)],
-            "moo_lfg_value",
-            "moo_lfg_jvp",
-            "moo_lfg_hvp",
-        )
-        mr = emit_function(
-            "b",
-            self.mr_size,
-            mr_outputs,
-            [("rp", len(self.runtime_parameters))],
-            "moo_mr_value",
-            "moo_mr_jvp",
-            "moo_mr_hvp",
-        )
-        ode_value, ode_jac = emit_value_function(
-            "z",
-            self.z_size,
-            ode_outputs,
-            [("rp", len(self.runtime_parameters)), ("tau", 1)],
-            "moo_ode_value",
-        )
+        lfg = LocalGraphFunction(
+            name="moo_lfg",
+            input=InputGroup("z", self.z_size),
+            outputs=lfg_outputs,
+            params=[InputGroup("rp", len(self.runtime_parameters)), InputGroup("tau", 1)],
+        ).emit()
+        mr = LocalGraphFunction(
+            name="moo_mr",
+            input=InputGroup("b", self.mr_size),
+            outputs=mr_outputs,
+            params=[InputGroup("rp", len(self.runtime_parameters))],
+        ).emit()
+        ode_value, ode_jac = LocalValueFunction(
+            name="moo_ode",
+            input=InputGroup("z", self.z_size),
+            outputs=ode_outputs,
+            params=[InputGroup("rp", len(self.runtime_parameters)), InputGroup("tau", 1)],
+        ).emit()
         return {
             "LFG_VALUE": lfg.value,
             "LFG_JVP": lfg.jvp,
@@ -584,39 +447,18 @@ class GDOPModel(SolverMixin):
             "ODE_JAC_SPARSITY": ode_jac,
         }
 
-    def _resolve_mr(self, code: str | None) -> str | None:
-        if code is None:
-            return None
-
-        offsets = {
-            "X0": 0,
-            "U0": self.x_size,
-            "XF": self.x_size + self.u_size,
-            "UF": 2 * self.x_size + self.u_size,
-            "P": 2 * (self.x_size + self.u_size),
-        }
-
-        def replace_indexed(match: re.Match[str]) -> str:
-            name, idx = match.group(1), int(match.group(2))
-            return f"b[{offsets[name] + idx}]"
-
-        code = re.sub(r"\b(X0|U0|XF|UF|P)\[(\d+)\]", replace_indexed, code)
-        code = re.sub(r"\bT0\b", f"b[{2 * (self.x_size + self.u_size) + self.p_size}]", code)
-        code = re.sub(r"\bTF\b", f"b[{2 * (self.x_size + self.u_size) + self.p_size + 1}]", code)
-        return code
-
     def _render_c(self, emitted: dict[str, str], standalone_main: bool) -> str:
         lfg_eval_count = (1 if self.lagrange is not None else 0) + self.x_size + len(self.path_constraints)
         mr_eval_count = (1 if self.mayer is not None else 0) + len(self.boundary_constraints)
-        lfg_jac = self._pairs(emitted.get("LFG_JAC_SPARSITY", ""))
-        lfg_hes = self._pairs(emitted.get("LFG_HES_SPARSITY", ""))
-        mr_jac = self._pairs(emitted.get("MR_JAC_SPARSITY", ""))
-        mr_hes = self._pairs(emitted.get("MR_HES_SPARSITY", ""))
+        lfg_jac = parse_sparsity_pairs(emitted.get("LFG_JAC_SPARSITY", ""))
+        lfg_hes = parse_sparsity_pairs(emitted.get("LFG_HES_SPARSITY", ""))
+        mr_jac = parse_sparsity_pairs(emitted.get("MR_JAC_SPARSITY", ""))
+        mr_hes = parse_sparsity_pairs(emitted.get("MR_HES_SPARSITY", ""))
         lfg_jac_colors = emitted.get("LFG_JAC_COLORS", [])
         lfg_hes_colors = emitted.get("LFG_HES_COLORS", [])
         mr_jac_colors = emitted.get("MR_JAC_COLORS", [])
         mr_hes_colors = emitted.get("MR_HES_COLORS", [])
-        ode_jac = [(row, col) for row, col in self._pairs(emitted.get("ODE_JAC_SPARSITY", "")) if col < self.x_size]
+        ode_jac = [(row, col) for row, col in parse_sparsity_pairs(emitted.get("ODE_JAC_SPARSITY", "")) if col < self.x_size]
 
         def coo(name: str, pairs: list[tuple[int, int]], buf_indices: list[int] | None = None) -> str:
             rows = [r for r, _ in pairs]
@@ -932,96 +774,36 @@ int main_{self.name}(int argc, char** argv) {{
 """
 
     def _render_jvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], out_size: int) -> str:
-        lines = []
-        for buf, (row, col) in enumerate(pairs):
-            call = f"{fn}({input_name}, {rp}, v, tmp)" if tau is None else f"{fn}({input_name}, {rp}, tau, v, tmp)"
-            lines.append(f"    v[{col}] = 1.0;")
-            lines.append(f"    {call};")
-            lines.append(f"    out[{buf}] = tmp[{row}];")
-            lines.append(f"    v[{col}] = 0.0;")
-        return "\n".join(lines) or "    (void)out;"
+        call = f"{fn}({input_name}, {rp}, v, tmp);" if tau is None else f"{fn}({input_name}, {rp}, tau, v, tmp);"
+        return render_basis_jvp_fill(pairs, call)
 
     def _render_hvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], buf_indices: list[int], n: int, split_pp: bool) -> str:
-        lines = []
-        for (row, col), buf in zip(pairs, buf_indices):
-            target = f"out_pp[{buf}] +=" if split_pp and row >= self.x_size + self.u_size and col >= self.x_size + self.u_size else f"out[{buf}] ="
-            lines.append(f"    v[{col}] = 1.0;")
-            lines.append(f"    {fn}_apply(&cache, v, tmp);")
-            lines.append(f"    {target} tmp[{row}];")
-            lines.append(f"    v[{col}] = 0.0;")
-        return "\n".join(lines) or "    (void)out;"
+        return render_basis_hvp_fill(
+            pairs,
+            f"{fn}_apply(&cache, v, tmp);",
+            buf_indices=buf_indices,
+            split_pp=split_pp,
+            pp_start=self.x_size + self.u_size,
+        )
 
     def _render_colored_jvp_fill(self, fn: str, input_name: str, rp: str, tau: str | None, pairs: list[tuple[int, int]], colors: list[int]) -> str:
         call = f"{fn}({input_name}, {rp}, v, tmp);" if tau is None else f"{fn}({input_name}, {rp}, tau, v, tmp);"
-        return self._render_colored_fill(
+        return render_colored_fill(
             pairs,
-            list(range(len(pairs))),
             colors,
             call,
-            False,
+            buf_indices=list(range(len(pairs))),
         )
 
     def _render_colored_hvp_fill(self, fn: str, pairs: list[tuple[int, int]], buf_indices: list[int], colors: list[int], split_pp: bool) -> str:
-        return self._render_colored_fill(
+        return render_colored_fill(
             pairs,
-            buf_indices,
             colors,
             f"{fn}_apply(&cache, v, tmp);",
-            split_pp,
+            buf_indices=buf_indices,
+            split_pp=split_pp,
+            pp_start=self.x_size + self.u_size,
         )
-
-    def _render_colored_fill(self, pairs: list[tuple[int, int]], buf_indices: list[int], colors: list[int], call: str, split_pp: bool) -> str:
-        if not pairs:
-            return "    (void)out;"
-        by_color: dict[int, list[tuple[int, int, int]]] = {}
-        for (row, col), buf in zip(pairs, buf_indices):
-            color = colors[col] if 0 <= col < len(colors) else col
-            by_color.setdefault(color, []).append((buf, row, col))
-        ordered_colors = sorted(by_color)
-        color_cols: list[int] = []
-        color_offsets = [0]
-        scatter_buf: list[int] = []
-        scatter_row: list[int] = []
-        scatter_pp: list[str] = []
-        scatter_offsets = [0]
-        for color in ordered_colors:
-            entries = by_color[color]
-            cols = sorted({col for _, _, col in entries})
-            color_cols.extend(cols)
-            color_offsets.append(len(color_cols))
-            for buf, row, col in entries:
-                scatter_buf.append(buf)
-                scatter_row.append(row)
-                is_pp = split_pp and row >= self.x_size + self.u_size and col >= self.x_size + self.u_size
-                scatter_pp.append("true" if is_pp else "false")
-            scatter_offsets.append(len(scatter_buf))
-        if not split_pp:
-            return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
-    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
-    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
-    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
-    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
-    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
-        {call}
-        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
-    }}"""
-        return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
-    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
-    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
-    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
-    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
-    static const bool scatter_pp[{max(len(scatter_pp), 1)}] = {{ {', '.join(scatter_pp) or 'false'} }};
-    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
-        {call}
-        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{
-            if (scatter_pp[i]) {{ out_pp[scatter_buf[i]] += tmp[scatter_row[i]]; }}
-            else {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
-        }}
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
-    }}"""
 
     def _render_sparse_hes_scatter(self, pairs: list[tuple[int, int]], buf_indices: list[int], split_pp: bool) -> str:
         lines = []
@@ -1067,6 +849,7 @@ int main_{self.name}(int argc, char** argv);
             f"strategy={self.codegen_strategy}",
             f"structure_strategy={self.codegen_structure_strategy}",
             f"local_strategy={self.codegen_local_strategy}",
+            f"linear_algebra_strategy={self.codegen_linear_algebra_strategy}",
             f"generated_c_bytes={c_path.stat().st_size}",
         ]
         for prefix in ("LFG", "MR"):

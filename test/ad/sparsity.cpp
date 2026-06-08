@@ -26,13 +26,14 @@
 int main() {
     using namespace ad;
 
-    Graph g;
+    GraphFunctionBuilder g;
     auto x = g.inputs("x", 3);
-    std::vector<Expr> out;
-    out.push_back(2.0 * x[0] - x[1] + 3.0);
-    out.push_back(x[2]);
+    auto out = g.vector({
+        2.0 * g.at(x, 0) - g.at(x, 1) + 3.0,
+        g.at(x, 2),
+    });
 
-    auto F = function_from(std::move(g), x, out);
+    auto F = g.function(x, out);
     auto Grad = reverse_diff(F, "lambda", "x");
     auto HVP = forward_diff(Grad, "x", "v");
 

@@ -47,5 +47,5 @@ def build_model():
 if __name__ == "__main__":
     out = Path("build/moo/free_time")
     result = build_model().run(out)
-    result.result.plot.all(show=True, nodestyle="+", linestyle="")
+    result.result.plot.all(save=out / "solution.png", nodestyle="+", linestyle="")
     raise SystemExit(result.returncode)

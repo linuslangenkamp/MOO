@@ -29,7 +29,7 @@ def build_model():
     x2 = model.add_state("x2", start=0.0)
     u = model.add_control("u", lb=0.0, ub=5.0)
 
-    model.set_time_fixed(t0 = 0.0, tf = 1.0)
+    model.set_time_fixed(t0=0.0, tf=1.0)
     model.mesh(intervals=250, nodes=3)
 
     model.set_dynamics(x1, -(u + u**2 / 2) * x1)
@@ -47,5 +47,5 @@ def build_model():
 if __name__ == "__main__":
     out = Path("build/moo/batchReactor")
     result = build_model().run(out)
-    result.result.plot.all(show=True)
+    result.result.plot.all(save=out / "solution.png")
     raise SystemExit(result.returncode)

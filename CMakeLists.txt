@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 project(moo LANGUAGES C CXX Fortran)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 
 option(MOO_WITH_UNO "Build MOO with Uno solver support" ON)
@@ -136,10 +138,26 @@ if(MOO_WITH_RADAU)
     target_link_libraries(moo PRIVATE radau)
 endif()
 
+add_library(mooad SHARED
+    src/ad/graph.cpp
+    src/ad/optimize.cpp
+    src/ad/diff.cpp
+    src/ad/sparse_derivatives.cpp
+    src/ad/vm.cpp
+    src/ad/codegen.cpp
+    src/ad/sparsity.cpp
+)
+target_include_directories(mooad
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/ad>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_compile_options(mooad PRIVATE ${MOO_COMPILE_OPTIONS})
+
 if(MOO_WITH_PYTHON_BINDINGS)
     add_subdirectory(third-party/pybind11)
     pybind11_add_module(_ad src/ad/python_bindings.cpp)
-    target_include_directories(_ad PRIVATE src/ad)
+    target_link_libraries(_ad PRIVATE mooad)
     set_target_properties(_ad PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/moo
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/moo
@@ -160,10 +178,21 @@ else()
     target_compile_options(moo PRIVATE -fvisibility=hidden)
 endif()
 
-install(TARGETS moo
+install(TARGETS moo mooad
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+install(FILES
+        src/ad/ad.h
+        src/ad/core.h
+        src/ad/optimize.h
+        src/ad/diff.h
+        src/ad/sparse_derivatives.h
+        src/ad/vm.h
+        src/ad/codegen.h
+        src/ad/sparsity.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Tests
 

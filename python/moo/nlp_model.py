@@ -30,9 +30,33 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from .ad_codegen import emit_function
-from .common import SolverMixin, SolverSettings, derivative_mode
-from .model import Expr, as_expr, _arr, _c_bool, _clean_name, _num
+from .callback_codegen import (
+    color_metadata,
+    render_basis_hvp_fill,
+    render_basis_jvp_fill,
+    render_colored_fill,
+    render_local_colored_hes_lines,
+    render_local_colored_jac_lines,
+    static_int_array,
+)
+from .common import SolverMixin, SolverSettings, derivative_mode, parse_sparsity_pairs
+from . import paths
+from .expressions import (
+    BlockVectorExpr,
+    Expr,
+    ExprMatrix,
+    KroneckerEyeMatrix,
+    VectorExpr,
+    as_expr,
+    blockvec,
+    dot,
+    matrix,
+    sparse_matrix,
+    vec,
+    vector,
+)
+from .local_function import InputGroup, LocalGraphFunction
+from .model import _arr, _c_bool, _clean_name, _num
 from .results import NLPResult, OptimizationRun, read_results
 
 
@@ -73,7 +97,7 @@ class MappedConstraintBlock:
     indices: list[int]
     local_size: int
     local_globals: list[list[int]]
-    exprs: list[Expr]
+    exprs: list[object]
     lb: float
     ub: float
     nominal: float = 1.0
@@ -84,7 +108,10 @@ class MappedConstraintBlock:
 
     @property
     def output_size(self) -> int:
-        return len(self.exprs)
+        total = 0
+        for expr in self.exprs:
+            total += len(expr) if isinstance(expr, (VectorExpr, BlockVectorExpr)) else 1
+        return total
 
     @property
     def count(self) -> int:
@@ -147,6 +174,8 @@ class LoopIndex:
         return LoopIndex(0, self.scale, int(other))
 
 class NLPVector:
+    __moo_vector__ = True
+
     def __init__(self, model: "NLPModel", name: str, indices: Sequence[int]):
         self.model = model
         self.name = name
@@ -170,7 +199,7 @@ class NLPVector:
         if self.model._loop_globals is not None:
             return self.model._loop_var(self, idx)
         global_idx = self.indices[idx]
-        return Expr(f"x[{global_idx}]", f"x[{global_idx}]")
+        return Expr.variable("x", global_idx)
 
     def __sub__(self, other: object) -> "VectorExpr":
         if isinstance(other, (NLPVector, VectorExpr)):
@@ -237,156 +266,6 @@ class NLPVector:
             raise IndexError(idx)
         return [self.indices[i]]
 
-
-class VectorExpr:
-    def __init__(self, values: list[Expr]):
-        self.values = [as_expr(value) for value in values]
-
-    def __len__(self) -> int:
-        return len(self.values)
-
-    def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            return VectorExpr(self.values[idx])
-        return self.values[idx]
-
-    def __iter__(self):
-        return iter(self.values)
-
-    def block(self, index: int, size: int) -> "VectorExpr":
-        if size <= 0:
-            raise ValueError("block size must be positive")
-        start = int(index) * size
-        stop = start + size
-        if start < 0 or stop > len(self.values):
-            raise IndexError(index)
-        return VectorExpr(self.values[start:stop])
-
-    def _binary(self, other: object, op: str, reverse: bool = False) -> "VectorExpr":
-        if isinstance(other, (VectorExpr, NLPVector)):
-            rhs_values = list(other)
-            if len(rhs_values) != len(self.values):
-                raise ValueError("vector sizes must match")
-            if reverse:
-                return VectorExpr([as_expr(rhs)._binary(lhs, op) for lhs, rhs in zip(self.values, rhs_values)])
-            return VectorExpr([lhs._binary(rhs, op) for lhs, rhs in zip(self.values, rhs_values)])
-        if reverse:
-            return VectorExpr([as_expr(other)._binary(lhs, op) for lhs in self.values])
-        return VectorExpr([lhs._binary(other, op) for lhs in self.values])
-
-    def __add__(self, other: object) -> "VectorExpr":
-        return self._binary(other, "+")
-
-    def __radd__(self, other: object) -> "VectorExpr":
-        return self._binary(other, "+", reverse=True)
-
-    def __sub__(self, other: object) -> "VectorExpr":
-        return self._binary(other, "-")
-
-    def __rsub__(self, other: object) -> "VectorExpr":
-        return self._binary(other, "-", reverse=True)
-
-    def __mul__(self, other: object) -> "VectorExpr":
-        if isinstance(other, (VectorExpr, NLPVector)):
-            return self._binary(other, "*")
-        return VectorExpr([value * other for value in self.values])
-
-    def __rmul__(self, other: object) -> "VectorExpr":
-        return self.__mul__(other)
-
-    def __truediv__(self, other: object) -> "VectorExpr":
-        return VectorExpr([value / other for value in self.values])
-
-    def __neg__(self) -> "VectorExpr":
-        return VectorExpr([-value for value in self.values])
-
-
-class ExprMatrix:
-    def __init__(self, values: object, vector: bool = False):
-        raw = _tolist(values)
-        if vector:
-            self.values = [float(value) for value in raw]
-            self.is_vector = True
-            return
-        self.values = [[float(value) for value in row] for row in raw]
-        self.is_vector = False
-        if self.values:
-            width = len(self.values[0])
-            if any(len(row) != width for row in self.values):
-                raise ValueError("matrix rows must have equal length")
-
-    def __matmul__(self, other: object):
-        rhs = _as_vector_values(other)
-        if self.is_vector:
-            if len(self.values) != len(rhs):
-                raise ValueError("dot dimensions do not match")
-            from .model import sum_expr
-            return sum_expr(weight * value for weight, value in zip(self.values, rhs))
-        if self.values and len(self.values[0]) != len(rhs):
-            raise ValueError("matrix/vector dimensions do not match")
-        from .model import sum_expr
-        return VectorExpr([sum_expr(weight * value for weight, value in zip(row, rhs)) for row in self.values])
-
-    def otimes_eye(self, size: int) -> "ExprMatrix":
-        if self.is_vector:
-            raise ValueError("otimes_eye is only defined for matrices")
-        if size <= 0:
-            raise ValueError("identity size must be positive")
-        rows = []
-        for row in self.values:
-            for eye_row in range(size):
-                expanded = []
-                for value in row:
-                    for eye_col in range(size):
-                        expanded.append(value if eye_row == eye_col else 0.0)
-                rows.append(expanded)
-        return ExprMatrix(rows)
-
-    def kron_eye(self, size: int) -> "ExprMatrix":
-        return self.otimes_eye(size)
-
-
-def _tolist(values: object):
-    if hasattr(values, "tolist"):
-        return values.tolist()
-    return values
-
-
-def _as_vector_values(values: object) -> list[Expr]:
-    if isinstance(values, NLPVector):
-        return [values[i] for i in range(len(values))]
-    if isinstance(values, VectorExpr):
-        return list(values.values)
-    raw = _tolist(values)
-    if isinstance(raw, (list, tuple)):
-        flattened = []
-        for value in raw:
-            if isinstance(value, (NLPVector, VectorExpr)):
-                flattened.extend(_as_vector_values(value))
-            elif isinstance(value, (list, tuple)):
-                flattened.extend(_as_vector_values(value))
-            else:
-                flattened.append(as_expr(value))
-        return flattened
-    raise TypeError(f"Cannot convert {type(values)!r} to expression vector")
-
-
-def vec(values: object) -> VectorExpr:
-    return VectorExpr(_as_vector_values(values))
-
-
-def vector(values: object) -> ExprMatrix:
-    return ExprMatrix(values, vector=True)
-
-
-def matrix(values: object) -> ExprMatrix:
-    return ExprMatrix(values, vector=False)
-
-
-def dot(lhs: object, rhs: object) -> Expr:
-    return vector(lhs) @ vec(rhs)
-
-
 class NLPModel(SolverMixin):
     def __init__(self, name: str):
         self.name = _clean_name(name)
@@ -394,6 +273,7 @@ class NLPModel(SolverMixin):
         self.codegen_strategy = "auto"
         self.codegen_structure_strategy = "auto"
         self.codegen_local_strategy = "auto"
+        self.codegen_linear_algebra_strategy = "auto"
         self.variables: list[NLPVar] = []
         self.constraints: list[NLPConstraint] = []
         self.mapped_objectives: list[MappedObjectiveBlock] = []
@@ -413,7 +293,7 @@ class NLPModel(SolverMixin):
     def add_variable(self, name: str | None = None, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> Expr:
         idx = len(self.variables)
         self.variables.append(NLPVar(name or f"x{idx}", lb, ub, guess, nominal))
-        return Expr(f"x[{idx}]", f"x[{idx}]")
+        return Expr.variable("x", idx)
 
     def add_variables(self, name: str, size: int, lb: float = -math.inf, ub: float = math.inf, guess: float = 0.0, nominal: float = 1.0) -> NLPVector:
         start = len(self.variables)
@@ -424,7 +304,7 @@ class NLPModel(SolverMixin):
     def add_runtime_parameter(self, name: str, value: float) -> Expr:
         idx = len(self.runtime_parameters)
         self.runtime_parameters.append((name, value))
-        return Expr(f"rp[{idx}]", f"rp[{idx}]")
+        return Expr.variable("rp", idx)
 
     def minimize(self, expr: object, nominal: float = 1.0, name: str | None = None) -> None:
         expr_value = as_expr(expr)
@@ -461,9 +341,11 @@ class NLPModel(SolverMixin):
         self._start_loop_context(indices)
         raw = body(idx)
         if isinstance(raw, VectorExpr):
-            exprs = [as_expr(expr) for expr in raw]
+            exprs = [raw]
+        elif isinstance(raw, BlockVectorExpr):
+            exprs = [raw.flatten()]
         elif isinstance(raw, (list, tuple)):
-            exprs = [as_expr(expr) for expr in raw]
+            exprs = [raw_vec] if isinstance((raw_vec := vec(raw)), VectorExpr) and any(isinstance(item, (VectorExpr, BlockVectorExpr, list, tuple)) for item in raw) else [as_expr(expr) for expr in raw]
         else:
             exprs = [as_expr(raw)]
         local_globals = self._finish_loop_context()
@@ -480,7 +362,7 @@ class NLPModel(SolverMixin):
                 raise RuntimeError("loop index used outside a mapped block")
             globals_for_idx = vector._selected_indices(idx)
             global_idx = globals_for_idx[0]
-            return Expr(f"x[{global_idx}]", f"x[{global_idx}]")
+            return Expr.variable("x", global_idx)
         if isinstance(idx, LoopIndex):
             globals_for_reps = [vector._selected_indices(idx.eval(iter_value))[0] for iter_value in self._loop_indices or []]
         else:
@@ -492,7 +374,7 @@ class NLPModel(SolverMixin):
             self._loop_globals[key] = local
             assert self._loop_global_lists is not None
             self._loop_global_lists.append(globals_for_reps)
-        return Expr(f"xl[{local}]", f"xl[{local}]")
+        return Expr.variable("xl", local)
 
     def _normalize_loop_indices(self, indices: int | Iterable[int]) -> list[int]:
         if isinstance(indices, int):
@@ -518,8 +400,9 @@ class NLPModel(SolverMixin):
 
     def generate(self, out_dir: str | os.PathLike[str], repo_root: str | os.PathLike[str] | None = None, standalone_main: bool = True) -> tuple[Path, Path]:
         self._validate()
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
         out_path = Path(out_dir)
+        if not out_path.is_absolute():
+            out_path = out_path.resolve()
         out_path.mkdir(parents=True, exist_ok=True)
         emitted = self._emit_ad()
         c_path = out_path / f"{self.name}.c"
@@ -530,36 +413,35 @@ class NLPModel(SolverMixin):
         return c_path, h_path
 
     def compile(self, out_dir: str | os.PathLike[str], build_dir: str | os.PathLike[str] = "build", repo_root: str | os.PathLike[str] | None = None, generate: bool = False) -> Path:
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
         out_path = Path(out_dir)
-        abs_out_path = out_path if out_path.is_absolute() else root / out_path
-        c_path = out_path / f"{self.name}.c"
+        abs_out_path = out_path if out_path.is_absolute() else out_path.resolve()
+        c_path = abs_out_path / f"{self.name}.c"
         if generate or not c_path.exists():
-            c_path, _ = self.generate(out_path, root, standalone_main=True)
+            c_path, _ = self.generate(abs_out_path, repo_root, standalone_main=True)
         exe = abs_out_path / self.name
         cc = shutil.which("cc") or shutil.which("gcc")
         if cc is None:
             raise RuntimeError("No C compiler found in PATH")
-        build = Path(build_dir)
+        include = paths.include_dir()
+        lib_dir = paths.library_dir(build_dir)
         subprocess.run([
             cc, "-std=c99", "-O3",
-            f"-I{root / 'src'}",
+            f"-I{include}",
             f"-I{abs_out_path}",
-            str(root / c_path if not c_path.is_absolute() else c_path),
-            f"-L{root / build}",
+            str(c_path),
+            f"-L{lib_dir}",
             "-lmoo",
-            f"-Wl,-rpath,{root / build}",
+            f"-Wl,-rpath,{lib_dir}",
             "-lm",
             "-o", str(exe),
-        ], cwd=root, check=True)
+        ], check=True)
         return exe
 
     def optimize(self, out_dir: str | os.PathLike[str], build_dir: str | os.PathLike[str] = "build", repo_root: str | os.PathLike[str] | None = None, solver: str | None = None, solver_args: list[str] | None = None, capture: bool = False, generate: bool = False, run_cwd: str | os.PathLike[str] | None = None) -> OptimizationRun:
-        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
-        exe = self.compile(out_dir, build_dir=build_dir, repo_root=root, generate=generate)
-        cwd = Path(run_cwd) if run_cwd is not None else root / Path(build_dir)
+        exe = self.compile(out_dir, build_dir=build_dir, repo_root=repo_root, generate=generate)
+        cwd = Path(run_cwd) if run_cwd is not None else paths.library_dir(build_dir)
         if not cwd.is_absolute():
-            cwd = root / cwd
+            cwd = cwd.resolve()
         cwd.mkdir(parents=True, exist_ok=True)
         process = subprocess.run([str(exe)] + self._solver_args(solver, solver_args), cwd=cwd, text=True, capture_output=capture, check=False)
         raw_results = read_results(cwd)
@@ -585,17 +467,14 @@ class NLPModel(SolverMixin):
     def _emit_ad(self) -> dict[str, str | list[tuple[int, int]]]:
         if self.mapped_objectives or self.mapped_constraints:
             return self._emit_structured_ad()
-        outputs = [self.objective.lfg if self.objective is not None else "0.0"]
-        outputs.extend(c.expr.lfg for c in self.constraints)
-        emitted = emit_function(
-            "x",
-            self.x_size,
-            outputs,
-            [("rp", len(self.runtime_parameters))],
-            "moo_nlp_value",
-            "moo_nlp_jvp",
-            "moo_nlp_hvp",
-        )
+        outputs = [self.objective if self.objective is not None else 0.0]
+        outputs.extend(c.expr for c in self.constraints)
+        emitted = LocalGraphFunction(
+            name="moo_nlp",
+            input=InputGroup("x", self.x_size),
+            outputs=outputs,
+            params=[InputGroup("rp", len(self.runtime_parameters))],
+        ).emit()
         return {
             "VALUE": emitted.value,
             "JVP": emitted.jvp,
@@ -623,16 +502,13 @@ class NLPModel(SolverMixin):
         return names
 
     def _emit_local_block(self, prefix: str, block: MappedObjectiveBlock | MappedConstraintBlock) -> LocalBlockEmission:
-        outputs = [block.expr.lfg] if isinstance(block, MappedObjectiveBlock) else [expr.lfg for expr in block.exprs]
-        emitted = emit_function(
-            "xl",
-            block.local_size,
-            outputs,
-            [("rp", len(self.runtime_parameters))],
-            f"{prefix}_value",
-            f"{prefix}_jvp",
-            f"{prefix}_hvp",
-        )
+        outputs = [block.expr] if isinstance(block, MappedObjectiveBlock) else list(block.exprs)
+        emitted = LocalGraphFunction(
+            name=prefix,
+            input=InputGroup("xl", block.local_size),
+            outputs=outputs,
+            params=[InputGroup("rp", len(self.runtime_parameters))],
+        ).emit()
         jac_mode = derivative_mode(self.codegen_local_strategy, emitted.jac_sparsity, emitted.jac_colors)
         hes_mode = derivative_mode(self.codegen_local_strategy, emitted.hes_sparsity, emitted.hes_colors)
         return LocalBlockEmission(
@@ -655,17 +531,14 @@ class NLPModel(SolverMixin):
         scalar_jac_mode = "direct"
         scalar_hes_mode = "direct"
         if self.objective is not None or self.constraints:
-            scalar_outputs = [self.objective.lfg if self.objective is not None else "0.0"]
-            scalar_outputs.extend(c.expr.lfg for c in self.constraints)
-            emitted = emit_function(
-                "x",
-                self.x_size,
-                scalar_outputs,
-                [("rp", len(self.runtime_parameters))],
-                "moo_nlp_scalar_value",
-                "moo_nlp_scalar_jvp",
-                "moo_nlp_scalar_hvp",
-            )
+            scalar_outputs = [self.objective if self.objective is not None else 0.0]
+            scalar_outputs.extend(c.expr for c in self.constraints)
+            emitted = LocalGraphFunction(
+                name="moo_nlp_scalar",
+                input=InputGroup("x", self.x_size),
+                outputs=scalar_outputs,
+                params=[InputGroup("rp", len(self.runtime_parameters))],
+            ).emit()
             scalar_jac_mode = "direct"
             scalar_hes_mode = "direct"
             scalar_emitted = emitted
@@ -741,7 +614,7 @@ class NLPModel(SolverMixin):
         jac_modes = {local.jac_mode for local in all_local}
         hes_modes = {local.hes_mode for local in all_local}
         report = {
-            "kernel_source": "structured_loop_blocks",
+            "graph_source": "structured_loop_blocks",
             "scalar_constraints": len(self.constraints),
             "scalar_objective": self.objective is not None,
             "mapped_objective_blocks": len(local_objectives),
@@ -797,21 +670,11 @@ class NLPModel(SolverMixin):
             "REPORT": report,
         }
 
-    def _pairs(self, text: str) -> list[tuple[int, int]]:
-        if isinstance(text, list):
-            return text
-        pairs = []
-        for line in text.splitlines():
-            if line.strip():
-                a, b = line.split(",", 1)
-                pairs.append((int(a), int(b)))
-        return pairs
-
     def _render_c(self, emitted: dict[str, str], standalone_main: bool) -> str:
         if emitted.get("STRUCTURED"):
             return self._render_structured_c(emitted, standalone_main)
-        jac = self._pairs(emitted.get("JAC_SPARSITY", ""))
-        hes = self._pairs(emitted.get("HES_SPARSITY", ""))
+        jac = parse_sparsity_pairs(emitted.get("JAC_SPARSITY", ""))
+        hes = parse_sparsity_pairs(emitted.get("HES_SPARSITY", ""))
         jac_colors = emitted.get("JAC_COLORS", [])
         hes_colors = emitted.get("HES_COLORS", [])
         obj_jac = [(0, col) for row, col in jac if row == 0]
@@ -1030,7 +893,7 @@ int main_{self.name}(int argc, char** argv) {{
         g_bounds_values.extend(self.constraints)
         for block, _ in local_constraints:
             g_bounds_values.extend(
-                NLPConstraint(f"{block.name}_{i}_{j}", block.exprs[j], block.lb, block.ub, block.nominal)
+                NLPConstraint(f"{block.name}_{i}_{j}", Expr.const(0.0), block.lb, block.ub, block.nominal)
                 for i in range(block.count)
                 for j in range(block.output_size)
             )
@@ -1245,152 +1108,49 @@ int main_{self.name}(int argc, char** argv) {{
 """
 
     def _render_jac_fill(self, pairs: list[tuple[int, int]]) -> str:
-        lines = []
-        for idx, (row, col) in enumerate(pairs):
-            lines += [f"    v[{col}] = 1.0;", "    moo_nlp_jvp(x, rp, v, tmp);", f"    out[{idx}] = tmp[{row}];", f"    v[{col}] = 0.0;"]
-        return "\n".join(lines) or "    (void)out;"
+        return render_basis_jvp_fill(pairs, "moo_nlp_jvp(x, rp, v, tmp);")
 
     def _local_color_metadata(self, pairs: list[tuple[int, int]], colors: list[int]) -> tuple[list[int], list[int], list[int], list[int], list[int]]:
-        by_color: dict[int, list[tuple[int, int, int]]] = {}
-        for idx, (row, col) in enumerate(pairs):
-            color = colors[col] if 0 <= col < len(colors) else col
-            by_color.setdefault(color, []).append((idx, row, col))
-        color_cols: list[int] = []
-        color_offsets = [0]
-        scatter_idx: list[int] = []
-        scatter_row: list[int] = []
-        scatter_col: list[int] = []
-        scatter_offsets = [0]
-        for color in sorted(by_color):
-            entries = by_color[color]
-            cols = sorted({col for _, _, col in entries})
-            color_cols.extend(cols)
-            color_offsets.append(len(color_cols))
-            for idx, row, col in entries:
-                scatter_idx.append(idx)
-                scatter_row.append(row)
-                scatter_col.append(col)
-            scatter_offsets.append(len(scatter_idx))
-        return color_offsets, color_cols, scatter_offsets, scatter_idx, scatter_row, scatter_col
+        return color_metadata(pairs, colors)
 
     def _static_int_array(self, name: str, values: list[int], indent: str) -> str:
-        return f"{indent}static const int {name}[{max(len(values), 1)}] = {{ {', '.join(map(str, values)) or '0'} }};"
+        return static_int_array(name, values, indent)
 
     def _render_local_colored_jac_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, obj_buf_by_col: dict[int, int] | None, out_name: str, rep_name: str, accumulate: bool, indent: str, base_buf: int = 0, jbuf_name: str | None = None) -> list[str]:
-        color_offsets, color_cols, scatter_offsets, scatter_idx, scatter_row, scatter_col = self._local_color_metadata(local.jac_sparsity, local.jac_colors)
-        lines = [
-            f"{indent}f64 v[{max(block.local_size, 1)}] = {{0}};",
-            f"{indent}f64 tmp_color[{max(block.output_size if isinstance(block, MappedConstraintBlock) else 1, 1)}] = {{0}};",
-            self._static_int_array("color_offsets", color_offsets, indent),
-            self._static_int_array("color_cols", color_cols, indent),
-            self._static_int_array("scatter_offsets", scatter_offsets, indent),
-            self._static_int_array("scatter_idx", scatter_idx, indent),
-            self._static_int_array("scatter_row", scatter_row, indent),
-            self._static_int_array("scatter_col", scatter_col, indent),
-            f"{indent}for (int color = 0; color < {max(len(color_offsets) - 1, 0)}; ++color) {{",
-            f"{indent}    for (int k = color_offsets[color]; k < color_offsets[color + 1]; ++k) {{ v[color_cols[k]] = 1.0; }}",
-            f"{indent}    {fn}(xl, rp, v, tmp_color);",
-            f"{indent}    for (int k = scatter_offsets[color]; k < scatter_offsets[color + 1]; ++k) {{",
-        ]
-        if accumulate and jbuf_name is not None:
-            lines.append(f"{indent}        {out_name}[{jbuf_name}[{rep_name} * {len(local.jac_sparsity)} + scatter_idx[k]]] += tmp_color[scatter_row[k]];")
-        elif accumulate and obj_buf_by_col is not None:
-            lines.append(f"{indent}        {out_name}[scatter_idx[k]] += tmp_color[scatter_row[k]];")
-        else:
-            lines.append(f"{indent}        {out_name}[{base_buf} + {rep_name} * {len(local.jac_sparsity)} + scatter_idx[k]] = tmp_color[scatter_row[k]];")
-        lines.extend([
-            f"{indent}    }}",
-            f"{indent}    for (int k = color_offsets[color]; k < color_offsets[color + 1]; ++k) {{ v[color_cols[k]] = 0.0; }}",
-            f"{indent}}}",
-        ])
-        return lines
+        output_size = block.output_size if isinstance(block, MappedConstraintBlock) else 1
+        return render_local_colored_jac_lines(
+            fn,
+            local.jac_sparsity,
+            local.jac_colors,
+            block.local_size,
+            output_size,
+            out_name,
+            rep_name,
+            accumulate,
+            indent,
+            base_buf=base_buf,
+            jbuf_name=jbuf_name,
+        )
 
     def _render_local_colored_hes_lines(self, fn: str, local: LocalBlockEmission, block: MappedObjectiveBlock | MappedConstraintBlock, hbuf: list[int], indent: str, seed_row: int = 0, hbuf_name: str | None = None) -> list[str]:
-        pairs = list(local.hes_sparsity)
-        if not pairs:
-            return []
-        color_offsets, color_cols, scatter_offsets, scatter_idx, scatter_row, scatter_col = self._local_color_metadata(pairs, local.hes_colors)
-        hbuf_name = hbuf_name or "h_buf_for_local"
-        lines = [
-            f"{indent}{{",
-            f"{indent}f64 v_h[{max(block.local_size, 1)}] = {{0}};",
-            f"{indent}f64 tmp_h[{max(block.local_size, 1)}] = {{0}};",
-            f"{indent}{fn}_cache_t cache;",
-            f"{indent}{fn}_prepare(xl, seed, rp, &cache);",
-            self._static_int_array("h_color_offsets", color_offsets, indent),
-            self._static_int_array("h_color_cols", color_cols, indent),
-            self._static_int_array("h_scatter_offsets", scatter_offsets, indent),
-            self._static_int_array("h_scatter_idx", scatter_idx, indent),
-            self._static_int_array("h_scatter_row", scatter_row, indent),
-            f"{indent}for (int color = 0; color < {max(len(color_offsets) - 1, 0)}; ++color) {{",
-            f"{indent}    for (int k = h_color_offsets[color]; k < h_color_offsets[color + 1]; ++k) {{ v_h[h_color_cols[k]] = 1.0; }}",
-            f"{indent}    {fn}_apply(&cache, v_h, tmp_h);",
-        ]
-        if hbuf_name == "h_buf_for_local":
-            lines.append(self._static_int_array("h_buf_for_local", hbuf, indent))
-        lines.extend([
-            f"{indent}    for (int k = h_scatter_offsets[color]; k < h_scatter_offsets[color + 1]; ++k) {{ out[{hbuf_name}[rep * {len(local.hes_sparsity)} + h_scatter_idx[k]]] += tmp_h[h_scatter_row[k]]; }}",
-            f"{indent}    for (int k = h_color_offsets[color]; k < h_color_offsets[color + 1]; ++k) {{ v_h[h_color_cols[k]] = 0.0; }}",
-            f"{indent}}}",
-            f"{indent}}}",
-        ])
-        return lines
+        return render_local_colored_hes_lines(fn, local.hes_sparsity, local.hes_colors, block.local_size, hbuf, indent, hbuf_name=hbuf_name)
 
     def _render_hes_fill(self, pairs: list[tuple[int, int]]) -> str:
-        lines = []
-        for idx, (row, col) in enumerate(pairs):
-            lines += [f"    v[{col}] = 1.0;", "    moo_nlp_hvp_apply(&cache, v, tmp);", f"    out[{idx}] = tmp[{row}];", f"    v[{col}] = 0.0;"]
-        return "\n".join(lines) or "    (void)out;"
+        return render_basis_hvp_fill(pairs, "moo_nlp_hvp_apply(&cache, v, tmp);")
 
     def _render_colored_jac_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return self._render_colored_fill(
+        return render_colored_fill(
             pairs,
             colors,
             "moo_nlp_jvp(x, rp, v, tmp);",
-            lambda idx, row, col: f"    out[{idx}] = tmp[{row}];",
         )
 
     def _render_colored_hes_fill(self, pairs: list[tuple[int, int]], colors: list[int]) -> str:
-        return self._render_colored_fill(
+        return render_colored_fill(
             pairs,
             colors,
             "moo_nlp_hvp_apply(&cache, v, tmp);",
-            lambda idx, row, col: f"    out[{idx}] = tmp[{row}];",
         )
-
-    def _render_colored_fill(self, pairs: list[tuple[int, int]], colors: list[int], call: str, scatter) -> str:
-        if not pairs:
-            return "    (void)out;"
-        by_color: dict[int, list[tuple[int, int, int]]] = {}
-        for idx, (row, col) in enumerate(pairs):
-            color = colors[col] if 0 <= col < len(colors) else col
-            by_color.setdefault(color, []).append((idx, row, col))
-        ordered_colors = sorted(by_color)
-        color_cols: list[int] = []
-        color_offsets = [0]
-        scatter_buf: list[int] = []
-        scatter_row: list[int] = []
-        scatter_offsets = [0]
-        for color in ordered_colors:
-            entries = by_color[color]
-            cols = sorted({col for _, _, col in entries})
-            color_cols.extend(cols)
-            color_offsets.append(len(color_cols))
-            for idx, row, _ in entries:
-                scatter_buf.append(idx)
-                scatter_row.append(row)
-            scatter_offsets.append(len(scatter_buf))
-        return f"""    static const int color_offsets[{len(color_offsets)}] = {{ {', '.join(map(str, color_offsets))} }};
-    static const int color_cols[{max(len(color_cols), 1)}] = {{ {', '.join(map(str, color_cols)) or '0'} }};
-    static const int scatter_offsets[{len(scatter_offsets)}] = {{ {', '.join(map(str, scatter_offsets))} }};
-    static const int scatter_buf[{max(len(scatter_buf), 1)}] = {{ {', '.join(map(str, scatter_buf)) or '0'} }};
-    static const int scatter_row[{max(len(scatter_row), 1)}] = {{ {', '.join(map(str, scatter_row)) or '0'} }};
-    for (int color = 0; color < {len(ordered_colors)}; ++color) {{
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 1.0; }}
-        {call}
-        for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) {{ out[scatter_buf[i]] = tmp[scatter_row[i]]; }}
-        for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) {{ v[color_cols[i]] = 0.0; }}
-    }}"""
 
     def _render_h(self) -> str:
         guard = f"MOO_NLP_CODEGEN_{self.name.upper()}_H"
@@ -1418,6 +1178,7 @@ int main_{self.name}(int argc, char** argv);
             f"strategy={self.codegen_strategy}",
             f"structure_strategy={self.codegen_structure_strategy}",
             f"local_strategy={self.codegen_local_strategy}",
+            f"linear_algebra_strategy={self.codegen_linear_algebra_strategy}",
             f"generated_c_bytes={c_path.stat().st_size}",
         ]
         if emitted.get("STRUCTURED"):

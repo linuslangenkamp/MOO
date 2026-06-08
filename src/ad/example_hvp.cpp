@@ -26,14 +26,15 @@
 int main() {
     using namespace ad;
 
-    Graph g;
+    GraphFunctionBuilder g;
     auto x = g.inputs("x", 2);
 
-    std::vector<Expr> y(2);
-    y[0] = sin(x[0]) * x[1];
-    y[1] = pow_const(x[0], 2) + exp(x[1]);
+    auto y = g.vector({
+        sin(g.at(x, 0)) * g.at(x, 1),
+        pow_const(g.at(x, 0), 2) + exp(g.at(x, 1)),
+    });
 
-    auto F = function_from(std::move(g), x, y);
+    auto F = g.function(x, y);
 
     auto Grad = reverse_diff(F, "lambda", "x");
     auto JVP = forward_diff(F, "x", "v");

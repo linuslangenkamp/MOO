@@ -18,15 +18,17 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef MOO_AD_H
-#define MOO_AD_H
+#ifndef MOO_AD_DIFF_H
+#define MOO_AD_DIFF_H
 
-#include "core.h"
 #include "optimize.h"
-#include "diff.h"
-#include "sparse_derivatives.h"
-#include "vm.h"
-#include "codegen.h"
-#include "sparsity.h"
 
-#endif // MOO_AD_H
+namespace ad {
+
+std::vector<Expr> clone_nodes(const Graph &src, OptimizingBuilder &dst, const std::optional<std::string> &input_as_param = std::nullopt);
+GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt_input_name = "x", const std::string &direction_name = "v");
+GraphFunction reverse_diff(const GraphFunction &f, const std::string &lambda_name = "lambda", const std::string &wrt_input_name = "x");
+
+} // namespace ad
+
+#endif // MOO_AD_DIFF_H

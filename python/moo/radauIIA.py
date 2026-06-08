@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import paths
+
 
 @dataclass(frozen=True)
 class RadauConstants:
@@ -73,7 +75,7 @@ class RadauConstants:
 
 
 def _data_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "data/fLGR"
+    return paths.data_dir() / "fLGR"
 
 
 def _numbers_from_line(line: str) -> tuple[float, ...]:

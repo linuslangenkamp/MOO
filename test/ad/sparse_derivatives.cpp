@@ -35,13 +35,14 @@ bool close(double a, double b) {
 int main() {
     using namespace ad;
 
-    Graph g;
+    GraphFunctionBuilder g;
     auto x = g.inputs("x", 3);
-    std::vector<Expr> out;
-    out.push_back(x[0] * x[0] + x[1]);
-    out.push_back(x[1] * x[2]);
+    auto out = g.vector({
+        g.at(x, 0) * g.at(x, 0) + g.at(x, 1),
+        g.at(x, 1) * g.at(x, 2),
+    });
 
-    auto F = function_from(std::move(g), x, out);
+    auto F = g.function(x, out);
     auto J_pat = jacobian_sparsity(F, "x").to_pairs();
     auto J = sparse_jacobian_function(F, "x", J_pat);
 
