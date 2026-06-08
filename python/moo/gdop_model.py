@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
+from .ad_codegen import dedupe_ad_vector_helpers
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from .expressions import Expr, as_expr, cos, exp, log, pow_const, sin, sum_expr, tan
 from .local_function import InputGroup, LocalGraphFunction, LocalValueFunction
@@ -455,7 +456,7 @@ class GDOPModel(BaseModel):
         section_keys.append("MR_HES" if mr_hes_mode == "direct" else "MR_HVP")
         section_keys.append("ODE_VALUE")
         deduped_section_keys = list(dict.fromkeys(section_keys))
-        code_sections = "\n".join(emitted.get(key, "") for key in deduped_section_keys)
+        code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get(key, "") for key in deduped_section_keys]))
         main = f"""
 int main(int argc, char** argv) {{
     return main_{self.name}(argc, argv);

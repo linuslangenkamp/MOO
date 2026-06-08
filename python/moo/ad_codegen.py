@@ -46,6 +46,29 @@ class BuiltGraphFunction:
     report: dict[str, object]
 
 
+def dedupe_ad_vector_helpers(sections: list[str]) -> list[str]:
+    marker = "#ifndef MOO_AD_VECTOR_HELPERS_DEFINED"
+    end_marker = "#endif\n\n"
+    seen = False
+    out = []
+    for section in sections:
+        start = section.find(marker)
+        if start < 0:
+            out.append(section)
+            continue
+        end = section.find(end_marker, start)
+        if end < 0:
+            out.append(section)
+            continue
+        end += len(end_marker)
+        if seen:
+            out.append(section[:start] + section[end:])
+        else:
+            seen = True
+            out.append(section)
+    return out
+
+
 def build_graph_function(
     input_name: str,
     input_size: int,
@@ -121,12 +144,19 @@ def _emit_built_function(built: BuiltGraphFunction, input_name: str, value_name:
             "hessian_colors": int(plan["hessian_color_count"]),
         }
     )
+    value, jvp_code, hvp_code, jac_code, hes_code = dedupe_ad_vector_helpers([
+        fn.to_c(value_name),
+        jvp.to_c(jvp_name),
+        hvp.to_staged_c(hvp_name, "v"),
+        fn.to_sparse_jacobian_c(input_name, jac_sparsity, f"{jvp_name}_sparse"),
+        hvp.to_sparse_hessian_c("v", hes_sparsity, f"{hvp_name}_sparse"),
+    ])
     return EmittedFunction(
-        value=fn.to_c(value_name),
-        jvp=jvp.to_c(jvp_name),
-        hvp=hvp.to_staged_c(hvp_name, "v"),
-        jac=fn.to_sparse_jacobian_c(input_name, jac_sparsity, f"{jvp_name}_sparse"),
-        hes=hvp.to_sparse_hessian_c("v", hes_sparsity, f"{hvp_name}_sparse"),
+        value=value,
+        jvp=jvp_code,
+        hvp=hvp_code,
+        jac=jac_code,
+        hes=hes_code,
         jac_sparsity=jac_sparsity,
         hes_sparsity=hes_sparsity,
         jac_colors=jac_colors,

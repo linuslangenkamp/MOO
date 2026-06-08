@@ -43,7 +43,7 @@ from .callback_codegen import (
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from . import paths
 from . import ad
-from .ad_codegen import emit_function_from_builder
+from .ad_codegen import dedupe_ad_vector_helpers, emit_function_from_builder
 from .expressions import (
     BlockVectorExpr,
     Expr,
@@ -756,10 +756,7 @@ int main(int argc, char** argv) {{
         sections = []
         sections.append("JAC" if jac_mode == "direct" else "JVP")
         sections.append("HES" if hes_mode == "direct" else "HVP")
-        derivative_sections = "\n".join(
-            emitted.get(key, "")
-            for key in sections
-        )
+        code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get("VALUE", ""), *(emitted.get(key, "") for key in sections)]))
         jac_body = render_jacobian_callback_body(
             jac_mode,
             "moo_nlp_jvp_sparse(x, rp, out);",
@@ -799,8 +796,7 @@ int main(int argc, char** argv) {{
 #define G_SIZE {len(self.constraints)}
 #define OUT_SIZE (1 + G_SIZE)
 
-{emitted.get("VALUE", "")}
-{derivative_sections}
+{code_sections}
 static f64 globl_rp[RP_SIZE] = {{ {', '.join(_num(v) for _, v in self.runtime_parameters)} }};
 static f64 globl_x0[X_SIZE] = {{ {', '.join(_num(v.guess) for v in self.variables)} }};
 {bounds("globl_x_bounds", self.variables)}
@@ -954,6 +950,7 @@ int main_{self.name}(int argc, char** argv) {{
             local_code.append(local.value)
             local_code.append(local.jac if local.jac_mode == "direct" else local.jvp)
             local_code.append(local.hes if local.hes_mode == "direct" else local.hvp)
+        local_code = dedupe_ad_vector_helpers(local_code)
 
         eval_lines = ["    out[0] = 0.0;"]
         if scalar is not None:

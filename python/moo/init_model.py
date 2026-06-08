@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
+from .ad_codegen import dedupe_ad_vector_helpers
 from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from .expressions import Expr, as_expr
 from . import paths
@@ -261,10 +262,7 @@ int main(int argc, char** argv) {{
         sections = []
         sections.append("JAC" if jac_mode == "direct" else "JVP")
         sections.append("HES" if hes_mode == "direct" else "HVP")
-        derivative_sections = "\n".join(
-            emitted.get(key, "")
-            for key in sections
-        )
+        code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get("VALUE", ""), *(emitted.get(key, "") for key in sections)]))
         jac_body = render_jacobian_callback_body(
             jac_mode,
             "moo_init_jvp_sparse(z, rp, out);",
@@ -308,8 +306,7 @@ int main(int argc, char** argv) {{
 #define G_SIZE {len(self.g_constraints)}
 #define OUT_SIZE (1 + F_SIZE + G_SIZE)
 
-{emitted.get("VALUE", "")}
-{derivative_sections}
+{code_sections}
 static f64 globl_rp[RP_SIZE] = {{ {', '.join(_num(v) for _, v in self.runtime_parameters)} }};
 static f64 globl_y0[Y_SIZE] = {{ {', '.join(_num(v.guess) for v in self.variables)} }};
 static f64 globl_p0[P_SIZE] = {{ {', '.join(_num(v.base) for v in self.parameters)} }};

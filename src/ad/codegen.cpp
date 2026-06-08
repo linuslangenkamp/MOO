@@ -90,6 +90,83 @@ std::string CEmitter::expr_rhs(const Graph &g, NodeId id, const std::function<st
     return "0.0";
 }
 
+namespace {
+
+void emit_vector_helpers(std::ostream &os) {
+    os << "#ifndef MOO_AD_VECTOR_HELPERS_DEFINED\n";
+    os << "#define MOO_AD_VECTOR_HELPERS_DEFINED\n";
+    os << "static void moo_ad_vec_add(int n, const double* a, const double* b, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = a[i] + b[i]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_sub(int n, const double* a, const double* b, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = a[i] - b[i]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_scale(int n, double factor, const double* x, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = factor * x[i]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_slice(int n, const double* x, int start, int stride, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = x[start + i * stride]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_concat(int lhs_n, int rhs_n, const double* lhs, const double* rhs, double* out) {\n";
+    os << "    for (int i = 0; i < lhs_n; ++i) { out[i] = lhs[i]; }\n";
+    os << "    for (int i = 0; i < rhs_n; ++i) { out[lhs_n + i] = rhs[i]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_dense_matvec(int rows, int cols, const double* mat, const double* x, double* out) {\n";
+    os << "    for (int row = 0; row < rows; ++row) {\n";
+    os << "        double acc = 0.0;\n";
+    os << "        for (int col = 0; col < cols; ++col) { acc += mat[row * cols + col] * x[col]; }\n";
+    os << "        out[row] = acc;\n";
+    os << "    }\n";
+    os << "}\n";
+    os << "static void moo_ad_sparse_matvec(int nnz, const int* row, const int* col, const double* val, const double* x, double* out) {\n";
+    os << "    for (int k = 0; k < nnz; ++k) { out[row[k]] += val[k] * x[col[k]]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_kron_eye_matvec(int rows, int cols, int eye_size, const double* mat, const double* x, double* out) {\n";
+    os << "    for (int row = 0; row < rows; ++row) {\n";
+    os << "        for (int inner = 0; inner < eye_size; ++inner) {\n";
+    os << "            double acc = 0.0;\n";
+    os << "            for (int col = 0; col < cols; ++col) { acc += mat[row * cols + col] * x[col * eye_size + inner]; }\n";
+    os << "            out[row * eye_size + inner] = acc;\n";
+    os << "        }\n";
+    os << "    }\n";
+    os << "}\n";
+    os << "#endif\n\n";
+}
+
+std::string double_array_c(const std::string &indent, const std::string &name, const std::vector<double> &values) {
+    std::ostringstream os;
+    os << indent << "static const double " << name << "[" << std::max<std::size_t>(values.size(), 1) << "] = {";
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            os << ", ";
+        }
+        os << CEmitter::number(values[i]);
+    }
+    if (values.empty()) {
+        os << "0";
+    }
+    os << "};\n";
+    return os.str();
+}
+
+std::string int_array_c(const std::string &indent, const std::string &name, const std::vector<int> &values) {
+    std::ostringstream os;
+    os << indent << "static const int " << name << "[" << std::max<std::size_t>(values.size(), 1) << "] = {";
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            os << ", ";
+        }
+        os << values[i];
+    }
+    if (values.empty()) {
+        os << "0";
+    }
+    os << "};\n";
+    return os.str();
+}
+
+} // namespace
+
 bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &name, std::ostream &os) {
     if (!f.has_vector_structure() || f.output_vector < 0 || f.output_vector >= static_cast<int>(f.vector_nodes.size())) {
         return false;
@@ -99,6 +176,26 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
         return false;
     }
 
+    std::function<bool(int)> uses_vector_helper = [&](int vector_id) -> bool {
+        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+        switch (node.op) {
+            case VectorOp::Values:
+                return false;
+            case VectorOp::Add:
+            case VectorOp::Sub:
+            case VectorOp::Concat:
+            case VectorOp::Scale:
+            case VectorOp::DenseMatVec:
+            case VectorOp::SparseMatVec:
+            case VectorOp::KronEyeMatVec:
+            case VectorOp::Slice:
+                return true;
+        }
+        return false;
+    };
+    if (uses_vector_helper(f.output_vector)) {
+        emit_vector_helpers(os);
+    }
     os << "void " << name << "(\n";
     for (auto [n, s] : f.input_groups) {
         os << "    const double* " << n << ",\n";
@@ -143,6 +240,15 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
             return group + "[" + index + "]";
         }
         return "vec" + std::to_string(vector_id) + "[" + index + "]";
+    };
+
+    auto vector_ptr = [&](int vector_id) -> std::string {
+        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+        auto group = direct_group_name(node);
+        if (!group.empty()) {
+            return group;
+        }
+        return "vec" + std::to_string(vector_id);
     };
 
     auto scalar_ref = [&](NodeId id) -> std::string {
@@ -209,103 +315,38 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
                 }
                 break;
             case VectorOp::Add:
-                os << "    for (int i = 0; i < " << node.size << "; ++i) { vec" << vector_id << "[i] = " << vector_ref(node.a, "i") << " + " << vector_ref(node.b, "i")
-                   << "; }\n";
+                os << "    moo_ad_vec_add(" << node.size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::Sub:
-                os << "    for (int i = 0; i < " << node.size << "; ++i) { vec" << vector_id << "[i] = " << vector_ref(node.a, "i") << " - " << vector_ref(node.b, "i")
-                   << "; }\n";
+                os << "    moo_ad_vec_sub(" << node.size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::Scale:
-                os << "    for (int i = 0; i < " << node.size << "; ++i) { vec" << vector_id << "[i] = " << number(node.scale) << " * " << vector_ref(node.a, "i")
-                   << "; }\n";
+                os << "    moo_ad_vec_scale(" << node.size << ", " << number(node.scale) << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::DenseMatVec:
-                os << "    static const double mat" << vector_id << "[" << std::max(node.matrix.rows * node.matrix.cols, 1) << "] = {";
-                for (int i = 0; i < node.matrix.rows * node.matrix.cols; ++i) {
-                    if (i > 0) {
-                        os << ", ";
-                    }
-                    os << number(node.matrix.values[static_cast<std::size_t>(i)]);
-                }
-                if (node.matrix.rows * node.matrix.cols == 0) {
-                    os << "0";
-                }
-                os << "};\n";
-                os << "    for (int row = 0; row < " << node.matrix.rows << "; ++row) {\n";
-                os << "        double acc = 0.0;\n";
-                os << "        for (int col = 0; col < " << node.matrix.cols << "; ++col) { acc += mat" << vector_id << "[row * " << node.matrix.cols << " + col] * "
-                   << vector_ref(node.a, "col") << "; }\n";
-                os << "        vec" << vector_id << "[row] = acc;\n";
-                os << "    }\n";
+                os << double_array_c("    ", "mat" + std::to_string(vector_id), node.matrix.values);
+                os << "    moo_ad_dense_matvec(" << node.matrix.rows << ", " << node.matrix.cols << ", mat" << vector_id << ", " << vector_ptr(node.a) << ", vec" << vector_id
+                   << ");\n";
                 break;
             case VectorOp::SparseMatVec:
-                os << "    static const int sp_row" << vector_id << "[" << std::max(node.sparse_matrix.nnz(), 1) << "] = {";
-                for (int i = 0; i < node.sparse_matrix.nnz(); ++i) {
-                    if (i > 0) {
-                        os << ", ";
-                    }
-                    os << node.sparse_matrix.row_indices[static_cast<std::size_t>(i)];
-                }
-                if (node.sparse_matrix.nnz() == 0) {
-                    os << "0";
-                }
-                os << "};\n";
-                os << "    static const int sp_col" << vector_id << "[" << std::max(node.sparse_matrix.nnz(), 1) << "] = {";
-                for (int i = 0; i < node.sparse_matrix.nnz(); ++i) {
-                    if (i > 0) {
-                        os << ", ";
-                    }
-                    os << node.sparse_matrix.col_indices[static_cast<std::size_t>(i)];
-                }
-                if (node.sparse_matrix.nnz() == 0) {
-                    os << "0";
-                }
-                os << "};\n";
-                os << "    static const double sp_val" << vector_id << "[" << std::max(node.sparse_matrix.nnz(), 1) << "] = {";
-                for (int i = 0; i < node.sparse_matrix.nnz(); ++i) {
-                    if (i > 0) {
-                        os << ", ";
-                    }
-                    os << number(node.sparse_matrix.values[static_cast<std::size_t>(i)]);
-                }
-                if (node.sparse_matrix.nnz() == 0) {
-                    os << "0";
-                }
-                os << "};\n";
-                os << "    for (int k = 0; k < " << node.sparse_matrix.nnz() << "; ++k) { vec" << vector_id << "[sp_row" << vector_id << "[k]] += sp_val" << vector_id
-                   << "[k] * " << vector_ref(node.a, "sp_col" + std::to_string(vector_id) + "[k]") << "; }\n";
+                os << int_array_c("    ", "sp_row" + std::to_string(vector_id), node.sparse_matrix.row_indices);
+                os << int_array_c("    ", "sp_col" + std::to_string(vector_id), node.sparse_matrix.col_indices);
+                os << double_array_c("    ", "sp_val" + std::to_string(vector_id), node.sparse_matrix.values);
+                os << "    moo_ad_sparse_matvec(" << node.sparse_matrix.nnz() << ", sp_row" << vector_id << ", sp_col" << vector_id << ", sp_val" << vector_id << ", "
+                   << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::KronEyeMatVec:
-                os << "    static const double kron_mat" << vector_id << "[" << std::max(node.matrix.rows * node.matrix.cols, 1) << "] = {";
-                for (int i = 0; i < node.matrix.rows * node.matrix.cols; ++i) {
-                    if (i > 0) {
-                        os << ", ";
-                    }
-                    os << number(node.matrix.values[static_cast<std::size_t>(i)]);
-                }
-                if (node.matrix.rows * node.matrix.cols == 0) {
-                    os << "0";
-                }
-                os << "};\n";
-                os << "    for (int row = 0; row < " << node.matrix.rows << "; ++row) {\n";
-                os << "        for (int inner = 0; inner < " << node.eye_size << "; ++inner) {\n";
-                os << "            double acc = 0.0;\n";
-                os << "            for (int col = 0; col < " << node.matrix.cols << "; ++col) { acc += kron_mat" << vector_id << "[row * " << node.matrix.cols << " + col] * "
-                   << vector_ref(node.a, "col * " + std::to_string(node.eye_size) + " + inner") << "; }\n";
-                os << "            vec" << vector_id << "[row * " << node.eye_size << " + inner] = acc;\n";
-                os << "        }\n";
-                os << "    }\n";
+                os << double_array_c("    ", "kron_mat" + std::to_string(vector_id), node.matrix.values);
+                os << "    moo_ad_kron_eye_matvec(" << node.matrix.rows << ", " << node.matrix.cols << ", " << node.eye_size << ", kron_mat" << vector_id << ", "
+                   << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::Slice:
-                os << "    for (int i = 0; i < " << node.size << "; ++i) { vec" << vector_id << "[i] = " << vector_ref(node.a, std::to_string(node.start) + " + i * " + std::to_string(node.stride))
-                   << "; }\n";
+                os << "    moo_ad_vec_slice(" << node.size << ", " << vector_ptr(node.a) << ", " << node.start << ", " << node.stride << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::Concat: {
                 const auto lhs_size = f.vector_nodes[static_cast<std::size_t>(node.a)].size;
                 const auto rhs_size = f.vector_nodes[static_cast<std::size_t>(node.b)].size;
-                os << "    for (int i = 0; i < " << lhs_size << "; ++i) { vec" << vector_id << "[i] = " << vector_ref(node.a, "i") << "; }\n";
-                os << "    for (int i = 0; i < " << rhs_size << "; ++i) { vec" << vector_id << "[" << lhs_size << " + i] = " << vector_ref(node.b, "i") << "; }\n";
+                os << "    moo_ad_vec_concat(" << lhs_size << ", " << rhs_size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
                 break;
             }
         }

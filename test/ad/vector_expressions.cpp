@@ -96,7 +96,7 @@ int main() {
         std::cerr << "generated C did not contain expected function name\n";
         return 1;
     }
-    if (c.find("static const double mat") == std::string::npos || c.find("for (int row = 0; row < 2; ++row)") == std::string::npos) {
+    if (c.find("static const double mat") == std::string::npos || c.find("moo_ad_dense_matvec") == std::string::npos) {
         std::cerr << "generated C did not use vector-aware dense matvec lowering\n";
         return 1;
     }
@@ -106,7 +106,8 @@ int main() {
     }
 
     auto jvp_c = to_c(JVP, "vector_expr_jvp");
-    if (jvp_c.find("void vector_expr_jvp") == std::string::npos || jvp_c.find("static const double mat") == std::string::npos) {
+    if (jvp_c.find("void vector_expr_jvp") == std::string::npos || jvp_c.find("static const double mat") == std::string::npos ||
+        jvp_c.find("moo_ad_dense_matvec") == std::string::npos) {
         std::cerr << "generated JVP C did not use vector-aware dense matvec lowering\n";
         return 1;
     }
@@ -186,7 +187,7 @@ int main() {
     }
     auto vjp_c = to_c(VJP, "dense_matvec_vjp");
     if (vjp_c.find("void dense_matvec_vjp") == std::string::npos || vjp_c.find("static const double mat") == std::string::npos ||
-        vjp_c.find("lambda[col]") == std::string::npos) {
+        vjp_c.find("moo_ad_dense_matvec") == std::string::npos) {
         std::cerr << "generated VJP C did not use vector-aware transpose dense matvec lowering\n";
         return 1;
     }
@@ -268,7 +269,8 @@ int main() {
         return 1;
     }
     auto sparse_c = to_c(SF, "sparse_matvec_value");
-    if (sparse_c.find("void sparse_matvec_value") == std::string::npos || sparse_c.find("sp_row") == std::string::npos || sparse_c.find("sp_col") == std::string::npos) {
+    if (sparse_c.find("void sparse_matvec_value") == std::string::npos || sparse_c.find("sp_row") == std::string::npos || sparse_c.find("sp_col") == std::string::npos ||
+        sparse_c.find("moo_ad_sparse_matvec") == std::string::npos) {
         std::cerr << "generated sparse matvec C did not use vector-aware sparse lowering\n";
         return 1;
     }
@@ -335,7 +337,7 @@ int main() {
         return 1;
     }
     auto kron_c = to_c(KF, "kron_eye_value");
-    if (kron_c.find("void kron_eye_value") == std::string::npos || kron_c.find("kron_mat") == std::string::npos) {
+    if (kron_c.find("void kron_eye_value") == std::string::npos || kron_c.find("kron_mat") == std::string::npos || kron_c.find("moo_ad_kron_eye_matvec") == std::string::npos) {
         std::cerr << "generated kron-eye C did not use vector-aware lowering\n";
         return 1;
     }
