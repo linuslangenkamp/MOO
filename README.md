@@ -171,13 +171,12 @@ vector, and matrix expressions. Problem frontends keep their own high-level
 APIs, but expressions such as `M @ x`, `D @ x`, and
 `matrix(D).otimes_eye(nx) @ blockvec(X)` are common local graph-function syntax.
 Raw NLP additionally exposes mapped blocks over `range(...)`, stepped ranges,
-and explicit index lists. `model.codegen("auto")` preserves explicit loops,
-keeps small and medium local derivative blocks on direct sparse graph functions, and
-can switch highly-compressible local blocks to colored compressed JVP/HVP
-evaluation. Use `model.codegen("loop-direct")`,
-`model.codegen("loop-colored")`, or
-`model.codegen(structure="loop", local="colored", linear_algebra="loop")`
-to force specific local graph-function choices.
+and explicit index lists. Explicit mapped blocks remain C loops because they are
+model structure, not a codegen mode. `model.codegen("auto")` keeps small and
+medium local derivative blocks on direct sparse graph functions and can switch
+highly-compressible local blocks to colored compressed JVP/HVP evaluation. Use
+`model.codegen("direct")`, `model.codegen("colored")`, or
+`model.codegen("basis")` to force derivative callback generation.
 `model.codegen("basis")` keeps a legacy trivial coloring path available
 for debugging. Every generated model writes a `codegen_report.txt` beside the
 C file.

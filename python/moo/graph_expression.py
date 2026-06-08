@@ -44,7 +44,6 @@ class GraphExpressionEmitter:
         self.builder = builder
         self.ad = ad
         self.variables = variables
-        self._structured_cache: dict[object, object] = {}
         self._vector_cache: dict[object, object] = {}
 
     def output(self, output: object) -> GraphExpression:
@@ -89,27 +88,6 @@ class GraphExpressionEmitter:
                 nxt.append(layer[i] + layer[i + 1] if i + 1 < len(layer) else layer[i])
             layer = nxt
         return layer[0]
-
-    def dense_matvec_row(self, node: object):
-        cache_key = ("dense_matvec", int(node.origin))
-        if cache_key not in self._structured_cache:
-            rhs = [term.to_graph(self) for term in node.rhs]
-            self._structured_cache[cache_key] = self.builder.dense_matvec_values([list(row) for row in node.matrix_values], rhs)
-        return self._structured_cache[cache_key][int(node.row_index)]
-
-    def sparse_matvec_row(self, node: object):
-        cache_key = ("sparse_matvec", int(node.origin))
-        if cache_key not in self._structured_cache:
-            rhs = [term.to_graph(self) for term in node.rhs]
-            self._structured_cache[cache_key] = self.builder.sparse_matvec_values(list(node.rows), list(node.cols), list(node.vals), tuple(node.shape), rhs)
-        return self._structured_cache[cache_key][int(node.row_index)]
-
-    def kron_eye_matvec_row(self, node: object):
-        cache_key = ("kron_eye_matvec", int(node.origin))
-        if cache_key not in self._structured_cache:
-            rhs = [term.to_graph(self) for term in node.rhs]
-            self._structured_cache[cache_key] = self.builder.kron_eye_matvec_values([list(row) for row in node.base_values], int(node.eye_size), rhs)
-        return self._structured_cache[cache_key][int(node.row_index)]
 
 
 VariableMapper = Callable[[str, int], object | None]

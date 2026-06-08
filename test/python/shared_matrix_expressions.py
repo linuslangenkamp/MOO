@@ -22,7 +22,7 @@ import shutil
 
 import moo.ad as ad
 from moo import Expr, gdop_model, init_model, matrix, nlp_model, sparse_matrix, vec
-from moo.expressions import BinNode, DenseMatVecRowNode, ExprNode, KronEyeMatVecRowNode, SparseMatVecRowNode, SumNode
+from moo.expressions import BinNode, DenseMatVecVectorNode, ExprNode, KronEyeMatVecVectorNode, SparseMatVecVectorNode, SumNode, VectorAtNode
 
 
 def assert_backend_dense_matvec_jvp() -> None:
@@ -91,18 +91,20 @@ def assert_dense_matvec_structure() -> None:
     M = matrix([[1.0, 2.0], [3.0, 4.0]])
     x = vec([Expr.variable("x", 0), Expr.variable("x", 1)])
     y = M @ x
-    assert isinstance(y[0].lfg_node, DenseMatVecRowNode)
-    assert isinstance(y[1].lfg_node, DenseMatVecRowNode)
-    assert y[0].lfg_node.origin == y[1].lfg_node.origin
+    assert isinstance(y.vector_node, DenseMatVecVectorNode)
+    assert isinstance(y[0].lfg_node, VectorAtNode)
+    assert isinstance(y[1].lfg_node, VectorAtNode)
+    assert y[0].lfg_node.vector is y[1].lfg_node.vector
 
 
 def assert_sparse_matvec_structure() -> None:
     S = sparse_matrix([0, 0, 1], [0, 2, 1], [2.0, -1.0, 3.0], (2, 3))
     x = vec([Expr.variable("x", 0), Expr.variable("x", 1), Expr.variable("x", 2)])
     y = S @ x
-    assert isinstance(y[0].lfg_node, SparseMatVecRowNode)
-    assert isinstance(y[1].lfg_node, SparseMatVecRowNode)
-    assert y[0].lfg_node.origin == y[1].lfg_node.origin
+    assert isinstance(y.vector_node, SparseMatVecVectorNode)
+    assert isinstance(y[0].lfg_node, VectorAtNode)
+    assert isinstance(y[1].lfg_node, VectorAtNode)
+    assert y[0].lfg_node.vector is y[1].lfg_node.vector
 
 
 def assert_kron_eye_matvec_structure() -> None:
@@ -110,9 +112,10 @@ def assert_kron_eye_matvec_structure() -> None:
     x = vec([Expr.variable("x", i) for i in range(6)])
     y = K @ x
     assert len(y) == 4
-    assert isinstance(y[0].lfg_node, KronEyeMatVecRowNode)
-    assert isinstance(y[3].lfg_node, KronEyeMatVecRowNode)
-    assert y[0].lfg_node.origin == y[3].lfg_node.origin
+    assert isinstance(y.vector_node, KronEyeMatVecVectorNode)
+    assert isinstance(y[0].lfg_node, VectorAtNode)
+    assert isinstance(y[3].lfg_node, VectorAtNode)
+    assert y[0].lfg_node.vector is y[3].lfg_node.vector
 
 
 def assert_python_expression_nodes_are_typed() -> None:
@@ -124,7 +127,7 @@ def assert_python_expression_nodes_are_typed() -> None:
 
     assert isinstance(product.lfg_node, BinNode)
     assert isinstance(summed.lfg_node, SumNode)
-    assert isinstance(y[0].lfg_node, DenseMatVecRowNode)
+    assert isinstance(y[0].lfg_node, VectorAtNode)
     for node in (product.lfg_node, summed.lfg_node, y[0].lfg_node):
         assert isinstance(node, ExprNode)
         assert not isinstance(node, tuple)
@@ -227,20 +230,20 @@ def main() -> None:
     assert_dense_matvec_solve_matches_scalar(out)
     M = matrix([[1.0, 2.0], [3.0, 4.0]])
 
-    nlp = nlp_model("SharedMatrixNLP").codegen(linear_algebra="loop")
+    nlp = nlp_model("SharedMatrixNLP")
     x = nlp.add_variables("x", 2, guess=1.0)
     y = M @ x
     nlp.minimize(y[0] * y[0] + y[1] * y[1])
     nlp.generate(out / "nlp")
 
-    init = init_model("SharedMatrixInit").codegen(linear_algebra="loop")
+    init = init_model("SharedMatrixInit")
     a = init.add_variable("a", guess=1.0)
     b = init.add_variable("b", guess=1.0)
     r = M @ vec([a, b])
     init.set_objective(r[0] * r[0] + r[1] * r[1])
     init.generate(out / "init")
 
-    gdop = gdop_model("SharedMatrixGDOP").codegen(linear_algebra="loop")
+    gdop = gdop_model("SharedMatrixGDOP")
     s0 = gdop.add_state("s0", start=1.0, final=0.0)
     s1 = gdop.add_state("s1", start=0.0, final=0.0)
     u = gdop.add_control("u")
@@ -254,7 +257,6 @@ def main() -> None:
 
     for report in out.glob("*/codegen_report.txt"):
         text = report.read_text(encoding="utf-8")
-        assert "linear_algebra_strategy=loop" in text, report
         assert "graph_source=native_expr" in text or "structured_loop_blocks" in text, report
 
 

@@ -44,7 +44,7 @@ def build_model(name: str = "nlp_mapped_colored_block", blocks: int = 200, block
 
 if __name__ == "__main__":
     out = Path("build/moo/nlp_mapped_colored_block")
-    model = build_model().codegen("loop-colored")
+    model = build_model().codegen("colored")
     c_path, _ = model.generate(out)
     exe_path = model.compile(out)
     print(c_path)

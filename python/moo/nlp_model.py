@@ -39,7 +39,7 @@ from .callback_codegen import (
     render_local_colored_jac_lines,
     static_int_array,
 )
-from .common import SolverMixin, SolverSettings, derivative_mode, parse_sparsity_pairs
+from .common import select_derivative_callback_mode, parse_sparsity_pairs
 from . import paths
 from .expressions import (
     BlockVectorExpr,
@@ -56,7 +56,7 @@ from .expressions import (
     vector,
 )
 from .local_function import InputGroup, LocalGraphFunction
-from .model import _arr, _c_bool, _clean_name, _num
+from .model import BaseModel, _arr, _c_bool, _num
 from .results import NLPResult, OptimizationRun, read_results
 
 
@@ -266,22 +266,15 @@ class NLPVector:
             raise IndexError(idx)
         return [self.indices[i]]
 
-class NLPModel(SolverMixin):
+class NLPModel(BaseModel):
     def __init__(self, name: str):
-        self.name = _clean_name(name)
-        self.solver_settings = SolverSettings()
-        self.codegen_strategy = "auto"
-        self.codegen_structure_strategy = "auto"
-        self.codegen_local_strategy = "auto"
-        self.codegen_linear_algebra_strategy = "auto"
+        super().__init__(name)
         self.variables: list[NLPVar] = []
         self.constraints: list[NLPConstraint] = []
         self.mapped_objectives: list[MappedObjectiveBlock] = []
         self.mapped_constraints: list[MappedConstraintBlock] = []
-        self.runtime_parameters: list[tuple[str, float]] = []
         self.objective: Expr | None = None
         self.obj_nominal = 1.0
-        self.derivative_test = False
         self._loop_indices: list[int] | None = None
         self._loop_globals: dict[tuple[int, ...], int] | None = None
         self._loop_global_lists: list[list[int]] | None = None
@@ -353,7 +346,7 @@ class NLPModel(SolverMixin):
         self.mapped_constraints.append(MappedConstraintBlock(block_name, indices, len(local_globals), local_globals, exprs, low, high, nominal))
 
     def sumsqr(self, values: NLPVector | VectorExpr) -> Expr:
-        from .model import sum_expr
+        from .expressions import sum_expr
         return sum_expr(value * value for value in values)
 
     def _loop_var(self, vector: NLPVector, idx: int | LoopIndex) -> Expr:
@@ -475,6 +468,8 @@ class NLPModel(SolverMixin):
             outputs=outputs,
             params=[InputGroup("rp", len(self.runtime_parameters))],
         ).emit()
+        jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
+        hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
         return {
             "VALUE": emitted.value,
             "JVP": emitted.jvp,
@@ -485,6 +480,8 @@ class NLPModel(SolverMixin):
             "HES_SPARSITY": emitted.hes_sparsity,
             "JAC_COLORS": emitted.jac_colors,
             "HES_COLORS": emitted.hes_colors,
+            "JAC_MODE": jac_mode,
+            "HES_MODE": hes_mode,
             "REPORT": emitted.report,
         }
 
@@ -509,8 +506,8 @@ class NLPModel(SolverMixin):
             outputs=outputs,
             params=[InputGroup("rp", len(self.runtime_parameters))],
         ).emit()
-        jac_mode = derivative_mode(self.codegen_local_strategy, emitted.jac_sparsity, emitted.jac_colors)
-        hes_mode = derivative_mode(self.codegen_local_strategy, emitted.hes_sparsity, emitted.hes_colors)
+        jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
+        hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
         return LocalBlockEmission(
             value=emitted.value,
             jvp=emitted.jvp,
@@ -539,8 +536,8 @@ class NLPModel(SolverMixin):
                 outputs=scalar_outputs,
                 params=[InputGroup("rp", len(self.runtime_parameters))],
             ).emit()
-            scalar_jac_mode = "direct"
-            scalar_hes_mode = "direct"
+            scalar_jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
+            scalar_hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
             scalar_emitted = emitted
         local_objectives = [
             (block, self._emit_local_block(f"moo_nlp_obj_map_{idx}", block))
@@ -675,8 +672,6 @@ class NLPModel(SolverMixin):
             return self._render_structured_c(emitted, standalone_main)
         jac = parse_sparsity_pairs(emitted.get("JAC_SPARSITY", ""))
         hes = parse_sparsity_pairs(emitted.get("HES_SPARSITY", ""))
-        jac_colors = emitted.get("JAC_COLORS", [])
-        hes_colors = emitted.get("HES_COLORS", [])
         obj_jac = [(0, col) for row, col in jac if row == 0]
         g_jac = [(row - 1, col) for row, col in jac if row >= 1]
         obj_buf = [idx for idx, (row, _) in enumerate(jac) if row == 0]
@@ -701,8 +696,8 @@ int main(int argc, char** argv) {{
     return main_{self.name}(argc, argv);
 }}
 """ if standalone_main else ""
-        jac_mode = derivative_mode(self.codegen_local_strategy, jac, jac_colors if isinstance(jac_colors, list) else [])
-        hes_mode = derivative_mode(self.codegen_local_strategy, hes, hes_colors if isinstance(hes_colors, list) else [])
+        jac_mode = str(emitted.get("JAC_MODE", "direct"))
+        hes_mode = str(emitted.get("HES_MODE", "direct"))
         sections = []
         sections.append("JAC" if jac_mode == "direct" else "JVP")
         sections.append("HES" if hes_mode == "direct" else "HVP")
@@ -715,7 +710,7 @@ int main(int argc, char** argv) {{
         elif jac_mode == "colored":
             jac_body = f"""    f64 v[X_SIZE] = {{0}};
     f64 tmp[OUT_SIZE] = {{0}};
-{self._render_colored_jac_fill(jac, jac_colors if isinstance(jac_colors, list) else [])}"""
+{self._render_colored_jac_fill(jac, emitted.get("JAC_COLORS", []) if isinstance(emitted.get("JAC_COLORS", []), list) else [])}"""
         else:
             jac_body = f"""    f64 v[X_SIZE] = {{0}};
     f64 tmp[OUT_SIZE] = {{0}};
@@ -733,7 +728,7 @@ int main(int argc, char** argv) {{
     seed[0] = obj_factor;
     for (int i = 0; i < G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
     moo_nlp_hvp_prepare(x, seed, rp, &cache);
-{self._render_colored_hes_fill(hes, hes_colors if isinstance(hes_colors, list) else [])}"""
+{self._render_colored_hes_fill(hes, emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [])}"""
         else:
             hes_body = f"""    f64 seed[OUT_SIZE] = {{0}};
     f64 v[X_SIZE] = {{0}};
@@ -1175,10 +1170,7 @@ int main_{self.name}(int argc, char** argv);
         lines = [
             f"model={self.name}",
             "problem=NLP",
-            f"strategy={self.codegen_strategy}",
-            f"structure_strategy={self.codegen_structure_strategy}",
-            f"local_strategy={self.codegen_local_strategy}",
-            f"linear_algebra_strategy={self.codegen_linear_algebra_strategy}",
+            f"derivative_strategy={self.derivative_strategy}",
             f"generated_c_bytes={c_path.stat().st_size}",
         ]
         if emitted.get("STRUCTURED"):
@@ -1190,8 +1182,8 @@ int main_{self.name}(int argc, char** argv);
                 f"local_hessian_mode={emitted.get('LOCAL_HES_MODE', 'direct')}",
             ])
         else:
-            jac_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get("JAC_SPARSITY", []), emitted.get("JAC_COLORS", []))
-            hes_mode = derivative_mode(str(self.codegen_local_strategy), emitted.get("HES_SPARSITY", []), emitted.get("HES_COLORS", []))
+            jac_mode = str(emitted.get("JAC_MODE", "direct"))
+            hes_mode = str(emitted.get("HES_MODE", "direct"))
             lines.append("structure_mode=scalar")
         lines.extend([f"jacobian_mode={jac_mode}", f"hessian_mode={hes_mode}"])
         if isinstance(report, dict):

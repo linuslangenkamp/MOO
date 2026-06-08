@@ -186,27 +186,6 @@ if __name__ == "__main__":
             "out_dir": Path("build/moo/nlp_sparse_basis"),
             "strategy": "basis",
         },
-        {
-            "label": "loop-direct",
-            "model_name": "nlp_sparse_loop_direct",
-            "out_dir": Path("build/moo/nlp_sparse_loop_direct"),
-            "strategy": "loop-direct",
-        },
-        {
-            "label": "loop-colored",
-            "model_name": "nlp_sparse_loop_colored",
-            "out_dir": Path("build/moo/nlp_sparse_loop_colored"),
-            "strategy": "loop-colored",
-        },
-        {
-            "label": "loop-colored-kwargs",
-            "model_name": "nlp_sparse_loop_colored_kwargs",
-            "out_dir": Path("build/moo/nlp_sparse_loop_colored_kwargs"),
-            "strategy": {
-                "structure": "loop",
-                "local": "colored",
-            },
-        },
     ]
 
     generated_cases = []

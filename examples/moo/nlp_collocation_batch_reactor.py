@@ -80,7 +80,7 @@ def build_model(name: str, intervals: int = 50):
     )
 
     model.minimize(M(state(intervals - 1, STAGES - 1), vec([u[node(intervals - 1, STAGES - 1)]])), name="final_x2")
-    model.codegen("loop-direct", linear_algebra="loop")
+    model.codegen("direct")
     model.solver(tolerance=1e-12)
     return model
 

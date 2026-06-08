@@ -127,20 +127,15 @@ large sparse blocks, `auto` can switch to colored compressed JVP/HVP evaluation
 when the color count is much smaller than the requested sparse buffer.
 
 ```python
-model.codegen("auto")          # structure=auto, local=auto
-model.codegen("loop")          # structure=loop, local=auto
-model.codegen("direct")        # structure=auto, local=direct
-model.codegen("colored")       # structure=auto, local=colored
-model.codegen("basis")         # structure=auto, local=basis
-model.codegen("loop-direct")   # structure=loop, local=direct
-model.codegen("loop-colored")  # structure=loop, local=colored
-model.codegen(structure="loop", local="colored", linear_algebra="loop")
+model.codegen("auto")     # choose direct or colored derivative callbacks
+model.codegen("direct")   # force direct sparse derivative callbacks
+model.codegen("colored")  # force colored compressed JVP/HVP callbacks
+model.codegen("basis")    # debug fallback using basis directions
 ```
 
-The structure axis controls whether repeated blocks remain C loops. The local
-axis controls how each repeated block's local derivative graph function is generated.
-The linear algebra axis is shared by all problem types and records whether
-matrix/vector local graph-function expressions should prefer looped or scalar lowering.
+Explicit mapped NLP blocks remain C loops because they are model structure, not
+a codegen mode. The derivative strategy only controls how each local graph
+function fills Jacobian/Hessian buffers.
 For tiny local blocks, `auto` usually chooses direct sparse graph functions; for larger
 sparse local blocks, forced or automatic colored graph functions use compressed JVP/HVP
 evaluation inside the loop.
@@ -184,7 +179,7 @@ m.add_constraints(
     ub=5.0,
     name="band",
 )
-m.codegen("loop-direct")
+m.codegen("direct")
 ```
 
 Variable vectors support normal Python views:
@@ -442,7 +437,7 @@ m.add_constraints_map(
     ub=25.0,
     name="band_block",
 )
-m.codegen("loop-colored")
+m.codegen("colored")
 ```
 
 ## Direct Collocation

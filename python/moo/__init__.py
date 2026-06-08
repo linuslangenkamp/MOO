@@ -26,22 +26,26 @@ _build_ext_dir = Path(__file__).resolve().parents[2] / "build" / "python" / "moo
 if _build_ext_dir.exists():
     __path__.append(str(_build_ext_dir))
 
-from .model import (
+from .expressions import (
     Expr,
-    GDOPModel,
-    Model,
+    blockvec,
     cos,
+    dot,
     exp,
     log,
+    matrix,
     pow_const,
     sin,
+    sparse_matrix,
     sum_expr,
     tan,
+    vec,
+    vector,
 )
 
+from .gdop_model import GDOPModel
 from .init_model import InitModel
 from .nlp_model import NLPModel
-from .expressions import blockvec, dot, matrix, sparse_matrix, vec, vector
 from . import paths
 from .radauIIA import RADAU, RadauConstants, radauIIA
 from .results import OptimizationRun, ResultSet, ResultTable, read_results
@@ -62,7 +66,6 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Expr",
-    "Model",
     "GDOPModel",
     "InitModel",
     "NLPModel",

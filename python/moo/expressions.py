@@ -21,13 +21,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Iterable
-from itertools import count
 from typing import Callable
 
 
-_DENSE_MATVEC_ID = count()
-_SPARSE_MATVEC_ID = count()
-_KRON_EYE_MATVEC_ID = count()
 _MISSING = object()
 
 
@@ -175,6 +171,21 @@ class KronEyeMatVecVectorNode(VectorNode):
 
 
 @dataclass(frozen=True)
+class VectorAtNode(ExprNode):
+    vector: VectorNode
+    index: int
+
+    def to_text(self) -> str | None:
+        return None
+
+    def to_graph(self, compiler):
+        return compiler.builder.at(compiler.vector_node(self.vector), int(self.index))
+
+    def remap(self, variable_mapper):
+        return VectorAtNode(self.vector.remap(variable_mapper), int(self.index))
+
+
+@dataclass(frozen=True)
 class ConstNode(ExprNode):
     value: float
 
@@ -294,102 +305,6 @@ class PowConstNode(ExprNode):
         return PowConstNode(_remap_node(self.arg, variable_mapper), self.power)
 
 
-@dataclass(frozen=True)
-class DenseMatVecRowNode(ExprNode):
-    matrix_values: tuple[tuple[float, ...], ...]
-    row_index: int
-    rhs: tuple[ExprNode, ...]
-    origin: int
-
-    def to_text(self) -> str | None:
-        rhs = [term.to_text() for term in self.rhs]
-        if any(part is None for part in rhs):
-            return None
-        terms = [f"({repr(float(weight))} * {value})" for weight, value in zip(self.matrix_values[int(self.row_index)], rhs)]
-        return _balanced_join(terms, "+")
-
-    def to_graph(self, compiler):
-        return compiler.dense_matvec_row(self)
-
-    def remap(self, variable_mapper):
-        return DenseMatVecRowNode(
-            self.matrix_values,
-            int(self.row_index),
-            tuple(_remap_node(term, variable_mapper) for term in self.rhs),
-            int(self.origin),
-        )
-
-
-@dataclass(frozen=True)
-class SparseMatVecRowNode(ExprNode):
-    rows: tuple[int, ...]
-    cols: tuple[int, ...]
-    vals: tuple[float, ...]
-    shape: tuple[int, int]
-    row_index: int
-    rhs: tuple[ExprNode, ...]
-    origin: int
-
-    def to_text(self) -> str | None:
-        rhs = [term.to_text() for term in self.rhs]
-        if any(part is None for part in rhs):
-            return None
-        terms = [
-            f"({repr(float(val))} * {rhs[int(col)]})"
-            for row, col, val in zip(self.rows, self.cols, self.vals)
-            if int(row) == int(self.row_index)
-        ]
-        return _balanced_join(terms, "+")
-
-    def to_graph(self, compiler):
-        return compiler.sparse_matvec_row(self)
-
-    def remap(self, variable_mapper):
-        return SparseMatVecRowNode(
-            self.rows,
-            self.cols,
-            self.vals,
-            self.shape,
-            int(self.row_index),
-            tuple(_remap_node(term, variable_mapper) for term in self.rhs),
-            int(self.origin),
-        )
-
-
-@dataclass(frozen=True)
-class KronEyeMatVecRowNode(ExprNode):
-    base_values: tuple[tuple[float, ...], ...]
-    eye_size: int
-    row_index: int
-    rhs: tuple[ExprNode, ...]
-    origin: int
-
-    def to_text(self) -> str | None:
-        rhs = [term.to_text() for term in self.rhs]
-        if any(part is None for part in rhs):
-            return None
-        eye = int(self.eye_size)
-        base_row = int(self.row_index) // eye
-        inner = int(self.row_index) % eye
-        terms = [
-            f"({repr(float(weight))} * {rhs[col * eye + inner]})"
-            for col, weight in enumerate(self.base_values[base_row])
-        ]
-        return _balanced_join(terms, "+")
-
-    def to_graph(self, compiler):
-        return compiler.kron_eye_matvec_row(self)
-
-    def remap(self, variable_mapper):
-        return KronEyeMatVecRowNode(
-            self.base_values,
-            int(self.eye_size),
-            int(self.row_index),
-            tuple(_remap_node(term, variable_mapper) for term in self.rhs),
-            int(self.origin),
-        )
-
-
 def _remap_node(node: object | None, variable_mapper):
     if node is None:
         return None
@@ -399,29 +314,22 @@ def _remap_node(node: object | None, variable_mapper):
 
 
 class Expr:
-    def __init__(self, lfg: str | None, mr: object = _MISSING, lfg_node: object | None = None, mr_node: object = _MISSING):
-        self._lfg_text = lfg
-        self._mr_text = lfg if mr is _MISSING else mr
+    def __init__(self, lfg_node: object | None = None, mr_node: object = _MISSING):
         self.lfg_node = lfg_node
-        self.mr_node = lfg_node if mr_node is _MISSING and mr is _MISSING else (None if mr_node is _MISSING else mr_node)
+        self.mr_node = lfg_node if mr_node is _MISSING else mr_node
 
     @property
     def lfg(self) -> str | None:
-        if self._lfg_text is not None:
-            return self._lfg_text
         return _node_to_text(self.lfg_node)
 
     @property
     def mr(self) -> str | None:
-        if self._mr_text is not None:
-            return self._mr_text
         return _node_to_text(self.mr_node)
 
     @staticmethod
     def const(value: float | int) -> "Expr":
-        text = repr(float(value))
         node = ConstNode(float(value))
-        return Expr(text, text, node, node)
+        return Expr(node, node)
 
     def is_zero(self) -> bool:
         return (
@@ -434,10 +342,9 @@ class Expr:
         )
 
     @staticmethod
-    def variable(group: str, idx: int, text: str | None = None, mr: str | None = None, mr_node: object | None = None) -> "Expr":
+    def variable(group: str, idx: int, mr_node: object = _MISSING) -> "Expr":
         node = VarNode(group, int(idx))
-        expr_text = text if text is not None else f"{group}[{idx}]"
-        return Expr(expr_text, expr_text if mr is None else mr, node, node if mr is None and mr_node is None else mr_node)
+        return Expr(node, node if mr_node is _MISSING else mr_node)
 
     def _binary(self, other: object, op: str) -> "Expr":
         rhs = as_expr(other)
@@ -445,7 +352,7 @@ class Expr:
             return SumExpr.from_terms([self, rhs])
         lfg_node = BinNode(op, self.lfg_node, rhs.lfg_node) if self.lfg_node is not None and rhs.lfg_node is not None else None
         mr_node = BinNode(op, self.mr_node, rhs.mr_node) if self.mr_node is not None and rhs.mr_node is not None else None
-        return Expr(None, None, lfg_node, mr_node)
+        return Expr(lfg_node, mr_node)
 
     def __add__(self, other: object) -> "Expr":
         return self._binary(other, "+")
@@ -473,8 +380,6 @@ class Expr:
 
     def __neg__(self) -> "Expr":
         return Expr(
-            None,
-            None,
             UnaryNode("neg", self.lfg_node) if self.lfg_node is not None else None,
             UnaryNode("neg", self.mr_node) if self.mr_node is not None else None,
         )
@@ -567,8 +472,6 @@ def as_expr(value: object) -> Expr:
 def _unary(name: str, value: object) -> Expr:
     expr = as_expr(value)
     return Expr(
-        None,
-        None,
         UnaryNode(name, expr.lfg_node) if expr.lfg_node is not None else None,
         UnaryNode(name, expr.mr_node) if expr.mr_node is not None else None,
     )
@@ -597,8 +500,6 @@ def log(value: object) -> Expr:
 def pow_const(value: object, power: float | int) -> Expr:
     expr = as_expr(value)
     return Expr(
-        None,
-        None,
         PowConstNode(expr.lfg_node, float(power)) if expr.lfg_node is not None else None,
         PowConstNode(expr.mr_node, float(power)) if expr.mr_node is not None else None,
     )
@@ -608,79 +509,30 @@ def sum_expr(values: Iterable[object]) -> Expr:
     return SumExpr.from_terms([as_expr(value) for value in values])
 
 
-def _dense_matvec_row_expr(matrix_values: list[list[float]], row_index: int, rhs: list[Expr], origin: int) -> Expr:
+def _vector_at_expr(vector_node: VectorNode | None, row_index: int, fallback: Expr) -> Expr:
+    if vector_node is None:
+        return fallback
+    node = VectorAtNode(vector_node, int(row_index))
+    return Expr(node, node)
+
+
+def _dense_matvec_element_expr(matrix_values: list[list[float]], row_index: int, rhs: list[Expr], vector_node: VectorNode | None) -> Expr:
     fallback = sum_expr(weight * value for weight, value in zip(matrix_values[row_index], rhs))
-    lfg_nodes = [value.lfg_node for value in rhs]
-    mr_nodes = [value.mr_node for value in rhs]
-    frozen_matrix = tuple(tuple(float(value) for value in row) for row in matrix_values)
-    lfg_node = DenseMatVecRowNode(
-        frozen_matrix,
-        int(row_index),
-        tuple(lfg_nodes),
-        int(origin),
-    ) if fallback.lfg_node is not None and all(node is not None for node in lfg_nodes) else fallback.lfg_node
-    mr_node = DenseMatVecRowNode(
-        frozen_matrix,
-        int(row_index),
-        tuple(mr_nodes),
-        int(origin),
-    ) if fallback.mr_node is not None and all(node is not None for node in mr_nodes) else fallback.mr_node
-    return Expr(None, None, lfg_node, mr_node)
+    return _vector_at_expr(vector_node, row_index, fallback)
 
 
-def _sparse_matvec_row_expr(rows: list[int], cols: list[int], vals: list[float], shape: tuple[int, int], row_index: int, rhs: list[Expr], origin: int) -> Expr:
+def _sparse_matvec_element_expr(rows: list[int], cols: list[int], vals: list[float], row_index: int, rhs: list[Expr], vector_node: VectorNode | None) -> Expr:
     buckets: list[tuple[float, Expr]] = [(val, rhs[col]) for row, col, val in zip(rows, cols, vals) if int(row) == int(row_index)]
     fallback = sum_expr(val * value for val, value in buckets)
-    lfg_nodes = [value.lfg_node for value in rhs]
-    mr_nodes = [value.mr_node for value in rhs]
-    frozen_rows = tuple(int(row) for row in rows)
-    frozen_cols = tuple(int(col) for col in cols)
-    frozen_vals = tuple(float(val) for val in vals)
-    frozen_shape = (int(shape[0]), int(shape[1]))
-    lfg_node = SparseMatVecRowNode(
-        frozen_rows,
-        frozen_cols,
-        frozen_vals,
-        frozen_shape,
-        int(row_index),
-        tuple(lfg_nodes),
-        int(origin),
-    ) if fallback.lfg_node is not None and all(node is not None for node in lfg_nodes) else fallback.lfg_node
-    mr_node = SparseMatVecRowNode(
-        frozen_rows,
-        frozen_cols,
-        frozen_vals,
-        frozen_shape,
-        int(row_index),
-        tuple(mr_nodes),
-        int(origin),
-    ) if fallback.mr_node is not None and all(node is not None for node in mr_nodes) else fallback.mr_node
-    return Expr(None, None, lfg_node, mr_node)
+    return _vector_at_expr(vector_node, row_index, fallback)
 
 
-def _kron_eye_matvec_row_expr(base_values: list[list[float]], eye_size: int, row_index: int, rhs: list[Expr], origin: int) -> Expr:
+def _kron_eye_matvec_element_expr(base_values: list[list[float]], eye_size: int, row_index: int, rhs: list[Expr], vector_node: VectorNode | None) -> Expr:
     eye = int(eye_size)
     base_row = int(row_index) // eye
     inner = int(row_index) % eye
     fallback = sum_expr(weight * rhs[col * eye + inner] for col, weight in enumerate(base_values[base_row]))
-    lfg_nodes = [value.lfg_node for value in rhs]
-    mr_nodes = [value.mr_node for value in rhs]
-    frozen_base = tuple(tuple(float(value) for value in row) for row in base_values)
-    lfg_node = KronEyeMatVecRowNode(
-        frozen_base,
-        eye,
-        int(row_index),
-        tuple(lfg_nodes),
-        int(origin),
-    ) if fallback.lfg_node is not None and all(node is not None for node in lfg_nodes) else fallback.lfg_node
-    mr_node = KronEyeMatVecRowNode(
-        frozen_base,
-        eye,
-        int(row_index),
-        tuple(mr_nodes),
-        int(origin),
-    ) if fallback.mr_node is not None and all(node is not None for node in mr_nodes) else fallback.mr_node
-    return Expr(None, None, lfg_node, mr_node)
+    return _vector_at_expr(vector_node, row_index, fallback)
 
 
 def _is_vector_like(value: object) -> bool:
@@ -909,12 +761,11 @@ class ExprMatrix:
             return sum_expr(weight * value for weight, value in zip(self.values, rhs))
         if self.values and len(self.values[0]) != len(rhs):
             raise ValueError("matrix/vector dimensions do not match")
-        origin = next(_DENSE_MATVEC_ID)
         frozen_matrix = tuple(tuple(float(value) for value in row) for row in self.values)
         rhs_nodes = [_expr_node_for_vector_value(value) for value in rhs]
         vector_node = DenseMatVecVectorNode(frozen_matrix, tuple(rhs_nodes)) if all(node is not None for node in rhs_nodes) else None
         return VectorExpr(
-            [_dense_matvec_row_expr(self.values, row_index, rhs, origin) for row_index, _row in enumerate(self.values)],
+            [_dense_matvec_element_expr(self.values, row_index, rhs, vector_node) for row_index, _row in enumerate(self.values)],
             vector_node,
         )
 
@@ -946,7 +797,6 @@ class SparseMatrixExpr:
         for row, col in zip(self.rows, self.cols):
             if row < 0 or row >= self.shape[0] or col < 0 or col >= self.shape[1]:
                 raise ValueError("sparse matrix entry out of shape bounds")
-        origin = next(_SPARSE_MATVEC_ID)
         rhs_nodes = [_expr_node_for_vector_value(value) for value in rhs]
         vector_node = SparseMatVecVectorNode(
             tuple(self.rows),
@@ -956,7 +806,7 @@ class SparseMatrixExpr:
             tuple(rhs_nodes),
         ) if all(node is not None for node in rhs_nodes) else None
         return VectorExpr(
-            [_sparse_matvec_row_expr(self.rows, self.cols, self.vals, self.shape, row_index, rhs, origin) for row_index in range(self.shape[0])],
+            [_sparse_matvec_element_expr(self.rows, self.cols, self.vals, row_index, rhs, vector_node) for row_index in range(self.shape[0])],
             vector_node,
         )
 
@@ -975,13 +825,12 @@ class KroneckerEyeMatrix:
         expected = len(self.base.values[0]) * self.eye_size if self.base.values else 0
         if len(rhs) != expected:
             raise ValueError("kron-eye matrix/vector dimensions do not match")
-        origin = next(_KRON_EYE_MATVEC_ID)
         frozen_base = tuple(tuple(float(value) for value in row) for row in self.base.values)
         rhs_nodes = [_expr_node_for_vector_value(value) for value in rhs.values]
         vector_node = KronEyeMatVecVectorNode(frozen_base, self.eye_size, tuple(rhs_nodes)) if all(node is not None for node in rhs_nodes) else None
         return VectorExpr(
             [
-                _kron_eye_matvec_row_expr(self.base.values, self.eye_size, row_index, rhs.values, origin)
+                _kron_eye_matvec_element_expr(self.base.values, self.eye_size, row_index, rhs.values, vector_node)
                 for row_index in range(len(self.base.values) * self.eye_size)
             ],
             vector_node,
