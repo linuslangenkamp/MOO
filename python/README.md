@@ -562,6 +562,8 @@ lower-level C++ and C interface references.
 - `examples/moo/linear_gdop.py`: linear GDOP regression; useful for checking
   zero Hessian sparsity.
 - `examples/moo/nlp_qp.py`: minimal standard convex QP.
+- `examples/moo/NLP/spectral_nlp_free_time.py`: spectral hypersensitive NLP
+  with the final time as an NLP variable constrained by `tf >= 0.5`.
 - `examples/moo/nlp_sparse_benchmark.py`: sparse NLP code-size comparison for
   auto, direct sparse, and colored compressed derivative codegen.
 - `examples/moo/ad_bindings.py`: low-level AD binding demo.
