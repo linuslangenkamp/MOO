@@ -208,11 +208,29 @@ void emit_vector_helpers(std::ostream &os) {
     os << "static void moo_ad_vec_mul(int n, const double* a, const double* b, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = a[i] * b[i]; }\n";
     os << "}\n";
+    os << "static void moo_ad_vec_div(int n, const double* a, const double* b, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = a[i] / b[i]; }\n";
+    os << "}\n";
     os << "static void moo_ad_vec_scale(int n, double factor, const double* x, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = factor * x[i]; }\n";
     os << "}\n";
     os << "static void moo_ad_vec_pow_const(int n, const double* x, double power, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = pow(x[i], power); }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_sin(int n, const double* x, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = sin(x[i]); }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_cos(int n, const double* x, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = cos(x[i]); }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_tan(int n, const double* x, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = tan(x[i]); }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_exp(int n, const double* x, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = exp(x[i]); }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_log(int n, const double* x, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = log(x[i]); }\n";
     os << "}\n";
     os << "static void moo_ad_vec_slice(int n, const double* x, int start, int stride, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = x[start + i * stride]; }\n";
@@ -350,11 +368,11 @@ SeedLinearAnalysis analyze_seed_linear_forms(const GraphFunction &f, const std::
             seen[static_cast<std::size_t>(vector_id)] = true;
             const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
             roots.insert(roots.end(), node.values.begin(), node.values.end());
-            if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Mul || node.op == VectorOp::Concat) {
+            if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Mul || node.op == VectorOp::Div || node.op == VectorOp::Concat) {
                 add_vector_roots(node.a);
                 add_vector_roots(node.b);
-            } else if (node.op == VectorOp::Scale || node.op == VectorOp::PowConst || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec ||
-                       node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
+            } else if (node.op == VectorOp::Scale || node.op == VectorOp::PowConst || node.op == VectorOp::Unary || node.op == VectorOp::DenseMatVec ||
+                       node.op == VectorOp::SparseMatVec || node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
                 add_vector_roots(node.a);
             }
         };
@@ -524,12 +542,28 @@ LinearForm vector_linear_form(const GraphFunction &f, SeedLinearAnalysis &analys
             }
             break;
         }
+        case VectorOp::Div: {
+            auto lhs = vector_linear_form(f, analysis, node.a, element);
+            auto rhs = require_vector_seed_constant(analysis, vector_linear_form(f, analysis, node.b, element), "division denominator");
+            LinearForm form;
+            form.constant = analysis.builder.div(lhs.constant, rhs.constant);
+            for (auto &[idx, expr] : lhs.coeff) {
+                form.coeff.emplace(idx, analysis.builder.div(expr, rhs.constant));
+            }
+            result = std::move(form);
+            break;
+        }
         case VectorOp::Scale:
             result = linear_scale(analysis.builder, vector_linear_form(f, analysis, node.a, element), analysis.builder.constant(node.scale));
             break;
         case VectorOp::PowConst: {
             auto rhs = require_vector_seed_constant(analysis, vector_linear_form(f, analysis, node.a, element), "pow_const");
             result = make_constant_form(analysis.builder.pow_const(rhs.constant, node.power));
+            break;
+        }
+        case VectorOp::Unary: {
+            auto rhs = require_vector_seed_constant(analysis, vector_linear_form(f, analysis, node.a, element), op_name(node.scalar_op));
+            result = make_constant_form(analysis.builder.unary(node.scalar_op, rhs.constant));
             break;
         }
         case VectorOp::Slice:
@@ -716,9 +750,11 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
             case VectorOp::Add:
             case VectorOp::Sub:
             case VectorOp::Mul:
+            case VectorOp::Div:
             case VectorOp::Concat:
             case VectorOp::Scale:
             case VectorOp::PowConst:
+            case VectorOp::Unary:
             case VectorOp::DenseMatVec:
             case VectorOp::SparseMatVec:
             case VectorOp::KronEyeMatVec:
@@ -818,11 +854,11 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
         if (node.size < 0) {
             throw std::runtime_error("invalid vector node size");
         }
-        if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Mul || node.op == VectorOp::Concat) {
+        if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Mul || node.op == VectorOp::Div || node.op == VectorOp::Concat) {
             emit_vector(node.a);
             emit_vector(node.b);
-        } else if (node.op == VectorOp::Scale || node.op == VectorOp::PowConst || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec ||
-                   node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
+        } else if (node.op == VectorOp::Scale || node.op == VectorOp::PowConst || node.op == VectorOp::Unary || node.op == VectorOp::DenseMatVec ||
+                   node.op == VectorOp::SparseMatVec || node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
             emit_vector(node.a);
         } else if (node.op == VectorOp::Values) {
             for (NodeId value : node.values) {
@@ -851,11 +887,27 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
             case VectorOp::Mul:
                 os << "    moo_ad_vec_mul(" << node.size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
                 break;
+            case VectorOp::Div:
+                os << "    moo_ad_vec_div(" << node.size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
+                break;
             case VectorOp::Scale:
                 os << "    moo_ad_vec_scale(" << node.size << ", " << number(node.scale) << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::PowConst:
                 os << "    moo_ad_vec_pow_const(" << node.size << ", " << vector_ptr(node.a) << ", " << number(node.power) << ", vec" << vector_id << ");\n";
+                break;
+            case VectorOp::Unary:
+                if (node.scalar_op == Op::Sin) {
+                    os << "    moo_ad_vec_sin(" << node.size << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
+                } else if (node.scalar_op == Op::Cos) {
+                    os << "    moo_ad_vec_cos(" << node.size << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
+                } else if (node.scalar_op == Op::Tan) {
+                    os << "    moo_ad_vec_tan(" << node.size << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
+                } else if (node.scalar_op == Op::Exp) {
+                    os << "    moo_ad_vec_exp(" << node.size << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
+                } else if (node.scalar_op == Op::Log) {
+                    os << "    moo_ad_vec_log(" << node.size << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
+                }
                 break;
             case VectorOp::DenseMatVec:
                 os << double_array_c("    ", "mat" + std::to_string(vector_id), node.matrix.values);

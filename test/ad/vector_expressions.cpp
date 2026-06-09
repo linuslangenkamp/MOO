@@ -208,6 +208,91 @@ int main() {
         return 1;
     }
 
+    GraphFunctionBuilder unary_builder;
+    auto ux = unary_builder.inputs("x", 2);
+    auto unary_out = unary_builder.add(
+        unary_builder.add(unary_builder.unary(Op::Sin, ux), unary_builder.unary(Op::Cos, ux)),
+        unary_builder.add(unary_builder.add(unary_builder.unary(Op::Tan, ux), unary_builder.unary(Op::Exp, ux)), unary_builder.unary(Op::Log, ux)));
+    auto UF = unary_builder.function(ux, unary_out);
+    bool saw_unary = false;
+    for (const auto &node : UF.vector_nodes) {
+        saw_unary = saw_unary || node.op == VectorOp::Unary;
+    }
+    if (!saw_unary) {
+        std::cerr << "vector unary node was not preserved\n";
+        return 1;
+    }
+    double uxv[2] = {1.2, 1.7};
+    double uout[2] = {0.0, 0.0};
+    VM(UF).evaluate(EvalEnv().input("x", uxv), uout);
+    auto unary_value = [](double x) { return std::sin(x) + std::cos(x) + std::tan(x) + std::exp(x) + std::log(x); };
+    if (!near(uout[0], unary_value(uxv[0])) || !near(uout[1], unary_value(uxv[1]))) {
+        std::cerr << "unexpected vector unary value: " << uout[0] << ", " << uout[1] << "\n";
+        return 1;
+    }
+    auto UJVP = forward_diff(UF, "x", "v");
+    bool unary_jvp_saw_unary = false;
+    bool unary_jvp_saw_div = false;
+    for (const auto &node : UJVP.vector_nodes) {
+        unary_jvp_saw_unary = unary_jvp_saw_unary || node.op == VectorOp::Unary;
+        unary_jvp_saw_div = unary_jvp_saw_div || node.op == VectorOp::Div;
+    }
+    if (!unary_jvp_saw_unary || !unary_jvp_saw_div) {
+        std::cerr << "vector unary JVP did not preserve unary/div vector nodes\n";
+        return 1;
+    }
+    double uvv[2] = {0.25, -0.5};
+    double ujvp[2] = {0.0, 0.0};
+    VM(UJVP).evaluate(EvalEnv().input("x", uxv).param("v", uvv), ujvp);
+    auto unary_derivative = [](double x) { return std::cos(x) - std::sin(x) + 1.0 + std::tan(x) * std::tan(x) + std::exp(x) + 1.0 / x; };
+    if (!near(ujvp[0], unary_derivative(uxv[0]) * uvv[0]) || !near(ujvp[1], unary_derivative(uxv[1]) * uvv[1])) {
+        std::cerr << "unexpected vector unary JVP: " << ujvp[0] << ", " << ujvp[1] << "\n";
+        return 1;
+    }
+    auto UVJP = reverse_diff(UF, "lambda", "x");
+    double ulambda[2] = {3.0, 5.0};
+    double ugrad[2] = {0.0, 0.0};
+    VM(UVJP).evaluate(EvalEnv().input("x", uxv).param("lambda", ulambda), ugrad);
+    if (!near(ugrad[0], ulambda[0] * unary_derivative(uxv[0])) || !near(ugrad[1], ulambda[1] * unary_derivative(uxv[1]))) {
+        std::cerr << "unexpected vector unary VJP: " << ugrad[0] << ", " << ugrad[1] << "\n";
+        return 1;
+    }
+    auto UHVP = forward_diff(UVJP, "x", "v");
+    double uhvp[2] = {0.0, 0.0};
+    VM(UHVP).evaluate(EvalEnv().input("x", uxv).param("lambda", ulambda).param("v", uvv), uhvp);
+    auto unary_second = [](double x) {
+        double tan_x = std::tan(x);
+        return -std::sin(x) - std::cos(x) + 2.0 * tan_x * (1.0 + tan_x * tan_x) + std::exp(x) - 1.0 / (x * x);
+    };
+    if (!near(uhvp[0], ulambda[0] * unary_second(uxv[0]) * uvv[0]) || !near(uhvp[1], ulambda[1] * unary_second(uxv[1]) * uvv[1])) {
+        std::cerr << "unexpected vector unary HVP: " << uhvp[0] << ", " << uhvp[1] << "\n";
+        return 1;
+    }
+    auto unary_c = to_c(UF, "unary_vector_value");
+    if (unary_c.find("moo_ad_vec_sin") == std::string::npos || unary_c.find("moo_ad_vec_cos") == std::string::npos ||
+        unary_c.find("moo_ad_vec_tan") == std::string::npos || unary_c.find("moo_ad_vec_exp") == std::string::npos ||
+        unary_c.find("moo_ad_vec_log") == std::string::npos) {
+        std::cerr << "generated vector unary C did not use vector helpers\n";
+        return 1;
+    }
+    auto ujac_pairs = jacobian_sparsity(UF, "x").to_pairs();
+    auto ujac_fn = sparse_jacobian_function(UF, "x", ujac_pairs);
+    std::vector<double> ujac_values(ujac_pairs.size(), 0.0);
+    VM(ujac_fn).evaluate(EvalEnv().input("x", uxv), ujac_values.data());
+    for (std::size_t i = 0; i < ujac_pairs.size(); ++i) {
+        const auto [row, col] = ujac_pairs[i];
+        const double expected = row == col ? unary_derivative(uxv[row]) : 0.0;
+        if (!near(ujac_values[i], expected)) {
+            std::cerr << "unexpected vector unary sparse Jacobian entry (" << row << ", " << col << "): " << ujac_values[i] << " expected " << expected << "\n";
+            return 1;
+        }
+    }
+    auto ujac_c = to_sparse_jacobian_c(UF, "x", ujac_pairs, "unary_vector_jac");
+    if (ujac_c.find("void unary_vector_jac") == std::string::npos) {
+        std::cerr << "generated vector unary sparse Jacobian C did not contain expected function\n";
+        return 1;
+    }
+
     GraphFunctionBuilder coll_builder;
     auto cx = coll_builder.inputs("x", 3);
     DenseMatrix CD(3, 3, {1.0, -2.0, 0.5, 0.0, 3.0, 4.0, -1.0, 0.0, 2.0});

@@ -144,6 +144,7 @@ ForwardVectorOutput tangent_vector_nodes(const GraphFunction &f, Graph &graph, c
         transformed.size = node.size;
         transformed.scale = node.scale;
         transformed.power = node.power;
+        transformed.scalar_op = node.scalar_op;
         transformed.matrix = node.matrix;
         transformed.sparse_matrix = node.sparse_matrix;
         transformed.eye_size = node.eye_size;
@@ -203,7 +204,8 @@ ForwardVectorOutput tangent_vector_nodes(const GraphFunction &f, Graph &graph, c
                 break;
             case VectorOp::Add:
             case VectorOp::Sub:
-            case VectorOp::Mul: {
+            case VectorOp::Mul:
+            case VectorOp::Div: {
                 transformed.op = node.op;
                 transformed.a = tangent_vector(node.a);
                 transformed.b = tangent_vector(node.b);
@@ -224,6 +226,33 @@ ForwardVectorOutput tangent_vector_nodes(const GraphFunction &f, Graph &graph, c
                     sum.a = add_node(std::move(lhs));
                     sum.b = add_node(std::move(rhs));
                     cached = add_node(std::move(sum));
+                } else if (node.op == VectorOp::Div) {
+                    FunctionVectorNode lhs;
+                    lhs.op = VectorOp::Mul;
+                    lhs.size = node.size;
+                    lhs.a = tangent_vector(node.a);
+                    lhs.b = primal_vector(node.b);
+                    FunctionVectorNode rhs;
+                    rhs.op = VectorOp::Mul;
+                    rhs.size = node.size;
+                    rhs.a = primal_vector(node.a);
+                    rhs.b = tangent_vector(node.b);
+                    FunctionVectorNode num;
+                    num.op = VectorOp::Sub;
+                    num.size = node.size;
+                    num.a = add_node(std::move(lhs));
+                    num.b = add_node(std::move(rhs));
+                    FunctionVectorNode den;
+                    den.op = VectorOp::PowConst;
+                    den.size = node.size;
+                    den.a = primal_vector(node.b);
+                    den.power = 2.0;
+                    FunctionVectorNode quotient;
+                    quotient.op = VectorOp::Div;
+                    quotient.size = node.size;
+                    quotient.a = add_node(std::move(num));
+                    quotient.b = add_node(std::move(den));
+                    cached = add_node(std::move(quotient));
                 } else {
                     cached = add_node(std::move(transformed));
                 }
@@ -257,6 +286,67 @@ ForwardVectorOutput tangent_vector_nodes(const GraphFunction &f, Graph &graph, c
                     cached = add_node(std::move(scaled));
                 }
                 break;
+            case VectorOp::Unary: {
+                int factor = -1;
+                if (node.scalar_op == Op::Sin) {
+                    FunctionVectorNode c;
+                    c.op = VectorOp::Unary;
+                    c.size = node.size;
+                    c.a = primal_vector(node.a);
+                    c.scalar_op = Op::Cos;
+                    factor = add_node(std::move(c));
+                } else if (node.scalar_op == Op::Cos) {
+                    FunctionVectorNode s;
+                    s.op = VectorOp::Unary;
+                    s.size = node.size;
+                    s.a = primal_vector(node.a);
+                    s.scalar_op = Op::Sin;
+                    factor = add_node(std::move(s));
+                } else if (node.scalar_op == Op::Tan) {
+                    FunctionVectorNode p;
+                    p.op = VectorOp::PowConst;
+                    p.size = node.size;
+                    p.a = primal_vector(vector_id);
+                    p.power = 2.0;
+                    FunctionVectorNode one;
+                    one.op = VectorOp::Values;
+                    one.size = node.size;
+                    one.values.assign(static_cast<std::size_t>(node.size), graph.constant(1.0).id);
+                    FunctionVectorNode sum;
+                    sum.op = VectorOp::Add;
+                    sum.size = node.size;
+                    sum.a = add_node(std::move(one));
+                    sum.b = add_node(std::move(p));
+                    factor = add_node(std::move(sum));
+                } else if (node.scalar_op == Op::Exp) {
+                    factor = primal_vector(vector_id);
+                }
+
+                if (node.scalar_op == Op::Log) {
+                    FunctionVectorNode quotient;
+                    quotient.op = VectorOp::Div;
+                    quotient.size = node.size;
+                    quotient.a = tangent_vector(node.a);
+                    quotient.b = primal_vector(node.a);
+                    cached = add_node(std::move(quotient));
+                } else {
+                    FunctionVectorNode product;
+                    product.op = VectorOp::Mul;
+                    product.size = node.size;
+                    product.a = factor;
+                    product.b = tangent_vector(node.a);
+                    cached = add_node(std::move(product));
+                    if (node.scalar_op == Op::Cos) {
+                        FunctionVectorNode neg;
+                        neg.op = VectorOp::Scale;
+                        neg.size = node.size;
+                        neg.a = cached;
+                        neg.scale = -1.0;
+                        cached = add_node(std::move(neg));
+                    }
+                }
+                break;
+            }
             case VectorOp::DenseMatVec:
                 transformed.op = VectorOp::DenseMatVec;
                 transformed.size = node.size;
@@ -469,6 +559,7 @@ struct ReverseVectorBuilder {
         node.size = src.size;
         node.scale = src.scale;
         node.power = src.power;
+        node.scalar_op = src.scalar_op;
         node.matrix = src.matrix;
         node.sparse_matrix = src.sparse_matrix;
         node.eye_size = src.eye_size;
@@ -507,6 +598,10 @@ struct ReverseVectorBuilder {
         return add_binary(VectorOp::Mul, lhs, rhs);
     }
 
+    int add_div(int lhs, int rhs) {
+        return add_binary(VectorOp::Div, lhs, rhs);
+    }
+
     int add_concat(int lhs, int rhs) {
         FunctionVectorNode node;
         node.op = VectorOp::Concat;
@@ -537,6 +632,29 @@ struct ReverseVectorBuilder {
         node.size = nodes[static_cast<std::size_t>(rhs)].size;
         node.a = rhs;
         node.power = power;
+        int id = static_cast<int>(nodes.size());
+        nodes.push_back(std::move(node));
+        lowered.emplace_back();
+        return id;
+    }
+
+    int add_unary(Op op, int rhs) {
+        FunctionVectorNode node;
+        node.op = VectorOp::Unary;
+        node.size = nodes[static_cast<std::size_t>(rhs)].size;
+        node.a = rhs;
+        node.scalar_op = op;
+        int id = static_cast<int>(nodes.size());
+        nodes.push_back(std::move(node));
+        lowered.emplace_back();
+        return id;
+    }
+
+    int add_constant(int size, double value) {
+        FunctionVectorNode node;
+        node.op = VectorOp::Values;
+        node.size = size;
+        node.values.assign(static_cast<std::size_t>(size), builder.constant(value).id);
         int id = static_cast<int>(nodes.size());
         nodes.push_back(std::move(node));
         lowered.emplace_back();
@@ -644,11 +762,17 @@ struct ReverseVectorBuilder {
             case VectorOp::Mul:
                 cached = vector_mul(lower(node.a), lower(node.b));
                 break;
+            case VectorOp::Div:
+                cached = vector_div(lower(node.a), lower(node.b));
+                break;
             case VectorOp::Scale:
                 cached = vector_scale(node.scale, lower(node.a));
                 break;
             case VectorOp::PowConst:
                 cached = vector_pow_const(lower(node.a), node.power);
+                break;
+            case VectorOp::Unary:
+                cached = vector_unary(node.scalar_op, lower(node.a));
                 break;
             case VectorOp::DenseMatVec:
                 cached = dense_matvec(node.matrix, lower(node.a));
@@ -770,6 +894,11 @@ ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
                 adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.import_primal(f, node.b, primal, primal_vector_memo)));
                 adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_mul(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)));
                 break;
+            case VectorOp::Div:
+                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_div(adj, vb.import_primal(f, node.b, primal, primal_vector_memo)));
+                adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_scale(-1.0, vb.add_div(vb.add_mul(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)),
+                                                                                                  vb.add_pow_const(vb.import_primal(f, node.b, primal, primal_vector_memo), 2.0))));
+                break;
             case VectorOp::Scale:
                 adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(node.scale, adj));
                 break;
@@ -777,6 +906,21 @@ ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
                 if (!exactly(node.power, 0.0)) {
                     int p = vb.add_pow_const(vb.import_primal(f, node.a, primal, primal_vector_memo), node.power - 1.0);
                     adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(node.power, vb.add_mul(adj, p)));
+                }
+                break;
+            case VectorOp::Unary:
+                if (node.scalar_op == Op::Sin) {
+                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.add_unary(Op::Cos, vb.import_primal(f, node.a, primal, primal_vector_memo))));
+                } else if (node.scalar_op == Op::Cos) {
+                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(-1.0, vb.add_mul(adj, vb.add_unary(Op::Sin, vb.import_primal(f, node.a, primal, primal_vector_memo)))));
+                } else if (node.scalar_op == Op::Tan) {
+                    int tan_x = vb.import_primal(f, vector_id, primal, primal_vector_memo);
+                    int factor = vb.add_add(vb.add_constant(node.size, 1.0), vb.add_pow_const(tan_x, 2.0));
+                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, factor));
+                } else if (node.scalar_op == Op::Exp) {
+                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.import_primal(f, vector_id, primal, primal_vector_memo)));
+                } else if (node.scalar_op == Op::Log) {
+                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_div(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)));
                 }
                 break;
             case VectorOp::DenseMatVec:

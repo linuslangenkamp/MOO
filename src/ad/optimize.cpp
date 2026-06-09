@@ -383,11 +383,13 @@ GraphFunction optimize(const GraphFunction &f) {
             reachable_vectors[static_cast<std::size_t>(vector_id)] = true;
             const auto &vector_node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
             roots.insert(roots.end(), vector_node.values.begin(), vector_node.values.end());
-            if (vector_node.op == VectorOp::Add || vector_node.op == VectorOp::Sub || vector_node.op == VectorOp::Mul || vector_node.op == VectorOp::Concat) {
+            if (vector_node.op == VectorOp::Add || vector_node.op == VectorOp::Sub || vector_node.op == VectorOp::Mul || vector_node.op == VectorOp::Div ||
+                vector_node.op == VectorOp::Concat) {
                 mark_vector(vector_node.a);
                 mark_vector(vector_node.b);
-            } else if (vector_node.op == VectorOp::Scale || vector_node.op == VectorOp::PowConst || vector_node.op == VectorOp::DenseMatVec || vector_node.op == VectorOp::SparseMatVec ||
-                       vector_node.op == VectorOp::KronEyeMatVec || vector_node.op == VectorOp::Slice) {
+            } else if (vector_node.op == VectorOp::Scale || vector_node.op == VectorOp::PowConst || vector_node.op == VectorOp::Unary ||
+                       vector_node.op == VectorOp::DenseMatVec || vector_node.op == VectorOp::SparseMatVec || vector_node.op == VectorOp::KronEyeMatVec ||
+                       vector_node.op == VectorOp::Slice) {
                 mark_vector(vector_node.a);
             }
         };
@@ -481,11 +483,13 @@ GraphFunction optimize(const GraphFunction &f) {
             }
             reachable_vectors[static_cast<std::size_t>(vector_id)] = true;
             const auto &vector_node = out.vector_nodes[static_cast<std::size_t>(vector_id)];
-            if (vector_node.op == VectorOp::Add || vector_node.op == VectorOp::Sub || vector_node.op == VectorOp::Mul || vector_node.op == VectorOp::Concat) {
+            if (vector_node.op == VectorOp::Add || vector_node.op == VectorOp::Sub || vector_node.op == VectorOp::Mul || vector_node.op == VectorOp::Div ||
+                vector_node.op == VectorOp::Concat) {
                 mark_vector(vector_node.a);
                 mark_vector(vector_node.b);
-            } else if (vector_node.op == VectorOp::Scale || vector_node.op == VectorOp::PowConst || vector_node.op == VectorOp::DenseMatVec || vector_node.op == VectorOp::SparseMatVec ||
-                       vector_node.op == VectorOp::KronEyeMatVec || vector_node.op == VectorOp::Slice) {
+            } else if (vector_node.op == VectorOp::Scale || vector_node.op == VectorOp::PowConst || vector_node.op == VectorOp::Unary ||
+                       vector_node.op == VectorOp::DenseMatVec || vector_node.op == VectorOp::SparseMatVec || vector_node.op == VectorOp::KronEyeMatVec ||
+                       vector_node.op == VectorOp::Slice) {
                 mark_vector(vector_node.a);
             }
         };

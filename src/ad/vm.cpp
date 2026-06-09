@@ -157,6 +157,14 @@ std::vector<double> VM::eval_vector_node(int vector_id, const EvalEnv &env, std:
             }
             break;
         }
+        case VectorOp::Div: {
+            auto lhs = eval_vector_node(node.a, env, mem, seen);
+            auto rhs = eval_vector_node(node.b, env, mem, seen);
+            for (int i = 0; i < node.size; ++i) {
+                out[static_cast<std::size_t>(i)] = lhs[static_cast<std::size_t>(i)] / rhs[static_cast<std::size_t>(i)];
+            }
+            break;
+        }
         case VectorOp::Scale: {
             auto rhs = eval_vector_node(node.a, env, mem, seen);
             for (int i = 0; i < node.size; ++i) {
@@ -168,6 +176,24 @@ std::vector<double> VM::eval_vector_node(int vector_id, const EvalEnv &env, std:
             auto rhs = eval_vector_node(node.a, env, mem, seen);
             for (int i = 0; i < node.size; ++i) {
                 out[static_cast<std::size_t>(i)] = std::pow(rhs[static_cast<std::size_t>(i)], node.power);
+            }
+            break;
+        }
+        case VectorOp::Unary: {
+            auto rhs = eval_vector_node(node.a, env, mem, seen);
+            for (int i = 0; i < node.size; ++i) {
+                double x = rhs[static_cast<std::size_t>(i)];
+                if (node.scalar_op == Op::Sin) {
+                    out[static_cast<std::size_t>(i)] = std::sin(x);
+                } else if (node.scalar_op == Op::Cos) {
+                    out[static_cast<std::size_t>(i)] = std::cos(x);
+                } else if (node.scalar_op == Op::Tan) {
+                    out[static_cast<std::size_t>(i)] = std::tan(x);
+                } else if (node.scalar_op == Op::Exp) {
+                    out[static_cast<std::size_t>(i)] = std::exp(x);
+                } else if (node.scalar_op == Op::Log) {
+                    out[static_cast<std::size_t>(i)] = std::log(x);
+                }
             }
             break;
         }

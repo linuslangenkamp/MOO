@@ -469,12 +469,37 @@ std::vector<Expr> vector_mul(const std::vector<Expr> &a, const std::vector<Expr>
     return out;
 }
 
+std::vector<Expr> vector_div(const std::vector<Expr> &a, const std::vector<Expr> &b) {
+    if (a.size() != b.size()) {
+        throw std::runtime_error("vector sizes must match");
+    }
+    require_same_graph(a);
+    require_same_graph(b);
+    std::vector<Expr> out;
+    out.reserve(a.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        require_same_graph(a[i], b[i]);
+        out.push_back(a[i] / b[i]);
+    }
+    return out;
+}
+
 std::vector<Expr> vector_scale(double factor, const std::vector<Expr> &x) {
     require_same_graph(x);
     std::vector<Expr> out;
     out.reserve(x.size());
     for (const auto &expr : x) {
         out.push_back(factor * expr);
+    }
+    return out;
+}
+
+std::vector<Expr> vector_unary(Op op, const std::vector<Expr> &x) {
+    require_same_graph(x);
+    std::vector<Expr> out;
+    out.reserve(x.size());
+    for (const auto &expr : x) {
+        out.push_back(expr.g->unary(op, expr));
     }
     return out;
 }
@@ -654,6 +679,20 @@ VectorExpr GraphFunctionBuilder::mul(VectorExpr lhs, VectorExpr rhs) {
     return add_vector(std::move(node));
 }
 
+VectorExpr GraphFunctionBuilder::div(VectorExpr lhs, VectorExpr rhs) {
+    require_vector(lhs);
+    require_vector(rhs);
+    if (lhs.size != rhs.size) {
+        throw std::runtime_error("vector sizes must match");
+    }
+    VectorNode node;
+    node.op = VectorOp::Div;
+    node.size = lhs.size;
+    node.a = lhs.id;
+    node.b = rhs.id;
+    return add_vector(std::move(node));
+}
+
 VectorExpr GraphFunctionBuilder::scale(double factor, VectorExpr rhs) {
     require_vector(rhs);
     VectorNode node;
@@ -661,6 +700,19 @@ VectorExpr GraphFunctionBuilder::scale(double factor, VectorExpr rhs) {
     node.size = rhs.size;
     node.a = rhs.id;
     node.scale = factor;
+    return add_vector(std::move(node));
+}
+
+VectorExpr GraphFunctionBuilder::unary(Op op, VectorExpr rhs) {
+    require_vector(rhs);
+    if (op != Op::Sin && op != Op::Cos && op != Op::Tan && op != Op::Exp && op != Op::Log) {
+        throw std::runtime_error("unsupported vector unary op: " + std::string(op_name(op)));
+    }
+    VectorNode node;
+    node.op = VectorOp::Unary;
+    node.size = rhs.size;
+    node.a = rhs.id;
+    node.scalar_op = op;
     return add_vector(std::move(node));
 }
 
@@ -822,6 +874,7 @@ std::vector<FunctionVectorNode> GraphFunctionBuilder::freeze_vector_nodes() cons
         frozen.b = node.b;
         frozen.scale = node.scale;
         frozen.power = node.power;
+        frozen.scalar_op = node.scalar_op;
         frozen.matrix = node.matrix;
         frozen.sparse_matrix = node.sparse_matrix;
         frozen.eye_size = node.eye_size;
@@ -858,11 +911,18 @@ std::vector<Expr> GraphFunctionBuilder::lower(VectorExpr expr, std::vector<std::
             cached = vector_mul(lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache),
                                 lower(VectorExpr(this, node.b, vectors[static_cast<std::size_t>(node.b)].size), cache));
             break;
+        case VectorOp::Div:
+            cached = vector_div(lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache),
+                                lower(VectorExpr(this, node.b, vectors[static_cast<std::size_t>(node.b)].size), cache));
+            break;
         case VectorOp::Scale:
             cached = vector_scale(node.scale, lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache));
             break;
         case VectorOp::PowConst:
             cached = vector_pow_const(lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache), node.power);
+            break;
+        case VectorOp::Unary:
+            cached = vector_unary(node.scalar_op, lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache));
             break;
         case VectorOp::DenseMatVec:
             cached = ad::dense_matvec(node.matrix, lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache));
