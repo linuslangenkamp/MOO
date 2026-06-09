@@ -128,28 +128,31 @@ def build_graph_function_from_builder(
 
 def _emit_built_function(built: BuiltGraphFunction, input_name: str, value_name: str, jvp_name: str, hvp_name: str) -> EmittedFunction:
     fn = built.function
-    plan = fn.exact_derivative_plan(input_name, "v", "lambda")
-    jvp = plan["jvp"]
-    hvp = plan["hvp"]
-    jac_sparsity = list(plan["jacobian_sparsity"])
-    hes_sparsity = list(plan["hessian_sparsity"])
-    jac_colors = list(plan["jacobian_colors"])
-    hes_colors = list(plan["hessian_colors"])
+    code = fn.emit_exact_derivative_code(input_name, "v", "lambda", value_name, jvp_name, hvp_name)
+    jac_sparsity = list(code["jacobian_sparsity"])
+    hes_sparsity = list(code["hessian_sparsity"])
+    jac_colors = list(code["jacobian_colors"])
+    hes_colors = list(code["hessian_colors"])
     report = dict(built.report)
     report.update(
         {
             "jacobian_nnz": len(jac_sparsity),
-            "jacobian_colors": int(plan["jacobian_color_count"]),
+            "jacobian_colors": int(code["jacobian_color_count"]),
             "hessian_nnz": len(hes_sparsity),
-            "hessian_colors": int(plan["hessian_color_count"]),
+            "hessian_colors": int(code["hessian_color_count"]),
+            "value_bytes": int(code["value_bytes"]),
+            "jvp_bytes": int(code["jvp_bytes"]),
+            "hvp_bytes": int(code["hvp_bytes"]),
+            "jacobian_bytes": int(code["jacobian_bytes"]),
+            "hessian_bytes": int(code["hessian_bytes"]),
         }
     )
     value, jvp_code, hvp_code, jac_code, hes_code = dedupe_ad_vector_helpers([
-        fn.to_c(value_name),
-        jvp.to_c(jvp_name),
-        hvp.to_c(hvp_name),
-        fn.to_sparse_jacobian_c(input_name, jac_sparsity, f"{jvp_name}_sparse"),
-        hvp.to_sparse_hessian_c("v", hes_sparsity, f"{hvp_name}_sparse"),
+        str(code["value"]),
+        str(code["jvp"]),
+        str(code["hvp"]),
+        str(code["jacobian"]),
+        str(code["hessian"]),
     ])
     return EmittedFunction(
         value=value,

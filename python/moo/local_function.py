@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import ad
 from .ad_codegen import EmittedFunction, emit_function, emit_value_function
 
 
@@ -29,6 +30,39 @@ from .ad_codegen import EmittedFunction, emit_function, emit_value_function
 class InputGroup:
     name: str
     size: int
+
+
+@dataclass
+class EmittedLocalGraphFunction:
+    value: str
+    jvp: str
+    hvp: str
+    jac: str
+    hes: str
+    jac_sparsity: list[tuple[int, int]]
+    hes_sparsity: list[tuple[int, int]]
+    jac_colors: list[int]
+    hes_colors: list[int]
+    jac_mode: str
+    hes_mode: str
+    report: dict[str, object]
+
+
+def with_derivative_modes(emitted: EmittedFunction, strategy: str) -> EmittedLocalGraphFunction:
+    return EmittedLocalGraphFunction(
+        value=emitted.value,
+        jvp=emitted.jvp,
+        hvp=emitted.hvp,
+        jac=emitted.jac,
+        hes=emitted.hes,
+        jac_sparsity=emitted.jac_sparsity,
+        hes_sparsity=emitted.hes_sparsity,
+        jac_colors=emitted.jac_colors,
+        hes_colors=emitted.hes_colors,
+        jac_mode=ad.derivative_callback_mode(strategy, emitted.jac_sparsity, emitted.jac_colors),
+        hes_mode=ad.derivative_callback_mode(strategy, emitted.hes_sparsity, emitted.hes_colors),
+        report=emitted.report,
+    )
 
 
 @dataclass
@@ -48,6 +82,9 @@ class LocalGraphFunction:
             f"{self.name}_jvp",
             f"{self.name}_hvp",
         )
+
+    def emit_with_modes(self, strategy: str) -> EmittedLocalGraphFunction:
+        return with_derivative_modes(self.emit(), strategy)
 
 
 @dataclass

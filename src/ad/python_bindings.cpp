@@ -542,6 +542,41 @@ PYBIND11_MODULE(_ad, m) {
             py::arg("pairs"),
             py::arg("name"))
         .def(
+            "emit_exact_derivative_code",
+            [](const PyFunction &f,
+               const std::string &wrt,
+               const std::string &direction,
+               const std::string &lambda_name,
+               const std::string &value_name,
+               const std::string &jvp_name,
+               const std::string &hvp_name) {
+                auto code = ad::emit_exact_derivative_code(f.fn, wrt, direction, lambda_name, value_name, jvp_name, hvp_name);
+                py::dict out;
+                out["value"] = std::move(code.value);
+                out["jvp"] = std::move(code.jvp);
+                out["hvp"] = std::move(code.hvp);
+                out["jacobian"] = std::move(code.jacobian);
+                out["hessian"] = std::move(code.hessian);
+                out["jacobian_sparsity"] = std::move(code.jacobian_sparsity);
+                out["hessian_sparsity"] = std::move(code.hessian_sparsity);
+                out["jacobian_colors"] = std::move(code.jacobian_colors);
+                out["hessian_colors"] = std::move(code.hessian_colors);
+                out["jacobian_color_count"] = code.jacobian_color_count;
+                out["hessian_color_count"] = code.hessian_color_count;
+                out["value_bytes"] = code.value_bytes;
+                out["jvp_bytes"] = code.jvp_bytes;
+                out["hvp_bytes"] = code.hvp_bytes;
+                out["jacobian_bytes"] = code.jacobian_bytes;
+                out["hessian_bytes"] = code.hessian_bytes;
+                return out;
+            },
+            py::arg("wrt"),
+            py::arg("direction"),
+            py::arg("lambda_name"),
+            py::arg("value_name"),
+            py::arg("jvp_name"),
+            py::arg("hvp_name"))
+        .def(
             "coloring",
             [](const PyFunction &f, const SparsityPairs &pairs, int column_count) {
                 auto colors = ad::greedy_column_coloring(column_count, pairs);
@@ -584,6 +619,29 @@ PYBIND11_MODULE(_ad, m) {
                 return out;
             },
             py::arg("direction_values"));
+
+    m.def("derivative_callback_mode", &ad::derivative_callback_mode, py::arg("strategy"), py::arg("pairs"), py::arg("colors"));
+    m.def("derivative_section_keys", &ad::derivative_section_keys, py::arg("prefix"), py::arg("jac_mode"), py::arg("hes_mode"));
+    m.def("render_jacobian_callback_body",
+          &ad::render_jacobian_callback_body,
+          py::arg("mode"),
+          py::arg("direct_call"),
+          py::arg("input_size"),
+          py::arg("output_size"),
+          py::arg("pairs"),
+          py::arg("colors"),
+          py::arg("colored_call"));
+    m.def("render_hessian_callback_body",
+          &ad::render_hessian_callback_body,
+          py::arg("mode"),
+          py::arg("direct_body"),
+          py::arg("input_size"),
+          py::arg("tmp_size"),
+          py::arg("pairs"),
+          py::arg("colors"),
+          py::arg("prepare_body"),
+          py::arg("apply_call"),
+          py::arg("buf_indices") = std::vector<int>{});
 
     m.def("sin", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Sin); });
     m.def("cos", [](const PyGraphScalar &x) { return graph_unary(x, ad::Op::Cos); });

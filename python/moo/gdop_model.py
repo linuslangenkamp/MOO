@@ -27,9 +27,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .callback_codegen import render_hessian_callback_body, render_jacobian_callback_body
+from . import ad
 from .ad_codegen import dedupe_ad_vector_helpers
-from .common import select_derivative_callback_mode, parse_sparsity_pairs
+from .common import parse_sparsity_pairs
 from .expressions import Expr, as_expr, cos, exp, log, pow_const, sin, sum_expr, tan
 from .local_function import InputGroup, LocalGraphFunction, LocalValueFunction
 from .model import BaseModel, _arr, _c_bool, _double_arr, _num
@@ -342,23 +342,19 @@ class GDOPModel(BaseModel):
             input=InputGroup("z", self.z_size),
             outputs=lfg_outputs,
             params=[InputGroup("rp", len(self.runtime_parameters)), InputGroup("tau", 1)],
-        ).emit()
+        ).emit_with_modes(self.derivative_strategy)
         mr = LocalGraphFunction(
             name="moo_mr",
             input=InputGroup("b", self.mr_size),
             outputs=mr_outputs,
             params=[InputGroup("rp", len(self.runtime_parameters))],
-        ).emit()
+        ).emit_with_modes(self.derivative_strategy)
         ode_value, ode_jac = LocalValueFunction(
             name="moo_ode",
             input=InputGroup("z", self.z_size),
             outputs=ode_outputs,
             params=[InputGroup("rp", len(self.runtime_parameters)), InputGroup("tau", 1)],
         ).emit()
-        lfg_jac_mode = select_derivative_callback_mode(self.derivative_strategy, lfg.jac_sparsity, lfg.jac_colors)
-        lfg_hes_mode = select_derivative_callback_mode(self.derivative_strategy, lfg.hes_sparsity, lfg.hes_colors)
-        mr_jac_mode = select_derivative_callback_mode(self.derivative_strategy, mr.jac_sparsity, mr.jac_colors)
-        mr_hes_mode = select_derivative_callback_mode(self.derivative_strategy, mr.hes_sparsity, mr.hes_colors)
         return {
             "LFG_VALUE": lfg.value,
             "LFG_JVP": lfg.jvp,
@@ -369,8 +365,8 @@ class GDOPModel(BaseModel):
             "LFG_HES_SPARSITY": lfg.hes_sparsity,
             "LFG_JAC_COLORS": lfg.jac_colors,
             "LFG_HES_COLORS": lfg.hes_colors,
-            "LFG_JAC_MODE": lfg_jac_mode,
-            "LFG_HES_MODE": lfg_hes_mode,
+            "LFG_JAC_MODE": lfg.jac_mode,
+            "LFG_HES_MODE": lfg.hes_mode,
             "LFG_REPORT": lfg.report,
             "MR_VALUE": mr.value,
             "MR_JVP": mr.jvp,
@@ -381,8 +377,8 @@ class GDOPModel(BaseModel):
             "MR_HES_SPARSITY": mr.hes_sparsity,
             "MR_JAC_COLORS": mr.jac_colors,
             "MR_HES_COLORS": mr.hes_colors,
-            "MR_JAC_MODE": mr_jac_mode,
-            "MR_HES_MODE": mr_hes_mode,
+            "MR_JAC_MODE": mr.jac_mode,
+            "MR_HES_MODE": mr.hes_mode,
             "MR_REPORT": mr.report,
             "ODE_VALUE": ode_value,
             "ODE_JAC_SPARSITY": ode_jac,
@@ -448,13 +444,11 @@ class GDOPModel(BaseModel):
         mr_jac_mode = str(emitted.get("MR_JAC_MODE", "direct"))
         mr_hes_mode = str(emitted.get("MR_HES_MODE", "direct"))
 
-        section_keys = ["LFG_VALUE"]
-        section_keys.append("LFG_JAC" if lfg_jac_mode == "direct" else "LFG_JVP")
-        section_keys.append("LFG_HES" if lfg_hes_mode == "direct" else "LFG_HVP")
-        section_keys.append("MR_VALUE")
-        section_keys.append("MR_JAC" if mr_jac_mode == "direct" else "MR_JVP")
-        section_keys.append("MR_HES" if mr_hes_mode == "direct" else "MR_HVP")
-        section_keys.append("ODE_VALUE")
+        section_keys = [
+            *ad.derivative_section_keys("LFG", lfg_jac_mode, lfg_hes_mode),
+            *ad.derivative_section_keys("MR", mr_jac_mode, mr_hes_mode),
+            "ODE_VALUE",
+        ]
         deduped_section_keys = list(dict.fromkeys(section_keys))
         code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get(key, "") for key in deduped_section_keys]))
         main = f"""
@@ -462,7 +456,7 @@ int main(int argc, char** argv) {{
     return main_{self.name}(argc, argv);
 }}
 """ if standalone_main else ""
-        lfg_jac_body = render_jacobian_callback_body(
+        lfg_jac_body = ad.render_jacobian_callback_body(
             lfg_jac_mode,
             "moo_lfg_jvp_sparse(z, globl_rp, tau, out);",
             "Z_SIZE",
@@ -471,22 +465,20 @@ int main(int argc, char** argv) {{
             lfg_jac_colors if isinstance(lfg_jac_colors, list) else [],
             "moo_lfg_jvp(z, globl_rp, tau, v, tmp);",
         )
-        lfg_hes_body = render_hessian_callback_body(
+        lfg_hes_body = ad.render_hessian_callback_body(
             lfg_hes_mode,
             f"""    f64 tmp[{max(len(lfg_hes), 1)}] = {{0}};
     moo_lfg_hvp_sparse(z, seed, globl_rp, tau, tmp);
-{self._render_sparse_hes_scatter(lfg_hes, lfg_hes_buf_indices, True)}""",
+    for (int i = 0; i < {len(lfg_hes)}; ++i) {{ out[i] = tmp[i]; }}""",
             "Z_SIZE",
             "Z_SIZE",
             lfg_hes,
             lfg_hes_colors if isinstance(lfg_hes_colors, list) else [],
             "",
             "moo_lfg_hvp(z, seed, globl_rp, tau, v, tmp);",
-            buf_indices=lfg_hes_buf_indices,
-            split_pp=True,
-            pp_start=self.x_size + self.u_size,
+            buf_indices=list(range(len(lfg_hes))),
         )
-        mr_jac_body = render_jacobian_callback_body(
+        mr_jac_body = ad.render_jacobian_callback_body(
             mr_jac_mode,
             "moo_mr_jvp_sparse(b, globl_rp, out);",
             str(max(self.mr_size, 1)),
@@ -495,7 +487,7 @@ int main(int argc, char** argv) {{
             mr_jac_colors if isinstance(mr_jac_colors, list) else [],
             "moo_mr_jvp(b, globl_rp, v, tmp);",
         )
-        mr_hes_body = render_hessian_callback_body(
+        mr_hes_body = ad.render_hessian_callback_body(
             mr_hes_mode,
             "    moo_mr_hvp_sparse(b, seed, globl_rp, out);",
             str(max(self.mr_size, 1)),
@@ -573,7 +565,7 @@ static void jac_lfg(const f64* xu, const f64* p, f64 t, const f64* data, f64* ou
 {lfg_jac_body}
 }}
 
-static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, f64* out_pp, void* user_data) {{
+static void hes_lfg(const f64* xu, const f64* p, const f64* lambda, const f64 obj_factor, f64 t, const f64* data, f64* out, void* user_data) {{
     f64 z[Z_SIZE];
     f64 tau[1] = {{ t }};
     f64 seed[{max(lfg_eval_count, 1)}] = {{0}};
@@ -707,13 +699,6 @@ int main_{self.name}(int argc, char** argv) {{
 }}
 {main}
 """
-
-    def _render_sparse_hes_scatter(self, pairs: list[tuple[int, int]], buf_indices: list[int], split_pp: bool) -> str:
-        lines = []
-        for idx, ((row, col), buf) in enumerate(zip(pairs, buf_indices)):
-            target = f"out_pp[{buf}] +=" if split_pp and row >= self.x_size + self.u_size and col >= self.x_size + self.u_size else f"out[{buf}] ="
-            lines.append(f"    {target} tmp[{idx}];")
-        return "\n".join(lines) or "    (void)out;"
 
     def _render_ode_jac_copy(self, ode_jac: list[tuple[int, int]], lfg_jac: list[tuple[int, int]]) -> str:
         lines = []

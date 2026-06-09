@@ -111,7 +111,7 @@ python3 -m venv .venv
 The main factories are:
 
 ```python
-from moo import gdop_model, init_model, nlp_model
+from moo import gdop_model, nlp_model
 ```
 
 A minimal dynamic optimization problem:
@@ -148,7 +148,7 @@ run = model.run("build/moo/problem")
 ```
 
 `run.result` is a typed result view. GDOP results expose time-series states,
-controls, and costates. Init and NLP results expose flat variable,
+controls, and costates. NLP results expose flat variable,
 constraint, multiplier, and bound-dual mappings. Result CSV files can also be
 read directly with `moo.read_results(...)`.
 
@@ -166,7 +166,7 @@ for repeated Hessian-vector products.
 
 The Python frontend uses these bindings directly during code generation.
 Generated derivative callbacks use direct sparse AD graph functions by default. NLP,
-Init, and GDOP share the same local expression layer for scalar, vector, block
+NLP and GDOP share the same local expression layer for scalar, vector, block
 vector, and matrix expressions. Problem frontends keep their own high-level
 APIs, but expressions such as `M @ x`, `D @ x`, and
 `matrix(D).otimes_eye(nx) @ blockvec(X)` are common local graph-function syntax.
@@ -324,8 +324,9 @@ The implementation lives in `src/nlp/instances/init/`. Small objective and
 Hessian checks are in `test/init/`, and `test/init/init_benchmark.cpp` contains
 a scalable synthetic chemical-equilibrium initialization benchmark.
 
-More detailed API documentation for implementing `Init` is in
-`reference/init.md`. A Python Init example is in `examples/moo/init_simple.py`.
+More detailed API documentation for implementing the native C++ `Init` backend
+is in `reference/init.md`. The Python frontend currently focuses on GDOP and
+standard NLP models.
 
 ## Standard NLP
 

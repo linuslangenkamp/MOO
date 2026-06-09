@@ -22,7 +22,7 @@ from pathlib import Path
 import shutil
 
 import moo.ad as ad
-from moo import Expr, gdop_model, init_model, matrix, nlp_model, sparse_matrix, vec
+from moo import Expr, gdop_model, matrix, nlp_model, sparse_matrix, vec
 from moo.graph_expression import GraphExpressionEmitter
 
 
@@ -269,13 +269,6 @@ def main() -> None:
     y = M @ x
     nlp.minimize(y[0] * y[0] + y[1] * y[1])
     nlp.generate(out / "nlp")
-
-    init = init_model("SharedMatrixInit")
-    a = init.add_variable("a", guess=1.0)
-    b = init.add_variable("b", guess=1.0)
-    r = M @ vec([a, b])
-    init.set_objective(r[0] * r[0] + r[1] * r[1])
-    init.generate(out / "init")
 
     gdop = gdop_model("SharedMatrixGDOP")
     s0 = gdop.add_state("s0", start=1.0, final=0.0)

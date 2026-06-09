@@ -306,60 +306,6 @@ class GDOPResult(BaseResult):
         return fig
 
 
-class InitResult(BaseResult):
-    def __init__(self, raw: ResultSet, variable_names: list[str], parameter_names: list[str]):
-        super().__init__(raw)
-        row = raw.table("init_optimal_solution").rows[0] if raw.table("init_optimal_solution").rows else {}
-        self.objective = float(row.get("objective", 0.0))
-        self.variables = {
-            name: float(row[f"y_{idx}"])
-            for idx, name in enumerate(variable_names)
-            if f"y_{idx}" in row
-        }
-        self.parameters = {
-            name: float(row[f"p_{idx}"])
-            for idx, name in enumerate(parameter_names)
-            if f"p_{idx}" in row
-        }
-        self.deltas = {
-            name: float(row[f"dp_{idx}"])
-            for idx, name in enumerate(parameter_names)
-            if f"dp_{idx}" in row
-        }
-        self.f = {key: float(value) for key, value in row.items() if key.startswith("f_")}
-        self.g = {key: float(value) for key, value in row.items() if key.startswith("g_")}
-        self.lambdas = {key: float(value) for key, value in row.items() if key.startswith("lambda_")}
-        self.bound_duals = {
-            key: float(value)
-            for key, value in row.items()
-            if key.startswith("z_lb_") or key.startswith("z_ub_")
-        }
-
-    def _plot_kind(
-        self,
-        kind: str,
-        plottype: str = "both",
-        linestyle: str = "-",
-        nodestyle: str = "",
-    ):
-        import matplotlib.pyplot as plt
-
-        data = getattr(self, kind)
-        fig, ax = plt.subplots()
-        ax.bar(list(data), list(data.values()))
-        ax.set_ylabel(kind)
-        ax.grid(True, axis="y")
-        return fig
-
-    def _plot_all(
-        self,
-        plottype: str = "both",
-        linestyle: str = "-",
-        nodestyle: str = "",
-    ):
-        return self._plot_kind("variables")
-
-
 class NLPResult(BaseResult):
     def __init__(self, raw: ResultSet, variable_names: list[str], constraint_names: list[str]):
         super().__init__(raw)

@@ -438,7 +438,19 @@ void FullSweep::callback_hes(const f64 *xu_nlp, const f64 *p, const FixedField<f
             const f64 *lmbd_ij = get_lambda_ij(lambda, i, j);
             f64 *hes_buffer = get_hes_buffer(i, j);
             f64 *pp_hes_buffer = get_pp_hes_buffer();
-            c_callbacks->hes_lfg(xu_ij, p, lmbd_ij, has_lagr ? lagrange_factors[i][j] : 0, pc.mesh->t[i][j], data_ij, hes_buffer, pp_hes_buffer, c_problem->user_data);
+            f64 *local_hes = get_local_hes_buffer();
+            fill_zero_local_hes_buffer();
+            c_callbacks->hes_lfg(xu_ij, p, lmbd_ij, has_lagr ? lagrange_factors[i][j] : 0, pc.mesh->t[i][j], data_ij, local_hes, c_problem->user_data);
+            for (int nz = 0; nz < c_problem->lfg_lt_hes->nnz; ++nz) {
+                const int row = c_problem->lfg_lt_hes->row[nz];
+                const int col = c_problem->lfg_lt_hes->col[nz];
+                const int buf = c_problem->lfg_lt_hes->buf_index[nz];
+                if (row >= pc.xu_size && col >= pc.xu_size) {
+                    pp_hes_buffer[buf] += local_hes[nz];
+                } else {
+                    hes_buffer[buf] = local_hes[nz];
+                }
+            }
         }
     }
 }

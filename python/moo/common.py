@@ -21,7 +21,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
 
 
 @dataclass
@@ -121,13 +120,6 @@ class SolverMixin:
         if hasattr(self, "derivative_test"):
             self.derivative_test = derivative_test
         return self
-
-
-def select_derivative_callback_mode(strategy: str, pairs: Iterable[tuple[int, int]], colors: list[int]) -> str:
-    _ = (pairs, colors)
-    if strategy == "colored":
-        return "colored"
-    return "direct"
 
 
 def parse_sparsity_pairs(value: object) -> list[tuple[int, int]]:

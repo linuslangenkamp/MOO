@@ -92,6 +92,7 @@ void FullSweepBuffers::resize(const Mesh &mesh) {
     eval = FixedVector<f64>(mesh.node_count * eval_size);
     jac = FixedVector<f64>(mesh.node_count * jac_size);
     hes = FixedVector<f64>(mesh.node_count * hes_size);
+    local_hes = FixedVector<f64>(local_hes_size);
     pp_hes = FixedVector<f64>(pp_hes_size);
 }
 

@@ -294,6 +294,16 @@ struct SeedLinearAnalysis {
     std::unordered_map<CoeffKey, Expr, CoeffKeyHash> vector_coeff_cache;
 };
 
+struct MixedCoeff {
+    double constant = 0.0;
+    Expr dynamic;
+};
+
+struct MixedCoeffAnalysis {
+    SeedLinearAnalysis &seed;
+    std::unordered_map<CoeffKey, MixedCoeff, CoeffKeyHash> cache;
+};
+
 bool expr_constant(const Graph &graph, Expr expr, double *value = nullptr) {
     if (!expr || expr.id < 0 || expr.id >= static_cast<NodeId>(graph.nodes.size())) {
         return false;
@@ -535,6 +545,111 @@ Expr vector_coeff(const GraphFunction &f, SeedLinearAnalysis &analysis, int vect
     return result;
 }
 
+bool mixed_has_dynamic(const MixedCoeff &coeff) { return static_cast<bool>(coeff.dynamic); }
+
+MixedCoeff mixed_from_expr(SeedLinearAnalysis &analysis, Expr expr) {
+    double value = 0.0;
+    if (expr_constant(analysis.builder.g, expr, &value)) {
+        return MixedCoeff{value, Expr{}};
+    }
+    return MixedCoeff{0.0, expr};
+}
+
+MixedCoeff mixed_add(SeedLinearAnalysis &analysis, const MixedCoeff &lhs, const MixedCoeff &rhs, double rhs_sign = 1.0) {
+    MixedCoeff result;
+    result.constant = lhs.constant + rhs_sign * rhs.constant;
+    Expr dynamic;
+    if (mixed_has_dynamic(lhs)) {
+        dynamic = lhs.dynamic;
+    }
+    if (mixed_has_dynamic(rhs)) {
+        Expr rhs_dynamic = exactly(rhs_sign, 1.0) ? rhs.dynamic : analysis.builder.mul(analysis.builder.constant(rhs_sign), rhs.dynamic);
+        dynamic = dynamic ? analysis.builder.add(dynamic, rhs_dynamic) : rhs_dynamic;
+    }
+    result.dynamic = dynamic;
+    return result;
+}
+
+MixedCoeff mixed_scale(SeedLinearAnalysis &analysis, double scale, const MixedCoeff &coeff) {
+    if (exactly(scale, 0.0)) {
+        return MixedCoeff{};
+    }
+    MixedCoeff result;
+    result.constant = scale * coeff.constant;
+    if (mixed_has_dynamic(coeff)) {
+        result.dynamic = exactly(scale, 1.0) ? coeff.dynamic : analysis.builder.mul(analysis.builder.constant(scale), coeff.dynamic);
+    }
+    return result;
+}
+
+MixedCoeff mixed_vector_coeff(const GraphFunction &f, MixedCoeffAnalysis &analysis, int vector_id, int element, int seed_col) {
+    if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
+        throw std::runtime_error("vector sparse coefficients: invalid vector node id");
+    }
+    const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+    if (element < 0 || element >= node.size) {
+        throw std::runtime_error("vector sparse coefficients: vector element out of bounds");
+    }
+    CoeffKey key{vector_id, element, seed_col};
+    auto cached = analysis.cache.find(key);
+    if (cached != analysis.cache.end()) {
+        return cached->second;
+    }
+
+    MixedCoeff result;
+    switch (node.op) {
+        case VectorOp::Values:
+            result = mixed_from_expr(analysis.seed, scalar_coeff(analysis.seed, node.values[static_cast<std::size_t>(element)], seed_col));
+            break;
+        case VectorOp::Add:
+            result = mixed_add(analysis.seed, mixed_vector_coeff(f, analysis, node.a, element, seed_col), mixed_vector_coeff(f, analysis, node.b, element, seed_col));
+            break;
+        case VectorOp::Sub:
+            result = mixed_add(analysis.seed, mixed_vector_coeff(f, analysis, node.a, element, seed_col), mixed_vector_coeff(f, analysis, node.b, element, seed_col), -1.0);
+            break;
+        case VectorOp::Scale:
+            result = mixed_scale(analysis.seed, node.scale, mixed_vector_coeff(f, analysis, node.a, element, seed_col));
+            break;
+        case VectorOp::Slice:
+            result = mixed_vector_coeff(f, analysis, node.a, node.start + element * node.stride, seed_col);
+            break;
+        case VectorOp::Concat: {
+            const int lhs_size = f.vector_nodes[static_cast<std::size_t>(node.a)].size;
+            if (element < lhs_size) {
+                result = mixed_vector_coeff(f, analysis, node.a, element, seed_col);
+            } else {
+                result = mixed_vector_coeff(f, analysis, node.b, element - lhs_size, seed_col);
+            }
+            break;
+        }
+        case VectorOp::DenseMatVec:
+            for (int col = 0; col < node.matrix.cols; ++col) {
+                result = mixed_add(analysis.seed, result, mixed_scale(analysis.seed, node.matrix(element, col), mixed_vector_coeff(f, analysis, node.a, col, seed_col)));
+            }
+            break;
+        case VectorOp::SparseMatVec:
+            for (int k = 0; k < node.sparse_matrix.nnz(); ++k) {
+                if (node.sparse_matrix.row_indices[static_cast<std::size_t>(k)] == element) {
+                    result = mixed_add(analysis.seed, result,
+                                       mixed_scale(analysis.seed, node.sparse_matrix.values[static_cast<std::size_t>(k)],
+                                                   mixed_vector_coeff(f, analysis, node.a, node.sparse_matrix.col_indices[static_cast<std::size_t>(k)], seed_col)));
+                }
+            }
+            break;
+        case VectorOp::KronEyeMatVec: {
+            const int row = element / node.eye_size;
+            const int inner = element % node.eye_size;
+            for (int col = 0; col < node.matrix.cols; ++col) {
+                result = mixed_add(analysis.seed, result,
+                                   mixed_scale(analysis.seed, node.matrix(row, col), mixed_vector_coeff(f, analysis, node.a, col * node.eye_size + inner, seed_col)));
+            }
+            break;
+        }
+    }
+    analysis.cache.emplace(key, result);
+    return result;
+}
+
 std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction &linear_f,
                                                             const std::string &seed_name,
                                                             const std::vector<std::pair<int, int>> &entries,
@@ -551,9 +666,10 @@ std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction 
     }
 
     SeedLinearAnalysis analysis = analyze_seed_linear_forms(f, seed_name);
+    MixedCoeffAnalysis mixed_analysis{analysis, {}};
     std::vector<int> constant_indices;
     std::vector<double> constant_values;
-    std::vector<std::pair<int, Expr>> dynamic_values;
+    std::vector<std::tuple<int, double, Expr>> dynamic_values;
     constant_indices.reserve(entries.size());
     constant_values.reserve(entries.size());
 
@@ -562,15 +678,14 @@ std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction 
         if (row < 0 || row >= f.output_size() || col < 0 || col >= seed_size) {
             throw std::runtime_error("vector sparse coefficients: requested entry out of range");
         }
-        Expr coeff = vector_coeff(f, analysis, f.output_vector, row, col);
-        double value = 0.0;
-        if (expr_constant(analysis.builder.g, coeff, &value)) {
-            if (!exactly(value, 0.0)) {
-                constant_indices.push_back(static_cast<int>(out_i));
-                constant_values.push_back(value);
-            }
+        MixedCoeff coeff = mixed_vector_coeff(f, mixed_analysis, f.output_vector, row, col);
+        if (mixed_has_dynamic(coeff)) {
+            dynamic_values.push_back({static_cast<int>(out_i), coeff.constant, coeff.dynamic});
         } else {
-            dynamic_values.push_back({static_cast<int>(out_i), coeff});
+            if (!exactly(coeff.constant, 0.0)) {
+                constant_indices.push_back(static_cast<int>(out_i));
+                constant_values.push_back(coeff.constant);
+            }
         }
     }
 
@@ -594,8 +709,9 @@ std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction 
 
     std::vector<NodeId> dynamic_roots;
     dynamic_roots.reserve(dynamic_values.size());
-    for (auto &[idx, expr] : dynamic_values) {
+    for (auto &[idx, constant, expr] : dynamic_values) {
         (void)idx;
+        (void)constant;
         dynamic_roots.push_back(expr.id);
     }
     const auto use_counts = scalar_use_counts(analysis.builder.g);
@@ -608,8 +724,12 @@ std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction 
         }
         os << "    double t" << id << " = " << CEmitter::expr_rhs(analysis.builder.g, id, ref) << ";\n";
     }
-    for (auto &[idx, expr] : dynamic_values) {
-        os << "    out[" << idx << "] = " << ref(expr.id) << ";\n";
+    for (auto &[idx, constant, expr] : dynamic_values) {
+        if (exactly(constant, 0.0)) {
+            os << "    out[" << idx << "] = " << ref(expr.id) << ";\n";
+        } else {
+            os << "    out[" << idx << "] = " << CEmitter::number(constant) << " + " << ref(expr.id) << ";\n";
+        }
     }
     os << "}\n";
     return os.str();
@@ -976,6 +1096,165 @@ std::string to_sparse_jacobian_c(const GraphFunction &F,
 
 std::string to_sparse_hessian_c(const GraphFunction &HVP, const std::string &direction_name, const std::vector<std::pair<int, int>> &entries, const std::string &name) {
     return to_sparse_coefficients_c(HVP, direction_name, entries, name);
+}
+
+std::string derivative_callback_mode(const std::string &strategy, const std::vector<std::pair<int, int>> &pairs, const std::vector<int> &colors) {
+    (void)pairs;
+    (void)colors;
+    if (strategy == "colored") {
+        return "colored";
+    }
+    return "direct";
+}
+
+std::vector<std::string> derivative_section_keys(const std::string &prefix, const std::string &jac_mode, const std::string &hes_mode) {
+    const std::string stem = prefix.empty() ? "" : prefix + "_";
+    return {
+        stem + "VALUE",
+        stem + (jac_mode == "direct" ? "JAC" : "JVP"),
+        stem + (hes_mode == "direct" ? "HES" : "HVP"),
+    };
+}
+
+namespace {
+
+std::string render_colored_fill(const std::vector<std::pair<int, int>> &pairs,
+                                const std::vector<int> &colors,
+                                const std::string &call,
+                                const std::vector<int> &buf_indices,
+                                const std::string &indent) {
+    if (pairs.empty()) {
+        return indent + "(void)out;";
+    }
+
+    std::vector<int> indices = buf_indices;
+    if (indices.empty()) {
+        indices.resize(pairs.size());
+        for (int i = 0; i < static_cast<int>(indices.size()); ++i) {
+            indices[static_cast<std::size_t>(i)] = i;
+        }
+    }
+    if (indices.size() != pairs.size()) {
+        throw std::runtime_error("render_colored_fill: buf_indices must be empty or match sparsity size");
+    }
+
+    std::map<int, std::vector<std::tuple<int, int, int>>> by_color;
+    for (std::size_t i = 0; i < pairs.size(); ++i) {
+        const auto [row, col] = pairs[i];
+        const int color = (col >= 0 && col < static_cast<int>(colors.size())) ? colors[static_cast<std::size_t>(col)] : col;
+        by_color[color].push_back({indices[i], row, col});
+    }
+
+    std::vector<int> color_cols;
+    std::vector<int> color_offsets{0};
+    std::vector<int> scatter_buf;
+    std::vector<int> scatter_row;
+    std::vector<int> scatter_offsets{0};
+    for (const auto &[color, entries] : by_color) {
+        (void)color;
+        std::vector<int> cols;
+        cols.reserve(entries.size());
+        for (const auto &[buf, row, col] : entries) {
+            (void)buf;
+            (void)row;
+            cols.push_back(col);
+        }
+        std::sort(cols.begin(), cols.end());
+        cols.erase(std::unique(cols.begin(), cols.end()), cols.end());
+        color_cols.insert(color_cols.end(), cols.begin(), cols.end());
+        color_offsets.push_back(static_cast<int>(color_cols.size()));
+        for (const auto &[buf, row, col] : entries) {
+            (void)col;
+            scatter_buf.push_back(buf);
+            scatter_row.push_back(row);
+        }
+        scatter_offsets.push_back(static_cast<int>(scatter_buf.size()));
+    }
+
+    std::ostringstream os;
+    os << int_array_c(indent, "color_offsets", color_offsets);
+    os << int_array_c(indent, "color_cols", color_cols);
+    os << int_array_c(indent, "scatter_offsets", scatter_offsets);
+    os << int_array_c(indent, "scatter_buf", scatter_buf);
+    os << int_array_c(indent, "scatter_row", scatter_row);
+    os << indent << "for (int color = 0; color < " << std::max<int>(static_cast<int>(color_offsets.size()) - 1, 0) << "; ++color) {\n";
+    os << indent << "    for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) { v[color_cols[i]] = 1.0; }\n";
+    os << indent << "    " << call << "\n";
+    os << indent << "    for (int i = scatter_offsets[color]; i < scatter_offsets[color + 1]; ++i) { out[scatter_buf[i]] = tmp[scatter_row[i]]; }\n";
+    os << indent << "    for (int i = color_offsets[color]; i < color_offsets[color + 1]; ++i) { v[color_cols[i]] = 0.0; }\n";
+    os << indent << "}";
+    return os.str();
+}
+
+} // namespace
+
+std::string render_jacobian_callback_body(const std::string &mode,
+                                          const std::string &direct_call,
+                                          const std::string &input_size,
+                                          const std::string &output_size,
+                                          const std::vector<std::pair<int, int>> &pairs,
+                                          const std::vector<int> &colors,
+                                          const std::string &colored_call) {
+    if (mode == "direct") {
+        return "    " + direct_call;
+    }
+    std::ostringstream os;
+    os << "    f64 v[" << input_size << "] = {0};\n";
+    os << "    f64 tmp[" << output_size << "] = {0};\n";
+    os << render_colored_fill(pairs, colors, colored_call, {}, "    ");
+    return os.str();
+}
+
+std::string render_hessian_callback_body(const std::string &mode,
+                                         const std::string &direct_body,
+                                         const std::string &input_size,
+                                         const std::string &tmp_size,
+                                         const std::vector<std::pair<int, int>> &pairs,
+                                         const std::vector<int> &colors,
+                                         const std::string &prepare_body,
+                                         const std::string &apply_call,
+                                         const std::vector<int> &buf_indices) {
+    if (mode == "direct") {
+        return direct_body;
+    }
+    std::ostringstream os;
+    os << "    f64 v[" << input_size << "] = {0};\n";
+    os << "    f64 tmp[" << tmp_size << "] = {0};\n";
+    os << prepare_body;
+    if (!prepare_body.empty() && prepare_body.back() != '\n') {
+        os << "\n";
+    }
+    os << render_colored_fill(pairs, colors, apply_call, buf_indices, "    ");
+    return os.str();
+}
+
+ExactDerivativeCode emit_exact_derivative_code(const GraphFunction &F,
+                                               const std::string &wrt,
+                                               const std::string &direction_name,
+                                               const std::string &lambda_name,
+                                               const std::string &value_name,
+                                               const std::string &jvp_name,
+                                               const std::string &hvp_name) {
+    auto plan = exact_derivative_plan(F, wrt, direction_name, lambda_name);
+
+    ExactDerivativeCode code;
+    code.value = to_c(F, value_name);
+    code.jvp = to_c(plan.jvp, jvp_name);
+    code.hvp = to_c(plan.hvp, hvp_name);
+    code.jacobian = to_sparse_jacobian_c(F, wrt, plan.jacobian_sparsity, jvp_name + "_sparse", direction_name);
+    code.hessian = to_sparse_hessian_c(plan.hvp, direction_name, plan.hessian_sparsity, hvp_name + "_sparse");
+    code.jacobian_sparsity = std::move(plan.jacobian_sparsity);
+    code.hessian_sparsity = std::move(plan.hessian_sparsity);
+    code.jacobian_colors = std::move(plan.jacobian_colors);
+    code.hessian_colors = std::move(plan.hessian_colors);
+    code.jacobian_color_count = plan.jacobian_color_count;
+    code.hessian_color_count = plan.hessian_color_count;
+    code.value_bytes = code.value.size();
+    code.jvp_bytes = code.jvp.size();
+    code.hvp_bytes = code.hvp.size();
+    code.jacobian_bytes = code.jacobian.size();
+    code.hessian_bytes = code.hessian.size();
+    return code;
 }
 
 } // namespace ad

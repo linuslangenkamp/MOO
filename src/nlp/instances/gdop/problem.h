@@ -124,10 +124,12 @@ struct MOO_EXPORT FullSweepBuffers {
     const int jac_size = 0;
     const int hes_size = 0;
     const int pp_hes_size = 0;
+    const int local_hes_size = 0;
 
     FixedVector<f64> eval;
     FixedVector<f64> jac;
     FixedVector<f64> hes;
+    FixedVector<f64> local_hes;
 
     /* TODO: add this buffer for parallel parameters, make this threaded; #threads of these buffers; sum them at the end */
     FixedVector<f64> pp_hes; // make it like array<FixedVector<f64>>, each thread sum to own buffer (just size p * p each)
@@ -136,7 +138,8 @@ struct MOO_EXPORT FullSweepBuffers {
         : eval_size(layout_lfg.size()),
           jac_size(layout_lfg.compute_jac_nnz()),
           hes_size(hes.nnz()),
-          pp_hes_size(pp_hes.nnz()) {
+          pp_hes_size(pp_hes.nnz()),
+          local_hes_size(hes.nnz() + pp_hes.nnz()) {
         resize(*pc.mesh);
     }
 
@@ -185,6 +188,8 @@ public:
 
     inline f64 *get_pp_hes_buffer() { return buffers.pp_hes.raw(); }
 
+    inline f64 *get_local_hes_buffer() { return buffers.local_hes.raw(); }
+
     inline size_t get_eval_buffer_size() { return buffers.eval.size(); }
 
     inline size_t get_jac_buffer_size() { return buffers.jac.size(); }
@@ -200,6 +205,8 @@ public:
     inline void fill_zero_hes_buffer() { buffers.hes.fill_zero(); }
 
     inline void fill_zero_pp_hes_buffer() { buffers.pp_hes.fill_zero(); }
+
+    inline void fill_zero_local_hes_buffer() { buffers.local_hes.fill_zero(); }
 
     void print_jacobian_sparsity_pattern();
     void print_flat_jacobian_sparsity_pattern();

@@ -44,7 +44,6 @@ from .expressions import (
 )
 
 from .gdop_model import GDOPModel
-from .init_model import InitModel
 from .nlp_model import NLPModel
 from . import paths
 from .radauIIA import RADAU, RadauConstants, radauIIA
@@ -55,10 +54,6 @@ def gdop_model(name: str) -> GDOPModel:
     return GDOPModel(name)
 
 
-def init_model(name: str) -> InitModel:
-    return InitModel(name)
-
-
 def nlp_model(name: str) -> NLPModel:
     return NLPModel(name)
 
@@ -67,10 +62,8 @@ __version__ = "0.1.0"
 __all__ = [
     "Expr",
     "GDOPModel",
-    "InitModel",
     "NLPModel",
     "gdop_model",
-    "init_model",
     "nlp_model",
     "OptimizationRun",
     "ResultSet",

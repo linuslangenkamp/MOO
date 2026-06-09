@@ -10,12 +10,10 @@ solver, and read the emitted result CSV files.
 Use the factory that matches the problem you want to solve:
 
 ```python
-from moo import gdop_model, init_model, nlp_model
+from moo import gdop_model, nlp_model
 ```
 
 - `gdop_model(...)`: direct-collocation dynamic optimization problems.
-- `init_model(...)`: flat consistent-initialization NLPs over variables and
-  corrected parameters.
 - `nlp_model(...)`: standard finite-dimensional NLPs.
 
 `Model` and `GDOPModel` remain importable for compatibility, but new code
@@ -145,9 +143,9 @@ and generated C size.
 
 ## Shared Local Matrix And Vector Expressions
 
-NLP, Init, and GDOP all use the same local expression layer. Matrix and vector
-expressions are therefore available in raw NLP constraints, Init objective and
-residuals, and GDOP Lagrange/dynamics/path/Mayer/boundary graph functions:
+NLP and GDOP use the same local expression layer. Matrix and vector
+expressions are therefore available in raw NLP constraints and GDOP
+Lagrange/dynamics/path/Mayer/boundary graph functions:
 
 ```python
 from moo import matrix, vec
@@ -278,44 +276,6 @@ m.mesh_refinement(l2bn_p1_it=0, l2bn_p2_it=0, l2bn_p2_lvl=0.0)
 
 `set_time(...)` and `set_mesh(...)` remain as deprecated compatibility
 wrappers.
-
-## Init Example
-
-```python
-from moo import init_model
-
-m = init_model("simple_init")
-y = m.add_variable("y", lb=-10.0, ub=10.0, guess=0.0)
-p = m.add_parameter("p", lb=0.0, ub=5.0, base=1.0)
-dp = m.delta(p)
-
-m.add_f(y + p - 3.0)
-m.add_g(y, lb=0.0)
-m.set_objective((y - 1.0) ** 2 + (dp - 1.0) ** 2)
-
-run = m.run("build/moo/init_simple")
-print(run.result.variables)
-print(run.result.parameters)
-print(run.result.deltas)
-```
-
-Init models support variables `y`, effective parameters `p`, parameter
-corrections `dp = p - base`, equality residuals `f`, bounded constraints `g`,
-runtime parameters, exact sparse Jacobians, and exact staged Hessian
-callbacks.
-
-For compatibility, a parameter can still be destructured:
-
-```python
-p, dp = m.add_parameter("p", base=1.0)
-```
-
-New code should prefer:
-
-```python
-p = m.add_parameter("p", base=1.0)
-dp = m.delta(p)
-```
 
 ## Standard NLP Example
 
@@ -515,7 +475,7 @@ fig = run.result.plot.variables()
 fig = run.result.plot.constraints()
 ```
 
-GDOP results use time-series plots. Init and NLP results use bar plots for
+GDOP results use time-series plots. NLP results use bar plots for
 flat variable and constraint data. Plot methods return matplotlib figures.
 In a script, returning a figure does not open a window by itself. Use
 `show=True` for an interactive matplotlib window:
@@ -544,7 +504,6 @@ The generated C callbacks still compile into a standalone executable that
 links against `libmoo` and enters the matching MOO C interface:
 
 - `src/interfaces/c` for GDOP;
-- `src/interfaces/init` for Init;
 - `src/interfaces/nlp` for standard NLP.
 
 The AD layer emits:
@@ -602,8 +561,6 @@ lower-level C++ and C interface references.
   example.
 - `examples/moo/linear_gdop.py`: linear GDOP regression; useful for checking
   zero Hessian sparsity.
-- `examples/moo/init_simple.py`: minimal Init problem with solution `y = 1`,
-  `p = 2`.
 - `examples/moo/nlp_qp.py`: minimal standard convex QP.
 - `examples/moo/nlp_sparse_benchmark.py`: sparse NLP code-size comparison for
   auto, direct sparse, and colored compressed derivative codegen.

@@ -31,15 +31,13 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from .callback_codegen import (
-    render_hessian_callback_body,
-    render_jacobian_callback_body,
     render_local_colored_hes_lines,
     render_local_colored_jac_lines,
     render_local_direct_constraint_jac_lines,
     render_local_direct_objective_jac_lines,
     static_int_array,
 )
-from .common import select_derivative_callback_mode, parse_sparsity_pairs
+from .common import parse_sparsity_pairs
 from . import paths
 from . import ad
 from .ad_codegen import dedupe_ad_vector_helpers, emit_function_from_builder
@@ -57,7 +55,7 @@ from .expressions import (
     vec,
     vector,
 )
-from .local_function import InputGroup, LocalGraphFunction
+from .local_function import EmittedLocalGraphFunction, InputGroup, LocalGraphFunction, with_derivative_modes
 from .model import BaseModel, _arr, _c_bool, _num
 from .results import NLPResult, OptimizationRun, read_results
 
@@ -120,22 +118,6 @@ class MappedConstraintBlock:
     @property
     def count(self) -> int:
         return len(self.indices)
-
-
-@dataclass
-class LocalBlockEmission:
-    value: str
-    jvp: str
-    hvp: str
-    jac: str
-    hes: str
-    jac_sparsity: list[tuple[int, int]]
-    hes_sparsity: list[tuple[int, int]]
-    jac_colors: list[int]
-    hes_colors: list[int]
-    jac_mode: str
-    hes_mode: str
-    report: dict[str, object]
 
 
 class LoopIndex:
@@ -496,9 +478,7 @@ class NLPModel(BaseModel):
             input=InputGroup("x", self.x_size),
             outputs=outputs,
             params=[InputGroup("rp", len(self.runtime_parameters))],
-        ).emit()
-        jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
-        hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
+        ).emit_with_modes(self.derivative_strategy)
         return {
             "VALUE": emitted.value,
             "JVP": emitted.jvp,
@@ -509,8 +489,8 @@ class NLPModel(BaseModel):
             "HES_SPARSITY": emitted.hes_sparsity,
             "JAC_COLORS": emitted.jac_colors,
             "HES_COLORS": emitted.hes_colors,
-            "JAC_MODE": jac_mode,
-            "HES_MODE": hes_mode,
+            "JAC_MODE": emitted.jac_mode,
+            "HES_MODE": emitted.hes_mode,
             "REPORT": emitted.report,
         }
 
@@ -527,7 +507,7 @@ class NLPModel(BaseModel):
                 names.extend(f"{block.name}_{i}_{j}" for i in range(block.count) for j in range(block.output_size))
         return names
 
-    def _emit_local_block(self, prefix: str, block: MappedObjectiveBlock | MappedConstraintBlock) -> LocalBlockEmission:
+    def _emit_local_block(self, prefix: str, block: MappedObjectiveBlock | MappedConstraintBlock) -> EmittedLocalGraphFunction:
         if block.body is not None:
             builder = ad.GraphFunctionBuilder()
             xl = builder.inputs("xl", block.local_size)
@@ -560,22 +540,7 @@ class NLPModel(BaseModel):
                 outputs=outputs,
                 params=[InputGroup("rp", len(self.runtime_parameters))],
             ).emit()
-        jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
-        hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
-        return LocalBlockEmission(
-            value=emitted.value,
-            jvp=emitted.jvp,
-            hvp=emitted.hvp,
-            jac=emitted.jac,
-            hes=emitted.hes,
-            jac_sparsity=emitted.jac_sparsity,
-            hes_sparsity=emitted.hes_sparsity,
-            jac_colors=emitted.jac_colors,
-            hes_colors=emitted.hes_colors,
-            jac_mode=jac_mode,
-            hes_mode=hes_mode,
-            report=emitted.report,
-        )
+        return with_derivative_modes(emitted, self.derivative_strategy)
 
     def _emit_structured_ad(self) -> dict[str, object]:
         scalar_emitted = None
@@ -589,9 +554,9 @@ class NLPModel(BaseModel):
                 input=InputGroup("x", self.x_size),
                 outputs=scalar_outputs,
                 params=[InputGroup("rp", len(self.runtime_parameters))],
-            ).emit()
-            scalar_jac_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.jac_sparsity, emitted.jac_colors)
-            scalar_hes_mode = select_derivative_callback_mode(self.derivative_strategy, emitted.hes_sparsity, emitted.hes_colors)
+            ).emit_with_modes(self.derivative_strategy)
+            scalar_jac_mode = emitted.jac_mode
+            scalar_hes_mode = emitted.hes_mode
             scalar_emitted = emitted
         local_objectives = [
             (block, self._emit_local_block(f"moo_nlp_obj_map_{idx}", block))
@@ -742,11 +707,8 @@ int main(int argc, char** argv) {{
 """ if standalone_main else ""
         jac_mode = str(emitted.get("JAC_MODE", "direct"))
         hes_mode = str(emitted.get("HES_MODE", "direct"))
-        sections = []
-        sections.append("JAC" if jac_mode == "direct" else "JVP")
-        sections.append("HES" if hes_mode == "direct" else "HVP")
-        code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get("VALUE", ""), *(emitted.get(key, "") for key in sections)]))
-        jac_body = render_jacobian_callback_body(
+        code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get(key, "") for key in ad.derivative_section_keys("", jac_mode, hes_mode)]))
+        jac_body = ad.render_jacobian_callback_body(
             jac_mode,
             "moo_nlp_jvp_sparse(x, rp, all_jac);",
             "X_SIZE",
@@ -770,7 +732,7 @@ int main(int argc, char** argv) {{
             else:
                 jac_scatter_lines.append(f"    jac[{g_cursor}] = all_jac[{local_idx}];")
                 g_cursor += 1
-        hes_body = render_hessian_callback_body(
+        hes_body = ad.render_hessian_callback_body(
             hes_mode,
             """    f64 seed[OUT_SIZE] = {0};
     seed[0] = obj_factor;
@@ -870,7 +832,7 @@ int main_{self.name}(int argc, char** argv) {{
         def global_at(block: MappedObjectiveBlock | MappedConstraintBlock, local_col: int, rep: int) -> int:
             return block.local_globals[local_col][rep]
 
-        def hes_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission) -> list[int]:
+        def hes_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: EmittedLocalGraphFunction) -> list[int]:
             table = []
             for rep in range(block.count):
                 for row, col in local.hes_sparsity:
@@ -881,7 +843,7 @@ int main_{self.name}(int argc, char** argv) {{
                     table.append(hes_buf_by_pair[(gr, gc)])
             return table
 
-        def hes_buf_by_local_entry(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission) -> list[list[int]]:
+        def hes_buf_by_local_entry(block: MappedObjectiveBlock | MappedConstraintBlock, local: EmittedLocalGraphFunction) -> list[list[int]]:
             table = [[] for _ in local.hes_sparsity]
             for rep in range(block.count):
                 for local_buf, (row, col) in enumerate(local.hes_sparsity):
@@ -892,7 +854,7 @@ int main_{self.name}(int argc, char** argv) {{
                     table[local_buf].append(hes_buf_by_pair[(gr, gc)])
             return table
 
-        def jac_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission, objective: bool, base_buf: int = 0) -> list[int]:
+        def jac_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: EmittedLocalGraphFunction, objective: bool, base_buf: int = 0) -> list[int]:
             table = []
             for rep in range(block.count):
                 for local_buf, (row, col) in enumerate(local.jac_sparsity):
@@ -968,7 +930,7 @@ int main_{self.name}(int argc, char** argv) {{
         def hessian_scatter_lines(
             fn: str,
             block: MappedObjectiveBlock | MappedConstraintBlock,
-            local: LocalBlockEmission,
+            local: EmittedLocalGraphFunction,
             prefix: str,
             tmp_name: str,
             indent: str,

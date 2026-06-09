@@ -158,7 +158,7 @@ static void jac_lfg(const f64 *xu, const f64 *p, f64 t, const f64 *data, f64 *ou
 }
 
 // σ ∇² L + λ^T ∇² [f, g] (lower triangle)
-static void hes_lfg(const f64 *xu, const f64 *p, const f64 *lambda, const f64 obj_factor, f64 t, const f64 *data, f64 *out, f64 *out_pp, void *user_data) {
+static void hes_lfg(const f64 *xu, const f64 *p, const f64 *lambda, const f64 obj_factor, f64 t, const f64 *data, f64 *out, void *user_data) {
     const f64 *x = xu;
     const f64 *u = xu + X_SIZE;
 

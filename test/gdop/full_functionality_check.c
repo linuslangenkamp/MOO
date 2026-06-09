@@ -217,7 +217,7 @@ static void fill_jac(const f64 *v, f64 *out, const f64 *buf, int var_size, int f
     }
 }
 
-static void fill_hes(const f64 *v, const f64 *lambda, f64 *out, f64 *out_pp, const f64 *buf, int var_size, int func_size, int p_idx) {
+static void fill_hes(const f64 *v, const f64 *lambda, f64 *out, const f64 *buf, int var_size, int func_size) {
     int terms_per_func = var_size * (var_size + 1) / 2;
     int idx = 0;
     for (int k = 0; k < var_size; k++) {
@@ -234,13 +234,7 @@ static void fill_hes(const f64 *v, const f64 *lambda, f64 *out, f64 *out_pp, con
                 }
             }
 
-            if (k == p_idx && l == p_idx) {
-                if (out_pp) {
-                    *out_pp += val;
-                }
-            } else {
-                out[idx++] = val;
-            }
+            out[idx++] = val;
         }
     }
 }
@@ -264,13 +258,13 @@ static void jac_lfg(const f64 *xu, const f64 *p, f64 t, const f64 *data, f64 *ou
 }
 
 // σ ∇² L + λ^T ∇² [f, g] (lower triangle)
-static void hes_lfg(const f64 *xu, const f64 *p, const f64 *lambda, const f64 obj_factor, f64 t, const f64 *data, f64 *out, f64 *out_pp, void *user_data) {
+static void hes_lfg(const f64 *xu, const f64 *p, const f64 *lambda, const f64 obj_factor, f64 t, const f64 *data, f64 *out, void *user_data) {
     const f64 *x = xu;
     const f64 *u = xu + X_SIZE;
     f64 v[] = {x[0], u[0], p[0]};
     f64 mu[] = {obj_factor, lambda[0], lambda[1]};
 
-    fill_hes(v, mu, out, out_pp, lfg_arr, 3, 3, 2);
+    fill_hes(v, mu, out, lfg_arr, 3, 3);
 }
 
 // [M, r]
@@ -311,7 +305,7 @@ hes_mr(const f64 *xu0, const f64 *xuf, const f64 *p, const f64 *lambda, const f6
     f64 mu[] = {obj_factor, lambda[0]};
     f64 v[] = {x0[0], u0[0], xf[0], uf[0], p[0], t0, tf};
 
-    fill_hes(v, mu, out, (void *)0, mr_arr, 7, 2, -1);
+    fill_hes(v, mu, out, mr_arr, 7, 2);
 }
 
 // === objects ===

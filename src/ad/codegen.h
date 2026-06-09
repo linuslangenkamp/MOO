@@ -22,6 +22,7 @@
 #define MOO_AD_CODEGEN_H
 
 #include "sparse_derivatives.h"
+#include "sparsity.h"
 #include "vm.h"
 
 namespace ad {
@@ -46,6 +47,51 @@ std::string to_sparse_jacobian_c(const GraphFunction &F,
                                  const std::string &name,
                                  const std::string &direction_name = "v");
 std::string to_sparse_hessian_c(const GraphFunction &HVP, const std::string &direction_name, const std::vector<std::pair<int, int>> &entries, const std::string &name);
+std::string derivative_callback_mode(const std::string &strategy, const std::vector<std::pair<int, int>> &pairs, const std::vector<int> &colors);
+std::vector<std::string> derivative_section_keys(const std::string &prefix, const std::string &jac_mode, const std::string &hes_mode);
+std::string render_jacobian_callback_body(const std::string &mode,
+                                          const std::string &direct_call,
+                                          const std::string &input_size,
+                                          const std::string &output_size,
+                                          const std::vector<std::pair<int, int>> &pairs,
+                                          const std::vector<int> &colors,
+                                          const std::string &colored_call);
+std::string render_hessian_callback_body(const std::string &mode,
+                                         const std::string &direct_body,
+                                         const std::string &input_size,
+                                         const std::string &tmp_size,
+                                         const std::vector<std::pair<int, int>> &pairs,
+                                         const std::vector<int> &colors,
+                                         const std::string &prepare_body,
+                                         const std::string &apply_call,
+                                         const std::vector<int> &buf_indices = {});
+
+struct ExactDerivativeCode {
+    std::string value;
+    std::string jvp;
+    std::string hvp;
+    std::string jacobian;
+    std::string hessian;
+    std::vector<std::pair<int, int>> jacobian_sparsity;
+    std::vector<std::pair<int, int>> hessian_sparsity;
+    std::vector<int> jacobian_colors;
+    std::vector<int> hessian_colors;
+    int jacobian_color_count = 0;
+    int hessian_color_count = 0;
+    std::size_t value_bytes = 0;
+    std::size_t jvp_bytes = 0;
+    std::size_t hvp_bytes = 0;
+    std::size_t jacobian_bytes = 0;
+    std::size_t hessian_bytes = 0;
+};
+
+ExactDerivativeCode emit_exact_derivative_code(const GraphFunction &F,
+                                               const std::string &wrt,
+                                               const std::string &direction_name,
+                                               const std::string &lambda_name,
+                                               const std::string &value_name,
+                                               const std::string &jvp_name,
+                                               const std::string &hvp_name);
 
 } // namespace ad
 
