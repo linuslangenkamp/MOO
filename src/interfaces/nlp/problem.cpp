@@ -48,11 +48,7 @@ f64 nominal_or_one(f64 *values, int idx) {
 
 } // namespace
 
-Problem::Problem(c_nlp_problem_t *c_problem)
-    : c_problem(c_problem),
-      eval_buffer(1 + c_problem->g_size),
-      jac_buffer((c_problem->obj_jac ? c_problem->obj_jac->nnz : 0) + (c_problem->g_jac ? c_problem->g_jac->nnz : 0)),
-      hes_buffer(c_problem->hes ? c_problem->hes->nnz : 0) {}
+Problem::Problem(c_nlp_problem_t *c_problem) : c_problem(c_problem) {}
 
 void Problem::get_sizes(int &number_vars, int &number_constraints) {
     number_vars = c_problem->x_size;
@@ -135,30 +131,20 @@ void Problem::get_hes_sparsity(FixedVector<int> &i_row_hes, FixedVector<int> &j_
 }
 
 void Problem::eval_f(bool new_x, const FixedVector<f64> &curr_x, f64 &curr_obj) {
-    c_problem->callbacks->eval_all(curr_x.raw(), c_problem->rp, eval_buffer.raw(), c_problem->user_data);
-    curr_obj = eval_buffer[0];
+    c_problem->callbacks->eval_all(curr_x.raw(), c_problem->rp, &curr_obj, nullptr, c_problem->user_data);
 }
 
 void Problem::eval_g(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_g) {
-    c_problem->callbacks->eval_all(curr_x.raw(), c_problem->rp, eval_buffer.raw(), c_problem->user_data);
-    for (int i = 0; i < c_problem->g_size; i++) {
-        curr_g[i] = eval_buffer[1 + i];
-    }
+    c_problem->callbacks->eval_all(curr_x.raw(), c_problem->rp, nullptr, curr_g.raw(), c_problem->user_data);
 }
 
 void Problem::eval_grad_f(bool new_x, const FixedVector<f64> &curr_x, FixedVector<f64> &curr_grad_f) {
     curr_grad_f.fill_zero();
-    c_problem->callbacks->jac_all(curr_x.raw(), c_problem->rp, jac_buffer.raw(), c_problem->user_data);
-    for (int nz = 0; nz < c_problem->obj_jac->nnz; nz++) {
-        curr_grad_f[c_problem->obj_jac->col[nz]] = jac_buffer[c_problem->obj_jac->buf_index[nz]];
-    }
+    c_problem->callbacks->jac_all(curr_x.raw(), c_problem->rp, curr_grad_f.raw(), nullptr, c_problem->user_data);
 }
 
 void Problem::eval_jac_g(bool new_x, const FixedVector<f64> &curr_x, const FixedVector<int> &i_row_jac, const FixedVector<int> &j_col_jac, FixedVector<f64> &curr_jac) {
-    c_problem->callbacks->jac_all(curr_x.raw(), c_problem->rp, jac_buffer.raw(), c_problem->user_data);
-    for (int nz = 0; nz < c_problem->g_jac->nnz; nz++) {
-        curr_jac[nz] = jac_buffer[c_problem->g_jac->buf_index[nz]];
-    }
+    c_problem->callbacks->jac_all(curr_x.raw(), c_problem->rp, nullptr, curr_jac.raw(), c_problem->user_data);
 }
 
 void Problem::eval_hes(bool new_x,
@@ -170,10 +156,7 @@ void Problem::eval_hes(bool new_x,
                        const FixedVector<int> &j_col_hes,
                        FixedVector<f64> &curr_hes) {
     curr_hes.fill_zero();
-    c_problem->callbacks->hes_all(curr_x.raw(), c_problem->rp, curr_lambda.raw(), curr_obj_factor, hes_buffer.raw(), c_problem->user_data);
-    for (int nz = 0; nz < c_problem->hes->nnz; nz++) {
-        curr_hes[nz] = hes_buffer[nz];
-    }
+    c_problem->callbacks->hes_all(curr_x.raw(), c_problem->rp, curr_lambda.raw(), curr_obj_factor, curr_hes.raw(), c_problem->user_data);
 }
 
 void Problem::finalize_solution(::NLP::ReturnCode ret,

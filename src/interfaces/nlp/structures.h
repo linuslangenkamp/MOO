@@ -28,10 +28,16 @@ extern "C" {
 #include <interfaces/gdop/structures.h>
 
 typedef struct c_nlp_callbacks_t {
-    void (*eval_all)(const f64 *x, const f64 *rp, f64 *out, void *user_data);
-    void (*jac_all)(const f64 *x, const f64 *rp, f64 *out, void *user_data);
+    void (*eval_all)(const f64 *x, const f64 *rp, f64 *obj, f64 *g, void *user_data);
+    void (*jac_all)(const f64 *x, const f64 *rp, f64 *grad, f64 *jac, void *user_data);
     void (*hes_all)(const f64 *x, const f64 *rp, const f64 *lambda, f64 obj_factor, f64 *out, void *user_data);
 } c_nlp_callbacks_t;
+
+typedef struct nlp_coo_t {
+    int *row;
+    int *col;
+    int nnz;
+} nlp_coo_t;
 
 typedef struct c_nlp_problem_t {
     const int x_size;
@@ -47,9 +53,8 @@ typedef struct c_nlp_problem_t {
     f64 *x_nominal;
     f64 *g_nominal;
 
-    coo_t *obj_jac;
-    coo_t *g_jac;
-    coo_t *hes;
+    nlp_coo_t *g_jac;
+    nlp_coo_t *hes;
 
     c_nlp_callbacks_t *callbacks;
     solver_ctx_t *solver_ctx;

@@ -64,12 +64,12 @@ eta_t = 6.8522930965034778e-001
 eta_vol = 8.9059680994120261e-001
 w_fric = 2.4723010996875069e-005
 
-INITIAL = vec([
+INITIAL_VALUES = [
     2.4989941562646081e-01,
     5.0614999999999999e-01,
     3.3926666666666666e-01,
     6.8099999999999994e-02,
-])
+]
 TARGET = vec([
     0.515309170685596,
     0.547055854225991,
@@ -166,50 +166,57 @@ def mayer(x):
 def build_model(name: str = "DieselMotorNLP", intervals: int = 25, stages: int = 3):
     r = radauIIA(stages)
     model = nlp_model(name)
-    values = intervals * stages
+    state_values = intervals * stages + 1
+    control_values = intervals * stages
 
     states = [
-        model.add_variables(f"x{i}", values, lb=STATE_LB[i], ub=STATE_UB[i], guess=STATE_GUESS[i])
+        model.add_variables(f"x{i}", state_values, lb=STATE_LB[i], ub=STATE_UB[i], guess=STATE_GUESS[i])
         for i in range(4)
     ]
-    u_f = model.add_variables("u_f", values, lb=0.0, ub=250 / control_norm1, guess=0.5)
-    u_wg = model.add_variables("u_wg", values, lb=0.0, ub=1.0, guess=0.5)
+
+    u_f = model.add_variables("u_f", control_values, lb=0.0, ub=250 / control_norm1, guess=0.5)
+    u_wg = model.add_variables("u_wg", control_values, lb=0.0, ub=1.0, guess=0.5)
 
     h = 0.5 / intervals
     D_otimes_I = matrix(r.D).otimes_eye(4)
     weights = vector(r.B)
 
+    for i in range(4):
+        states[i].fix(0, INITIAL_VALUES[i])
+
     def node(interval, stage):
         return interval * stages + stage
 
-    def state(interval, stage):
-        idx = node(interval, stage)
+    def control_node(interval, stage):
+        return interval * stages + stage
+
+    def state_at(interval, local_node):
+        idx = node(interval, local_node)
         return vec([states[i][idx] for i in range(4)])
 
+    def stage_state(interval, stage):
+        return state_at(interval, stage + 1)
+
     def control(interval, stage):
-        idx = node(interval, stage)
+        idx = control_node(interval, stage)
         return vec([u_f[idx], u_wg[idx]])
 
-    def state_nodes(previous, interval):
-        return blockvec([previous] + [state(interval, stage) for stage in range(stages)])
-
-    def collocation_defects(previous, interval):
-        nodes = state_nodes(previous, interval)
+    def collocation_defects(interval):
+        nodes = blockvec([state_at(interval, stage) for stage in range(stages + 1)])
         derivative = D_otimes_I @ nodes
         return blockvec([
             derivative.block(stage + 1, 4) - h * rhs(nodes[stage + 1], control(interval, stage))
             for stage in range(stages)
         ])
 
-    model.add_constraints(range(0, 1), lambda interval: collocation_defects(INITIAL, interval), eq=0.0, name="initial_collocation")
-    model.add_constraints(range(1, intervals), lambda interval: collocation_defects(state(interval - 1, stages - 1), interval), eq=0.0, name="collocation")
+    model.add_constraints(range(intervals), lambda interval: collocation_defects(interval), eq=0.0, name="collocation")
 
-    model.minimize(mayer(state(intervals - 1, stages - 1)), name="mayer")
+    model.minimize(mayer(state_at(intervals - 1, stages)), name="mayer")
     model.minimize_sum(
         range(intervals),
-        lambda interval: h * (weights @ vec([diesel_terms(state(interval, stage), control(interval, stage))["dot_m_f"] for stage in range(stages)])),
-        name="fuel",
+        lambda interval: h * (weights @ vec([diesel_terms(stage_state(interval, stage), control(interval, stage))["dot_m_f"] for stage in range(stages)])),
     )
+
     model.codegen("direct")
     model.solver(tolerance=1e-10)
     return model
@@ -230,13 +237,14 @@ def plot_solution(run, out: Path, intervals: int, stages: int):
     uwg = []
     for interval in range(intervals):
         for stage, c in enumerate(r.C):
-            idx = interval * stages + stage
+            state_idx = interval * stages + stage + 1
+            control_idx = interval * stages + stage
             t.append((interval + c) * h)
             for i in range(4):
-                xs[i].append(values[f"x{i}{idx}"])
+                xs[i].append(values[f"x{i}{state_idx}"])
             tu.append((interval + c) * h)
-            uf.append(values[f"u_f{idx}"])
-            uwg.append(values[f"u_wg{idx}"])
+            uf.append(values[f"u_f{control_idx}"])
+            uwg.append(values[f"u_wg{control_idx}"])
 
     fig, (ax_x, ax_u) = plt.subplots(2, 1, sharex=True, figsize=(10, 7))
     for i, data in enumerate(xs):

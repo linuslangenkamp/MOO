@@ -605,7 +605,6 @@ class NLPModel(BaseModel):
 
         obj_cols: dict[int, int] = {}
         g_jac: list[tuple[int, int]] = []
-        g_buf: list[int] = []
         hes_pairs: dict[tuple[int, int], int] = {}
 
         def obj_buf_for(col: int) -> int:
@@ -636,16 +635,13 @@ class NLPModel(BaseModel):
                 for row, col in local.hes_sparsity:
                     hes_buf_for(block.local_globals[row][rep], block.local_globals[col][rep])
 
-        g_buf_next = len(obj_cols)
-        scalar_jac_buf: list[int] = []
+        g_buf_next = 0
         if scalar_emitted is not None:
             for row, col in scalar_emitted.jac_sparsity:
                 if row == 0:
-                    scalar_jac_buf.append(obj_buf_for(col))
+                    obj_buf_for(col)
                 else:
                     g_jac.append((row - 1, col))
-                    scalar_jac_buf.append(g_buf_next)
-                    g_buf.append(g_buf_next)
                     g_buf_next += 1
 
         g_base = len(self.constraints)
@@ -654,13 +650,12 @@ class NLPModel(BaseModel):
                 for row, col in local.jac_sparsity:
                     global_row = g_base + rep * block.output_size + row
                     g_jac.append((global_row, block.local_globals[col][rep]))
-                    g_buf.append(g_buf_next)
                     g_buf_next += 1
                 for row, col in local.hes_sparsity:
                     hes_buf_for(block.local_globals[row][rep], block.local_globals[col][rep])
             g_base += block.count * block.output_size
 
-        obj_jac = [(0, col) for col, _ in sorted(obj_cols.items(), key=lambda item: item[1])]
+        objective_gradient = [(0, col) for col, _ in sorted(obj_cols.items(), key=lambda item: item[1])]
         hes = [pair for pair, _ in sorted(hes_pairs.items(), key=lambda item: item[1])]
         all_local = [local for _, local in local_objectives] + [local for _, local in local_constraints]
         jac_modes = {local.jac_mode for local in all_local}
@@ -673,7 +668,9 @@ class NLPModel(BaseModel):
             "mapped_constraint_blocks": len(local_constraints),
             "mapped_repetitions": sum(block.count for block, _ in local_objectives) + sum(block.count for block, _ in local_constraints),
             "mapped_constraint_outputs": sum(block.count * block.output_size for block, _ in local_constraints),
-            "jacobian_nnz": len(obj_jac) + len(g_jac),
+            "jacobian_nnz": len(objective_gradient) + len(g_jac),
+            "objective_gradient_nnz": len(objective_gradient),
+            "constraint_jacobian_nnz": len(g_jac),
             "hessian_nnz": len(hes),
         }
         if scalar_emitted is not None:
@@ -709,15 +706,12 @@ class NLPModel(BaseModel):
             "SCALAR": scalar_emitted,
             "SCALAR_JAC_MODE": scalar_jac_mode,
             "SCALAR_HES_MODE": scalar_hes_mode,
-            "SCALAR_JAC_BUF": scalar_jac_buf,
             "LOCAL_OBJECTIVES": local_objectives,
             "LOCAL_CONSTRAINTS": local_constraints,
             "LOCAL_JAC_MODE": next(iter(jac_modes)) if len(jac_modes) == 1 else "mixed",
             "LOCAL_HES_MODE": next(iter(hes_modes)) if len(hes_modes) == 1 else "mixed",
-            "OBJ_JAC": obj_jac,
-            "OBJ_BUF": list(range(len(obj_jac))),
+            "OBJECTIVE_GRADIENT": objective_gradient,
             "G_JAC": g_jac,
-            "G_BUF": g_buf,
             "HES_SPARSITY": hes,
             "REPORT": report,
         }
@@ -727,16 +721,12 @@ class NLPModel(BaseModel):
             return self._render_structured_c(emitted, standalone_main)
         jac = parse_sparsity_pairs(emitted.get("JAC_SPARSITY", ""))
         hes = parse_sparsity_pairs(emitted.get("HES_SPARSITY", ""))
-        obj_jac = [(0, col) for row, col in jac if row == 0]
         g_jac = [(row - 1, col) for row, col in jac if row >= 1]
-        obj_buf = [idx for idx, (row, _) in enumerate(jac) if row == 0]
-        g_buf = [idx for idx, (row, _) in enumerate(jac) if row >= 1]
 
-        def coo(name: str, pairs: list[tuple[int, int]], bufs: list[int] | None = None) -> str:
-            return f"""static coo_t {name} = {{
+        def coo(name: str, pairs: list[tuple[int, int]]) -> str:
+            return f"""static nlp_coo_t {name} = {{
     .row = {_arr([r for r, _ in pairs])},
     .col = {_arr([c for _, c in pairs])},
-    .buf_index = {_arr(list(range(len(pairs))) if bufs is None else bufs)},
     .nnz = {len(pairs)}
 }};
 """
@@ -759,13 +749,28 @@ int main(int argc, char** argv) {{
         code_sections = "\n".join(dedupe_ad_vector_helpers([emitted.get("VALUE", ""), *(emitted.get(key, "") for key in sections)]))
         jac_body = render_jacobian_callback_body(
             jac_mode,
-            "moo_nlp_jvp_sparse(x, rp, out);",
+            "moo_nlp_jvp_sparse(x, rp, all_jac);",
             "X_SIZE",
             "OUT_SIZE",
             jac,
             emitted.get("JAC_COLORS", []) if isinstance(emitted.get("JAC_COLORS", []), list) else [],
             "moo_nlp_jvp(x, rp, v, tmp);",
         )
+        if jac_mode != "direct":
+            jac_body = "    f64* out = all_jac;\n" + jac_body
+        jac_scatter_lines = [
+            "    for (int i = 0; i < X_SIZE; ++i) { grad[i] = 0.0; }",
+            "    for (int i = 0; i < G_JAC_SIZE; ++i) { jac[i] = 0.0; }",
+            f"    f64 all_jac[{max(len(jac), 1)}] = {{0}};",
+            jac_body,
+        ]
+        g_cursor = 0
+        for local_idx, (row, col) in enumerate(jac):
+            if row == 0:
+                jac_scatter_lines.append(f"    grad[{col}] += all_jac[{local_idx}];")
+            else:
+                jac_scatter_lines.append(f"    jac[{g_cursor}] = all_jac[{local_idx}];")
+                g_cursor += 1
         hes_body = render_hessian_callback_body(
             hes_mode,
             """    f64 seed[OUT_SIZE] = {0};
@@ -795,6 +800,7 @@ int main(int argc, char** argv) {{
 #define RP_SIZE {len(self.runtime_parameters)}
 #define G_SIZE {len(self.constraints)}
 #define OUT_SIZE (1 + G_SIZE)
+#define G_JAC_SIZE {len(g_jac)}
 
 {code_sections}
 static f64 globl_rp[RP_SIZE] = {{ {', '.join(_num(v) for _, v in self.runtime_parameters)} }};
@@ -803,16 +809,22 @@ static f64 globl_x0[X_SIZE] = {{ {', '.join(_num(v.guess) for v in self.variable
 {bounds("globl_g_bounds", self.constraints)}
 static f64 globl_x_nominal[X_SIZE] = {{ {', '.join(_num(v.nominal) for v in self.variables)} }};
 static f64 globl_g_nominal[G_SIZE] = {{ {', '.join(_num(v.nominal) for v in self.constraints)} }};
-{coo("globl_obj_jac", obj_jac, obj_buf)}
-{coo("globl_g_jac", g_jac, g_buf)}
+{coo("globl_g_jac", g_jac)}
 {coo("globl_hes", hes)}
 
-static void eval_all(const f64* x, const f64* rp, f64* out, void* user_data) {{
+static void eval_all(const f64* x, const f64* rp, f64* obj, f64* g, void* user_data) {{
+    f64 out[OUT_SIZE];
     moo_nlp_value(x, rp, out);
+    if (obj) {{ *obj = out[0]; }}
+    if (g) {{ for (int i = 0; i < G_SIZE; ++i) {{ g[i] = out[1 + i]; }} }}
 }}
 
-static void jac_all(const f64* x, const f64* rp, f64* out, void* user_data) {{
-{jac_body}
+static void jac_all(const f64* x, const f64* rp, f64* grad, f64* jac, void* user_data) {{
+    f64 grad_scratch[X_SIZE];
+    f64 jac_scratch[{max(len(g_jac), 1)}];
+    if (!grad) {{ grad = grad_scratch; }}
+    if (!jac) {{ jac = jac_scratch; }}
+{chr(10).join(jac_scatter_lines)}
 }}
 
 static void hes_all(const f64* x, const f64* rp, const f64* lambda, f64 obj_factor, f64* out, void* user_data) {{
@@ -832,7 +844,6 @@ static c_nlp_problem_t globl_problem = {{
     .obj_nominal = {_num(self.obj_nominal)},
     .x_nominal = globl_x_nominal,
     .g_nominal = globl_g_nominal,
-    .obj_jac = &globl_obj_jac,
     .g_jac = &globl_g_jac,
     .hes = &globl_hes,
     .callbacks = &globl_callbacks,
@@ -848,11 +859,7 @@ int main_{self.name}(int argc, char** argv) {{
 
     def _render_structured_c(self, emitted: dict[str, object], standalone_main: bool) -> str:
         scalar = emitted["SCALAR"]
-        scalar_jac_buf = emitted["SCALAR_JAC_BUF"]
-        obj_jac = emitted["OBJ_JAC"]
-        obj_buf = emitted["OBJ_BUF"]
         g_jac = emitted["G_JAC"]
-        g_buf = emitted["G_BUF"]
         hes = emitted["HES_SPARSITY"]
         local_objectives = emitted["LOCAL_OBJECTIVES"]
         local_constraints = emitted["LOCAL_CONSTRAINTS"]
@@ -861,7 +868,6 @@ int main_{self.name}(int argc, char** argv) {{
             + [1 for _, _ in local_objectives]
             + [block.output_size for block, _ in local_constraints]
         )
-        obj_buf_by_col = {col: buf for buf, (_, col) in zip(obj_buf, obj_jac)}
         hes_buf_by_pair = {pair: idx for idx, pair in enumerate(hes)}
 
         def global_at(block: MappedObjectiveBlock | MappedConstraintBlock, local_col: int, rep: int) -> int:
@@ -883,7 +889,7 @@ int main_{self.name}(int argc, char** argv) {{
             for rep in range(block.count):
                 for local_buf, (row, col) in enumerate(local.jac_sparsity):
                     if objective:
-                        table.append(obj_buf_by_col[global_at(block, col, rep)] if row == 0 else -1)
+                        table.append(global_at(block, col, rep) if row == 0 else -1)
                     else:
                         table.append(base_buf + rep * len(local.jac_sparsity) + local_buf)
             return table
@@ -914,11 +920,10 @@ int main_{self.name}(int argc, char** argv) {{
                     lines.append(f"{indent}xl[{local_idx}] = x[{name}[rep]];")
             return lines
 
-        def coo(name: str, pairs: list[tuple[int, int]], bufs: list[int] | None = None) -> str:
-            return f"""static coo_t {name} = {{
+        def coo(name: str, pairs: list[tuple[int, int]]) -> str:
+            return f"""static nlp_coo_t {name} = {{
     .row = {_arr([r for r, _ in pairs])},
     .col = {_arr([c for _, c in pairs])},
-    .buf_index = {_arr(list(range(len(pairs))) if bufs is None else bufs)},
     .nnz = {len(pairs)}
 }};
 """
@@ -980,23 +985,30 @@ int main_{self.name}(int argc, char** argv) {{
             eval_lines.append("    }")
             g_base += block.count * block.output_size
 
-        jac_lines = [f"    for (int i = 0; i < JAC_BUF_SIZE; ++i) {{ out[i] = 0.0; }}"]
+        jac_lines = [
+            "    for (int i = 0; i < X_SIZE; ++i) { grad[i] = 0.0; }",
+            "    for (int i = 0; i < JAC_BUF_SIZE; ++i) { jac[i] = 0.0; }",
+        ]
         if scalar is not None and scalar.jac_sparsity:
             jac_lines.append(f"    f64 scalar_jac[{max(len(scalar.jac_sparsity), 1)}];")
             jac_lines.append("    moo_nlp_scalar_jvp_sparse(x, rp, scalar_jac);")
-            jac_lines.append(static_int_array("scalar_jac_buf", scalar_jac_buf, "    "))
-            for local_buf, _ in enumerate(scalar.jac_sparsity):
-                jac_lines.append(f"    out[scalar_jac_buf[{local_buf}]] += scalar_jac[{local_buf}];")
+            scalar_g_buf = 0
+            for local_buf, (row, col) in enumerate(scalar.jac_sparsity):
+                if row == 0:
+                    jac_lines.append(f"    grad[{col}] += scalar_jac[{local_buf}];")
+                else:
+                    jac_lines.append(f"    jac[{scalar_g_buf}] += scalar_jac[{local_buf}];")
+                    scalar_g_buf += 1
         for idx, (block, local) in enumerate(local_objectives):
             if not local.jac_sparsity:
                 continue
             jac_lines.append(f"    for (int rep = 0; rep < {block.count}; ++rep) {{")
             jac_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
-            jac_lines.extend(gather_lines(block, "        ", f"obj_jac_{idx}"))
+            jac_lines.extend(gather_lines(block, "        ", f"obj_grad_{idx}"))
             obj_jbuf = jac_buf_table(block, local, objective=True)
             jac_lines.append(static_int_array(f"obj_{idx}_jbuf", obj_jbuf, "        "))
             if local.jac_mode == "direct":
-                jac_lines.extend(render_local_direct_objective_jac_lines(f"moo_nlp_obj_map_{idx}_jvp", local.jac_sparsity, f"obj_{idx}_jbuf", "        "))
+                jac_lines.extend(render_local_direct_objective_jac_lines(f"moo_nlp_obj_map_{idx}_jvp", local.jac_sparsity, f"obj_{idx}_jbuf", "        ", out_name="grad"))
             else:
                 jac_lines.extend(
                     render_local_colored_jac_lines(
@@ -1005,7 +1017,7 @@ int main_{self.name}(int argc, char** argv) {{
                         local.jac_colors,
                         block.local_size,
                         1,
-                        "out",
+                        "grad",
                         "rep",
                         accumulate=True,
                         indent="        ",
@@ -1014,7 +1026,7 @@ int main_{self.name}(int argc, char** argv) {{
                 )
             jac_lines.append("    }")
 
-        g_buf_cursor = len(obj_jac)
+        g_buf_cursor = 0
         if scalar is not None:
             g_buf_cursor += sum(1 for row, _ in scalar.jac_sparsity if row >= 1)
         for idx, (block, local) in enumerate(local_constraints):
@@ -1023,7 +1035,7 @@ int main_{self.name}(int argc, char** argv) {{
                 jac_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
                 jac_lines.extend(gather_lines(block, "        ", f"g_jac_{idx}"))
                 if local.jac_mode == "direct":
-                    jac_lines.extend(render_local_direct_constraint_jac_lines(f"moo_nlp_g_map_{idx}_jvp", local.jac_sparsity, g_buf_cursor, "        "))
+                    jac_lines.extend(render_local_direct_constraint_jac_lines(f"moo_nlp_g_map_{idx}_jvp", local.jac_sparsity, g_buf_cursor, "        ", out_name="jac"))
                 else:
                     jac_lines.extend(
                         render_local_colored_jac_lines(
@@ -1032,7 +1044,7 @@ int main_{self.name}(int argc, char** argv) {{
                             local.jac_colors,
                             block.local_size,
                             block.output_size,
-                            "out",
+                            "jac",
                             "rep",
                             accumulate=False,
                             indent="        ",
@@ -1109,7 +1121,7 @@ int main(int argc, char** argv) {{
 #define RP_SIZE {len(self.runtime_parameters)}
 #define G_SIZE {self.g_size}
 #define OUT_SIZE (1 + G_SIZE)
-#define JAC_BUF_SIZE {len(obj_jac) + len(g_jac)}
+#define JAC_BUF_SIZE {len(g_jac)}
 #define HES_SIZE {len(hes)}
 
 {''.join(local_code)}
@@ -1119,15 +1131,21 @@ static f64 globl_x0[X_SIZE] = {{ {', '.join(_num(v.guess) for v in self.variable
 {bounds("globl_g_bounds", g_bounds_values)}
 static f64 globl_x_nominal[X_SIZE] = {{ {', '.join(_num(v.nominal) for v in self.variables)} }};
 static f64 globl_g_nominal[G_SIZE] = {{ {', '.join(_num(v.nominal) for v in g_bounds_values)} }};
-{coo("globl_obj_jac", obj_jac, obj_buf)}
-{coo("globl_g_jac", g_jac, g_buf)}
+{coo("globl_g_jac", g_jac)}
 {coo("globl_hes", hes)}
 
-static void eval_all(const f64* x, const f64* rp, f64* out, void* user_data) {{
+static void eval_all(const f64* x, const f64* rp, f64* obj, f64* g, void* user_data) {{
+    f64 out[OUT_SIZE];
 {chr(10).join(eval_lines)}
+    if (obj) {{ *obj = out[0]; }}
+    if (g) {{ for (int i = 0; i < G_SIZE; ++i) {{ g[i] = out[1 + i]; }} }}
 }}
 
-static void jac_all(const f64* x, const f64* rp, f64* out, void* user_data) {{
+static void jac_all(const f64* x, const f64* rp, f64* grad, f64* jac, void* user_data) {{
+    f64 grad_scratch[X_SIZE];
+    f64 jac_scratch[{max(len(g_jac), 1)}];
+    if (!grad) {{ grad = grad_scratch; }}
+    if (!jac) {{ jac = jac_scratch; }}
 {chr(10).join(jac_lines)}
 }}
 
@@ -1148,7 +1166,6 @@ static c_nlp_problem_t globl_problem = {{
     .obj_nominal = {_num(self.obj_nominal)},
     .x_nominal = globl_x_nominal,
     .g_nominal = globl_g_nominal,
-    .obj_jac = &globl_obj_jac,
     .g_jac = &globl_g_jac,
     .hes = &globl_hes,
     .callbacks = &globl_callbacks,

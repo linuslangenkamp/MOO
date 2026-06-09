@@ -199,7 +199,7 @@ def render_local_colored_jac_lines(
     return lines
 
 
-def render_local_direct_objective_jac_lines(fn: str, pairs: list[tuple[int, int]], jbuf_name: str, indent: str) -> list[str]:
+def render_local_direct_objective_jac_lines(fn: str, pairs: list[tuple[int, int]], jbuf_name: str, indent: str, out_name: str = "out") -> list[str]:
     if not pairs:
         return []
     lines = [
@@ -209,24 +209,24 @@ def render_local_direct_objective_jac_lines(fn: str, pairs: list[tuple[int, int]
     if all(row == 0 for row, _ in pairs):
         lines.extend([
             f"{indent}for (int local_buf = 0; local_buf < {len(pairs)}; ++local_buf) {{",
-            f"{indent}    out[{jbuf_name}[rep * {len(pairs)} + local_buf]] += tmp[local_buf];",
+            f"{indent}    {out_name}[{jbuf_name}[rep * {len(pairs)} + local_buf]] += tmp[local_buf];",
             f"{indent}}}",
         ])
     else:
         for local_buf, (row, _) in enumerate(pairs):
             if row == 0:
-                lines.append(f"{indent}out[{jbuf_name}[rep * {len(pairs)} + {local_buf}]] += tmp[{local_buf}];")
+                lines.append(f"{indent}{out_name}[{jbuf_name}[rep * {len(pairs)} + {local_buf}]] += tmp[{local_buf}];")
     return lines
 
 
-def render_local_direct_constraint_jac_lines(fn: str, pairs: list[tuple[int, int]], base_buf: int, indent: str) -> list[str]:
+def render_local_direct_constraint_jac_lines(fn: str, pairs: list[tuple[int, int]], base_buf: int, indent: str, out_name: str = "out") -> list[str]:
     if not pairs:
         return []
     return [
         f"{indent}f64 tmp[{max(len(pairs), 1)}];",
         f"{indent}{fn}_sparse(xl, rp, tmp);",
         f"{indent}for (int local_buf = 0; local_buf < {len(pairs)}; ++local_buf) {{",
-        f"{indent}    out[{base_buf} + rep * {len(pairs)} + local_buf] = tmp[local_buf];",
+        f"{indent}    {out_name}[{base_buf} + rep * {len(pairs)} + local_buf] = tmp[local_buf];",
         f"{indent}}}",
     ]
 

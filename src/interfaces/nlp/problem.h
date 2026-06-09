@@ -76,9 +76,6 @@ public:
 
 private:
     c_nlp_problem_t *c_problem;
-    FixedVector<f64> eval_buffer;
-    FixedVector<f64> jac_buffer;
-    FixedVector<f64> hes_buffer;
 };
 
 } // namespace CNLP
