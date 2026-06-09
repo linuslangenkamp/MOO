@@ -147,10 +147,23 @@ public:
         return PyGraphVector(builder, builder->sub(lhs.expr, rhs.expr));
     }
 
+    PyGraphVector vector_mul(const PyGraphVector &lhs, const PyGraphVector &rhs) {
+        ensure_alive();
+        require_same(lhs);
+        require_same(rhs);
+        return PyGraphVector(builder, builder->mul(lhs.expr, rhs.expr));
+    }
+
     PyGraphVector vector_scale(double factor, const PyGraphVector &rhs) {
         ensure_alive();
         require_same(rhs);
         return PyGraphVector(builder, builder->scale(factor, rhs.expr));
+    }
+
+    PyGraphVector vector_pow_const(const PyGraphVector &rhs, double power) {
+        ensure_alive();
+        require_same(rhs);
+        return PyGraphVector(builder, builder->pow_const(rhs.expr, power));
     }
 
     PyGraphVector concat(const PyGraphVector &lhs, const PyGraphVector &rhs) {
@@ -266,6 +279,37 @@ PyGraphScalar graph_binary(py::handle lhs, py::handle rhs, ad::Op op) {
 
 PyGraphScalar graph_unary(const PyGraphScalar &x, ad::Op op) {
     return PyGraphScalar(x.builder, x.expr.g->unary(op, x.expr));
+}
+
+PyGraphVector graph_vector_binary(const PyGraphVector &lhs, const PyGraphVector &rhs, ad::VectorOp op) {
+    if (lhs.builder.get() != rhs.builder.get()) {
+        throw std::runtime_error("graph vectors belong to different graph function builders");
+    }
+    switch (op) {
+        case ad::VectorOp::Add:
+            return PyGraphVector(lhs.builder, lhs.builder->add(lhs.expr, rhs.expr));
+        case ad::VectorOp::Sub:
+            return PyGraphVector(lhs.builder, lhs.builder->sub(lhs.expr, rhs.expr));
+        case ad::VectorOp::Mul:
+            return PyGraphVector(lhs.builder, lhs.builder->mul(lhs.expr, rhs.expr));
+        default:
+            throw std::runtime_error("unsupported graph vector binary operator");
+    }
+}
+
+PyGraphVector graph_vector_mul(py::handle lhs, py::handle rhs) {
+    if (py::isinstance<PyGraphVector>(lhs) && py::isinstance<PyGraphVector>(rhs)) {
+        return graph_vector_binary(lhs.cast<PyGraphVector>(), rhs.cast<PyGraphVector>(), ad::VectorOp::Mul);
+    }
+    if (py::isinstance<PyGraphVector>(lhs) && (py::isinstance<py::float_>(rhs) || py::isinstance<py::int_>(rhs))) {
+        auto vector = lhs.cast<PyGraphVector>();
+        return PyGraphVector(vector.builder, vector.builder->scale(py::cast<double>(rhs), vector.expr));
+    }
+    if ((py::isinstance<py::float_>(lhs) || py::isinstance<py::int_>(lhs)) && py::isinstance<PyGraphVector>(rhs)) {
+        auto vector = rhs.cast<PyGraphVector>();
+        return PyGraphVector(vector.builder, vector.builder->scale(py::cast<double>(lhs), vector.expr));
+    }
+    throw py::type_error("expected graph vector times graph vector or scalar");
 }
 
 std::vector<std::pair<int, int>> structural_pairs(const PyFunction &fn, const std::string &wrt) {
@@ -393,30 +437,21 @@ PYBIND11_MODULE(_ad, m) {
                                })
         .def(
             "__add__",
-            [](const PyGraphVector &lhs, const PyGraphVector &rhs) {
-                if (lhs.builder.get() != rhs.builder.get()) {
-                    throw std::runtime_error("graph vectors belong to different graph function builders");
-                }
-                return PyGraphVector(lhs.builder, lhs.builder->add(lhs.expr, rhs.expr));
-            },
+            [](const PyGraphVector &lhs, const PyGraphVector &rhs) { return graph_vector_binary(lhs, rhs, ad::VectorOp::Add); },
             py::is_operator())
         .def(
             "__sub__",
-            [](const PyGraphVector &lhs, const PyGraphVector &rhs) {
-                if (lhs.builder.get() != rhs.builder.get()) {
-                    throw std::runtime_error("graph vectors belong to different graph function builders");
-                }
-                return PyGraphVector(lhs.builder, lhs.builder->sub(lhs.expr, rhs.expr));
-            },
+            [](const PyGraphVector &lhs, const PyGraphVector &rhs) { return graph_vector_binary(lhs, rhs, ad::VectorOp::Sub); },
             py::is_operator())
         .def(
             "__mul__",
-            [](const PyGraphVector &rhs, double factor) { return PyGraphVector(rhs.builder, rhs.builder->scale(factor, rhs.expr)); },
+            [](py::handle lhs, py::handle rhs) { return graph_vector_mul(lhs, rhs); },
             py::is_operator())
         .def(
             "__rmul__",
-            [](const PyGraphVector &rhs, double factor) { return PyGraphVector(rhs.builder, rhs.builder->scale(factor, rhs.expr)); },
-            py::is_operator());
+            [](py::handle lhs, py::handle rhs) { return graph_vector_mul(lhs, rhs); },
+            py::is_operator())
+        .def("pow_const", [](const PyGraphVector &rhs, double power) { return PyGraphVector(rhs.builder, rhs.builder->pow_const(rhs.expr, power)); });
 
     py::class_<PyGraphFunctionBuilder>(m, "GraphFunctionBuilder")
         .def(py::init<>())
@@ -432,7 +467,9 @@ PYBIND11_MODULE(_ad, m) {
         .def("kron_eye_matvec_values", &PyGraphFunctionBuilder::kron_eye_matvec_values)
         .def("vector_add", &PyGraphFunctionBuilder::vector_add)
         .def("vector_sub", &PyGraphFunctionBuilder::vector_sub)
+        .def("vector_mul", &PyGraphFunctionBuilder::vector_mul)
         .def("vector_scale", &PyGraphFunctionBuilder::vector_scale)
+        .def("vector_pow_const", &PyGraphFunctionBuilder::vector_pow_const)
         .def("concat", &PyGraphFunctionBuilder::concat)
         .def("slice", &PyGraphFunctionBuilder::slice, py::arg("rhs"), py::arg("start"), py::arg("length"), py::arg("stride") = 1)
         .def("at", &PyGraphFunctionBuilder::at)

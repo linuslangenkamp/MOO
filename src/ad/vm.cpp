@@ -149,10 +149,25 @@ std::vector<double> VM::eval_vector_node(int vector_id, const EvalEnv &env, std:
             }
             break;
         }
+        case VectorOp::Mul: {
+            auto lhs = eval_vector_node(node.a, env, mem, seen);
+            auto rhs = eval_vector_node(node.b, env, mem, seen);
+            for (int i = 0; i < node.size; ++i) {
+                out[static_cast<std::size_t>(i)] = lhs[static_cast<std::size_t>(i)] * rhs[static_cast<std::size_t>(i)];
+            }
+            break;
+        }
         case VectorOp::Scale: {
             auto rhs = eval_vector_node(node.a, env, mem, seen);
             for (int i = 0; i < node.size; ++i) {
                 out[static_cast<std::size_t>(i)] = node.scale * rhs[static_cast<std::size_t>(i)];
+            }
+            break;
+        }
+        case VectorOp::PowConst: {
+            auto rhs = eval_vector_node(node.a, env, mem, seen);
+            for (int i = 0; i < node.size; ++i) {
+                out[static_cast<std::size_t>(i)] = std::pow(rhs[static_cast<std::size_t>(i)], node.power);
             }
             break;
         }

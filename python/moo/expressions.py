@@ -290,9 +290,17 @@ def log(value: object) -> Expr:
     return _unary("log", value)
 
 
-def pow_const(value: object, power: float | int) -> Expr:
-    expr = as_expr(value)
+def pow_const(value: object, power: float | int) -> Expr | "VectorExpr":
     power = float(power)
+    if _is_vector_like(value):
+        vector_value = vec(value)
+        graph_vector = vector_value.graph_vector.pow_const(power) if vector_value.graph_vector is not None else None
+        return VectorExpr(
+            [pow_const(item, power) for item in vector_value],
+            graph_vector=graph_vector,
+            vector_build=lambda ctx, power=power: ctx.builder.vector_pow_const(vector_value.build_graph_vector(ctx), power),
+        )
+    expr = as_expr(value)
     graph_scalar = None
     if expr.graph_scalar is not None:
         graph_scalar = _ad_module().pow_const(expr.graph_scalar, power)
@@ -395,13 +403,15 @@ class VectorExpr:
             lhs_graph = self.graph_vector
             rhs_graph = _as_graph_vector(other)
             graph_vector = None
-            if lhs_graph is not None and rhs_graph is not None and op in {"+", "-"}:
+            if lhs_graph is not None and rhs_graph is not None and op in {"+", "-", "*"}:
                 if reverse and op == "+":
                     graph_vector = rhs_graph + lhs_graph
                 elif reverse and op == "-":
                     graph_vector = rhs_graph - lhs_graph
                 elif op == "+":
                     graph_vector = lhs_graph + rhs_graph
+                elif op == "*":
+                    graph_vector = rhs_graph * lhs_graph if reverse else lhs_graph * rhs_graph
                 else:
                     graph_vector = lhs_graph - rhs_graph
 
@@ -414,10 +424,12 @@ class VectorExpr:
                     return ctx.builder.vector_add(lhs, rhs)
                 if op == "-":
                     return ctx.builder.vector_sub(lhs, rhs)
+                if op == "*":
+                    return ctx.builder.vector_mul(lhs, rhs)
                 return ctx.vector([a._binary(b, op).build_graph(ctx) for a, b in zip(vec(other).values, self.values)] if reverse else [a._binary(b, op).build_graph(ctx) for a, b in zip(self.values, rhs_values)])
 
             values = [as_expr(rhs)._binary(lhs, op) for lhs, rhs in zip(self.values, rhs_values)] if reverse else [lhs._binary(rhs, op) for lhs, rhs in zip(self.values, rhs_values)]
-            return VectorExpr(values, graph_vector=graph_vector, vector_build=vector_build if op in {"+", "-"} else None)
+            return VectorExpr(values, graph_vector=graph_vector, vector_build=vector_build if op in {"+", "-", "*"} else None)
         values = [as_expr(other)._binary(lhs, op) for lhs in self.values] if reverse else [lhs._binary(other, op) for lhs in self.values]
         return VectorExpr(values)
 
@@ -448,6 +460,9 @@ class VectorExpr:
 
     def __neg__(self) -> "VectorExpr":
         return self.__mul__(-1.0)
+
+    def __pow__(self, power: float | int) -> "VectorExpr":
+        return pow_const(self, power)
 
 
 class BlockVectorExpr:

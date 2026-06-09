@@ -205,8 +205,14 @@ void emit_vector_helpers(std::ostream &os) {
     os << "static void moo_ad_vec_sub(int n, const double* a, const double* b, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = a[i] - b[i]; }\n";
     os << "}\n";
+    os << "static void moo_ad_vec_mul(int n, const double* a, const double* b, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = a[i] * b[i]; }\n";
+    os << "}\n";
     os << "static void moo_ad_vec_scale(int n, double factor, const double* x, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = factor * x[i]; }\n";
+    os << "}\n";
+    os << "static void moo_ad_vec_pow_const(int n, const double* x, double power, double* out) {\n";
+    os << "    for (int i = 0; i < n; ++i) { out[i] = pow(x[i], power); }\n";
     os << "}\n";
     os << "static void moo_ad_vec_slice(int n, const double* x, int start, int stride, double* out) {\n";
     os << "    for (int i = 0; i < n; ++i) { out[i] = x[start + i * stride]; }\n";
@@ -291,7 +297,7 @@ struct SeedLinearAnalysis {
     std::vector<LinearForm> forms;
     std::vector<Expr> cloned;
     Expr zero;
-    std::unordered_map<CoeffKey, Expr, CoeffKeyHash> vector_coeff_cache;
+    std::unordered_map<CoeffKey, LinearForm, CoeffKeyHash> vector_form_cache;
 };
 
 struct MixedCoeff {
@@ -344,10 +350,10 @@ SeedLinearAnalysis analyze_seed_linear_forms(const GraphFunction &f, const std::
             seen[static_cast<std::size_t>(vector_id)] = true;
             const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
             roots.insert(roots.end(), node.values.begin(), node.values.end());
-            if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Concat) {
+            if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Mul || node.op == VectorOp::Concat) {
                 add_vector_roots(node.a);
                 add_vector_roots(node.b);
-            } else if (node.op == VectorOp::Scale || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec ||
+            } else if (node.op == VectorOp::Scale || node.op == VectorOp::PowConst || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec ||
                        node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
                 add_vector_roots(node.a);
             }
@@ -461,13 +467,14 @@ SeedLinearAnalysis analyze_seed_linear_forms(const GraphFunction &f, const std::
     return analysis;
 }
 
-Expr scalar_coeff(SeedLinearAnalysis &analysis, NodeId id, int seed_col) {
-    const auto &coeff = analysis.forms[static_cast<std::size_t>(id)].coeff;
-    auto it = coeff.find(seed_col);
-    return it == coeff.end() ? analysis.zero : it->second;
+LinearForm require_vector_seed_constant(SeedLinearAnalysis &analysis, const LinearForm &form, const char *op) {
+    if (has_coeff(form)) {
+        throw std::runtime_error(std::string("vector sparse coefficients: nonlinear seed use in vector ") + op);
+    }
+    return form;
 }
 
-Expr vector_coeff(const GraphFunction &f, SeedLinearAnalysis &analysis, int vector_id, int element, int seed_col) {
+LinearForm vector_linear_form(const GraphFunction &f, SeedLinearAnalysis &analysis, int vector_id, int element) {
     if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
         throw std::runtime_error("vector sparse coefficients: invalid vector node id");
     }
@@ -475,60 +482,78 @@ Expr vector_coeff(const GraphFunction &f, SeedLinearAnalysis &analysis, int vect
     if (element < 0 || element >= node.size) {
         throw std::runtime_error("vector sparse coefficients: vector element out of bounds");
     }
-    CoeffKey key{vector_id, element, seed_col};
-    auto cached = analysis.vector_coeff_cache.find(key);
-    if (cached != analysis.vector_coeff_cache.end()) {
+    CoeffKey key{vector_id, element, -1};
+    auto cached = analysis.vector_form_cache.find(key);
+    if (cached != analysis.vector_form_cache.end()) {
         return cached->second;
     }
 
-    auto sum_scaled = [&](Expr acc, double scale, Expr term) {
-        if (expr_constant(analysis.builder.g, term)) {
-            double value = 0.0;
-            expr_constant(analysis.builder.g, term, &value);
-            if (exactly(value, 0.0)) {
-                return acc;
-            }
+    auto add_scaled = [&](LinearForm acc, double scale, const LinearForm &term) {
+        if (exactly(scale, 0.0)) {
+            return acc;
         }
-        Expr scaled = exactly(scale, 1.0) ? term : analysis.builder.mul(analysis.builder.constant(scale), term);
-        return analysis.builder.add(acc, scaled);
+        auto scaled = exactly(scale, 1.0) ? term : linear_scale(analysis.builder, term, analysis.builder.constant(scale));
+        return linear_add(analysis.builder, acc, scaled);
     };
 
-    Expr result = analysis.zero;
+    LinearForm result = make_constant_form(analysis.zero);
     switch (node.op) {
         case VectorOp::Values:
-            result = scalar_coeff(analysis, node.values[static_cast<std::size_t>(element)], seed_col);
+            result = analysis.forms[static_cast<std::size_t>(node.values[static_cast<std::size_t>(element)])];
             break;
         case VectorOp::Add:
-            result = analysis.builder.add(vector_coeff(f, analysis, node.a, element, seed_col), vector_coeff(f, analysis, node.b, element, seed_col));
+            result = linear_add(analysis.builder, vector_linear_form(f, analysis, node.a, element), vector_linear_form(f, analysis, node.b, element));
             break;
         case VectorOp::Sub:
-            result = analysis.builder.sub(vector_coeff(f, analysis, node.a, element, seed_col), vector_coeff(f, analysis, node.b, element, seed_col));
+            result = linear_add(analysis.builder, vector_linear_form(f, analysis, node.a, element), vector_linear_form(f, analysis, node.b, element), -1.0);
             break;
+        case VectorOp::Mul: {
+            auto lhs = vector_linear_form(f, analysis, node.a, element);
+            auto rhs = vector_linear_form(f, analysis, node.b, element);
+            const bool lhs_linear = has_coeff(lhs);
+            const bool rhs_linear = has_coeff(rhs);
+            if (lhs_linear && rhs_linear) {
+                throw std::runtime_error("vector sparse coefficients: nonlinear seed use in vector multiplication");
+            }
+            if (lhs_linear) {
+                result = linear_scale(analysis.builder, lhs, rhs.constant);
+            } else if (rhs_linear) {
+                result = linear_scale(analysis.builder, rhs, lhs.constant);
+            } else {
+                result = make_constant_form(analysis.builder.mul(lhs.constant, rhs.constant));
+            }
+            break;
+        }
         case VectorOp::Scale:
-            result = analysis.builder.mul(analysis.builder.constant(node.scale), vector_coeff(f, analysis, node.a, element, seed_col));
+            result = linear_scale(analysis.builder, vector_linear_form(f, analysis, node.a, element), analysis.builder.constant(node.scale));
             break;
+        case VectorOp::PowConst: {
+            auto rhs = require_vector_seed_constant(analysis, vector_linear_form(f, analysis, node.a, element), "pow_const");
+            result = make_constant_form(analysis.builder.pow_const(rhs.constant, node.power));
+            break;
+        }
         case VectorOp::Slice:
-            result = vector_coeff(f, analysis, node.a, node.start + element * node.stride, seed_col);
+            result = vector_linear_form(f, analysis, node.a, node.start + element * node.stride);
             break;
         case VectorOp::Concat: {
             const int lhs_size = f.vector_nodes[static_cast<std::size_t>(node.a)].size;
             if (element < lhs_size) {
-                result = vector_coeff(f, analysis, node.a, element, seed_col);
+                result = vector_linear_form(f, analysis, node.a, element);
             } else {
-                result = vector_coeff(f, analysis, node.b, element - lhs_size, seed_col);
+                result = vector_linear_form(f, analysis, node.b, element - lhs_size);
             }
             break;
         }
         case VectorOp::DenseMatVec:
             for (int col = 0; col < node.matrix.cols; ++col) {
-                result = sum_scaled(result, node.matrix(element, col), vector_coeff(f, analysis, node.a, col, seed_col));
+                result = add_scaled(result, node.matrix(element, col), vector_linear_form(f, analysis, node.a, col));
             }
             break;
         case VectorOp::SparseMatVec:
             for (int k = 0; k < node.sparse_matrix.nnz(); ++k) {
                 if (node.sparse_matrix.row_indices[static_cast<std::size_t>(k)] == element) {
-                    result = sum_scaled(result, node.sparse_matrix.values[static_cast<std::size_t>(k)],
-                                        vector_coeff(f, analysis, node.a, node.sparse_matrix.col_indices[static_cast<std::size_t>(k)], seed_col));
+                    result = add_scaled(result, node.sparse_matrix.values[static_cast<std::size_t>(k)],
+                                        vector_linear_form(f, analysis, node.a, node.sparse_matrix.col_indices[static_cast<std::size_t>(k)]));
                 }
             }
             break;
@@ -536,12 +561,12 @@ Expr vector_coeff(const GraphFunction &f, SeedLinearAnalysis &analysis, int vect
             const int row = element / node.eye_size;
             const int inner = element % node.eye_size;
             for (int col = 0; col < node.matrix.cols; ++col) {
-                result = sum_scaled(result, node.matrix(row, col), vector_coeff(f, analysis, node.a, col * node.eye_size + inner, seed_col));
+                result = add_scaled(result, node.matrix(row, col), vector_linear_form(f, analysis, node.a, col * node.eye_size + inner));
             }
             break;
         }
     }
-    analysis.vector_coeff_cache.emplace(key, result);
+    analysis.vector_form_cache.emplace(key, result);
     return result;
 }
 
@@ -553,33 +578,6 @@ MixedCoeff mixed_from_expr(SeedLinearAnalysis &analysis, Expr expr) {
         return MixedCoeff{value, Expr{}};
     }
     return MixedCoeff{0.0, expr};
-}
-
-MixedCoeff mixed_add(SeedLinearAnalysis &analysis, const MixedCoeff &lhs, const MixedCoeff &rhs, double rhs_sign = 1.0) {
-    MixedCoeff result;
-    result.constant = lhs.constant + rhs_sign * rhs.constant;
-    Expr dynamic;
-    if (mixed_has_dynamic(lhs)) {
-        dynamic = lhs.dynamic;
-    }
-    if (mixed_has_dynamic(rhs)) {
-        Expr rhs_dynamic = exactly(rhs_sign, 1.0) ? rhs.dynamic : analysis.builder.mul(analysis.builder.constant(rhs_sign), rhs.dynamic);
-        dynamic = dynamic ? analysis.builder.add(dynamic, rhs_dynamic) : rhs_dynamic;
-    }
-    result.dynamic = dynamic;
-    return result;
-}
-
-MixedCoeff mixed_scale(SeedLinearAnalysis &analysis, double scale, const MixedCoeff &coeff) {
-    if (exactly(scale, 0.0)) {
-        return MixedCoeff{};
-    }
-    MixedCoeff result;
-    result.constant = scale * coeff.constant;
-    if (mixed_has_dynamic(coeff)) {
-        result.dynamic = exactly(scale, 1.0) ? coeff.dynamic : analysis.builder.mul(analysis.builder.constant(scale), coeff.dynamic);
-    }
-    return result;
 }
 
 MixedCoeff mixed_vector_coeff(const GraphFunction &f, MixedCoeffAnalysis &analysis, int vector_id, int element, int seed_col) {
@@ -596,56 +594,11 @@ MixedCoeff mixed_vector_coeff(const GraphFunction &f, MixedCoeffAnalysis &analys
         return cached->second;
     }
 
+    (void)node;
     MixedCoeff result;
-    switch (node.op) {
-        case VectorOp::Values:
-            result = mixed_from_expr(analysis.seed, scalar_coeff(analysis.seed, node.values[static_cast<std::size_t>(element)], seed_col));
-            break;
-        case VectorOp::Add:
-            result = mixed_add(analysis.seed, mixed_vector_coeff(f, analysis, node.a, element, seed_col), mixed_vector_coeff(f, analysis, node.b, element, seed_col));
-            break;
-        case VectorOp::Sub:
-            result = mixed_add(analysis.seed, mixed_vector_coeff(f, analysis, node.a, element, seed_col), mixed_vector_coeff(f, analysis, node.b, element, seed_col), -1.0);
-            break;
-        case VectorOp::Scale:
-            result = mixed_scale(analysis.seed, node.scale, mixed_vector_coeff(f, analysis, node.a, element, seed_col));
-            break;
-        case VectorOp::Slice:
-            result = mixed_vector_coeff(f, analysis, node.a, node.start + element * node.stride, seed_col);
-            break;
-        case VectorOp::Concat: {
-            const int lhs_size = f.vector_nodes[static_cast<std::size_t>(node.a)].size;
-            if (element < lhs_size) {
-                result = mixed_vector_coeff(f, analysis, node.a, element, seed_col);
-            } else {
-                result = mixed_vector_coeff(f, analysis, node.b, element - lhs_size, seed_col);
-            }
-            break;
-        }
-        case VectorOp::DenseMatVec:
-            for (int col = 0; col < node.matrix.cols; ++col) {
-                result = mixed_add(analysis.seed, result, mixed_scale(analysis.seed, node.matrix(element, col), mixed_vector_coeff(f, analysis, node.a, col, seed_col)));
-            }
-            break;
-        case VectorOp::SparseMatVec:
-            for (int k = 0; k < node.sparse_matrix.nnz(); ++k) {
-                if (node.sparse_matrix.row_indices[static_cast<std::size_t>(k)] == element) {
-                    result = mixed_add(analysis.seed, result,
-                                       mixed_scale(analysis.seed, node.sparse_matrix.values[static_cast<std::size_t>(k)],
-                                                   mixed_vector_coeff(f, analysis, node.a, node.sparse_matrix.col_indices[static_cast<std::size_t>(k)], seed_col)));
-                }
-            }
-            break;
-        case VectorOp::KronEyeMatVec: {
-            const int row = element / node.eye_size;
-            const int inner = element % node.eye_size;
-            for (int col = 0; col < node.matrix.cols; ++col) {
-                result = mixed_add(analysis.seed, result,
-                                   mixed_scale(analysis.seed, node.matrix(row, col), mixed_vector_coeff(f, analysis, node.a, col * node.eye_size + inner, seed_col)));
-            }
-            break;
-        }
-    }
+    auto form = vector_linear_form(f, analysis.seed, vector_id, element);
+    auto it = form.coeff.find(seed_col);
+    result = it == form.coeff.end() ? MixedCoeff{} : mixed_from_expr(analysis.seed, it->second);
     analysis.cache.emplace(key, result);
     return result;
 }
@@ -762,8 +715,10 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
                 return false;
             case VectorOp::Add:
             case VectorOp::Sub:
+            case VectorOp::Mul:
             case VectorOp::Concat:
             case VectorOp::Scale:
+            case VectorOp::PowConst:
             case VectorOp::DenseMatVec:
             case VectorOp::SparseMatVec:
             case VectorOp::KronEyeMatVec:
@@ -863,11 +818,11 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
         if (node.size < 0) {
             throw std::runtime_error("invalid vector node size");
         }
-        if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Concat) {
+        if (node.op == VectorOp::Add || node.op == VectorOp::Sub || node.op == VectorOp::Mul || node.op == VectorOp::Concat) {
             emit_vector(node.a);
             emit_vector(node.b);
-        } else if (node.op == VectorOp::Scale || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec || node.op == VectorOp::KronEyeMatVec ||
-                   node.op == VectorOp::Slice) {
+        } else if (node.op == VectorOp::Scale || node.op == VectorOp::PowConst || node.op == VectorOp::DenseMatVec || node.op == VectorOp::SparseMatVec ||
+                   node.op == VectorOp::KronEyeMatVec || node.op == VectorOp::Slice) {
             emit_vector(node.a);
         } else if (node.op == VectorOp::Values) {
             for (NodeId value : node.values) {
@@ -893,8 +848,14 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
             case VectorOp::Sub:
                 os << "    moo_ad_vec_sub(" << node.size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
                 break;
+            case VectorOp::Mul:
+                os << "    moo_ad_vec_mul(" << node.size << ", " << vector_ptr(node.a) << ", " << vector_ptr(node.b) << ", vec" << vector_id << ");\n";
+                break;
             case VectorOp::Scale:
                 os << "    moo_ad_vec_scale(" << node.size << ", " << number(node.scale) << ", " << vector_ptr(node.a) << ", vec" << vector_id << ");\n";
+                break;
+            case VectorOp::PowConst:
+                os << "    moo_ad_vec_pow_const(" << node.size << ", " << vector_ptr(node.a) << ", " << number(node.power) << ", vec" << vector_id << ");\n";
                 break;
             case VectorOp::DenseMatVec:
                 os << double_array_c("    ", "mat" + std::to_string(vector_id), node.matrix.values);

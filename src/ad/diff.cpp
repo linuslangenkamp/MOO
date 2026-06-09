@@ -111,37 +111,200 @@ bool infer_direct_values_group(FunctionVectorNode &node, const Graph &graph) {
     return true;
 }
 
-std::vector<FunctionVectorNode> tangent_vector_nodes(const GraphFunction &f, const Graph &graph, const std::vector<Expr> &tangent) {
-    std::vector<FunctionVectorNode> out;
-    out.reserve(f.vector_nodes.size());
-    for (const auto &node : f.vector_nodes) {
+struct ForwardVectorOutput {
+    std::vector<FunctionVectorNode> nodes;
+    int input_vector = -1;
+    int output_vector = -1;
+    std::vector<int> param_vectors;
+};
+
+ForwardVectorOutput tangent_vector_nodes(const GraphFunction &f, Graph &graph, const std::vector<Expr> &primal, const std::vector<Expr> &tangent) {
+    ForwardVectorOutput result;
+    result.nodes.reserve(f.vector_nodes.size());
+    std::vector<int> primal_map(f.vector_nodes.size(), -1);
+    std::vector<int> tangent_map(f.vector_nodes.size(), -1);
+
+    auto add_node = [&](FunctionVectorNode node) {
+        int id = static_cast<int>(result.nodes.size());
+        result.nodes.push_back(std::move(node));
+        return id;
+    };
+
+    std::function<int(int)> primal_vector = [&](int vector_id) -> int {
+        if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
+            throw std::runtime_error("invalid vector id during forward differentiation");
+        }
+        int &cached = primal_map[static_cast<std::size_t>(vector_id)];
+        if (cached >= 0) {
+            return cached;
+        }
+        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
         FunctionVectorNode transformed;
         transformed.op = node.op;
         transformed.size = node.size;
-        transformed.a = node.a;
-        transformed.b = node.b;
         transformed.scale = node.scale;
+        transformed.power = node.power;
         transformed.matrix = node.matrix;
         transformed.sparse_matrix = node.sparse_matrix;
         transformed.eye_size = node.eye_size;
         transformed.start = node.start;
         transformed.stride = node.stride;
-
+        transformed.name = node.name;
+        transformed.is_input_group = node.is_input_group;
+        transformed.is_param_group = node.is_param_group;
         if (node.op == VectorOp::Values) {
             transformed.values.reserve(node.values.size());
             for (NodeId value : node.values) {
-                if (value < 0 || value >= static_cast<NodeId>(tangent.size())) {
-                    throw std::runtime_error("vector metadata references scalar node " + std::to_string(value) + " outside graph of size " + std::to_string(tangent.size()) +
-                                             " during forward differentiation");
-                }
-                transformed.values.push_back(tangent[static_cast<std::size_t>(value)].id);
+                transformed.values.push_back(primal[static_cast<std::size_t>(value)].id);
             }
             infer_direct_values_group(transformed, graph);
+        } else {
+            transformed.a = primal_vector(node.a);
+            if (node.b >= 0) {
+                transformed.b = primal_vector(node.b);
+            }
         }
+        cached = add_node(std::move(transformed));
+        return cached;
+    };
 
-        out.push_back(std::move(transformed));
+    auto zero_vector = [&](int size) {
+        FunctionVectorNode node;
+        node.op = VectorOp::Values;
+        node.size = size;
+        node.values.assign(static_cast<std::size_t>(size), graph.constant(0.0).id);
+        return add_node(std::move(node));
+    };
+
+    std::function<int(int)> tangent_vector = [&](int vector_id) -> int {
+        if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
+            throw std::runtime_error("invalid vector id during forward differentiation");
+        }
+        int &cached = tangent_map[static_cast<std::size_t>(vector_id)];
+        if (cached >= 0) {
+            return cached;
+        }
+        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+        FunctionVectorNode transformed;
+        transformed.size = node.size;
+        switch (node.op) {
+            case VectorOp::Values:
+                transformed.op = VectorOp::Values;
+                transformed.values.reserve(node.values.size());
+                for (NodeId value : node.values) {
+                    if (value < 0 || value >= static_cast<NodeId>(tangent.size())) {
+                        throw std::runtime_error("vector metadata references scalar node " + std::to_string(value) + " outside graph of size " + std::to_string(tangent.size()) +
+                                                 " during forward differentiation");
+                    }
+                    transformed.values.push_back(tangent[static_cast<std::size_t>(value)].id);
+                }
+                infer_direct_values_group(transformed, graph);
+                cached = add_node(std::move(transformed));
+                break;
+            case VectorOp::Add:
+            case VectorOp::Sub:
+            case VectorOp::Mul: {
+                transformed.op = node.op;
+                transformed.a = tangent_vector(node.a);
+                transformed.b = tangent_vector(node.b);
+                if (node.op == VectorOp::Mul) {
+                    FunctionVectorNode lhs;
+                    lhs.op = VectorOp::Mul;
+                    lhs.size = node.size;
+                    lhs.a = tangent_vector(node.a);
+                    lhs.b = primal_vector(node.b);
+                    FunctionVectorNode rhs;
+                    rhs.op = VectorOp::Mul;
+                    rhs.size = node.size;
+                    rhs.a = primal_vector(node.a);
+                    rhs.b = tangent_vector(node.b);
+                    FunctionVectorNode sum;
+                    sum.op = VectorOp::Add;
+                    sum.size = node.size;
+                    sum.a = add_node(std::move(lhs));
+                    sum.b = add_node(std::move(rhs));
+                    cached = add_node(std::move(sum));
+                } else {
+                    cached = add_node(std::move(transformed));
+                }
+                break;
+            }
+            case VectorOp::Scale:
+                transformed.op = VectorOp::Scale;
+                transformed.a = tangent_vector(node.a);
+                transformed.scale = node.scale;
+                cached = add_node(std::move(transformed));
+                break;
+            case VectorOp::PowConst:
+                if (exactly(node.power, 0.0)) {
+                    cached = zero_vector(node.size);
+                } else {
+                    FunctionVectorNode p;
+                    p.op = VectorOp::PowConst;
+                    p.size = node.size;
+                    p.a = primal_vector(node.a);
+                    p.power = node.power - 1.0;
+                    FunctionVectorNode product;
+                    product.op = VectorOp::Mul;
+                    product.size = node.size;
+                    product.a = add_node(std::move(p));
+                    product.b = tangent_vector(node.a);
+                    FunctionVectorNode scaled;
+                    scaled.op = VectorOp::Scale;
+                    scaled.size = node.size;
+                    scaled.a = add_node(std::move(product));
+                    scaled.scale = node.power;
+                    cached = add_node(std::move(scaled));
+                }
+                break;
+            case VectorOp::DenseMatVec:
+                transformed.op = VectorOp::DenseMatVec;
+                transformed.size = node.size;
+                transformed.a = tangent_vector(node.a);
+                transformed.matrix = node.matrix;
+                cached = add_node(std::move(transformed));
+                break;
+            case VectorOp::SparseMatVec:
+                transformed.op = VectorOp::SparseMatVec;
+                transformed.size = node.size;
+                transformed.a = tangent_vector(node.a);
+                transformed.sparse_matrix = node.sparse_matrix;
+                cached = add_node(std::move(transformed));
+                break;
+            case VectorOp::KronEyeMatVec:
+                transformed.op = VectorOp::KronEyeMatVec;
+                transformed.size = node.size;
+                transformed.a = tangent_vector(node.a);
+                transformed.matrix = node.matrix;
+                transformed.eye_size = node.eye_size;
+                cached = add_node(std::move(transformed));
+                break;
+            case VectorOp::Slice:
+                transformed.op = VectorOp::Slice;
+                transformed.size = node.size;
+                transformed.a = tangent_vector(node.a);
+                transformed.start = node.start;
+                transformed.stride = node.stride;
+                cached = add_node(std::move(transformed));
+                break;
+            case VectorOp::Concat:
+                transformed.op = VectorOp::Concat;
+                transformed.size = node.size;
+                transformed.a = tangent_vector(node.a);
+                transformed.b = tangent_vector(node.b);
+                cached = add_node(std::move(transformed));
+                break;
+        }
+        return cached;
+    };
+
+    result.input_vector = primal_vector(f.input_vector);
+    result.output_vector = tangent_vector(f.output_vector);
+    result.param_vectors.reserve(f.param_vectors.size());
+    for (int param_vector_id : f.param_vectors) {
+        result.param_vectors.push_back(primal_vector(param_vector_id));
     }
-    return out;
+    return result;
 }
 
 DenseMatrix transpose(const DenseMatrix &matrix) {
@@ -292,12 +455,56 @@ struct ReverseVectorBuilder {
         return id;
     }
 
+    int import_primal(const GraphFunction &f, int vector_id, const std::vector<Expr> &primal, std::vector<int> &memo) {
+        if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
+            throw std::runtime_error("invalid vector id during reverse differentiation");
+        }
+        int &cached = memo[static_cast<std::size_t>(vector_id)];
+        if (cached >= 0) {
+            return cached;
+        }
+        const auto &src = f.vector_nodes[static_cast<std::size_t>(vector_id)];
+        FunctionVectorNode node;
+        node.op = src.op;
+        node.size = src.size;
+        node.scale = src.scale;
+        node.power = src.power;
+        node.matrix = src.matrix;
+        node.sparse_matrix = src.sparse_matrix;
+        node.eye_size = src.eye_size;
+        node.start = src.start;
+        node.stride = src.stride;
+        node.name = src.name;
+        node.is_input_group = src.is_input_group;
+        node.is_param_group = src.is_param_group;
+        if (src.op == VectorOp::Values) {
+            node.values.reserve(src.values.size());
+            for (NodeId value : src.values) {
+                node.values.push_back(primal[static_cast<std::size_t>(value)].id);
+            }
+            infer_direct_values_group(node, builder.g);
+        } else {
+            node.a = import_primal(f, src.a, primal, memo);
+            if (src.b >= 0) {
+                node.b = import_primal(f, src.b, primal, memo);
+            }
+        }
+        cached = static_cast<int>(nodes.size());
+        nodes.push_back(std::move(node));
+        lowered.emplace_back();
+        return cached;
+    }
+
     int add_add(int lhs, int rhs) {
         return add_binary(VectorOp::Add, lhs, rhs);
     }
 
     int add_sub(int lhs, int rhs) {
         return add_binary(VectorOp::Sub, lhs, rhs);
+    }
+
+    int add_mul(int lhs, int rhs) {
+        return add_binary(VectorOp::Mul, lhs, rhs);
     }
 
     int add_concat(int lhs, int rhs) {
@@ -318,6 +525,18 @@ struct ReverseVectorBuilder {
         node.size = nodes[static_cast<std::size_t>(rhs)].size;
         node.a = rhs;
         node.scale = scale;
+        int id = static_cast<int>(nodes.size());
+        nodes.push_back(std::move(node));
+        lowered.emplace_back();
+        return id;
+    }
+
+    int add_pow_const(int rhs, double power) {
+        FunctionVectorNode node;
+        node.op = VectorOp::PowConst;
+        node.size = nodes[static_cast<std::size_t>(rhs)].size;
+        node.a = rhs;
+        node.power = power;
         int id = static_cast<int>(nodes.size());
         nodes.push_back(std::move(node));
         lowered.emplace_back();
@@ -422,8 +641,14 @@ struct ReverseVectorBuilder {
             case VectorOp::Sub:
                 cached = vector_sub(lower(node.a), lower(node.b));
                 break;
+            case VectorOp::Mul:
+                cached = vector_mul(lower(node.a), lower(node.b));
+                break;
             case VectorOp::Scale:
                 cached = vector_scale(node.scale, lower(node.a));
+                break;
+            case VectorOp::PowConst:
+                cached = vector_pow_const(lower(node.a), node.power);
                 break;
             case VectorOp::DenseMatVec:
                 cached = dense_matvec(node.matrix, lower(node.a));
@@ -473,6 +698,8 @@ private:
 
 struct ReverseVectorOutput {
     int output = -1;
+    int input = -1;
+    std::vector<int> params;
     std::vector<FunctionVectorNode> nodes;
 };
 
@@ -501,6 +728,7 @@ ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
 
     std::vector<std::vector<int>> adj_terms(f.vector_nodes.size());
     adj_terms[static_cast<std::size_t>(f.output_vector)].push_back(vb.add_values(lambda_values));
+    std::vector<int> primal_vector_memo(f.vector_nodes.size(), -1);
     int wrt_output = -1;
     bool ok = true;
 
@@ -538,8 +766,18 @@ ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
                 adj_terms[static_cast<std::size_t>(node.a)].push_back(adj);
                 adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_scale(-1.0, adj));
                 break;
+            case VectorOp::Mul:
+                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.import_primal(f, node.b, primal, primal_vector_memo)));
+                adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_mul(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)));
+                break;
             case VectorOp::Scale:
                 adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(node.scale, adj));
+                break;
+            case VectorOp::PowConst:
+                if (!exactly(node.power, 0.0)) {
+                    int p = vb.add_pow_const(vb.import_primal(f, node.a, primal, primal_vector_memo), node.power - 1.0);
+                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(node.power, vb.add_mul(adj, p)));
+                }
                 break;
             case VectorOp::DenseMatVec:
                 adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_dense_matvec(transpose(node.matrix), adj));
@@ -567,6 +805,11 @@ ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
         return result;
     }
 
+    result.input = vb.import_primal(f, f.input_vector, primal, primal_vector_memo);
+    result.params.reserve(f.param_vectors.size());
+    for (int param_vector_id : f.param_vectors) {
+        result.params.push_back(vb.import_primal(f, param_vector_id, primal, primal_vector_memo));
+    }
     result.output = wrt_output;
     result.nodes = std::move(vb.nodes);
     return result;
@@ -670,10 +913,11 @@ GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt_input_
     }
     if (f.has_vector_structure() && f.output_vector >= 0 && f.output_vector < static_cast<int>(f.vector_nodes.size()) &&
         f.vector_nodes[static_cast<std::size_t>(f.output_vector)].op != VectorOp::Values) {
-        out.vector_nodes = tangent_vector_nodes(f, b.g, tangent);
-        out.input_vector = f.input_vector;
-        out.output_vector = f.output_vector;
-        out.param_vectors = f.param_vectors;
+        auto vector_output = tangent_vector_nodes(f, b.g, primal, tangent);
+        out.vector_nodes = std::move(vector_output.nodes);
+        out.input_vector = vector_output.input_vector;
+        out.output_vector = vector_output.output_vector;
+        out.param_vectors = std::move(vector_output.param_vectors);
         out.vector_structure_valid = true;
     }
     out.graph = std::move(b.g);
@@ -797,7 +1041,9 @@ GraphFunction reverse_diff(const GraphFunction &f, const std::string &lambda_nam
     auto vector_output = reverse_vector_output(f, b, primal, lambda_name, wrt_input_name);
     if (vector_output.output >= 0) {
         out.vector_nodes = std::move(vector_output.nodes);
+        out.input_vector = vector_output.input;
         out.output_vector = vector_output.output;
+        out.param_vectors = std::move(vector_output.params);
         out.vector_structure_valid = true;
     }
     out.graph = std::move(b.g);

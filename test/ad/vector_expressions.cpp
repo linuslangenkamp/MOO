@@ -136,6 +136,78 @@ int main() {
         return 1;
     }
 
+    GraphFunctionBuilder elem_builder;
+    auto ex = elem_builder.inputs("x", 2);
+    auto ey = elem_builder.params("y", 2);
+    auto elem = elem_builder.add(elem_builder.mul(ex, ey), elem_builder.scale(0.5, elem_builder.pow_const(ex, 2.0)));
+    auto EF = elem_builder.function(ex, elem, {ey});
+    bool saw_mul = false;
+    bool saw_pow = false;
+    for (const auto &node : EF.vector_nodes) {
+        saw_mul = saw_mul || node.op == VectorOp::Mul;
+        saw_pow = saw_pow || node.op == VectorOp::PowConst;
+    }
+    if (!saw_mul || !saw_pow) {
+        std::cerr << "elementwise vector nodes were not preserved\n";
+        return 1;
+    }
+    double exv[2] = {2.0, 3.0};
+    double eyv[2] = {5.0, 7.0};
+    double eout[2] = {0.0, 0.0};
+    VM(EF).evaluate(EvalEnv().input("x", exv).param("y", eyv), eout);
+    if (!near(eout[0], 12.0) || !near(eout[1], 25.5)) {
+        std::cerr << "unexpected elementwise vector value: " << eout[0] << ", " << eout[1] << "\n";
+        return 1;
+    }
+    auto EJVP = forward_diff(EF, "x", "v");
+    bool jvp_saw_mul = false;
+    bool jvp_saw_pow = false;
+    for (const auto &node : EJVP.vector_nodes) {
+        jvp_saw_mul = jvp_saw_mul || node.op == VectorOp::Mul;
+        jvp_saw_pow = jvp_saw_pow || node.op == VectorOp::PowConst;
+    }
+    if (!jvp_saw_mul || !jvp_saw_pow) {
+        std::cerr << "elementwise vector JVP did not preserve nonlinear vector nodes\n";
+        return 1;
+    }
+    double ev[2] = {0.25, -0.5};
+    double ejvp[2] = {0.0, 0.0};
+    VM(EJVP).evaluate(EvalEnv().input("x", exv).param("y", eyv).param("v", ev), ejvp);
+    if (!near(ejvp[0], 1.75) || !near(ejvp[1], -5.0)) {
+        std::cerr << "unexpected elementwise vector JVP: " << ejvp[0] << ", " << ejvp[1] << "\n";
+        return 1;
+    }
+    auto EVJP = reverse_diff(EF, "lambda", "x");
+    bool vjp_saw_mul = false;
+    bool vjp_saw_pow = false;
+    for (const auto &node : EVJP.vector_nodes) {
+        vjp_saw_mul = vjp_saw_mul || node.op == VectorOp::Mul;
+        vjp_saw_pow = vjp_saw_pow || node.op == VectorOp::PowConst;
+    }
+    if (!vjp_saw_mul || !vjp_saw_pow) {
+        std::cerr << "elementwise vector VJP did not preserve nonlinear vector nodes\n";
+        return 1;
+    }
+    double elambda[2] = {11.0, 13.0};
+    double egrad[2] = {0.0, 0.0};
+    VM(EVJP).evaluate(EvalEnv().input("x", exv).param("y", eyv).param("lambda", elambda), egrad);
+    if (!near(egrad[0], 77.0) || !near(egrad[1], 130.0)) {
+        std::cerr << "unexpected elementwise vector VJP: " << egrad[0] << ", " << egrad[1] << "\n";
+        return 1;
+    }
+    auto EHVP = forward_diff(EVJP, "x", "v");
+    double ehvp[2] = {0.0, 0.0};
+    VM(EHVP).evaluate(EvalEnv().input("x", exv).param("y", eyv).param("lambda", elambda).param("v", ev), ehvp);
+    if (!near(ehvp[0], 2.75) || !near(ehvp[1], -6.5)) {
+        std::cerr << "unexpected elementwise vector HVP: " << ehvp[0] << ", " << ehvp[1] << "\n";
+        return 1;
+    }
+    auto elem_c = to_c(EF, "elementwise_vector_value");
+    if (elem_c.find("moo_ad_vec_mul") == std::string::npos || elem_c.find("moo_ad_vec_pow_const") == std::string::npos) {
+        std::cerr << "generated elementwise vector C did not use vector helpers\n";
+        return 1;
+    }
+
     GraphFunctionBuilder coll_builder;
     auto cx = coll_builder.inputs("x", 3);
     DenseMatrix CD(3, 3, {1.0, -2.0, 0.5, 0.0, 3.0, 4.0, -1.0, 0.0, 2.0});

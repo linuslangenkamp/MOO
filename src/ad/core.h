@@ -168,13 +168,17 @@ std::vector<Expr> sparse_matvec(const SparseMatrix &matrix, const std::vector<Ex
 std::vector<Expr> kron_eye_matvec(const DenseMatrix &base, int eye_size, const std::vector<Expr> &x);
 std::vector<Expr> vector_add(const std::vector<Expr> &a, const std::vector<Expr> &b);
 std::vector<Expr> vector_sub(const std::vector<Expr> &a, const std::vector<Expr> &b);
+std::vector<Expr> vector_mul(const std::vector<Expr> &a, const std::vector<Expr> &b);
 std::vector<Expr> vector_scale(double factor, const std::vector<Expr> &x);
+std::vector<Expr> vector_pow_const(const std::vector<Expr> &x, double power);
 
 enum class VectorOp {
     Values,
     Add,
     Sub,
+    Mul,
     Scale,
+    PowConst,
     DenseMatVec,
     SparseMatVec,
     KronEyeMatVec,
@@ -189,6 +193,7 @@ struct FunctionVectorNode {
     int a = -1;
     int b = -1;
     double scale = 1.0;
+    double power = 1.0;
     DenseMatrix matrix;
     SparseMatrix sparse_matrix;
     int eye_size = 0;
@@ -250,6 +255,7 @@ struct VectorNode {
     int a = -1;
     int b = -1;
     double scale = 1.0;
+    double power = 1.0;
     DenseMatrix matrix;
     SparseMatrix sparse_matrix;
     int eye_size = 0;
@@ -270,7 +276,9 @@ struct GraphFunctionBuilder {
     VectorExpr vector(std::vector<Expr> values);
     VectorExpr add(VectorExpr lhs, VectorExpr rhs);
     VectorExpr sub(VectorExpr lhs, VectorExpr rhs);
+    VectorExpr mul(VectorExpr lhs, VectorExpr rhs);
     VectorExpr scale(double factor, VectorExpr rhs);
+    VectorExpr pow_const(VectorExpr rhs, double power);
     VectorExpr dense_matvec(DenseMatrix matrix, VectorExpr rhs);
     VectorExpr sparse_matvec(SparseMatrix matrix, VectorExpr rhs);
     VectorExpr kron_eye_matvec(DenseMatrix base, int eye_size, VectorExpr rhs);

@@ -454,12 +454,37 @@ std::vector<Expr> vector_sub(const std::vector<Expr> &a, const std::vector<Expr>
     return out;
 }
 
+std::vector<Expr> vector_mul(const std::vector<Expr> &a, const std::vector<Expr> &b) {
+    if (a.size() != b.size()) {
+        throw std::runtime_error("vector sizes must match");
+    }
+    require_same_graph(a);
+    require_same_graph(b);
+    std::vector<Expr> out;
+    out.reserve(a.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        require_same_graph(a[i], b[i]);
+        out.push_back(a[i] * b[i]);
+    }
+    return out;
+}
+
 std::vector<Expr> vector_scale(double factor, const std::vector<Expr> &x) {
     require_same_graph(x);
     std::vector<Expr> out;
     out.reserve(x.size());
     for (const auto &expr : x) {
         out.push_back(factor * expr);
+    }
+    return out;
+}
+
+std::vector<Expr> vector_pow_const(const std::vector<Expr> &x, double power) {
+    require_same_graph(x);
+    std::vector<Expr> out;
+    out.reserve(x.size());
+    for (const auto &expr : x) {
+        out.push_back(pow_const(expr, power));
     }
     return out;
 }
@@ -615,6 +640,20 @@ VectorExpr GraphFunctionBuilder::sub(VectorExpr lhs, VectorExpr rhs) {
     return add_vector(std::move(node));
 }
 
+VectorExpr GraphFunctionBuilder::mul(VectorExpr lhs, VectorExpr rhs) {
+    require_vector(lhs);
+    require_vector(rhs);
+    if (lhs.size != rhs.size) {
+        throw std::runtime_error("vector sizes must match");
+    }
+    VectorNode node;
+    node.op = VectorOp::Mul;
+    node.size = lhs.size;
+    node.a = lhs.id;
+    node.b = rhs.id;
+    return add_vector(std::move(node));
+}
+
 VectorExpr GraphFunctionBuilder::scale(double factor, VectorExpr rhs) {
     require_vector(rhs);
     VectorNode node;
@@ -622,6 +661,16 @@ VectorExpr GraphFunctionBuilder::scale(double factor, VectorExpr rhs) {
     node.size = rhs.size;
     node.a = rhs.id;
     node.scale = factor;
+    return add_vector(std::move(node));
+}
+
+VectorExpr GraphFunctionBuilder::pow_const(VectorExpr rhs, double power) {
+    require_vector(rhs);
+    VectorNode node;
+    node.op = VectorOp::PowConst;
+    node.size = rhs.size;
+    node.a = rhs.id;
+    node.power = power;
     return add_vector(std::move(node));
 }
 
@@ -772,6 +821,7 @@ std::vector<FunctionVectorNode> GraphFunctionBuilder::freeze_vector_nodes() cons
         frozen.a = node.a;
         frozen.b = node.b;
         frozen.scale = node.scale;
+        frozen.power = node.power;
         frozen.matrix = node.matrix;
         frozen.sparse_matrix = node.sparse_matrix;
         frozen.eye_size = node.eye_size;
@@ -804,8 +854,15 @@ std::vector<Expr> GraphFunctionBuilder::lower(VectorExpr expr, std::vector<std::
             cached = vector_sub(lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache),
                                 lower(VectorExpr(this, node.b, vectors[static_cast<std::size_t>(node.b)].size), cache));
             break;
+        case VectorOp::Mul:
+            cached = vector_mul(lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache),
+                                lower(VectorExpr(this, node.b, vectors[static_cast<std::size_t>(node.b)].size), cache));
+            break;
         case VectorOp::Scale:
             cached = vector_scale(node.scale, lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache));
+            break;
+        case VectorOp::PowConst:
+            cached = vector_pow_const(lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache), node.power);
             break;
         case VectorOp::DenseMatVec:
             cached = ad::dense_matvec(node.matrix, lower(VectorExpr(this, node.a, vectors[static_cast<std::size_t>(node.a)].size), cache));
