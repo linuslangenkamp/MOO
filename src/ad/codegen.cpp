@@ -22,6 +22,110 @@
 
 namespace ad {
 
+namespace {
+
+std::vector<int> scalar_use_counts(const Graph &g) {
+    std::vector<int> counts(g.nodes.size(), 0);
+    for (const auto &node : g.nodes) {
+        if (node.a >= 0) {
+            counts[static_cast<std::size_t>(node.a)] += 1;
+        }
+        if (node.b >= 0) {
+            counts[static_cast<std::size_t>(node.b)] += 1;
+        }
+    }
+    return counts;
+}
+
+bool cheap_inline_op(Op op) {
+    return op == Op::Add || op == Op::Sub || op == Op::Mul || op == Op::Neg;
+}
+
+int inline_cost(const Graph &g, NodeId id, const std::vector<int> &use_counts, int limit) {
+    if (id < 0) {
+        return 0;
+    }
+    const auto &node = g.nodes[static_cast<std::size_t>(id)];
+    if (node.op == Op::Input || node.op == Op::Param || node.op == Op::Constant) {
+        return 0;
+    }
+    if (use_counts[static_cast<std::size_t>(id)] > 1 || !cheap_inline_op(node.op)) {
+        return limit + 1;
+    }
+    int cost = 1;
+    cost += inline_cost(g, node.a, use_counts, limit - cost);
+    if (cost > limit) {
+        return cost;
+    }
+    cost += inline_cost(g, node.b, use_counts, limit - cost);
+    return cost;
+}
+
+bool should_inline_node(const Graph &g, NodeId id, const std::vector<int> &use_counts) {
+    return inline_cost(g, id, use_counts, 24) <= 24;
+}
+
+std::string scalar_expr_ref(const Graph &g, NodeId id, const std::vector<int> &use_counts);
+
+std::string inline_expr_rhs(const Graph &g, NodeId id, const std::vector<int> &use_counts) {
+    const auto &node = g.nodes[static_cast<std::size_t>(id)];
+    auto ref = [&](NodeId child) { return scalar_expr_ref(g, child, use_counts); };
+    switch (node.op) {
+        case Op::Constant:
+            return CEmitter::number(node.value);
+        case Op::Input:
+        case Op::Param:
+            return CEmitter::node_ref(node);
+        case Op::Add:
+            return "(" + ref(node.a) + " + " + ref(node.b) + ")";
+        case Op::Sub:
+            return "(" + ref(node.a) + " - " + ref(node.b) + ")";
+        case Op::Mul:
+            return "(" + ref(node.a) + " * " + ref(node.b) + ")";
+        case Op::Div:
+            return "(" + ref(node.a) + " / " + ref(node.b) + ")";
+        case Op::Neg:
+            return "(-" + ref(node.a) + ")";
+        case Op::Sin:
+            return "sin(" + ref(node.a) + ")";
+        case Op::Cos:
+            return "cos(" + ref(node.a) + ")";
+        case Op::Tan:
+            return "tan(" + ref(node.a) + ")";
+        case Op::Exp:
+            return "exp(" + ref(node.a) + ")";
+        case Op::Log:
+            return "log(" + ref(node.a) + ")";
+        case Op::PowConst:
+            return "pow(" + ref(node.a) + ", " + CEmitter::number(node.value) + ")";
+    }
+    return "0.0";
+}
+
+std::string scalar_expr_ref(const Graph &g, NodeId id, const std::vector<int> &use_counts) {
+    const auto &node = g.nodes[static_cast<std::size_t>(id)];
+    if (node.op == Op::Input || node.op == Op::Param) {
+        return CEmitter::node_ref(node);
+    }
+    if (node.op == Op::Constant) {
+        return CEmitter::number(node.value);
+    }
+    if (should_inline_node(g, id, use_counts)) {
+        return inline_expr_rhs(g, id, use_counts);
+    }
+    return "t" + std::to_string(id);
+}
+
+bool should_emit_scalar_temp(const Graph &g, NodeId id, const std::vector<int> &use_counts) {
+    const auto &node = g.nodes[static_cast<std::size_t>(id)];
+    if (node.op == Op::Input || node.op == Op::Param || node.op == Op::Constant) {
+        return false;
+    }
+    return !should_inline_node(g, id, use_counts);
+}
+
+} // namespace
+
 std::string CEmitter::number(double v) {
     std::ostringstream os;
     os << std::setprecision(17) << v;
@@ -494,19 +598,12 @@ std::optional<std::string> try_vector_sparse_coefficients_c(const GraphFunction 
         (void)idx;
         dynamic_roots.push_back(expr.id);
     }
+    const auto use_counts = scalar_use_counts(analysis.builder.g);
     auto ref = [&](NodeId id) -> std::string {
-        const auto &node = analysis.builder.g.nodes[static_cast<std::size_t>(id)];
-        if (node.op == Op::Input || node.op == Op::Param) {
-            return CEmitter::node_ref(node);
-        }
-        if (node.op == Op::Constant) {
-            return CEmitter::number(node.value);
-        }
-        return "t" + std::to_string(id);
+        return scalar_expr_ref(analysis.builder.g, id, use_counts);
     };
     for (NodeId id : topo_used(analysis.builder.g, dynamic_roots)) {
-        const auto &node = analysis.builder.g.nodes[static_cast<std::size_t>(id)];
-        if (node.op == Op::Input || node.op == Op::Param || node.op == Op::Constant) {
+        if (!should_emit_scalar_temp(analysis.builder.g, id, use_counts)) {
             continue;
         }
         os << "    double t" << id << " = " << CEmitter::expr_rhs(analysis.builder.g, id, ref) << ";\n";
@@ -569,6 +666,7 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
 
     std::unordered_set<NodeId> scalar_emitted;
     std::unordered_set<int> vector_emitted;
+    const auto use_counts = scalar_use_counts(f.graph);
 
     auto direct_group_name = [&](const FunctionVectorNode &node) -> std::string {
         if (node.op != VectorOp::Values || (!node.is_input_group && !node.is_param_group) || static_cast<int>(node.values.size()) != node.size) {
@@ -614,14 +712,7 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
     };
 
     auto scalar_ref = [&](NodeId id) -> std::string {
-        const auto &n = f.graph.nodes[static_cast<std::size_t>(id)];
-        if (n.op == Op::Input || n.op == Op::Param) {
-            return node_ref(n);
-        }
-        if (n.op == Op::Constant) {
-            return number(n.value);
-        }
-        return "t" + std::to_string(id);
+        return scalar_expr_ref(f.graph, id, use_counts);
     };
 
     std::function<void(NodeId)> emit_scalar = [&](NodeId id) {
@@ -635,7 +726,7 @@ bool CEmitter::emit_vector_function(const GraphFunction &f, const std::string &n
         if (n.b >= 0) {
             emit_scalar(n.b);
         }
-        if (n.op != Op::Input && n.op != Op::Param && n.op != Op::Constant) {
+        if (should_emit_scalar_temp(f.graph, id, use_counts)) {
             os << "    double t" << id << " = " << expr_rhs(f.graph, id, scalar_ref) << ";\n";
         }
         scalar_emitted.insert(id);
@@ -735,21 +826,13 @@ void CEmitter::emit_function(const GraphFunction &fn, const std::string &name, s
     }
     os << "    double* out\n) {\n";
 
-    std::unordered_set<NodeId> output_set(f.outputs.begin(), f.outputs.end());
+    const auto use_counts = scalar_use_counts(f.graph);
     auto ref = [&](NodeId id) -> std::string {
-        const auto &n = f.graph.nodes[id];
-        if (n.op == Op::Input || n.op == Op::Param) {
-            return node_ref(n);
-        }
-        if (n.op == Op::Constant) {
-            return number(n.value);
-        }
-        return "t" + std::to_string(id);
+        return scalar_expr_ref(f.graph, id, use_counts);
     };
 
     for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
-        const auto &n = f.graph.nodes[i];
-        if (n.op == Op::Input || n.op == Op::Param || n.op == Op::Constant) {
+        if (!should_emit_scalar_temp(f.graph, i, use_counts)) {
             continue;
         }
         os << "    double t" << i << " = " << expr_rhs(f.graph, i, ref) << ";\n";

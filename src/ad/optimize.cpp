@@ -107,6 +107,14 @@ Expr OptimizingBuilder::add(Expr x, Expr y) {
     if (x.id == y.id) {
         return mul(constant(2.0), x);
     }
+    const auto &nx = g.nodes[x.id];
+    const auto &ny = g.nodes[y.id];
+    if (nx.op == Op::Neg) {
+        return sub(y, Expr(&g, nx.a));
+    }
+    if (ny.op == Op::Neg) {
+        return sub(x, Expr(&g, ny.a));
+    }
     Node n;
     n.op = Op::Add;
     n.a = x.id;
@@ -127,6 +135,10 @@ Expr OptimizingBuilder::sub(Expr x, Expr y) {
     }
     if (x.id == y.id) {
         return constant(0.0);
+    }
+    const auto &ny = g.nodes[y.id];
+    if (ny.op == Op::Neg) {
+        return add(x, Expr(&g, ny.a));
     }
     Node n;
     n.op = Op::Sub;
@@ -161,6 +173,17 @@ Expr OptimizingBuilder::mul(Expr x, Expr y) {
         if (exactly(cy, -1.0)) {
             return neg(x);
         }
+    }
+    const auto &nx_sign = g.nodes[x.id];
+    const auto &ny_sign = g.nodes[y.id];
+    if (nx_sign.op == Op::Neg && ny_sign.op == Op::Neg) {
+        return mul(Expr(&g, nx_sign.a), Expr(&g, ny_sign.a));
+    }
+    if (nx_sign.op == Op::Neg) {
+        return neg(mul(Expr(&g, nx_sign.a), y));
+    }
+    if (ny_sign.op == Op::Neg) {
+        return neg(mul(x, Expr(&g, ny_sign.a)));
     }
     if (is_const(x, &cx)) {
         const auto &ny = g.nodes[y.id];
@@ -227,6 +250,15 @@ Expr OptimizingBuilder::div(Expr x, Expr y) {
     if (is_const(y, &cy)) {
         return mul(x, constant(1.0 / cy));
     }
+    if (nx.op == Op::Neg && ny.op == Op::Neg) {
+        return div(Expr(&g, nx.a), Expr(&g, ny.a));
+    }
+    if (nx.op == Op::Neg) {
+        return neg(div(Expr(&g, nx.a), y));
+    }
+    if (ny.op == Op::Neg) {
+        return neg(div(x, Expr(&g, ny.a)));
+    }
     Node n;
     n.op = Op::Div;
     n.a = x.id;
@@ -242,6 +274,13 @@ Expr OptimizingBuilder::neg(Expr x) {
     const auto &nx = g.nodes[x.id];
     if (nx.op == Op::Neg) {
         return Expr(&g, nx.a);
+    }
+    double c;
+    if (nx.op == Op::Mul && is_const(Expr(&g, nx.a), &c)) {
+        return mul(constant(-c), Expr(&g, nx.b));
+    }
+    if (nx.op == Op::Mul && is_const(Expr(&g, nx.b), &c)) {
+        return mul(constant(-c), Expr(&g, nx.a));
     }
     Node n;
     n.op = Op::Neg;
