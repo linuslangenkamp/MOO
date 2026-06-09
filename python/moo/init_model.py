@@ -283,11 +283,9 @@ int main(int argc, char** argv) {{
             hes,
             emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [],
             """    f64 seed[OUT_SIZE] = {0};
-    moo_init_hvp_cache_t cache;
     seed[0] = obj_factor;
-    for (int i = 0; i < F_SIZE + G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_init_hvp_prepare(z, seed, rp, &cache);""",
-            "moo_init_hvp_apply(&cache, v, tmp);",
+    for (int i = 0; i < F_SIZE + G_SIZE; ++i) { seed[1 + i] = lambda[i]; }""",
+            "moo_init_hvp(z, seed, rp, v, tmp);",
         )
 
         return f"""#include <float.h>

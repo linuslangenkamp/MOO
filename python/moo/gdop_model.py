@@ -480,9 +480,8 @@ int main(int argc, char** argv) {{
             "Z_SIZE",
             lfg_hes,
             lfg_hes_colors if isinstance(lfg_hes_colors, list) else [],
-            """    moo_lfg_hvp_cache_t cache;
-    moo_lfg_hvp_prepare(z, seed, globl_rp, tau, &cache);""",
-            "moo_lfg_hvp_apply(&cache, v, tmp);",
+            "",
+            "moo_lfg_hvp(z, seed, globl_rp, tau, v, tmp);",
             buf_indices=lfg_hes_buf_indices,
             split_pp=True,
             pp_start=self.x_size + self.u_size,
@@ -503,9 +502,8 @@ int main(int argc, char** argv) {{
             str(max(self.mr_size, 1)),
             mr_hes,
             mr_hes_colors if isinstance(mr_hes_colors, list) else [],
-            """    moo_mr_hvp_cache_t cache;
-    moo_mr_hvp_prepare(b, seed, globl_rp, &cache);""",
-            "moo_mr_hvp_apply(&cache, v, tmp);",
+            "",
+            "moo_mr_hvp(b, seed, globl_rp, v, tmp);",
             buf_indices=list(range(len(mr_hes))),
         )
 

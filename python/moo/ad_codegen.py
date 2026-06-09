@@ -147,7 +147,7 @@ def _emit_built_function(built: BuiltGraphFunction, input_name: str, value_name:
     value, jvp_code, hvp_code, jac_code, hes_code = dedupe_ad_vector_helpers([
         fn.to_c(value_name),
         jvp.to_c(jvp_name),
-        hvp.to_staged_c(hvp_name, "v"),
+        hvp.to_c(hvp_name),
         fn.to_sparse_jacobian_c(input_name, jac_sparsity, f"{jvp_name}_sparse"),
         hvp.to_sparse_hessian_c("v", hes_sparsity, f"{hvp_name}_sparse"),
     ])

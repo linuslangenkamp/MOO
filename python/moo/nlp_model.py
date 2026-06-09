@@ -36,7 +36,6 @@ from .callback_codegen import (
     render_local_colored_hes_lines,
     render_local_colored_jac_lines,
     render_local_direct_constraint_jac_lines,
-    render_local_direct_hes_lines,
     render_local_direct_objective_jac_lines,
     static_int_array,
 )
@@ -782,11 +781,9 @@ int main(int argc, char** argv) {{
             hes,
             emitted.get("HES_COLORS", []) if isinstance(emitted.get("HES_COLORS", []), list) else [],
             """    f64 seed[OUT_SIZE] = {0};
-    moo_nlp_hvp_cache_t cache;
     seed[0] = obj_factor;
-    for (int i = 0; i < G_SIZE; ++i) {{ seed[1 + i] = lambda[i]; }}
-    moo_nlp_hvp_prepare(x, seed, rp, &cache);""",
-            "moo_nlp_hvp_apply(&cache, v, tmp);",
+    for (int i = 0; i < G_SIZE; ++i) { seed[1 + i] = lambda[i]; }""",
+            "moo_nlp_hvp(x, seed, rp, v, tmp);",
         )
 
         return f"""#include <float.h>
@@ -884,6 +881,17 @@ int main_{self.name}(int argc, char** argv) {{
                     table.append(hes_buf_by_pair[(gr, gc)])
             return table
 
+        def hes_buf_by_local_entry(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission) -> list[list[int]]:
+            table = [[] for _ in local.hes_sparsity]
+            for rep in range(block.count):
+                for local_buf, (row, col) in enumerate(local.hes_sparsity):
+                    gr = global_at(block, row, rep)
+                    gc = global_at(block, col, rep)
+                    if gr < gc:
+                        gr, gc = gc, gr
+                    table[local_buf].append(hes_buf_by_pair[(gr, gc)])
+            return table
+
         def jac_buf_table(block: MappedObjectiveBlock | MappedConstraintBlock, local: LocalBlockEmission, objective: bool, base_buf: int = 0) -> list[int]:
             table = []
             for rep in range(block.count):
@@ -904,6 +912,43 @@ int main_{self.name}(int argc, char** argv) {{
                 return (values[0], step)
             return None
 
+        def affine_runs(values: list[int]) -> list[tuple[int, int, int, int]]:
+            runs = []
+            i = 0
+            while i < len(values):
+                if i + 1 >= len(values):
+                    runs.append((i, i + 1, values[i], 0))
+                    i += 1
+                    continue
+                step = values[i + 1] - values[i]
+                j = i + 2
+                while j < len(values) and values[j] == values[i] + (j - i) * step:
+                    j += 1
+                runs.append((i, j, values[i], step))
+                i = j
+            return runs
+
+        def affine_run_expr(values: list[int], rep_name: str, indent: str, target: str) -> list[str] | None:
+            runs = affine_runs(values)
+            if len(runs) > 8:
+                return None
+            lines = []
+            for run_idx, (start, end, base, step) in enumerate(runs):
+                prefix = "if" if run_idx == 0 else "else if"
+                if start == 0 and end == len(values):
+                    if step == 0:
+                        lines.append(f"{indent}{target} = {base};")
+                    else:
+                        lines.append(f"{indent}{target} = {base} + {rep_name} * {step};")
+                else:
+                    cond = f"{rep_name} < {end}" if start == 0 else f"{rep_name} >= {start} && {rep_name} < {end}"
+                    offset = "" if start == 0 else f" - {start}"
+                    if step == 0:
+                        lines.append(f"{indent}{prefix} ({cond}) {{ {target} = {base}; }}")
+                    else:
+                        lines.append(f"{indent}{prefix} ({cond}) {{ {target} = {base} + ({rep_name}{offset}) * {step}; }}")
+            return lines
+
         def gather_lines(block: MappedObjectiveBlock | MappedConstraintBlock, indent: str, prefix: str) -> list[str]:
             lines = []
             for local_idx, globals_for_reps in enumerate(block.local_globals):
@@ -920,6 +965,41 @@ int main_{self.name}(int argc, char** argv) {{
                     lines.append(f"{indent}xl[{local_idx}] = x[{name}[rep]];")
             return lines
 
+        def hessian_scatter_lines(
+            fn: str,
+            block: MappedObjectiveBlock | MappedConstraintBlock,
+            local: LocalBlockEmission,
+            prefix: str,
+            tmp_name: str,
+            indent: str,
+        ) -> list[str]:
+            if not local.hes_sparsity:
+                return []
+            lines = [
+                f"{indent}f64 {tmp_name}[{max(len(local.hes_sparsity), 1)}];",
+                f"{indent}{fn}_sparse(xl, seed, rp, {tmp_name});",
+            ]
+            for local_buf, values in enumerate(hes_buf_by_local_entry(block, local)):
+                regular = affine(values)
+                if regular is not None:
+                    base, step = regular
+                    if step == 0:
+                        lines.append(f"{indent}out[{base}] += {tmp_name}[{local_buf}];")
+                    else:
+                        lines.append(f"{indent}out[{base} + rep * {step}] += {tmp_name}[{local_buf}];")
+                else:
+                    run_lines = affine_run_expr(values, "rep", indent, "hbuf")
+                    if run_lines is not None:
+                        hbuf_var = f"hbuf_{local_buf}"
+                        lines.append(f"{indent}int {hbuf_var} = 0;")
+                        lines.extend(affine_run_expr(values, "rep", indent, hbuf_var) or [])
+                        lines.append(f"{indent}out[{hbuf_var}] += {tmp_name}[{local_buf}];")
+                    else:
+                        name = f"{prefix}_{local_buf}"
+                        lines.append(static_int_array(name, values, indent))
+                        lines.append(f"{indent}out[{name}[rep]] += {tmp_name}[{local_buf}];")
+            return lines
+
         def coo(name: str, pairs: list[tuple[int, int]]) -> str:
             return f"""static nlp_coo_t {name} = {{
     .row = {_arr([r for r, _ in pairs])},
@@ -931,7 +1011,40 @@ int main_{self.name}(int argc, char** argv) {{
         def bounds(name: str, values) -> str:
             if not values:
                 return f"static bounds_t {name}[1];\n"
-            return f"static bounds_t {name}[{len(values)}] = {{ {', '.join(f'{{ {_num(v.lb)}, {_num(v.ub)} }}' for v in values)} }};\n"
+            return f"static bounds_t {name}[{len(values)}];\n"
+
+        def fill_number_array(name: str, values: Sequence[float], indent: str) -> list[str]:
+            lines = []
+            i = 0
+            while i < len(values):
+                j = i + 1
+                while j < len(values) and values[j] == values[i]:
+                    j += 1
+                if j - i >= 4:
+                    lines.append(f"{indent}for (int i = {i}; i < {j}; ++i) {{ {name}[i] = {_num(values[i])}; }}")
+                else:
+                    for idx in range(i, j):
+                        lines.append(f"{indent}{name}[{idx}] = {_num(values[idx])};")
+                i = j
+            return lines
+
+        def fill_bounds_array(name: str, values, indent: str) -> list[str]:
+            lines = []
+            i = 0
+            pairs = [(v.lb, v.ub) for v in values]
+            while i < len(pairs):
+                j = i + 1
+                while j < len(pairs) and pairs[j] == pairs[i]:
+                    j += 1
+                lb, ub = pairs[i]
+                rhs = f"(bounds_t){{ {_num(lb)}, {_num(ub)} }}"
+                if j - i >= 4:
+                    lines.append(f"{indent}for (int i = {i}; i < {j}; ++i) {{ {name}[i] = {rhs}; }}")
+                else:
+                    for idx in range(i, j):
+                        lines.append(f"{indent}{name}[{idx}] = {rhs};")
+                i = j
+            return lines
 
         g_bounds_values: list[NLPConstraint] = []
         g_bounds_values.extend(self.constraints)
@@ -941,6 +1054,13 @@ int main_{self.name}(int argc, char** argv) {{
                 for i in range(block.count)
                 for j in range(block.output_size)
             )
+
+        metadata_init_lines = ["    if (globl_arrays_initialized) { return; }", "    globl_arrays_initialized = true;"]
+        metadata_init_lines.extend(fill_number_array("globl_x0", [v.guess for v in self.variables], "    "))
+        metadata_init_lines.extend(fill_bounds_array("globl_x_bounds", self.variables, "    "))
+        metadata_init_lines.extend(fill_bounds_array("globl_g_bounds", g_bounds_values, "    "))
+        metadata_init_lines.extend(fill_number_array("globl_x_nominal", [v.nominal for v in self.variables], "    "))
+        metadata_init_lines.extend(fill_number_array("globl_g_nominal", [v.nominal for v in g_bounds_values], "    "))
 
         local_code = []
         if scalar is not None:
@@ -1078,9 +1198,7 @@ int main_{self.name}(int argc, char** argv) {{
             hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
             hes_lines.extend(gather_lines(block, "        ", f"obj_hes_{idx}"))
             if local.hes_mode == "direct":
-                hbuf = hes_buf_table(block, local)
-                hes_lines.append(static_int_array(f"obj_{idx}_hbuf", hbuf, "        "))
-                hes_lines.extend(render_local_direct_hes_lines(f"moo_nlp_obj_map_{idx}_hvp", local.hes_sparsity, f"obj_{idx}_hbuf", "tmp", "        "))
+                hes_lines.extend(hessian_scatter_lines(f"moo_nlp_obj_map_{idx}_hvp", block, local, f"obj_{idx}_hbuf", "tmp", "        "))
             else:
                 hes_lines.extend(render_local_colored_hes_lines(f"moo_nlp_obj_map_{idx}_hvp", local.hes_sparsity, local.hes_colors, block.local_size, hes_buf_table(block, local), "        "))
             hes_lines.append("    }")
@@ -1092,14 +1210,14 @@ int main_{self.name}(int argc, char** argv) {{
                 hes_lines.append(f"        f64 seed[{local_seed_size}] = {{0}};")
                 hes_lines.append(f"        f64 xl[{max(block.local_size, 1)}];")
                 hes_lines.extend(gather_lines(block, "        ", f"g_hes_{idx}"))
-                hbuf = hes_buf_table(block, local)
-                hes_lines.append(static_int_array(f"g_{idx}_hbuf", hbuf, "        "))
                 hes_lines.append(f"        for (int seed_i = 0; seed_i < {block.output_size}; ++seed_i) {{")
                 hes_lines.append(f"            seed[seed_i] = lambda[{g_base} + rep * {block.output_size} + seed_i];")
                 hes_lines.append("        }")
                 if local.hes_mode == "direct":
-                    hes_lines.extend(render_local_direct_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, f"g_{idx}_hbuf", "tmp_h", "        "))
+                    hes_lines.extend(hessian_scatter_lines(f"moo_nlp_g_map_{idx}_hvp", block, local, f"g_{idx}_hbuf", "tmp_h", "        "))
                 else:
+                    hbuf = hes_buf_table(block, local)
+                    hes_lines.append(static_int_array(f"g_{idx}_hbuf", hbuf, "        "))
                     hes_lines.extend(render_local_colored_hes_lines(f"moo_nlp_g_map_{idx}_hvp", local.hes_sparsity, local.hes_colors, block.local_size, hbuf, "        ", hbuf_name=f"g_{idx}_hbuf"))
                 hes_lines.append("    }")
             g_base += block.count * block.output_size
@@ -1126,13 +1244,18 @@ int main(int argc, char** argv) {{
 
 {''.join(local_code)}
 static f64 globl_rp[RP_SIZE] = {{ {', '.join(_num(v) for _, v in self.runtime_parameters)} }};
-static f64 globl_x0[X_SIZE] = {{ {', '.join(_num(v.guess) for v in self.variables)} }};
+static bool globl_arrays_initialized = false;
+static f64 globl_x0[{max(self.x_size, 1)}];
 {bounds("globl_x_bounds", self.variables)}
 {bounds("globl_g_bounds", g_bounds_values)}
-static f64 globl_x_nominal[X_SIZE] = {{ {', '.join(_num(v.nominal) for v in self.variables)} }};
-static f64 globl_g_nominal[G_SIZE] = {{ {', '.join(_num(v.nominal) for v in g_bounds_values)} }};
+static f64 globl_x_nominal[{max(self.x_size, 1)}];
+static f64 globl_g_nominal[{max(self.g_size, 1)}];
 {coo("globl_g_jac", g_jac)}
 {coo("globl_hes", hes)}
+
+static void init_problem_arrays(void) {{
+{chr(10).join(metadata_init_lines)}
+}}
 
 static void eval_all(const f64* x, const f64* rp, f64* obj, f64* g, void* user_data) {{
     f64 out[OUT_SIZE];
@@ -1174,6 +1297,7 @@ static c_nlp_problem_t globl_problem = {{
 }};
 
 int main_{self.name}(int argc, char** argv) {{
+    init_problem_arrays();
     return main_nlp(argc, argv, &globl_problem);
 }}
 {main}

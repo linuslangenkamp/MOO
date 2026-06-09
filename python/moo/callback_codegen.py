@@ -260,8 +260,6 @@ def render_local_colored_hes_lines(
         f"{indent}{{",
         f"{indent}f64 v_h[{max(input_size, 1)}] = {{0}};",
         f"{indent}f64 tmp_h[{max(input_size, 1)}] = {{0}};",
-        f"{indent}{fn}_cache_t cache;",
-        f"{indent}{fn}_prepare(xl, seed, rp, &cache);",
         static_int_array("h_color_offsets", color_offsets, indent),
         static_int_array("h_color_cols", color_cols, indent),
         static_int_array("h_scatter_offsets", scatter_offsets, indent),
@@ -269,7 +267,7 @@ def render_local_colored_hes_lines(
         static_int_array("h_scatter_row", scatter_row, indent),
         f"{indent}for (int color = 0; color < {max(len(color_offsets) - 1, 0)}; ++color) {{",
         f"{indent}    for (int k = h_color_offsets[color]; k < h_color_offsets[color + 1]; ++k) {{ v_h[h_color_cols[k]] = 1.0; }}",
-        f"{indent}    {fn}_apply(&cache, v_h, tmp_h);",
+        f"{indent}    {fn}(xl, seed, rp, v_h, tmp_h);",
     ]
     if hbuf_name == "h_buf_for_local":
         lines.append(static_int_array("h_buf_for_local", hbuf, indent))
