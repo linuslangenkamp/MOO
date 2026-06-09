@@ -23,10 +23,6 @@ from pathlib import Path
 from moo import blockvec, matrix, nlp_model, radauIIA, vec
 
 
-STAGES = 3
-STATE_DIM = 2
-
-
 def f(x, u):
     return vec([
         -(u[0] + 0.5 * u[0] * u[0]) * x[0],
@@ -38,101 +34,66 @@ def M(x, u):
     return -x[1]
 
 
-def build_model(name: str, intervals: int = 50):
-    r = radauIIA(STAGES)
+def build_model(name: str = "BatchReactor", intervals: int = 25, stages: int = 3):
+    r = radauIIA(stages)
     model = nlp_model(name)
-    x1 = model.add_variables("x1", intervals * STAGES, guess=1.0, lb=0.0, ub=1.0)
-    x2 = model.add_variables("x2", intervals * STAGES, guess=0.0, lb=0.0, ub=1.0)
-    u = model.add_variables("u", intervals * STAGES, guess=0.0, lb=0.0, ub=5.0)
 
-    h = 1.0 / intervals
-    D_otimes_I = matrix(r.D).otimes_eye(STATE_DIM)
-    x_initial = vec([1.0, 0.0])
+    num_states = 2
+    num_controls = 1
 
-    def node(interval, j):
-        return interval * STAGES + j
+    state_values = intervals * stages + 1
+    control_values = intervals * stages
+
+    x = [
+        model.add_variables("x0", state_values, guess=1.0),
+        model.add_variables("x1", state_values, guess=0.0),
+    ]
+
+    u = [ model.add_variables("u", control_values, lb=0.0, ub=5.0, guess=2) ]
+
+    h = 1 / intervals
+    D_otimes_I = matrix(r.D).otimes_eye(num_states)
+
+    initial_states = [1.0, 0.0]
+
+    for i in range(num_states):
+        x[i].fix(0, initial_states[i])
+
+    def state_index(interval, stage):
+        return interval * stages + stage + 1
+
+    def control_index(interval, stage):
+        return interval * stages + stage
 
     def state(interval, stage):
-        return vec([x1[node(interval, stage)], x2[node(interval, stage)]])
+        idx = state_index(interval, stage)
+        return vec([x[i][idx] for i in range(num_states)])
 
-    def state_nodes(previous, interval):
-        return blockvec([previous] + [state(interval, stage) for stage in range(STAGES)])
+    def left_state(interval):
+        if interval == 0:
+            return vec(initial_states)
+        return state(interval - 1, stages - 1)
 
-    def collocation_defects(previous, interval):
-        nodes = state_nodes(previous, interval)
-        derivative = D_otimes_I @ nodes
-        return blockvec([
-            derivative.block(stage + 1, STATE_DIM) - h * f(nodes[stage + 1], vec([u[node(interval, stage)]]))
-            for stage in range(STAGES)
-        ])
+    def control(interval, stage):
+        idx = control_index(interval, stage)
+        return vec([u[i][idx] for i in range(num_controls)])
 
-    model.add_constraints(
-        range(0, 1),
-        lambda interval: collocation_defects(x_initial, interval),
-        eq=0.0,
-        name="initial_collocation",
-    )
-    model.add_constraints(
-        range(1, intervals),
-        lambda interval: collocation_defects(state(interval - 1, STAGES - 1), interval),
-        eq=0.0,
-        name="collocation",
-    )
+    def collocation_defects(interval):
+        X = blockvec([left_state(interval)] + [state(interval, stage) for stage in range(stages)])
+        derivative = D_otimes_I @ X
+        return blockvec([derivative.block(stage + 1, num_states) - h * f(state(interval, stage), control(interval, stage)) for stage in range(stages)])
 
-    model.minimize(M(state(intervals - 1, STAGES - 1), vec([u[node(intervals - 1, STAGES - 1)]])), name="final_x2")
+    model.add_constraints(range(intervals), lambda interval: collocation_defects(interval), eq=0.0, name="collocation")
+
+    model.minimize(M(state(intervals - 1, stages - 1), control(intervals - 1, stages - 1)), name="mayer")
+
     model.codegen("direct")
-    model.solver(tolerance=1e-12)
+    model.solver(tolerance=1e-10)
     return model
 
-
-def plot_solution(run, out: Path, intervals: int):
-    import matplotlib
-    import matplotlib.pyplot as plt
-
-    r = radauIIA(STAGES)
-    values = run.result.variables
-    h = 1.0 / intervals
-
-    t = [0.0]
-    x1 = [1.0]
-    x2 = [0.0]
-    tu = []
-    uu = []
-    for interval in range(intervals):
-        for j, c in enumerate(r.C):
-            idx = interval * STAGES + j
-            time = (interval + c) * h
-            t.append(time)
-            x1.append(values[f"x1{idx}"])
-            x2.append(values[f"x2{idx}"])
-            tu.append(time)
-            uu.append(values[f"u{idx}"])
-
-    fig, (ax_x, ax_u) = plt.subplots(2, 1, sharex=True, figsize=(9, 6))
-    ax_x.plot(t, x1, ".-", label="x1")
-    ax_x.plot(t, x2, ".-", label="x2")
-    ax_x.set_ylabel("state")
-    ax_x.grid(True, alpha=0.3)
-    ax_x.legend()
-
-    ax_u.plot(tu, uu, ".-", label="u at collocation nodes")
-    ax_u.set_xlabel("time")
-    ax_u.set_ylabel("control")
-    ax_u.grid(True, alpha=0.3)
-    ax_u.legend()
-
-    fig.tight_layout()
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / "solution.png"
-    fig.savefig(path, dpi=160)
-    if matplotlib.get_backend().lower() not in {"agg", "pdf", "svg", "ps", "template"}:
-        plt.show()
-    return path
-
-
 if __name__ == "__main__":
-    out = Path("build/moo/batch_reactor")
-    intervals = 250
-    run = build_model("BatchReactor", intervals=intervals).run(out)
-    print(plot_solution(run, out, intervals))
+    out = Path("build/moo/NLP/batch_reactor")
+    intervals = 100
+    stages = 3
+    run = build_model(intervals=intervals, stages=stages).run(out)
     raise SystemExit(run.returncode)
