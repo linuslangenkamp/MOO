@@ -3,8 +3,10 @@
 
 #include "expr.h"
 #include "function.h"
+#include "linear_solver.h"
 #include "vec.h"
 #include "detail/function_core.h"
+#include "detail/matrix_ops.h"
 #include "detail/mapping.h"
 #include "detail/node.h"
 
@@ -348,6 +350,15 @@ void eval_function_core(const detail::FunctionCore &core, EvalContext &context, 
     detail::EvalWorkspaceAccess::pop_var_frame(context.workspace);
 }
 
+int map_accum_emit_offset(const detail::FunctionCore &core, int reps, int output_index) {
+    const int carry_size = core.info.outputs[0].size;
+    int offset = carry_size + reps * carry_size;
+    for (int i = 1; i < output_index; ++i) {
+        offset += reps * core.info.outputs[static_cast<std::size_t>(i)].size;
+    }
+    return offset;
+}
+
 void eval_vec_node(const std::shared_ptr<const detail::VecNode> &node, EvalContext &context, double *out, int out_size) {
     if (!node) {
         throw std::runtime_error("cannot evaluate invalid vector node");
@@ -431,6 +442,72 @@ void eval_vec_node(const std::shared_ptr<const detail::VecNode> &node, EvalConte
             for (int k = 0; k < node->sparse.nnz(); ++k) {
                 out[node->sparse.row[static_cast<std::size_t>(k)]] += node->sparse.values[static_cast<std::size_t>(k)] * arg[node->sparse.col[static_cast<std::size_t>(k)]];
             }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
+        case GraphNodeKind::SymbolicMatVec: {
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            double *matrix = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);
+            double *rhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->rhs->size);
+            eval_vec_node(node->lhs, context, matrix, node->lhs->size);
+            eval_vec_node(node->rhs, context, rhs, node->rhs->size);
+            for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                double value = 0.0;
+                for (int col = 0; col < node->mat_lhs_cols; ++col) {
+                    value += matrix[detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout)] * rhs[col];
+                }
+                out[row] = value;
+            }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
+        case GraphNodeKind::SymbolicMatMul: {
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            double *lhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);
+            double *rhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->rhs->size);
+            eval_vec_node(node->lhs, context, lhs, node->lhs->size);
+            eval_vec_node(node->rhs, context, rhs, node->rhs->size);
+            for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                for (int col = 0; col < node->mat_rhs_cols; ++col) {
+                    double value = 0.0;
+                    for (int inner = 0; inner < node->mat_lhs_cols; ++inner) {
+                        value += lhs[detail::matrix_flat_index(row, inner, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout)] *
+                                 rhs[detail::matrix_flat_index(inner, col, node->mat_rhs_rows, node->mat_rhs_cols, node->mat_rhs_layout)];
+                    }
+                    out[detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout)] = value;
+                }
+            }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
+        case GraphNodeKind::OuterProduct: {
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            double *lhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);
+            double *rhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->rhs->size);
+            eval_vec_node(node->lhs, context, lhs, node->lhs->size);
+            eval_vec_node(node->rhs, context, rhs, node->rhs->size);
+            for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                for (int col = 0; col < node->mat_rhs_cols; ++col) {
+                    out[detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout)] = lhs[row] * rhs[col];
+                }
+            }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
+        case GraphNodeKind::LinearSolve: {
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            const int n = node->mat_lhs_rows;
+            double *matrix_payload = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);
+            double *rhs_payload = detail::EvalWorkspaceAccess::allocate(context.workspace, node->rhs->size);
+            eval_vec_node(node->lhs, context, matrix_payload, node->lhs->size);
+            eval_vec_node(node->rhs, context, rhs_payload, node->rhs->size);
+            const LinearSolveProblem problem{n,
+                                             node->mat_lhs_layout,
+                                             node->linear_solve_transpose,
+                                             matrix_payload,
+                                             rhs_payload,
+                                             out};
+            linear_solver(node->linear_solver).solve(problem);
             detail::EvalWorkspaceAccess::release(context.workspace, mark);
             break;
         }
@@ -538,6 +615,78 @@ void eval_vec_node(const std::shared_ptr<const detail::VecNode> &node, EvalConte
                         }
                     }
                 }
+            }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
+        case GraphNodeKind::MapAccumCall: {
+            if (!node->function) {
+                throw std::runtime_error("map-accum call node is missing callee during evaluation");
+            }
+            if (node->carry_input_index < 0 || node->carry_input_index >= node->function->info.input_count) {
+                throw std::runtime_error("map-accum call has invalid carry input index during evaluation");
+            }
+            const int carry_size = node->function->info.inputs[static_cast<std::size_t>(node->carry_input_index)].size;
+            const int local_output_size = node->function->info.output_size;
+            if (out_size != carry_size + node->reps * local_output_size) {
+                throw std::runtime_error("map-accum evaluation output size does not match node size");
+            }
+
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            double **source_values = detail::EvalWorkspaceAccess::allocate_pointer_array(context.workspace, static_cast<int>(node->mapped_bindings.size()));
+            for (std::size_t binding_index = 0; binding_index < node->mapped_bindings.size(); ++binding_index) {
+                const detail::MappedBindingNode &binding = node->mapped_bindings[binding_index];
+                double *source = detail::EvalWorkspaceAccess::allocate(context.workspace, binding.source->size);
+                eval_vec_node(binding.source, context, source, binding.source->size);
+                source_values[binding_index] = source;
+            }
+
+            double *carry = detail::EvalWorkspaceAccess::allocate(context.workspace, carry_size);
+            double *next_carry = detail::EvalWorkspaceAccess::allocate(context.workspace, carry_size);
+            double *local_input = detail::EvalWorkspaceAccess::allocate(context.workspace, node->function->info.input_size);
+            double *local_output = detail::EvalWorkspaceAccess::allocate(context.workspace, local_output_size);
+            eval_vec_node(node->lhs, context, carry, carry_size);
+
+            for (int rep = 0; rep < node->reps; ++rep) {
+                int input_offset = 0;
+                std::size_t sequence_binding = 0;
+                for (int input_index = 0; input_index < node->function->info.input_count; ++input_index) {
+                    const int input_size = node->function->info.inputs[static_cast<std::size_t>(input_index)].size;
+                    if (input_index == node->carry_input_index) {
+                        for (int i = 0; i < input_size; ++i) {
+                            local_input[input_offset + i] = carry[i];
+                        }
+                    } else {
+                        const detail::MappedBindingNode &binding = node->mapped_bindings[sequence_binding];
+                        for (int component = 0; component < input_size; ++component) {
+                            const int source_index = detail::mapped_index(binding, node->reps, rep, component);
+                            local_input[input_offset + component] = source_values[sequence_binding][source_index];
+                        }
+                        ++sequence_binding;
+                    }
+                    input_offset += input_size;
+                }
+
+                eval_function_core(*node->function, context, local_input, node->function->info.input_size, local_output, local_output_size);
+                const int next_offset = node->function->info.outputs[0].offset;
+                for (int i = 0; i < carry_size; ++i) {
+                    next_carry[i] = local_output[next_offset + i];
+                    out[carry_size + rep * carry_size + i] = next_carry[i];
+                }
+                for (int output_index = 1; output_index < node->function->info.output_count; ++output_index) {
+                    const FunctionOutputInfo &output = node->function->info.outputs[static_cast<std::size_t>(output_index)];
+                    const int target_offset = map_accum_emit_offset(*node->function, node->reps, output_index) + rep * output.size;
+                    for (int i = 0; i < output.size; ++i) {
+                        out[target_offset + i] = local_output[output.offset + i];
+                    }
+                }
+                for (int i = 0; i < carry_size; ++i) {
+                    carry[i] = next_carry[i];
+                }
+            }
+
+            for (int i = 0; i < carry_size; ++i) {
+                out[i] = carry[i];
             }
             detail::EvalWorkspaceAccess::release(context.workspace, mark);
             break;

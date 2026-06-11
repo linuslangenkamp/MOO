@@ -9,6 +9,7 @@ namespace ad {
 struct CodegenOptions {
     std::string function_name = "ad_function";
     std::string scalar_type = "double";
+    std::string linear_solve_function = "moo_ad_lapack_linear_solve";
     bool emit_sparsity_metadata = true;
 };
 

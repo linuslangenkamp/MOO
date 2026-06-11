@@ -5,6 +5,7 @@
 #include "function.h"
 #include "vec.h"
 #include "detail/function_core.h"
+#include "detail/matrix_ops.h"
 #include "detail/mapping.h"
 #include "detail/node.h"
 
@@ -92,6 +93,16 @@ bool is_zero(const std::shared_ptr<const detail::VecNode> &node) {
         }
     }
     return true;
+}
+
+bool literal_zero_entry(const std::shared_ptr<const detail::VecNode> &node, int index) {
+    if (!node || node->kind != GraphNodeKind::VectorConstant) {
+        return false;
+    }
+    if (index < 0 || index >= node->size) {
+        throw std::runtime_error("literal zero entry index out of range");
+    }
+    return node->constants[static_cast<std::size_t>(index)] == 0.0;
 }
 
 SparsityPattern scalar_sparsity(const std::shared_ptr<const detail::ScalarNode> &node, const SparsityContext &context);
@@ -270,6 +281,103 @@ SparsityPattern mapped_function_call_sparsity(const std::shared_ptr<const detail
     return builder.build();
 }
 
+std::vector<std::set<int>> row_dependency_sets(const SparsityPattern &pattern, int rows) {
+    std::vector<std::set<int>> deps(static_cast<std::size_t>(rows));
+    for (const auto &[row, col] : pattern.entries()) {
+        deps[static_cast<std::size_t>(row)].insert(col);
+    }
+    return deps;
+}
+
+void add_dependencies(PatternBuilder &builder, int row, const std::set<int> &deps) {
+    for (int col : deps) {
+        builder.add(row, col);
+    }
+}
+
+int input_offset(const detail::FunctionCore &core, int input_index) {
+    int offset = 0;
+    for (int i = 0; i < input_index; ++i) {
+        offset += core.info.inputs[static_cast<std::size_t>(i)].size;
+    }
+    return offset;
+}
+
+int map_accum_emit_offset(const detail::FunctionCore &core, int reps, int output_index) {
+    const int carry_size = core.info.outputs[0].size;
+    int offset = carry_size + reps * carry_size;
+    for (int i = 1; i < output_index; ++i) {
+        offset += reps * core.info.outputs[static_cast<std::size_t>(i)].size;
+    }
+    return offset;
+}
+
+SparsityPattern map_accum_call_sparsity(const std::shared_ptr<const detail::VecNode> &node, const SparsityContext &context) {
+    if (!node->function) {
+        throw std::runtime_error("map-accum call node is missing callee while computing sparsity");
+    }
+    if (node->carry_input_index < 0 || node->carry_input_index >= node->function->info.input_count) {
+        throw std::runtime_error("map-accum call has invalid carry input index while computing sparsity");
+    }
+
+    const int carry_size = node->function->info.outputs[0].size;
+    PatternBuilder builder(node->size, context.wrt.size());
+    std::vector<std::set<int>> carry_deps = row_dependency_sets(vec_sparsity(node->lhs, context), carry_size);
+    std::vector<std::vector<std::set<int>>> source_deps;
+    source_deps.reserve(node->mapped_bindings.size());
+    for (const detail::MappedBindingNode &binding : node->mapped_bindings) {
+        source_deps.push_back(row_dependency_sets(vec_sparsity(binding.source, context), binding.source->size));
+    }
+
+    const SparsityPattern local = detail::function_from_core(node->function).jacobian_sparsity();
+    for (int rep = 0; rep < node->reps; ++rep) {
+        std::vector<std::set<int>> input_deps(static_cast<std::size_t>(node->function->info.input_size));
+        std::size_t sequence_binding = 0;
+        for (int input_index = 0; input_index < node->function->info.input_count; ++input_index) {
+            const int offset = input_offset(*node->function, input_index);
+            const int size = node->function->info.inputs[static_cast<std::size_t>(input_index)].size;
+            if (input_index == node->carry_input_index) {
+                for (int i = 0; i < size; ++i) {
+                    input_deps[static_cast<std::size_t>(offset + i)] = carry_deps[static_cast<std::size_t>(i)];
+                }
+            } else {
+                const detail::MappedBindingNode &binding = node->mapped_bindings[sequence_binding];
+                for (int component = 0; component < size; ++component) {
+                    const int source_row = detail::mapped_index(binding, node->reps, rep, component);
+                    input_deps[static_cast<std::size_t>(offset + component)] = source_deps[sequence_binding][static_cast<std::size_t>(source_row)];
+                }
+                ++sequence_binding;
+            }
+        }
+
+        std::vector<std::set<int>> output_deps(static_cast<std::size_t>(node->function->info.output_size));
+        for (const auto &[row, col] : local.entries()) {
+            output_deps[static_cast<std::size_t>(row)].insert(input_deps[static_cast<std::size_t>(col)].begin(),
+                                                              input_deps[static_cast<std::size_t>(col)].end());
+        }
+
+        const FunctionOutputInfo &carry_output = node->function->info.outputs[0];
+        std::vector<std::set<int>> next_carry_deps(static_cast<std::size_t>(carry_size));
+        for (int i = 0; i < carry_size; ++i) {
+            next_carry_deps[static_cast<std::size_t>(i)] = output_deps[static_cast<std::size_t>(carry_output.offset + i)];
+            add_dependencies(builder, carry_size + rep * carry_size + i, next_carry_deps[static_cast<std::size_t>(i)]);
+        }
+        for (int output_index = 1; output_index < node->function->info.output_count; ++output_index) {
+            const FunctionOutputInfo &output = node->function->info.outputs[static_cast<std::size_t>(output_index)];
+            const int target_offset = map_accum_emit_offset(*node->function, node->reps, output_index) + rep * output.size;
+            for (int i = 0; i < output.size; ++i) {
+                add_dependencies(builder, target_offset + i, output_deps[static_cast<std::size_t>(output.offset + i)]);
+            }
+        }
+        carry_deps = std::move(next_carry_deps);
+    }
+
+    for (int i = 0; i < carry_size; ++i) {
+        add_dependencies(builder, i, carry_deps[static_cast<std::size_t>(i)]);
+    }
+    return builder.build();
+}
+
 SparsityPattern scalar_sparsity(const std::shared_ptr<const detail::ScalarNode> &node, const SparsityContext &context) {
     if (!node) {
         throw std::runtime_error("invalid scalar graph node while computing sparsity");
@@ -385,6 +493,97 @@ SparsityPattern vec_sparsity(const std::shared_ptr<const detail::VecNode> &node,
             }
             return builder.build();
         }
+        case GraphNodeKind::SymbolicMatVec: {
+            const SparsityPattern matrix = vec_sparsity(node->lhs, context);
+            const SparsityPattern rhs = vec_sparsity(node->rhs, context);
+            const auto matrix_rows = row_support(matrix);
+            const auto rhs_rows = row_support(rhs);
+            PatternBuilder builder(node->size, context.wrt.size());
+            for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                for (int inner = 0; inner < node->mat_lhs_cols; ++inner) {
+                    const int matrix_index = detail::matrix_flat_index(row, inner, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+                    if (!literal_zero_entry(node->rhs, inner)) {
+                        for (int col : matrix_rows[static_cast<std::size_t>(matrix_index)]) {
+                            builder.add(row, col);
+                        }
+                    }
+                    if (!literal_zero_entry(node->lhs, matrix_index)) {
+                        for (int col : rhs_rows[static_cast<std::size_t>(inner)]) {
+                            builder.add(row, col);
+                        }
+                    }
+                }
+            }
+            return builder.build();
+        }
+        case GraphNodeKind::SymbolicMatMul: {
+            const SparsityPattern lhs = vec_sparsity(node->lhs, context);
+            const SparsityPattern rhs = vec_sparsity(node->rhs, context);
+            const auto lhs_rows = row_support(lhs);
+            const auto rhs_rows = row_support(rhs);
+            PatternBuilder builder(node->size, context.wrt.size());
+            for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                for (int col_index = 0; col_index < node->mat_rhs_cols; ++col_index) {
+                    const int output_row = detail::matrix_flat_index(row, col_index, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+                    for (int inner = 0; inner < node->mat_lhs_cols; ++inner) {
+                        const int lhs_index = detail::matrix_flat_index(row, inner, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+                        const int rhs_index = detail::matrix_flat_index(inner, col_index, node->mat_rhs_rows, node->mat_rhs_cols, node->mat_rhs_layout);
+                        if (!literal_zero_entry(node->rhs, rhs_index)) {
+                            for (int pattern_col : lhs_rows[static_cast<std::size_t>(lhs_index)]) {
+                                builder.add(output_row, pattern_col);
+                            }
+                        }
+                        if (!literal_zero_entry(node->lhs, lhs_index)) {
+                            for (int pattern_col : rhs_rows[static_cast<std::size_t>(rhs_index)]) {
+                                builder.add(output_row, pattern_col);
+                            }
+                        }
+                    }
+                }
+            }
+            return builder.build();
+        }
+        case GraphNodeKind::OuterProduct: {
+            const SparsityPattern lhs = vec_sparsity(node->lhs, context);
+            const SparsityPattern rhs = vec_sparsity(node->rhs, context);
+            const auto lhs_rows = row_support(lhs);
+            const auto rhs_rows = row_support(rhs);
+            PatternBuilder builder(node->size, context.wrt.size());
+            for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                for (int col_index = 0; col_index < node->mat_rhs_cols; ++col_index) {
+                    const int output_row = detail::matrix_flat_index(row, col_index, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+                    if (!literal_zero_entry(node->rhs, col_index)) {
+                        for (int pattern_col : lhs_rows[static_cast<std::size_t>(row)]) {
+                            builder.add(output_row, pattern_col);
+                        }
+                    }
+                    if (!literal_zero_entry(node->lhs, row)) {
+                        for (int pattern_col : rhs_rows[static_cast<std::size_t>(col_index)]) {
+                            builder.add(output_row, pattern_col);
+                        }
+                    }
+                }
+            }
+            return builder.build();
+        }
+        case GraphNodeKind::LinearSolve: {
+            const SparsityPattern matrix = vec_sparsity(node->lhs, context);
+            const SparsityPattern rhs = vec_sparsity(node->rhs, context);
+            PatternBuilder builder(node->size, context.wrt.size());
+            for (const auto &[unused_row, col] : matrix.entries()) {
+                (void)unused_row;
+                for (int row = 0; row < node->size; ++row) {
+                    builder.add(row, col);
+                }
+            }
+            for (const auto &[unused_row, col] : rhs.entries()) {
+                (void)unused_row;
+                for (int row = 0; row < node->size; ++row) {
+                    builder.add(row, col);
+                }
+            }
+            return builder.build();
+        }
         case GraphNodeKind::Slice: {
             const SparsityPattern child = vec_sparsity(node->lhs, context);
             PatternBuilder builder(node->size, context.wrt.size());
@@ -433,6 +632,8 @@ SparsityPattern vec_sparsity(const std::shared_ptr<const detail::VecNode> &node,
             return function_call_sparsity(node, context);
         case GraphNodeKind::MappedFunctionCall:
             return mapped_function_call_sparsity(node, context);
+        case GraphNodeKind::MapAccumCall:
+            return map_accum_call_sparsity(node, context);
         default:
             throw std::runtime_error("unsupported vector graph node while computing sparsity");
     }

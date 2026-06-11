@@ -158,6 +158,10 @@ void collect_vec_vars(const std::shared_ptr<const VecNode> &node, Vars &out, std
             break;
         case GraphNodeKind::VectorBinary:
         case GraphNodeKind::Concat:
+        case GraphNodeKind::SymbolicMatVec:
+        case GraphNodeKind::SymbolicMatMul:
+        case GraphNodeKind::OuterProduct:
+        case GraphNodeKind::LinearSolve:
             collect_vec_vars(node->lhs, out, seen);
             collect_vec_vars(node->rhs, out, seen);
             break;
@@ -171,6 +175,12 @@ void collect_vec_vars(const std::shared_ptr<const VecNode> &node, Vars &out, std
             }
             break;
         case GraphNodeKind::MappedFunctionCall:
+            for (const auto &binding : node->mapped_bindings) {
+                collect_mapped_source_vars(binding, out, seen);
+            }
+            break;
+        case GraphNodeKind::MapAccumCall:
+            collect_vec_vars(node->lhs, out, seen);
             for (const auto &binding : node->mapped_bindings) {
                 collect_mapped_source_vars(binding, out, seen);
             }
@@ -210,6 +220,10 @@ void collect_vec_params(const std::shared_ptr<const VecNode> &node, Params &out,
             break;
         case GraphNodeKind::VectorBinary:
         case GraphNodeKind::Concat:
+        case GraphNodeKind::SymbolicMatVec:
+        case GraphNodeKind::SymbolicMatMul:
+        case GraphNodeKind::OuterProduct:
+        case GraphNodeKind::LinearSolve:
             collect_vec_params(node->lhs, out, seen);
             collect_vec_params(node->rhs, out, seen);
             break;
@@ -232,6 +246,18 @@ void collect_vec_params(const std::shared_ptr<const VecNode> &node, Params &out,
             if (!node->function) {
                 throw std::runtime_error("mapped function call node is missing callee while collecting parameters");
             }
+            for (const Param &param : node->function->parameters.values()) {
+                append_param_once(out, seen, param);
+            }
+            for (const auto &binding : node->mapped_bindings) {
+                collect_mapped_source_params(binding, out, seen);
+            }
+            break;
+        case GraphNodeKind::MapAccumCall:
+            if (!node->function) {
+                throw std::runtime_error("map-accum call node is missing callee while collecting parameters");
+            }
+            collect_vec_params(node->lhs, out, seen);
             for (const Param &param : node->function->parameters.values()) {
                 append_param_once(out, seen, param);
             }

@@ -48,17 +48,47 @@ bool contains_param_id(const std::set<ParamId> &ids, ParamId id) {
     return ids.find(id) != ids.end();
 }
 
+Vec zero_vec(int size) {
+    return vec_constant(std::vector<double>(static_cast<std::size_t>(size), 0.0));
+}
+
+Vec concat_all(const std::vector<Vec> &parts) {
+    if (parts.empty()) {
+        return zero_vec(0);
+    }
+
+    Vec out = parts.front();
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        out = concat(out, parts[i]);
+    }
+    return out;
+}
+
+std::string output_label(const Vec &output) {
+    if (!output.valid()) {
+        return {};
+    }
+    const std::shared_ptr<const detail::VecNode> &node = detail::vec_node(output);
+    return node ? node->label : std::string{};
+}
+
 std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> inputs,
                                                                Params parameters,
-                                                               Vec output,
+                                                               std::vector<Vec> outputs,
                                                                bool explicit_parameters) {
-    if (!output.valid()) {
-        throw std::runtime_error("function output must be a valid vector expression");
+    for (const Vec &output : outputs) {
+        if (!output.valid()) {
+            throw std::runtime_error("function output must be a valid vector expression");
+        }
     }
 
     auto core = std::make_shared<detail::FunctionCore>();
     core->inputs = std::move(inputs);
-    core->output = detail::simplify_vec(output);
+    core->outputs.reserve(outputs.size());
+    for (const Vec &output : outputs) {
+        core->outputs.push_back(detail::simplify_vec(output));
+    }
+    core->output = concat_all(core->outputs);
 
     std::set<NodeId> input_nodes;
     std::set<VarId> input_var_ids;
@@ -115,36 +145,45 @@ std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> 
 
     core->info.input_count = static_cast<int>(core->inputs.size());
     core->info.input_size = core->input_vars.size();
+    core->info.output_count = static_cast<int>(core->outputs.size());
     core->info.output_size = core->output.size();
     core->info.parameter_count = core->parameters.size();
     core->info.inputs = std::move(input_infos);
+    core->info.outputs.reserve(core->outputs.size());
+    int output_offset = 0;
+    for (const Vec &output : core->outputs) {
+        FunctionOutputInfo output_info;
+        output_info.label = output_label(output);
+        output_info.offset = output_offset;
+        output_info.size = output.size();
+        output_info.node_id = output.node_id();
+        output_info.graph = inspect(output);
+        core->info.outputs.push_back(std::move(output_info));
+        output_offset += output.size();
+    }
     core->info.output_graph = inspect(core->output);
 
     return core;
 }
 
 std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> inputs, Vec output) {
-    return make_function_core(std::move(inputs), Params{}, std::move(output), false);
+    std::vector<Vec> outputs;
+    outputs.push_back(std::move(output));
+    return make_function_core(std::move(inputs), Params{}, std::move(outputs), false);
+}
+
+std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> inputs, std::vector<Vec> outputs) {
+    return make_function_core(std::move(inputs), Params{}, std::move(outputs), false);
 }
 
 std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> inputs, Params parameters, Vec output) {
-    return make_function_core(std::move(inputs), std::move(parameters), std::move(output), true);
+    std::vector<Vec> outputs;
+    outputs.push_back(std::move(output));
+    return make_function_core(std::move(inputs), std::move(parameters), std::move(outputs), true);
 }
 
-Vec zero_vec(int size) {
-    return vec_constant(std::vector<double>(static_cast<std::size_t>(size), 0.0));
-}
-
-Vec concat_all(const std::vector<Vec> &parts) {
-    if (parts.empty()) {
-        return zero_vec(0);
-    }
-
-    Vec out = parts.front();
-    for (std::size_t i = 1; i < parts.size(); ++i) {
-        out = concat(out, parts[i]);
-    }
-    return out;
+std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> inputs, Params parameters, std::vector<Vec> outputs) {
+    return make_function_core(std::move(inputs), std::move(parameters), std::move(outputs), true);
 }
 
 std::vector<Vec> make_input_tangent_groups(const detail::FunctionCore &core) {
@@ -183,8 +222,14 @@ std::vector<Vec> reverse_call_arguments(const detail::FunctionCore &core, const 
 Function::Function(std::vector<Vec> inputs, Vec output)
     : core_(make_function_core(std::move(inputs), std::move(output))) {}
 
+Function::Function(std::vector<Vec> inputs, std::vector<Vec> outputs)
+    : core_(make_function_core(std::move(inputs), std::move(outputs))) {}
+
 Function::Function(std::vector<Vec> inputs, Params parameters, Vec output)
     : core_(make_function_core(std::move(inputs), std::move(parameters), std::move(output))) {}
+
+Function::Function(std::vector<Vec> inputs, Params parameters, std::vector<Vec> outputs)
+    : core_(make_function_core(std::move(inputs), std::move(parameters), std::move(outputs))) {}
 
 Function::Function(std::shared_ptr<const detail::FunctionCore> core)
     : core_(std::move(core)) {}
@@ -201,6 +246,10 @@ int Function::input_size() const {
     return core_ ? core_->info.input_size : 0;
 }
 
+int Function::output_count() const {
+    return core_ ? core_->info.output_count : 0;
+}
+
 int Function::output_size() const {
     return core_ ? core_->info.output_size : 0;
 }
@@ -211,6 +260,26 @@ const std::vector<Vec> &Function::inputs() const {
 
 const Vec &Function::output() const {
     return require_core(core_).output;
+}
+
+const std::vector<Vec> &Function::outputs() const {
+    return require_core(core_).outputs;
+}
+
+const Vec &Function::output(int index) const {
+    const detail::FunctionCore &core = require_core(core_);
+    if (index < 0 || index >= core.info.output_count) {
+        throw std::runtime_error("function output index is out of range");
+    }
+    return core.outputs[static_cast<std::size_t>(index)];
+}
+
+int Function::output_offset(int index) const {
+    const detail::FunctionCore &core = require_core(core_);
+    if (index < 0 || index >= core.info.output_count) {
+        throw std::runtime_error("function output index is out of range");
+    }
+    return core.info.outputs[static_cast<std::size_t>(index)].offset;
 }
 
 Vars Function::input_vars() const {
@@ -252,6 +321,17 @@ Vec Function::call(std::vector<Vec> arguments) const {
     return detail::vec_from_node(node);
 }
 
+std::vector<Vec> Function::call_outputs(std::vector<Vec> arguments) const {
+    const detail::FunctionCore &core = require_core(core_);
+    Vec flat = call(std::move(arguments));
+    std::vector<Vec> grouped;
+    grouped.reserve(core.info.outputs.size());
+    for (const FunctionOutputInfo &output : core.info.outputs) {
+        grouped.push_back(flat.slice(output.offset, output.size));
+    }
+    return grouped;
+}
+
 Function Function::forward_function() const {
     const std::shared_ptr<const detail::FunctionCore> core = core_;
     require_core(core);
@@ -265,11 +345,15 @@ Function Function::forward_function() const {
 
     std::vector<Vec> tangent_groups = make_input_tangent_groups(*core);
     Vec seed = concat_all(tangent_groups);
-    Vec output = core->output.forward_diff(core->input_vars, seed);
+    std::vector<Vec> outputs;
+    outputs.reserve(core->outputs.size());
+    for (const Vec &output : core->outputs) {
+        outputs.push_back(output.forward_diff(core->input_vars, seed));
+    }
 
     std::vector<Vec> inputs = core->inputs;
     inputs.insert(inputs.end(), tangent_groups.begin(), tangent_groups.end());
-    Function transformed(std::move(inputs), core->parameters, output);
+    Function transformed(std::move(inputs), core->parameters, std::move(outputs));
 
     {
         std::lock_guard<std::mutex> lock(core->transform_mutex);
@@ -298,8 +382,15 @@ Function Function::reverse_function() const {
         inputs.push_back(lambda);
     }
 
-    Vec output = core->output.reverse_diff(core->input_vars, lambda);
-    Function transformed(std::move(inputs), core->parameters, output);
+    Vec flat_output = core->output.reverse_diff(core->input_vars, lambda);
+    std::vector<Vec> outputs;
+    outputs.reserve(core->info.inputs.size());
+    int offset = 0;
+    for (const FunctionInputInfo &input : core->info.inputs) {
+        outputs.push_back(flat_output.slice(offset, input.size));
+        offset += input.size;
+    }
+    Function transformed(std::move(inputs), core->parameters, std::move(outputs));
 
     {
         std::lock_guard<std::mutex> lock(core->transform_mutex);

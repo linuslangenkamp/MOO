@@ -2,12 +2,14 @@
 #include "expr.h"
 
 #include "function.h"
+#include "mat.h"
 #include "vec.h"
 #include "detail/function_core.h"
 #include "detail/mapping.h"
 #include "detail/node.h"
 #include "detail/simplify.h"
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <cmath>
@@ -249,6 +251,17 @@ Vec scatter_slice(const Vec &values, int start, int output_size) {
     return detail::make_scatter_slice(values, start, output_size);
 }
 
+Vec concat_all(const std::vector<Vec> &parts) {
+    if (parts.empty()) {
+        return zero_vec(0);
+    }
+    Vec out = parts.front();
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        out = concat(out, parts[i]);
+    }
+    return out;
+}
+
 std::vector<Vec> function_call_arguments(const std::shared_ptr<const detail::VecNode> &node) {
     std::vector<Vec> arguments;
     arguments.reserve(node->arguments.size());
@@ -371,6 +384,24 @@ std::vector<int> repeated_local_adjoint_indices(int reps, int local_input_size, 
         }
     }
     return indices;
+}
+
+std::vector<int> mapped_indices_for_rep(const detail::MappedBindingNode &binding, int reps, int rep) {
+    std::vector<int> indices;
+    indices.reserve(static_cast<std::size_t>(binding.local_size));
+    for (int component = 0; component < binding.local_size; ++component) {
+        indices.push_back(detail::mapped_index(binding, reps, rep, component));
+    }
+    return indices;
+}
+
+int map_accum_emit_offset(const detail::FunctionCore &core, int reps, int output_index) {
+    const int carry_size = core.info.outputs[0].size;
+    int offset = carry_size + reps * carry_size;
+    for (int i = 1; i < output_index; ++i) {
+        offset += reps * core.info.outputs[static_cast<std::size_t>(i)].size;
+    }
+    return offset;
 }
 
 Vec forward_vector_variable(const detail::VecNode &node, const ForwardContext &context) {
@@ -565,6 +596,70 @@ Vec forward_mapped_function_call(const std::shared_ptr<const detail::VecNode> &n
     return detail::mapped_call_from_bindings(transformed_core, std::move(bindings), node->reps, node->mapped_output);
 }
 
+Vec forward_map_accum_call(const std::shared_ptr<const detail::VecNode> &node, const ForwardContext &context) {
+    if (!node->function) {
+        throw std::runtime_error("map-accum call node is missing callee while building forward derivative");
+    }
+    if (node->carry_input_index < 0 || node->carry_input_index >= node->function->info.input_count) {
+        throw std::runtime_error("map-accum call has invalid carry input index while building forward derivative");
+    }
+
+    Function step = detail::function_from_core(node->function);
+    Function step_forward = step.forward_function();
+    const int carry_size = node->function->info.outputs[0].size;
+
+    Vec carry = as_vec(node->lhs);
+    Vec dcarry = forward_vec_node(node->lhs, context);
+    std::vector<Vec> scan_parts;
+    scan_parts.reserve(static_cast<std::size_t>(node->reps));
+    std::vector<std::vector<Vec>> emitted_parts(static_cast<std::size_t>(std::max(0, node->function->info.output_count - 1)));
+
+    for (int rep = 0; rep < node->reps; ++rep) {
+        std::vector<Vec> args;
+        std::vector<Vec> dargs;
+        args.reserve(static_cast<std::size_t>(node->function->info.input_count));
+        dargs.reserve(static_cast<std::size_t>(node->function->info.input_count));
+
+        std::size_t sequence_binding = 0;
+        for (int input_index = 0; input_index < node->function->info.input_count; ++input_index) {
+            if (input_index == node->carry_input_index) {
+                args.push_back(carry);
+                dargs.push_back(dcarry);
+            } else {
+                const detail::MappedBindingNode &binding = node->mapped_bindings[sequence_binding++];
+                const std::vector<int> indices = mapped_indices_for_rep(binding, node->reps, rep);
+                Vec source = as_vec(binding.source);
+                Vec source_tangent = forward_vec_node(binding.source, context);
+                args.push_back(gather(source, indices));
+                dargs.push_back(gather(source_tangent, indices));
+            }
+        }
+
+        std::vector<Vec> forward_args = args;
+        forward_args.insert(forward_args.end(), dargs.begin(), dargs.end());
+        Vec primal_output = step.call(args);
+        Vec tangent_output = step_forward.call(std::move(forward_args));
+
+        const FunctionOutputInfo &carry_output = node->function->info.outputs[0];
+        carry = primal_output.slice(carry_output.offset, carry_size);
+        dcarry = tangent_output.slice(carry_output.offset, carry_size);
+        scan_parts.push_back(dcarry);
+        for (int output_index = 1; output_index < node->function->info.output_count; ++output_index) {
+            const FunctionOutputInfo &output = node->function->info.outputs[static_cast<std::size_t>(output_index)];
+            emitted_parts[static_cast<std::size_t>(output_index - 1)].push_back(tangent_output.slice(output.offset, output.size));
+        }
+    }
+
+    std::vector<Vec> pieces;
+    pieces.reserve(static_cast<std::size_t>(2 + emitted_parts.size()));
+    pieces.push_back(dcarry);
+    pieces.push_back(concat_all(scan_parts));
+    for (const std::vector<Vec> &group : emitted_parts) {
+        pieces.push_back(concat_all(group));
+    }
+    return concat_all(pieces);
+}
+
 Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const ForwardContext &context) {
     if (!node) {
         throw std::runtime_error("invalid vector graph node while building forward derivative");
@@ -664,6 +759,67 @@ Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const F
             return matvec(node->dense, forward_vec_node(node->lhs, context));
         case GraphNodeKind::SparseMatVec:
             return matvec(node->sparse, forward_vec_node(node->lhs, context));
+        case GraphNodeKind::SymbolicMatVec: {
+            const Vec matrix = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Vec dmatrix = forward_vec_node(node->lhs, context);
+            const Vec drhs = forward_vec_node(node->rhs, context);
+            return add(detail::make_symbolic_matvec(dmatrix,
+                                                    node->mat_lhs_rows,
+                                                    node->mat_lhs_cols,
+                                                    node->mat_lhs_layout,
+                                                    rhs),
+                       detail::make_symbolic_matvec(matrix,
+                                                    node->mat_lhs_rows,
+                                                    node->mat_lhs_cols,
+                                                    node->mat_lhs_layout,
+                                                    drhs));
+        }
+        case GraphNodeKind::SymbolicMatMul: {
+            const Vec lhs = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Vec dlhs = forward_vec_node(node->lhs, context);
+            const Vec drhs = forward_vec_node(node->rhs, context);
+            return add(detail::make_symbolic_matmul(dlhs,
+                                                    node->mat_lhs_rows,
+                                                    node->mat_lhs_cols,
+                                                    node->mat_lhs_layout,
+                                                    rhs,
+                                                    node->mat_rhs_rows,
+                                                    node->mat_rhs_cols,
+                                                    node->mat_rhs_layout,
+                                                    node->mat_result_layout),
+                       detail::make_symbolic_matmul(lhs,
+                                                    node->mat_lhs_rows,
+                                                    node->mat_lhs_cols,
+                                                    node->mat_lhs_layout,
+                                                    drhs,
+                                                    node->mat_rhs_rows,
+                                                    node->mat_rhs_cols,
+                                                    node->mat_rhs_layout,
+                                                    node->mat_result_layout));
+        }
+        case GraphNodeKind::OuterProduct: {
+            const Vec lhs = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Vec dlhs = forward_vec_node(node->lhs, context);
+            const Vec drhs = forward_vec_node(node->rhs, context);
+            return add(detail::make_outer_product(dlhs, rhs, node->mat_result_layout),
+                       detail::make_outer_product(lhs, drhs, node->mat_result_layout));
+        }
+        case GraphNodeKind::LinearSolve: {
+            const Mat matrix(as_vec(node->lhs), node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+            const Vec rhs = as_vec(node->rhs);
+            const Mat dmatrix(forward_vec_node(node->lhs, context), node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+            const Vec drhs = forward_vec_node(node->rhs, context);
+            const LinearSolveOptions options{node->linear_solver};
+            const Vec primal = node->linear_solve_transpose ? solve_transpose(matrix, rhs, options)
+                                                            : solve(matrix, rhs, options);
+            const Vec correction = node->linear_solve_transpose ? dmatrix.transpose() * primal
+                                                                : dmatrix * primal;
+            return node->linear_solve_transpose ? solve_transpose(matrix, drhs - correction, options)
+                                                : solve(matrix, drhs - correction, options);
+        }
         case GraphNodeKind::Slice:
             return forward_vec_node(node->lhs, context).slice(node->start, node->size);
         case GraphNodeKind::ScatterSlice:
@@ -678,6 +834,8 @@ Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const F
             return forward_through_function_call(node, context);
         case GraphNodeKind::MappedFunctionCall:
             return forward_mapped_function_call(node, context);
+        case GraphNodeKind::MapAccumCall:
+            return forward_map_accum_call(node, context);
         default:
             throw std::runtime_error("unsupported vector graph node while building forward derivative");
     }
@@ -950,6 +1108,85 @@ Vec reverse_mapped_function_call(const std::shared_ptr<const detail::VecNode> &n
     return total;
 }
 
+Vec reverse_map_accum_call(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context) {
+    if (!node->function) {
+        throw std::runtime_error("map-accum call node is missing callee while building reverse derivative");
+    }
+    if (adjoint.size() != node->size) {
+        throw std::runtime_error("map-accum reverse adjoint size must match node size");
+    }
+    if (node->carry_input_index < 0 || node->carry_input_index >= node->function->info.input_count) {
+        throw std::runtime_error("map-accum call has invalid carry input index while building reverse derivative");
+    }
+
+    Function step_reverse = detail::function_from_core(node->function).reverse_function();
+    const int carry_size = node->function->info.outputs[0].size;
+    Vec self = as_vec(node);
+    Vec carry_bar = adjoint.slice(0, carry_size);
+    std::vector<Vec> source_adjoints;
+    source_adjoints.reserve(node->mapped_bindings.size());
+    for (const detail::MappedBindingNode &binding : node->mapped_bindings) {
+        source_adjoints.push_back(zero_vec(binding.source->size));
+    }
+
+    for (int rep = node->reps - 1; rep >= 0; --rep) {
+        carry_bar = add(carry_bar, adjoint.slice(carry_size + rep * carry_size, carry_size));
+
+        std::vector<Vec> lambda_parts;
+        lambda_parts.reserve(static_cast<std::size_t>(node->function->info.output_count));
+        lambda_parts.push_back(carry_bar);
+        for (int output_index = 1; output_index < node->function->info.output_count; ++output_index) {
+            const FunctionOutputInfo &output = node->function->info.outputs[static_cast<std::size_t>(output_index)];
+            lambda_parts.push_back(adjoint.slice(map_accum_emit_offset(*node->function, node->reps, output_index) + rep * output.size, output.size));
+        }
+        Vec lambda = concat_all(lambda_parts);
+
+        std::vector<Vec> args;
+        args.reserve(static_cast<std::size_t>(node->function->info.input_count + 1));
+        std::size_t sequence_binding = 0;
+        for (int input_index = 0; input_index < node->function->info.input_count; ++input_index) {
+            if (input_index == node->carry_input_index) {
+                if (rep == 0) {
+                    args.push_back(as_vec(node->lhs));
+                } else {
+                    args.push_back(self.slice(carry_size + (rep - 1) * carry_size, carry_size));
+                }
+            } else {
+                const detail::MappedBindingNode &binding = node->mapped_bindings[sequence_binding++];
+                args.push_back(gather(as_vec(binding.source), mapped_indices_for_rep(binding, node->reps, rep)));
+            }
+        }
+        args.push_back(lambda);
+        Vec local_input_adjoints = step_reverse.call(std::move(args));
+
+        int input_offset = 0;
+        sequence_binding = 0;
+        Vec previous_carry_bar = zero_vec(carry_size);
+        for (int input_index = 0; input_index < node->function->info.input_count; ++input_index) {
+            const int input_size = node->function->info.inputs[static_cast<std::size_t>(input_index)].size;
+            Vec local_input_adjoint = local_input_adjoints.slice(input_offset, input_size);
+            if (input_index == node->carry_input_index) {
+                previous_carry_bar = local_input_adjoint;
+            } else {
+                const detail::MappedBindingNode &binding = node->mapped_bindings[sequence_binding];
+                source_adjoints[sequence_binding] = add(source_adjoints[sequence_binding],
+                                                        scatter_add(local_input_adjoint,
+                                                                    mapped_indices_for_rep(binding, node->reps, rep),
+                                                                    binding.source->size));
+                ++sequence_binding;
+            }
+            input_offset += input_size;
+        }
+        carry_bar = previous_carry_bar;
+    }
+
+    Vec total = reverse_vec_node(node->lhs, carry_bar, context);
+    for (std::size_t i = 0; i < node->mapped_bindings.size(); ++i) {
+        total = add(total, reverse_vec_node(node->mapped_bindings[i].source, source_adjoints[i], context));
+    }
+    return total;
+}
+
 Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context) {
     if (!node) {
         throw std::runtime_error("invalid vector graph node while building reverse derivative");
@@ -1051,6 +1288,46 @@ Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const V
             return reverse_vec_node(node->lhs, transpose(node->dense) * adjoint, context);
         case GraphNodeKind::SparseMatVec:
             return reverse_vec_node(node->lhs, transpose(node->sparse) * adjoint, context);
+        case GraphNodeKind::SymbolicMatVec: {
+            const Vec matrix = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Mat matrix_view(matrix, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+            const Vec matrix_adjoint = outer(adjoint, rhs, node->mat_lhs_layout).vec();
+            const Vec rhs_adjoint = matrix_view.transpose() * adjoint;
+            return add(reverse_vec_node(node->lhs, matrix_adjoint, context),
+                       reverse_vec_node(node->rhs, rhs_adjoint, context));
+        }
+        case GraphNodeKind::SymbolicMatMul: {
+            const Mat lhs(as_vec(node->lhs), node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+            const Mat rhs(as_vec(node->rhs), node->mat_rhs_rows, node->mat_rhs_cols, node->mat_rhs_layout);
+            const Mat lambda(adjoint, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+            const Vec lhs_adjoint = (lambda * rhs.transpose()).as_layout(node->mat_lhs_layout).vec();
+            const Vec rhs_adjoint = (lhs.transpose() * lambda).as_layout(node->mat_rhs_layout).vec();
+            return add(reverse_vec_node(node->lhs, lhs_adjoint, context),
+                       reverse_vec_node(node->rhs, rhs_adjoint, context));
+        }
+        case GraphNodeKind::OuterProduct: {
+            const Vec lhs = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Mat lambda(adjoint, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+            const Vec lhs_adjoint = lambda * rhs;
+            const Vec rhs_adjoint = lambda.transpose() * lhs;
+            return add(reverse_vec_node(node->lhs, lhs_adjoint, context),
+                       reverse_vec_node(node->rhs, rhs_adjoint, context));
+        }
+        case GraphNodeKind::LinearSolve: {
+            const Mat matrix(as_vec(node->lhs), node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+            const Vec rhs = as_vec(node->rhs);
+            const LinearSolveOptions options{node->linear_solver};
+            const Vec primal = node->linear_solve_transpose ? solve_transpose(matrix, rhs, options)
+                                                            : solve(matrix, rhs, options);
+            const Vec mu = node->linear_solve_transpose ? solve(matrix, adjoint, options)
+                                                        : solve_transpose(matrix, adjoint, options);
+            const Vec matrix_adjoint = node->linear_solve_transpose ? (-outer(primal, mu, node->mat_lhs_layout)).vec()
+                                                                    : (-outer(mu, primal, node->mat_lhs_layout)).vec();
+            return add(reverse_vec_node(node->lhs, matrix_adjoint, context),
+                       reverse_vec_node(node->rhs, mu, context));
+        }
         case GraphNodeKind::Slice:
             return reverse_vec_node(node->lhs, scatter_slice(adjoint, node->start, node->lhs->size), context);
         case GraphNodeKind::ScatterSlice:
@@ -1066,6 +1343,8 @@ Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const V
             return reverse_function_call(node, adjoint, context);
         case GraphNodeKind::MappedFunctionCall:
             return reverse_mapped_function_call(node, adjoint, context);
+        case GraphNodeKind::MapAccumCall:
+            return reverse_map_accum_call(node, adjoint, context);
         default:
             throw std::runtime_error("unsupported vector graph node while building reverse derivative");
     }

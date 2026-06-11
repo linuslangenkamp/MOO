@@ -10,6 +10,7 @@ namespace ad::detail {
 
 struct FunctionCore {
     std::vector<Vec> inputs;
+    std::vector<Vec> outputs;
     Vec output;
     Vars input_vars;
     Params parameters;

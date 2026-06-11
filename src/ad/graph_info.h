@@ -32,13 +32,18 @@ enum class GraphNodeKind {
     VectorScale,
     DenseMatVec,
     SparseMatVec,
+    SymbolicMatVec,
+    SymbolicMatMul,
+    OuterProduct,
+    LinearSolve,
     Slice,
     ScatterSlice,
     Gather,
     ScatterAdd,
     Concat,
     FunctionCall,
-    MappedFunctionCall
+    MappedFunctionCall,
+    MapAccumCall
 };
 
 struct GraphInfo {

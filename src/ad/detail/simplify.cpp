@@ -4,6 +4,7 @@
 #include "../function.h"
 #include "../optimize.h"
 #include "function_core.h"
+#include "matrix_ops.h"
 #include "mapping.h"
 
 #include <algorithm>
@@ -346,6 +347,38 @@ Vec simplify_vec_node(const std::shared_ptr<const VecNode> &node, SimplifyContex
         case GraphNodeKind::SparseMatVec:
             result = make_sparse_matvec(node->sparse, simplify_vec_node(node->lhs, context));
             break;
+        case GraphNodeKind::SymbolicMatVec:
+            result = make_symbolic_matvec(simplify_vec_node(node->lhs, context),
+                                          node->mat_lhs_rows,
+                                          node->mat_lhs_cols,
+                                          node->mat_lhs_layout,
+                                          simplify_vec_node(node->rhs, context));
+            break;
+        case GraphNodeKind::SymbolicMatMul:
+            result = make_symbolic_matmul(simplify_vec_node(node->lhs, context),
+                                          node->mat_lhs_rows,
+                                          node->mat_lhs_cols,
+                                          node->mat_lhs_layout,
+                                          simplify_vec_node(node->rhs, context),
+                                          node->mat_rhs_rows,
+                                          node->mat_rhs_cols,
+                                          node->mat_rhs_layout,
+                                          node->mat_result_layout);
+            break;
+        case GraphNodeKind::OuterProduct:
+            result = make_outer_product(simplify_vec_node(node->lhs, context),
+                                        simplify_vec_node(node->rhs, context),
+                                        node->mat_result_layout);
+            break;
+        case GraphNodeKind::LinearSolve:
+            result = make_linear_solve(simplify_vec_node(node->lhs, context),
+                                       node->mat_lhs_rows,
+                                       node->mat_lhs_cols,
+                                       node->mat_lhs_layout,
+                                       simplify_vec_node(node->rhs, context),
+                                       LinearSolveOptions{node->linear_solver},
+                                       node->linear_solve_transpose);
+            break;
         case GraphNodeKind::Slice:
             result = make_slice(simplify_vec_node(node->lhs, context), node->start, node->size);
             break;
@@ -380,6 +413,18 @@ Vec simplify_vec_node(const std::shared_ptr<const VecNode> &node, SimplifyContex
                 binding.source = vec_node(simplify_vec_node(binding.source, context));
             }
             result = mapped_call_from_bindings(node->function, std::move(bindings), node->reps, node->mapped_output);
+            break;
+        }
+        case GraphNodeKind::MapAccumCall: {
+            std::vector<MappedBindingNode> bindings = node->mapped_bindings;
+            for (MappedBindingNode &binding : bindings) {
+                binding.source = vec_node(simplify_vec_node(binding.source, context));
+            }
+            result = map_accum_call_from_bindings(node->function,
+                                                  node->carry_input_index,
+                                                  simplify_vec_node(node->lhs, context),
+                                                  std::move(bindings),
+                                                  node->reps);
             break;
         }
         default:
@@ -897,6 +942,170 @@ Vec make_sparse_matvec(const SparseMatrix &matrix, const Vec &rhs) {
     return vec_from_node(node);
 }
 
+Vec make_symbolic_matvec(const Vec &matrix, int rows, int cols, MatrixLayout layout, const Vec &rhs) {
+    require_valid(matrix);
+    require_valid(rhs);
+    if (checked_matrix_size(rows, cols) != matrix.size()) {
+        throw std::runtime_error("symbolic matrix/vector matrix payload size does not match dimensions");
+    }
+    if (cols != rhs.size()) {
+        throw std::runtime_error("symbolic matrix/vector dimensions differ");
+    }
+    if (rows == 0) {
+        return make_vec_constant({});
+    }
+    if (vec_is_zero(matrix) || vec_is_zero(rhs)) {
+        return make_vec_constant(std::vector<double>(static_cast<std::size_t>(rows), 0.0));
+    }
+
+    const std::vector<double> *matrix_constants = nullptr;
+    const std::vector<double> *rhs_constants = nullptr;
+    if (vec_constant_values(matrix, &matrix_constants) && vec_constant_values(rhs, &rhs_constants)) {
+        std::vector<double> values(static_cast<std::size_t>(rows), 0.0);
+        for (int row = 0; row < rows; ++row) {
+            for (int col = 0; col < cols; ++col) {
+                values[static_cast<std::size_t>(row)] +=
+                    (*matrix_constants)[static_cast<std::size_t>(matrix_flat_index(row, col, rows, cols, layout))] *
+                    (*rhs_constants)[static_cast<std::size_t>(col)];
+            }
+        }
+        return make_vec_constant(std::move(values));
+    }
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::SymbolicMatVec;
+    node->size = rows;
+    node->lhs = vec_node(matrix);
+    node->rhs = vec_node(rhs);
+    node->mat_lhs_rows = rows;
+    node->mat_lhs_cols = cols;
+    node->mat_lhs_layout = layout;
+    return vec_from_node(node);
+}
+
+Vec make_symbolic_matmul(const Vec &lhs, int lhs_rows, int lhs_cols, MatrixLayout lhs_layout,
+                         const Vec &rhs, int rhs_rows, int rhs_cols, MatrixLayout rhs_layout,
+                         MatrixLayout result_layout) {
+    require_valid(lhs);
+    require_valid(rhs);
+    if (checked_matrix_size(lhs_rows, lhs_cols) != lhs.size()) {
+        throw std::runtime_error("symbolic matrix/matrix lhs payload size does not match dimensions");
+    }
+    if (checked_matrix_size(rhs_rows, rhs_cols) != rhs.size()) {
+        throw std::runtime_error("symbolic matrix/matrix rhs payload size does not match dimensions");
+    }
+    if (lhs_cols != rhs_rows) {
+        throw std::runtime_error("symbolic matrix/matrix dimensions differ");
+    }
+    const int output_size = checked_matrix_size(lhs_rows, rhs_cols);
+    if (output_size == 0) {
+        return make_vec_constant({});
+    }
+    if (vec_is_zero(lhs) || vec_is_zero(rhs)) {
+        return make_vec_constant(std::vector<double>(static_cast<std::size_t>(output_size), 0.0));
+    }
+
+    const std::vector<double> *lhs_constants = nullptr;
+    const std::vector<double> *rhs_constants = nullptr;
+    if (vec_constant_values(lhs, &lhs_constants) && vec_constant_values(rhs, &rhs_constants)) {
+        std::vector<double> values(static_cast<std::size_t>(output_size), 0.0);
+        for (int row = 0; row < lhs_rows; ++row) {
+            for (int col = 0; col < rhs_cols; ++col) {
+                double total = 0.0;
+                for (int inner = 0; inner < lhs_cols; ++inner) {
+                    total += (*lhs_constants)[static_cast<std::size_t>(matrix_flat_index(row, inner, lhs_rows, lhs_cols, lhs_layout))] *
+                             (*rhs_constants)[static_cast<std::size_t>(matrix_flat_index(inner, col, rhs_rows, rhs_cols, rhs_layout))];
+                }
+                values[static_cast<std::size_t>(matrix_flat_index(row, col, lhs_rows, rhs_cols, result_layout))] = total;
+            }
+        }
+        return make_vec_constant(std::move(values));
+    }
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::SymbolicMatMul;
+    node->size = output_size;
+    node->lhs = vec_node(lhs);
+    node->rhs = vec_node(rhs);
+    node->mat_lhs_rows = lhs_rows;
+    node->mat_lhs_cols = lhs_cols;
+    node->mat_rhs_rows = rhs_rows;
+    node->mat_rhs_cols = rhs_cols;
+    node->mat_lhs_layout = lhs_layout;
+    node->mat_rhs_layout = rhs_layout;
+    node->mat_result_layout = result_layout;
+    return vec_from_node(node);
+}
+
+Vec make_outer_product(const Vec &lhs, const Vec &rhs, MatrixLayout result_layout) {
+    require_valid(lhs);
+    require_valid(rhs);
+    const int output_size = checked_matrix_size(lhs.size(), rhs.size());
+    if (output_size == 0) {
+        return make_vec_constant({});
+    }
+    if (vec_is_zero(lhs) || vec_is_zero(rhs)) {
+        return make_vec_constant(std::vector<double>(static_cast<std::size_t>(output_size), 0.0));
+    }
+
+    const std::vector<double> *lhs_constants = nullptr;
+    const std::vector<double> *rhs_constants = nullptr;
+    if (vec_constant_values(lhs, &lhs_constants) && vec_constant_values(rhs, &rhs_constants)) {
+        std::vector<double> values(static_cast<std::size_t>(output_size), 0.0);
+        for (int row = 0; row < lhs.size(); ++row) {
+            for (int col = 0; col < rhs.size(); ++col) {
+                values[static_cast<std::size_t>(matrix_flat_index(row, col, lhs.size(), rhs.size(), result_layout))] =
+                    (*lhs_constants)[static_cast<std::size_t>(row)] *
+                    (*rhs_constants)[static_cast<std::size_t>(col)];
+            }
+        }
+        return make_vec_constant(std::move(values));
+    }
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::OuterProduct;
+    node->size = output_size;
+    node->lhs = vec_node(lhs);
+    node->rhs = vec_node(rhs);
+    node->mat_lhs_rows = lhs.size();
+    node->mat_rhs_cols = rhs.size();
+    node->mat_result_layout = result_layout;
+    return vec_from_node(node);
+}
+
+Vec make_linear_solve(const Vec &matrix, int rows, int cols, MatrixLayout layout, const Vec &rhs,
+                      LinearSolveOptions options, bool transpose) {
+    require_valid(matrix);
+    require_valid(rhs);
+    if (options.kind != LinearSolverKind::LapackLU) {
+        throw std::runtime_error("unsupported linear solver kind");
+    }
+    if (rows != cols) {
+        throw std::runtime_error("linear solve matrix must be square");
+    }
+    if (checked_matrix_size(rows, cols) != matrix.size()) {
+        throw std::runtime_error("linear solve matrix payload size does not match dimensions");
+    }
+    if (rhs.size() != rows) {
+        throw std::runtime_error("linear solve rhs size must match matrix dimensions");
+    }
+    if (rows == 0) {
+        return make_vec_constant({});
+    }
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::LinearSolve;
+    node->size = rows;
+    node->lhs = vec_node(matrix);
+    node->rhs = vec_node(rhs);
+    node->mat_lhs_rows = rows;
+    node->mat_lhs_cols = cols;
+    node->mat_lhs_layout = layout;
+    node->linear_solver = options.kind;
+    node->linear_solve_transpose = transpose;
+    return vec_from_node(node);
+}
+
 Vec make_slice(const Vec &source, int start, int length) {
     require_valid(source);
     if (start < 0 || length < 0 || start + length > source.size()) {
@@ -1088,7 +1297,12 @@ Function optimize(const Function &function) {
     if (!function.valid()) {
         throw std::runtime_error("cannot optimize invalid function");
     }
-    return Function(function.inputs(), function.parameters(), optimize(function.output()));
+    std::vector<Vec> outputs;
+    outputs.reserve(function.outputs().size());
+    for (const Vec &output : function.outputs()) {
+        outputs.push_back(optimize(output));
+    }
+    return Function(function.inputs(), function.parameters(), std::move(outputs));
 }
 
 } // namespace ad

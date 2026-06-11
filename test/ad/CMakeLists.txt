@@ -145,3 +145,61 @@ target_compile_definitions(test_ad_elementary_ops
         MOO_C_COMPILER="${CMAKE_C_COMPILER}")
 target_link_libraries(test_ad_elementary_ops PRIVATE mooad)
 add_test(NAME test_ad_elementary_ops COMMAND test_ad_elementary_ops)
+
+add_executable(test_ad_multi_output_function multi_output_function.cpp)
+target_include_directories(test_ad_multi_output_function PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_multi_output_function
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}")
+target_link_libraries(test_ad_multi_output_function PRIVATE mooad)
+add_test(NAME test_ad_multi_output_function COMMAND test_ad_multi_output_function)
+
+add_executable(test_ad_matrix_views matrix_views.cpp)
+target_include_directories(test_ad_matrix_views PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_matrix_views
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}")
+target_link_libraries(test_ad_matrix_views PRIVATE mooad)
+add_test(NAME test_ad_matrix_views COMMAND test_ad_matrix_views)
+
+add_executable(test_ad_symbolic_matrix_ops symbolic_matrix_ops.cpp)
+target_include_directories(test_ad_symbolic_matrix_ops PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_symbolic_matrix_ops
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}")
+target_link_libraries(test_ad_symbolic_matrix_ops PRIVATE mooad)
+add_test(NAME test_ad_symbolic_matrix_ops COMMAND test_ad_symbolic_matrix_ops)
+
+add_executable(test_ad_mapaccum map_accum.cpp)
+target_include_directories(test_ad_mapaccum PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_mapaccum
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}")
+target_link_libraries(test_ad_mapaccum PRIVATE mooad)
+add_test(NAME test_ad_mapaccum COMMAND test_ad_mapaccum)
+
+add_executable(test_ad_linear_solve linear_solve.cpp)
+target_include_directories(test_ad_linear_solve PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_linear_solve
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}"
+        MOO_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
+        MOO_AD_LIBRARY="$<TARGET_FILE:mooad>"
+        MOO_AD_LIBRARY_DIR="$<TARGET_FILE_DIR:mooad>")
+target_link_libraries(test_ad_linear_solve PRIVATE mooad)
+add_test(NAME test_ad_linear_solve COMMAND test_ad_linear_solve)

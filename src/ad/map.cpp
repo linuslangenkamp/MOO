@@ -606,6 +606,91 @@ Vec mapped_call_from_bindings(std::shared_ptr<const FunctionCore> function,
     return vec_from_node(node);
 }
 
+Vec map_accum_call_from_bindings(std::shared_ptr<const FunctionCore> function,
+                                 int carry_input_index,
+                                 Vec initial_carry,
+                                 std::vector<MappedBindingNode> bindings,
+                                 int reps) {
+    if (!function) {
+        throw std::runtime_error("cannot create map-accum call for invalid function");
+    }
+    require_positive_reps(reps);
+    if (!initial_carry.valid()) {
+        throw std::runtime_error("map-accum initial carry must be a valid vector");
+    }
+    initial_carry = simplify_vec(initial_carry);
+    if (carry_input_index < 0 || carry_input_index >= function->info.input_count) {
+        throw std::runtime_error("map-accum carry input is not a function input");
+    }
+    if (function->info.output_count < 1) {
+        throw std::runtime_error("map-accum step function must have at least one output");
+    }
+
+    const int carry_size = function->info.inputs[static_cast<std::size_t>(carry_input_index)].size;
+    if (carry_size <= 0) {
+        throw std::runtime_error("map-accum carry input must be non-empty");
+    }
+    if (initial_carry.size() != carry_size) {
+        throw std::runtime_error("map-accum initial carry size does not match carry input size");
+    }
+    if (function->info.outputs[0].size != carry_size) {
+        throw std::runtime_error("map-accum first step output must match carry input size");
+    }
+    if (static_cast<int>(bindings.size()) != function->info.input_count - 1) {
+        throw std::runtime_error("map-accum must bind every non-carry step input exactly once");
+    }
+
+    std::size_t binding_index = 0;
+    for (int input_index = 0; input_index < function->info.input_count; ++input_index) {
+        if (input_index == carry_input_index) {
+            continue;
+        }
+        if (binding_index >= bindings.size()) {
+            throw std::runtime_error("map-accum binding count is inconsistent");
+        }
+        MappedBindingNode &binding = bindings[binding_index++];
+        if (!binding.local_input) {
+            throw std::runtime_error("map-accum binding is missing local input");
+        }
+        if (!binding.source) {
+            throw std::runtime_error("map-accum binding is missing source");
+        }
+        binding.source = vec_node(simplify_vec(vec_from_node(binding.source)));
+        const Vec &expected_input = function->inputs[static_cast<std::size_t>(input_index)];
+        if (binding.local_input->id != expected_input.node_id()) {
+            throw std::runtime_error("map-accum binding local input does not match function input order");
+        }
+        if (binding.local_size != function->info.inputs[static_cast<std::size_t>(input_index)].size) {
+            throw std::runtime_error("map-accum binding local size does not match function input size");
+        }
+        if (binding.reps != reps) {
+            throw std::runtime_error("map-accum binding repetition count does not match map-accum call");
+        }
+        (void)table_size(reps, binding.local_size);
+        for (int rep = 0; rep < reps; ++rep) {
+            for (int component = 0; component < binding.local_size; ++component) {
+                const int index = mapped_index(binding, reps, rep, component);
+                if (index < 0 || index >= binding.source->size) {
+                    throw std::runtime_error("map-accum source index is out of range");
+                }
+            }
+        }
+    }
+
+    const int output_size = checked_product(reps, function->info.output_size, "map-accum output size overflow");
+    const int full_size = checked_sum(carry_size, output_size, "map-accum output size overflow");
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::MapAccumCall;
+    node->size = full_size;
+    node->lhs = vec_node(initial_carry);
+    node->function = std::move(function);
+    node->reps = reps;
+    node->carry_input_index = carry_input_index;
+    node->mapped_bindings = std::move(bindings);
+    return vec_from_node(node);
+}
+
 } // namespace detail
 
 } // namespace ad

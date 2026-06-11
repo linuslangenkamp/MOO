@@ -20,6 +20,12 @@ Vec mapped_call_from_bindings(std::shared_ptr<const FunctionCore> function,
                               int reps,
                               MappedOutput output = MappedOutput::concat());
 
+Vec map_accum_call_from_bindings(std::shared_ptr<const FunctionCore> function,
+                                 int carry_input_index,
+                                 Vec initial_carry,
+                                 std::vector<MappedBindingNode> bindings,
+                                 int reps);
+
 } // namespace ad::detail
 
 #endif // MOO_AD_DETAIL_MAPPING_H

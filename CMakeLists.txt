@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.14)
 project(moo LANGUAGES C CXX Fortran)
 
 include(GNUInstallDirs)
+find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -146,7 +148,10 @@ add_library(mooad SHARED
     src/ad/expr.cpp
     src/ad/function.cpp
     src/ad/graph_info.cpp
+    src/ad/linear_solver.cpp
+    src/ad/mat.cpp
     src/ad/map.cpp
+    src/ad/map_accum.cpp
     src/ad/matrix.cpp
     src/ad/sparsity.cpp
     src/ad/symbol.cpp
@@ -159,6 +164,7 @@ target_include_directories(mooad
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_options(mooad PRIVATE ${MOO_COMPILE_OPTIONS})
+target_link_libraries(mooad PUBLIC ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
 
 # DLL export / hide symbols
 if(WIN32)
@@ -186,7 +192,10 @@ install(FILES
         src/ad/expr.h
         src/ad/function.h
         src/ad/graph_info.h
+        src/ad/linear_solver.h
+        src/ad/mat.h
         src/ad/map.h
+        src/ad/map_accum.h
         src/ad/map_kind.h
         src/ad/matrix.h
         src/ad/optimize.h

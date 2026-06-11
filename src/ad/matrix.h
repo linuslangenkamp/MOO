@@ -6,6 +6,20 @@
 
 namespace ad {
 
+enum class MatrixLayout {
+    ColumnMajor,
+    RowMajor,
+};
+
+enum class LinearSolverKind {
+    LapackLU,
+    DenseLU = LapackLU,
+};
+
+struct LinearSolveOptions {
+    LinearSolverKind kind = LinearSolverKind::LapackLU;
+};
+
 struct DenseMatrix {
     int rows = 0;
     int cols = 0;

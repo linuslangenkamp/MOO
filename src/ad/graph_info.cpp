@@ -92,6 +92,26 @@ GraphInfo inspect_vec_node(const std::shared_ptr<const detail::VecNode> &node) {
             info.op = "sparse_matvec";
             info.children.push_back(inspect_vec_node(node->lhs));
             break;
+        case GraphNodeKind::SymbolicMatVec:
+            info.op = "symbolic_matvec";
+            info.children.push_back(inspect_vec_node(node->lhs));
+            info.children.push_back(inspect_vec_node(node->rhs));
+            break;
+        case GraphNodeKind::SymbolicMatMul:
+            info.op = "symbolic_matmul";
+            info.children.push_back(inspect_vec_node(node->lhs));
+            info.children.push_back(inspect_vec_node(node->rhs));
+            break;
+        case GraphNodeKind::OuterProduct:
+            info.op = "outer_product";
+            info.children.push_back(inspect_vec_node(node->lhs));
+            info.children.push_back(inspect_vec_node(node->rhs));
+            break;
+        case GraphNodeKind::LinearSolve:
+            info.op = node->linear_solve_transpose ? "solve_transpose" : "solve";
+            info.children.push_back(inspect_vec_node(node->lhs));
+            info.children.push_back(inspect_vec_node(node->rhs));
+            break;
         case GraphNodeKind::Slice:
             info.op = std::to_string(node->start);
             info.children.push_back(inspect_vec_node(node->lhs));
@@ -121,6 +141,13 @@ GraphInfo inspect_vec_node(const std::shared_ptr<const detail::VecNode> &node) {
             break;
         case GraphNodeKind::MappedFunctionCall:
             info.op = "mapped_function_call";
+            for (const auto &binding : node->mapped_bindings) {
+                info.children.push_back(inspect_vec_node(binding.source));
+            }
+            break;
+        case GraphNodeKind::MapAccumCall:
+            info.op = "map_accum_call";
+            info.children.push_back(inspect_vec_node(node->lhs));
             for (const auto &binding : node->mapped_bindings) {
                 info.children.push_back(inspect_vec_node(binding.source));
             }
@@ -186,6 +213,14 @@ const char *to_string(GraphNodeKind kind) {
             return "DenseMatVec";
         case GraphNodeKind::SparseMatVec:
             return "SparseMatVec";
+        case GraphNodeKind::SymbolicMatVec:
+            return "SymbolicMatVec";
+        case GraphNodeKind::SymbolicMatMul:
+            return "SymbolicMatMul";
+        case GraphNodeKind::OuterProduct:
+            return "OuterProduct";
+        case GraphNodeKind::LinearSolve:
+            return "LinearSolve";
         case GraphNodeKind::Slice:
             return "Slice";
         case GraphNodeKind::ScatterSlice:
@@ -200,6 +235,8 @@ const char *to_string(GraphNodeKind kind) {
             return "FunctionCall";
         case GraphNodeKind::MappedFunctionCall:
             return "MappedFunctionCall";
+        case GraphNodeKind::MapAccumCall:
+            return "MapAccumCall";
     }
     return "Unknown";
 }

@@ -32,6 +32,13 @@ Vec make_vec_binary(VecBinaryOp op, const Vec &lhs, const Vec &rhs);
 Vec make_vec_scale(const Expr &scale, const Vec &vec);
 Vec make_dense_matvec(const DenseMatrix &matrix, const Vec &rhs);
 Vec make_sparse_matvec(const SparseMatrix &matrix, const Vec &rhs);
+Vec make_symbolic_matvec(const Vec &matrix, int rows, int cols, MatrixLayout layout, const Vec &rhs);
+Vec make_symbolic_matmul(const Vec &lhs, int lhs_rows, int lhs_cols, MatrixLayout lhs_layout,
+                         const Vec &rhs, int rhs_rows, int rhs_cols, MatrixLayout rhs_layout,
+                         MatrixLayout result_layout);
+Vec make_outer_product(const Vec &lhs, const Vec &rhs, MatrixLayout result_layout);
+Vec make_linear_solve(const Vec &matrix, int rows, int cols, MatrixLayout layout, const Vec &rhs,
+                      LinearSolveOptions options, bool transpose);
 Vec make_slice(const Vec &source, int start, int length);
 Vec make_scatter_slice(const Vec &values, int start, int output_size);
 Vec make_concat(const Vec &lhs, const Vec &rhs);
