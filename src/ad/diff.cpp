@@ -1,400 +1,198 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-//
-// This file is part of MOO - Modelica / Model Optimizer
-// Copyright (C) 2026 University of Applied Sciences and Arts
-// Bielefeld, Faculty of Engineering and Mathematics
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-//
+#include "expr.h"
 
-#include "diff.h"
+#include "function.h"
+#include "vec.h"
+#include "detail/function_core.h"
+#include "detail/mapping.h"
+#include "detail/node.h"
+
+#include <limits>
+#include <map>
+#include <set>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace ad {
-
-// -----------------------------------------------------------------------------
-// Copy graph into OptimizingBuilder
-// -----------------------------------------------------------------------------
-
-std::vector<Expr> clone_nodes(const Graph &src, OptimizingBuilder &dst, const std::optional<std::string> &input_as_param) {
-    std::vector<Expr> map(src.nodes.size());
-    for (NodeId i = 0; i < static_cast<NodeId>(src.nodes.size()); ++i) {
-        const auto &n = src.nodes[i];
-        switch (n.op) {
-            case Op::Constant:
-                map[i] = dst.constant(n.value);
-                break;
-            case Op::Input:
-                if (input_as_param && n.name == *input_as_param) {
-                    map[i] = dst.param(n.name, n.index);
-                } else {
-                    map[i] = dst.input(n.name, n.index);
-                }
-                break;
-            case Op::Param:
-                map[i] = dst.param(n.name, n.index);
-                break;
-            case Op::Add:
-                map[i] = dst.add(map[n.a], map[n.b]);
-                break;
-            case Op::Sub:
-                map[i] = dst.sub(map[n.a], map[n.b]);
-                break;
-            case Op::Mul:
-                map[i] = dst.mul(map[n.a], map[n.b]);
-                break;
-            case Op::Div:
-                map[i] = dst.div(map[n.a], map[n.b]);
-                break;
-            case Op::Neg:
-                map[i] = dst.neg(map[n.a]);
-                break;
-            case Op::Sin:
-                map[i] = dst.unary(Op::Sin, map[n.a]);
-                break;
-            case Op::Cos:
-                map[i] = dst.unary(Op::Cos, map[n.a]);
-                break;
-            case Op::Tan:
-                map[i] = dst.unary(Op::Tan, map[n.a]);
-                break;
-            case Op::Exp:
-                map[i] = dst.unary(Op::Exp, map[n.a]);
-                break;
-            case Op::Log:
-                map[i] = dst.unary(Op::Log, map[n.a]);
-                break;
-            case Op::PowConst:
-                map[i] = dst.pow_const(map[n.a], n.value);
-                break;
-        }
-    }
-    return map;
-}
-
-// -----------------------------------------------------------------------------
-// Forward-mode graph transform: JVP.
-// -----------------------------------------------------------------------------
-
 namespace {
 
-bool infer_direct_values_group(FunctionVectorNode &node, const Graph &graph) {
-    if (node.op != VectorOp::Values || static_cast<int>(node.values.size()) != node.size || node.size <= 0) {
-        return false;
+struct ForwardContext {
+    Vars wrt;
+    Vec seed;
+    std::map<VarId, int> seed_index;
+};
+
+struct ReverseContext {
+    Vars wrt;
+    std::map<VarId, int> adjoint_index;
+};
+
+void require_valid_seed(const Vars &wrt, const Vec &seed) {
+    if (!seed.valid()) {
+        throw std::runtime_error("forward seed must be a valid vector expression");
+    }
+    if (seed.size() != wrt.size()) {
+        throw std::runtime_error("forward seed size must match differentiation variable layout");
+    }
+}
+
+ForwardContext make_context(const Vars &wrt, const Vec &seed) {
+    require_valid_seed(wrt, seed);
+
+    ForwardContext context;
+    context.wrt = wrt;
+    context.seed = seed;
+
+    std::set<VarId> seen;
+    for (int i = 0; i < wrt.size(); ++i) {
+        const Var &var = wrt[i];
+        if (!var.valid()) {
+            throw std::runtime_error("forward differentiation variable must be valid");
+        }
+        if (!seen.insert(var.id()).second) {
+            throw std::runtime_error("forward differentiation variable layout contains duplicate variable IDs");
+        }
+        context.seed_index.emplace(var.id(), i);
     }
 
-    const auto &first = graph.nodes[static_cast<std::size_t>(node.values.front())];
-    if (first.op != Op::Input && first.op != Op::Param) {
-        return false;
+    return context;
+}
+
+ReverseContext make_reverse_context(const Vars &wrt) {
+    ReverseContext context;
+    context.wrt = wrt;
+
+    std::set<VarId> seen;
+    for (int i = 0; i < wrt.size(); ++i) {
+        const Var &var = wrt[i];
+        if (!var.valid()) {
+            throw std::runtime_error("reverse differentiation variable must be valid");
+        }
+        if (!seen.insert(var.id()).second) {
+            throw std::runtime_error("reverse differentiation variable layout contains duplicate variable IDs");
+        }
+        context.adjoint_index.emplace(var.id(), i);
     }
 
-    for (int i = 0; i < node.size; ++i) {
-        const auto &scalar = graph.nodes[static_cast<std::size_t>(node.values[static_cast<std::size_t>(i)])];
-        if (scalar.op != first.op || scalar.name != first.name || scalar.index != i) {
+    return context;
+}
+
+Expr zero_scalar() {
+    return constant(0.0);
+}
+
+Expr one_scalar() {
+    return constant(1.0);
+}
+
+Vec zero_vec(int size) {
+    return vec_constant(std::vector<double>(static_cast<std::size_t>(size), 0.0));
+}
+
+Vec one_vec(int size) {
+    return vec_constant(std::vector<double>(static_cast<std::size_t>(size), 1.0));
+}
+
+bool is_zero(const Expr &expr) {
+    double value = 0.0;
+    return expr.is_constant(&value) && value == 0.0;
+}
+
+bool is_zero(const Vec &vec_expr) {
+    if (!vec_expr.valid() || vec_expr.node_kind() != GraphNodeKind::VectorConstant) {
+        return false;
+    }
+    const auto &node = detail::vec_node(vec_expr);
+    for (double value : node->constants) {
+        if (value != 0.0) {
             return false;
         }
     }
-
-    node.name = first.name;
-    node.is_input_group = first.op == Op::Input;
-    node.is_param_group = first.op == Op::Param;
     return true;
 }
 
-struct ForwardVectorOutput {
-    std::vector<FunctionVectorNode> nodes;
-    int input_vector = -1;
-    int output_vector = -1;
-    std::vector<int> param_vectors;
-};
-
-ForwardVectorOutput tangent_vector_nodes(const GraphFunction &f, Graph &graph, const std::vector<Expr> &primal, const std::vector<Expr> &tangent) {
-    ForwardVectorOutput result;
-    result.nodes.reserve(f.vector_nodes.size());
-    std::vector<int> primal_map(f.vector_nodes.size(), -1);
-    std::vector<int> tangent_map(f.vector_nodes.size(), -1);
-
-    auto add_node = [&](FunctionVectorNode node) {
-        int id = static_cast<int>(result.nodes.size());
-        result.nodes.push_back(std::move(node));
-        return id;
-    };
-
-    std::function<int(int)> primal_vector = [&](int vector_id) -> int {
-        if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
-            throw std::runtime_error("invalid vector id during forward differentiation");
-        }
-        int &cached = primal_map[static_cast<std::size_t>(vector_id)];
-        if (cached >= 0) {
-            return cached;
-        }
-        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
-        FunctionVectorNode transformed;
-        transformed.op = node.op;
-        transformed.size = node.size;
-        transformed.scale = node.scale;
-        transformed.power = node.power;
-        transformed.scalar_op = node.scalar_op;
-        transformed.matrix = node.matrix;
-        transformed.sparse_matrix = node.sparse_matrix;
-        transformed.eye_size = node.eye_size;
-        transformed.start = node.start;
-        transformed.stride = node.stride;
-        transformed.name = node.name;
-        transformed.is_input_group = node.is_input_group;
-        transformed.is_param_group = node.is_param_group;
-        if (node.op == VectorOp::Values) {
-            transformed.values.reserve(node.values.size());
-            for (NodeId value : node.values) {
-                transformed.values.push_back(primal[static_cast<std::size_t>(value)].id);
-            }
-            infer_direct_values_group(transformed, graph);
-        } else {
-            transformed.a = primal_vector(node.a);
-            if (node.b >= 0) {
-                transformed.b = primal_vector(node.b);
-            }
-        }
-        cached = add_node(std::move(transformed));
-        return cached;
-    };
-
-    auto zero_vector = [&](int size) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Values;
-        node.size = size;
-        node.values.assign(static_cast<std::size_t>(size), graph.constant(0.0).id);
-        return add_node(std::move(node));
-    };
-
-    std::function<int(int)> tangent_vector = [&](int vector_id) -> int {
-        if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
-            throw std::runtime_error("invalid vector id during forward differentiation");
-        }
-        int &cached = tangent_map[static_cast<std::size_t>(vector_id)];
-        if (cached >= 0) {
-            return cached;
-        }
-        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
-        FunctionVectorNode transformed;
-        transformed.size = node.size;
-        switch (node.op) {
-            case VectorOp::Values:
-                transformed.op = VectorOp::Values;
-                transformed.values.reserve(node.values.size());
-                for (NodeId value : node.values) {
-                    if (value < 0 || value >= static_cast<NodeId>(tangent.size())) {
-                        throw std::runtime_error("vector metadata references scalar node " + std::to_string(value) + " outside graph of size " + std::to_string(tangent.size()) +
-                                                 " during forward differentiation");
-                    }
-                    transformed.values.push_back(tangent[static_cast<std::size_t>(value)].id);
-                }
-                infer_direct_values_group(transformed, graph);
-                cached = add_node(std::move(transformed));
-                break;
-            case VectorOp::Add:
-            case VectorOp::Sub:
-            case VectorOp::Mul:
-            case VectorOp::Div: {
-                transformed.op = node.op;
-                transformed.a = tangent_vector(node.a);
-                transformed.b = tangent_vector(node.b);
-                if (node.op == VectorOp::Mul) {
-                    FunctionVectorNode lhs;
-                    lhs.op = VectorOp::Mul;
-                    lhs.size = node.size;
-                    lhs.a = tangent_vector(node.a);
-                    lhs.b = primal_vector(node.b);
-                    FunctionVectorNode rhs;
-                    rhs.op = VectorOp::Mul;
-                    rhs.size = node.size;
-                    rhs.a = primal_vector(node.a);
-                    rhs.b = tangent_vector(node.b);
-                    FunctionVectorNode sum;
-                    sum.op = VectorOp::Add;
-                    sum.size = node.size;
-                    sum.a = add_node(std::move(lhs));
-                    sum.b = add_node(std::move(rhs));
-                    cached = add_node(std::move(sum));
-                } else if (node.op == VectorOp::Div) {
-                    FunctionVectorNode lhs;
-                    lhs.op = VectorOp::Mul;
-                    lhs.size = node.size;
-                    lhs.a = tangent_vector(node.a);
-                    lhs.b = primal_vector(node.b);
-                    FunctionVectorNode rhs;
-                    rhs.op = VectorOp::Mul;
-                    rhs.size = node.size;
-                    rhs.a = primal_vector(node.a);
-                    rhs.b = tangent_vector(node.b);
-                    FunctionVectorNode num;
-                    num.op = VectorOp::Sub;
-                    num.size = node.size;
-                    num.a = add_node(std::move(lhs));
-                    num.b = add_node(std::move(rhs));
-                    FunctionVectorNode den;
-                    den.op = VectorOp::PowConst;
-                    den.size = node.size;
-                    den.a = primal_vector(node.b);
-                    den.power = 2.0;
-                    FunctionVectorNode quotient;
-                    quotient.op = VectorOp::Div;
-                    quotient.size = node.size;
-                    quotient.a = add_node(std::move(num));
-                    quotient.b = add_node(std::move(den));
-                    cached = add_node(std::move(quotient));
-                } else {
-                    cached = add_node(std::move(transformed));
-                }
-                break;
-            }
-            case VectorOp::Scale:
-                transformed.op = VectorOp::Scale;
-                transformed.a = tangent_vector(node.a);
-                transformed.scale = node.scale;
-                cached = add_node(std::move(transformed));
-                break;
-            case VectorOp::PowConst:
-                if (exactly(node.power, 0.0)) {
-                    cached = zero_vector(node.size);
-                } else {
-                    FunctionVectorNode p;
-                    p.op = VectorOp::PowConst;
-                    p.size = node.size;
-                    p.a = primal_vector(node.a);
-                    p.power = node.power - 1.0;
-                    FunctionVectorNode product;
-                    product.op = VectorOp::Mul;
-                    product.size = node.size;
-                    product.a = add_node(std::move(p));
-                    product.b = tangent_vector(node.a);
-                    FunctionVectorNode scaled;
-                    scaled.op = VectorOp::Scale;
-                    scaled.size = node.size;
-                    scaled.a = add_node(std::move(product));
-                    scaled.scale = node.power;
-                    cached = add_node(std::move(scaled));
-                }
-                break;
-            case VectorOp::Unary: {
-                int factor = -1;
-                if (node.scalar_op == Op::Sin) {
-                    FunctionVectorNode c;
-                    c.op = VectorOp::Unary;
-                    c.size = node.size;
-                    c.a = primal_vector(node.a);
-                    c.scalar_op = Op::Cos;
-                    factor = add_node(std::move(c));
-                } else if (node.scalar_op == Op::Cos) {
-                    FunctionVectorNode s;
-                    s.op = VectorOp::Unary;
-                    s.size = node.size;
-                    s.a = primal_vector(node.a);
-                    s.scalar_op = Op::Sin;
-                    factor = add_node(std::move(s));
-                } else if (node.scalar_op == Op::Tan) {
-                    FunctionVectorNode p;
-                    p.op = VectorOp::PowConst;
-                    p.size = node.size;
-                    p.a = primal_vector(vector_id);
-                    p.power = 2.0;
-                    FunctionVectorNode one;
-                    one.op = VectorOp::Values;
-                    one.size = node.size;
-                    one.values.assign(static_cast<std::size_t>(node.size), graph.constant(1.0).id);
-                    FunctionVectorNode sum;
-                    sum.op = VectorOp::Add;
-                    sum.size = node.size;
-                    sum.a = add_node(std::move(one));
-                    sum.b = add_node(std::move(p));
-                    factor = add_node(std::move(sum));
-                } else if (node.scalar_op == Op::Exp) {
-                    factor = primal_vector(vector_id);
-                }
-
-                if (node.scalar_op == Op::Log) {
-                    FunctionVectorNode quotient;
-                    quotient.op = VectorOp::Div;
-                    quotient.size = node.size;
-                    quotient.a = tangent_vector(node.a);
-                    quotient.b = primal_vector(node.a);
-                    cached = add_node(std::move(quotient));
-                } else {
-                    FunctionVectorNode product;
-                    product.op = VectorOp::Mul;
-                    product.size = node.size;
-                    product.a = factor;
-                    product.b = tangent_vector(node.a);
-                    cached = add_node(std::move(product));
-                    if (node.scalar_op == Op::Cos) {
-                        FunctionVectorNode neg;
-                        neg.op = VectorOp::Scale;
-                        neg.size = node.size;
-                        neg.a = cached;
-                        neg.scale = -1.0;
-                        cached = add_node(std::move(neg));
-                    }
-                }
-                break;
-            }
-            case VectorOp::DenseMatVec:
-                transformed.op = VectorOp::DenseMatVec;
-                transformed.size = node.size;
-                transformed.a = tangent_vector(node.a);
-                transformed.matrix = node.matrix;
-                cached = add_node(std::move(transformed));
-                break;
-            case VectorOp::SparseMatVec:
-                transformed.op = VectorOp::SparseMatVec;
-                transformed.size = node.size;
-                transformed.a = tangent_vector(node.a);
-                transformed.sparse_matrix = node.sparse_matrix;
-                cached = add_node(std::move(transformed));
-                break;
-            case VectorOp::KronEyeMatVec:
-                transformed.op = VectorOp::KronEyeMatVec;
-                transformed.size = node.size;
-                transformed.a = tangent_vector(node.a);
-                transformed.matrix = node.matrix;
-                transformed.eye_size = node.eye_size;
-                cached = add_node(std::move(transformed));
-                break;
-            case VectorOp::Slice:
-                transformed.op = VectorOp::Slice;
-                transformed.size = node.size;
-                transformed.a = tangent_vector(node.a);
-                transformed.start = node.start;
-                transformed.stride = node.stride;
-                cached = add_node(std::move(transformed));
-                break;
-            case VectorOp::Concat:
-                transformed.op = VectorOp::Concat;
-                transformed.size = node.size;
-                transformed.a = tangent_vector(node.a);
-                transformed.b = tangent_vector(node.b);
-                cached = add_node(std::move(transformed));
-                break;
-        }
-        return cached;
-    };
-
-    result.input_vector = primal_vector(f.input_vector);
-    result.output_vector = tangent_vector(f.output_vector);
-    result.param_vectors.reserve(f.param_vectors.size());
-    for (int param_vector_id : f.param_vectors) {
-        result.param_vectors.push_back(primal_vector(param_vector_id));
+Expr add(const Expr &lhs, const Expr &rhs) {
+    if (is_zero(lhs)) {
+        return rhs;
     }
-    return result;
+    if (is_zero(rhs)) {
+        return lhs;
+    }
+    return lhs + rhs;
+}
+
+Expr sub(const Expr &lhs, const Expr &rhs) {
+    if (is_zero(rhs)) {
+        return lhs;
+    }
+    return lhs - rhs;
+}
+
+Expr mul(const Expr &lhs, const Expr &rhs) {
+    if (is_zero(lhs) || is_zero(rhs)) {
+        return zero_scalar();
+    }
+    return lhs * rhs;
+}
+
+Expr div(const Expr &lhs, const Expr &rhs) {
+    if (is_zero(lhs)) {
+        return zero_scalar();
+    }
+    return lhs / rhs;
+}
+
+Vec add(const Vec &lhs, const Vec &rhs) {
+    if (is_zero(lhs)) {
+        return rhs;
+    }
+    if (is_zero(rhs)) {
+        return lhs;
+    }
+    return lhs + rhs;
+}
+
+Vec sub(const Vec &lhs, const Vec &rhs) {
+    if (is_zero(rhs)) {
+        return lhs;
+    }
+    return lhs - rhs;
+}
+
+Vec mul(const Vec &lhs, const Vec &rhs) {
+    if (is_zero(lhs) || is_zero(rhs)) {
+        return zero_vec(lhs.size());
+    }
+    return lhs * rhs;
+}
+
+Vec div(const Vec &lhs, const Vec &rhs) {
+    if (is_zero(lhs)) {
+        return zero_vec(lhs.size());
+    }
+    return lhs / rhs;
+}
+
+Vec scale(const Expr &lhs, const Vec &rhs) {
+    if (is_zero(lhs) || is_zero(rhs)) {
+        return zero_vec(rhs.size());
+    }
+    return lhs * rhs;
+}
+
+Vec matvec(const DenseMatrix &matrix, const Vec &rhs) {
+    if (is_zero(rhs)) {
+        return zero_vec(matrix.rows);
+    }
+    return matrix * rhs;
+}
+
+Vec matvec(const SparseMatrix &matrix, const Vec &rhs) {
+    if (is_zero(rhs)) {
+        return zero_vec(matrix.rows);
+    }
+    return matrix * rhs;
 }
 
 DenseMatrix transpose(const DenseMatrix &matrix) {
@@ -408,791 +206,798 @@ DenseMatrix transpose(const DenseMatrix &matrix) {
 }
 
 SparseMatrix transpose(const SparseMatrix &matrix) {
-    return SparseMatrix(matrix.cols, matrix.rows, matrix.col_indices, matrix.row_indices, matrix.values);
+    return SparseMatrix(matrix.cols, matrix.rows, matrix.col, matrix.row, matrix.values);
 }
 
-bool direct_values_group(const GraphFunction &f, const FunctionVectorNode &node, Op op, const std::string &name) {
-    if (node.op != VectorOp::Values || static_cast<int>(node.values.size()) != node.size || node.size <= 0) {
-        return false;
-    }
-    for (int i = 0; i < node.size; ++i) {
-        const auto &scalar = f.graph.nodes[static_cast<std::size_t>(node.values[static_cast<std::size_t>(i)])];
-        if (scalar.op != op || scalar.name != name || scalar.index != i) {
-            return false;
-        }
-    }
-    return true;
+Expr as_expr(const std::shared_ptr<const detail::ScalarNode> &node) {
+    return detail::expr_from_node(node);
 }
 
-std::vector<Expr> scalar_vjp_for_values(const GraphFunction &f,
-                                        OptimizingBuilder &b,
-                                        const std::vector<Expr> &primal,
-                                        const std::vector<NodeId> &values,
-                                        const std::vector<Expr> &seeds,
-                                        const std::string &wrt_input_name) {
-    if (values.size() != seeds.size()) {
-        throw std::runtime_error("scalar_vjp_for_values: value and seed sizes must match");
+Vec as_vec(const std::shared_ptr<const detail::VecNode> &node) {
+    return detail::vec_from_node(node);
+}
+
+int checked_int(long long value, const char *message) {
+    if (value < static_cast<long long>(std::numeric_limits<int>::min()) ||
+        value > static_cast<long long>(std::numeric_limits<int>::max())) {
+        throw std::runtime_error(message);
+    }
+    return static_cast<int>(value);
+}
+
+std::size_t checked_table_size(int reps, int local_size, const char *message) {
+    if (reps < 0 || local_size < 0) {
+        throw std::runtime_error(message);
+    }
+    const long long value = static_cast<long long>(reps) * static_cast<long long>(local_size);
+    checked_int(value, message);
+    return static_cast<std::size_t>(value);
+}
+
+Expr seed_component(const ForwardContext &context, int index) {
+    return context.seed[index];
+}
+
+Expr forward_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, const ForwardContext &context);
+Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const ForwardContext &context);
+Vec reverse_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, const Expr &adjoint, const ReverseContext &context);
+Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context);
+
+Vec scatter_slice(const Vec &values, int start, int output_size) {
+    if (!values.valid()) {
+        throw std::runtime_error("scatter-slice values must be a valid vector expression");
+    }
+    if (start < 0 || output_size < 0 || start + values.size() > output_size) {
+        throw std::runtime_error("invalid scatter-slice bounds");
+    }
+    if (start == 0 && values.size() == output_size) {
+        return values;
     }
 
-    auto zero = b.constant(0.0);
-    std::vector<std::vector<Expr>> adj_terms(f.graph.nodes.size());
-    auto add_adj = [&](NodeId id, Expr term) {
-        if (id >= 0) {
-            adj_terms[static_cast<std::size_t>(id)].push_back(term);
-        }
-    };
-    auto sum_terms = [&](const std::vector<Expr> &terms) -> Expr {
-        if (terms.empty()) {
-            return zero;
-        }
-        Expr s = terms[0];
-        for (std::size_t i = 1; i < terms.size(); ++i) {
-            s = b.add(s, terms[i]);
-        }
-        return s;
-    };
+    auto node = std::make_shared<detail::VecNode>();
+    node->kind = GraphNodeKind::ScatterSlice;
+    node->size = output_size;
+    node->start = start;
+    node->lhs = detail::vec_node(values);
+    return detail::vec_from_node(node);
+}
 
-    for (std::size_t i = 0; i < values.size(); ++i) {
-        add_adj(values[i], seeds[i]);
+std::vector<Vec> function_call_arguments(const std::shared_ptr<const detail::VecNode> &node) {
+    std::vector<Vec> arguments;
+    arguments.reserve(node->arguments.size());
+    for (const auto &argument : node->arguments) {
+        arguments.push_back(as_vec(argument));
     }
+    return arguments;
+}
 
-    for (NodeId i = static_cast<NodeId>(f.graph.nodes.size()) - 1; i >= 0; --i) {
-        if (adj_terms[static_cast<std::size_t>(i)].empty()) {
-            if (i == 0) {
-                break;
-            }
+detail::MappedBindingNode mapped_binding(const Vec &local_input,
+                                         const std::shared_ptr<const detail::VecNode> &source,
+                                         int reps,
+                                         int local_size,
+                                         const std::vector<int> &indices,
+                                         MapKind map_kind = MapKind::ExplicitIndices,
+                                         int base = 0,
+                                         int rep_stride = 0,
+                                         int component_stride = 1,
+                                         int shift = 0,
+                                         std::vector<int> offsets = {}) {
+    detail::MappedBindingNode binding;
+    binding.local_input = detail::vec_node(local_input);
+    binding.source = source;
+    binding.reps = reps;
+    binding.local_size = local_size;
+    binding.indices = indices;
+    binding.map_kind = map_kind;
+    binding.base = base;
+    binding.rep_stride = rep_stride;
+    binding.component_stride = component_stride;
+    binding.shift = shift;
+    binding.offsets = std::move(offsets);
+    return binding;
+}
+
+detail::MappedBindingNode mapped_binding(const Vec &local_input,
+                                         const Vec &source,
+                                         int reps,
+                                         int local_size,
+                                         const std::vector<int> &indices,
+                                         MapKind map_kind,
+                                         int base,
+                                         int rep_stride,
+                                         int component_stride,
+                                         int shift,
+                                         std::vector<int> offsets) {
+    return mapped_binding(local_input,
+                          detail::vec_node(source),
+                          reps,
+                          local_size,
+                          indices,
+                          map_kind,
+                          base,
+                          rep_stride,
+                          component_stride,
+                          shift,
+                          std::move(offsets));
+}
+
+detail::MappedBindingNode mapped_binding_like(const Vec &local_input,
+                                              const std::shared_ptr<const detail::VecNode> &source,
+                                              const detail::MappedBindingNode &like) {
+    return mapped_binding(local_input,
+                          source,
+                          like.reps,
+                          like.local_size,
+                          like.indices,
+                          like.map_kind,
+                          like.base,
+                          like.rep_stride,
+                          like.component_stride,
+                          like.shift,
+                          like.offsets);
+}
+
+detail::MappedBindingNode mapped_binding_like(const Vec &local_input,
+                                              const Vec &source,
+                                              const detail::MappedBindingNode &like) {
+    return mapped_binding_like(local_input, detail::vec_node(source), like);
+}
+
+Vec weighted_repeated_lambda(const Vec &lambda, int reps, int local_output_size, const std::vector<double> &weights) {
+    if (static_cast<int>(weights.size()) != reps) {
+        throw std::runtime_error("mapped weighted reverse weight count must match reps");
+    }
+    std::vector<int> rows;
+    std::vector<int> cols;
+    std::vector<double> values;
+    rows.reserve(checked_table_size(reps, local_output_size, "mapped weighted reverse size overflow"));
+    cols.reserve(rows.capacity());
+    values.reserve(rows.capacity());
+    for (int rep = 0; rep < reps; ++rep) {
+        const double weight = weights[static_cast<std::size_t>(rep)];
+        if (weight == 0.0) {
             continue;
         }
-        const auto &n = f.graph.nodes[static_cast<std::size_t>(i)];
-        Expr adj = sum_terms(adj_terms[static_cast<std::size_t>(i)]);
-        switch (n.op) {
-            case Op::Constant:
-            case Op::Input:
-            case Op::Param:
-                break;
-            case Op::Add:
-                add_adj(n.a, adj);
-                add_adj(n.b, adj);
-                break;
-            case Op::Sub:
-                add_adj(n.a, adj);
-                add_adj(n.b, b.neg(adj));
-                break;
-            case Op::Mul:
-                add_adj(n.a, b.mul(adj, primal[static_cast<std::size_t>(n.b)]));
-                add_adj(n.b, b.mul(adj, primal[static_cast<std::size_t>(n.a)]));
-                break;
-            case Op::Div:
-                add_adj(n.a, b.div(adj, primal[static_cast<std::size_t>(n.b)]));
-                add_adj(n.b, b.neg(b.div(b.mul(adj, primal[static_cast<std::size_t>(n.a)]),
-                                         b.mul(primal[static_cast<std::size_t>(n.b)], primal[static_cast<std::size_t>(n.b)]))));
-                break;
-            case Op::Neg:
-                add_adj(n.a, b.neg(adj));
-                break;
-            case Op::Sin:
-                add_adj(n.a, b.mul(adj, b.unary(Op::Cos, primal[static_cast<std::size_t>(n.a)])));
-                break;
-            case Op::Cos:
-                add_adj(n.a, b.neg(b.mul(adj, b.unary(Op::Sin, primal[static_cast<std::size_t>(n.a)]))));
-                break;
-            case Op::Tan:
-                add_adj(n.a, b.mul(adj, b.add(b.constant(1.0), b.mul(primal[static_cast<std::size_t>(i)], primal[static_cast<std::size_t>(i)]))));
-                break;
-            case Op::Exp:
-                add_adj(n.a, b.mul(adj, primal[static_cast<std::size_t>(i)]));
-                break;
-            case Op::Log:
-                add_adj(n.a, b.div(adj, primal[static_cast<std::size_t>(n.a)]));
-                break;
-            case Op::PowConst:
-                add_adj(n.a, b.mul(adj, b.mul(b.constant(n.value), b.pow_const(primal[static_cast<std::size_t>(n.a)], n.value - 1.0))));
-                break;
+        for (int component = 0; component < local_output_size; ++component) {
+            rows.push_back(checked_int(static_cast<long long>(rep) * static_cast<long long>(local_output_size) + component,
+                                       "mapped weighted reverse row index overflow"));
+            cols.push_back(component);
+            values.push_back(weight);
         }
-        if (i == 0) {
+    }
+    return SparseMatrix(checked_int(static_cast<long long>(reps) * static_cast<long long>(local_output_size),
+                                    "mapped weighted reverse source size overflow"),
+                        local_output_size,
+                        std::move(rows),
+                        std::move(cols),
+                        std::move(values)) *
+           lambda;
+}
+
+std::vector<int> repeated_local_adjoint_indices(int reps, int local_input_size, int function_input_size, int input_offset) {
+    std::vector<int> indices;
+    indices.reserve(checked_table_size(reps, local_input_size, "mapped reverse local adjoint index table size overflow"));
+    for (int rep = 0; rep < reps; ++rep) {
+        for (int component = 0; component < local_input_size; ++component) {
+            const long long base = static_cast<long long>(rep) * static_cast<long long>(function_input_size);
+            indices.push_back(checked_int(base + input_offset + component, "mapped reverse local adjoint index overflow"));
+        }
+    }
+    return indices;
+}
+
+Vec forward_vector_variable(const detail::VecNode &node, const ForwardContext &context) {
+    if (node.size == 0) {
+        return zero_vec(0);
+    }
+
+    std::vector<int> indices(static_cast<std::size_t>(node.size), -1);
+    int matched = 0;
+    for (int i = 0; i < node.size; ++i) {
+        const auto found = context.seed_index.find(node.vars[static_cast<std::size_t>(i)].id());
+        if (found != context.seed_index.end()) {
+            indices[static_cast<std::size_t>(i)] = found->second;
+            ++matched;
+        }
+    }
+
+    if (matched == 0) {
+        return zero_vec(node.size);
+    }
+
+    if (matched == node.size) {
+        const int start = indices.front();
+        bool contiguous = true;
+        for (int i = 0; i < node.size; ++i) {
+            if (indices[static_cast<std::size_t>(i)] != start + i) {
+                contiguous = false;
+                break;
+            }
+        }
+        if (contiguous) {
+            if (start == 0 && node.size == context.seed.size()) {
+                return context.seed;
+            }
+            return context.seed.slice(start, node.size);
+        }
+    }
+
+    std::vector<Expr> elements;
+    elements.reserve(static_cast<std::size_t>(node.size));
+    for (int index : indices) {
+        elements.push_back(index >= 0 ? seed_component(context, index) : zero_scalar());
+    }
+    return vec(std::move(elements));
+}
+
+Expr forward_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, const ForwardContext &context) {
+    if (!node) {
+        throw std::runtime_error("invalid scalar graph node while building forward derivative");
+    }
+
+    switch (node->kind) {
+        case GraphNodeKind::ScalarConstant:
+        case GraphNodeKind::ScalarParameter:
+            return zero_scalar();
+        case GraphNodeKind::ScalarVariable: {
+            const auto found = context.seed_index.find(node->var.id());
+            return found == context.seed_index.end() ? zero_scalar() : seed_component(context, found->second);
+        }
+        case GraphNodeKind::ScalarUnary: {
+            const Expr arg = as_expr(node->lhs);
+            const Expr darg = forward_scalar_node(node->lhs, context);
+            switch (node->unary) {
+                case detail::ScalarUnaryOp::Neg:
+                    return -darg;
+                case detail::ScalarUnaryOp::Sin:
+                    return mul(cos(arg), darg);
+                case detail::ScalarUnaryOp::Cos:
+                    return mul(-sin(arg), darg);
+                case detail::ScalarUnaryOp::Tan:
+                    return mul(add(one_scalar(), tan(arg) * tan(arg)), darg);
+                case detail::ScalarUnaryOp::Exp:
+                    return mul(exp(arg), darg);
+                case detail::ScalarUnaryOp::Log:
+                    return div(darg, arg);
+                case detail::ScalarUnaryOp::PowConst:
+                    return node->value == 0.0 ? zero_scalar() : mul(mul(constant(node->value), pow(arg, node->value - 1.0)), darg);
+            }
             break;
         }
+        case GraphNodeKind::ScalarBinary: {
+            const Expr lhs = as_expr(node->lhs);
+            const Expr rhs = as_expr(node->rhs);
+            const Expr dlhs = forward_scalar_node(node->lhs, context);
+            const Expr drhs = forward_scalar_node(node->rhs, context);
+            switch (node->binary) {
+                case detail::ScalarBinaryOp::Add:
+                    return add(dlhs, drhs);
+                case detail::ScalarBinaryOp::Sub:
+                    return sub(dlhs, drhs);
+                case detail::ScalarBinaryOp::Mul:
+                    return add(mul(dlhs, rhs), mul(lhs, drhs));
+                case detail::ScalarBinaryOp::Div:
+                    return div(sub(mul(dlhs, rhs), mul(lhs, drhs)), rhs * rhs);
+            }
+            break;
+        }
+        case GraphNodeKind::VectorElement:
+            return forward_vec_node(node->vec, context)[node->index];
+        case GraphNodeKind::Sum:
+            return sum(forward_vec_node(node->vec, context));
+        case GraphNodeKind::Dot: {
+            const Vec lhs = as_vec(node->vec_lhs);
+            const Vec rhs = as_vec(node->vec_rhs);
+            const Vec dlhs = forward_vec_node(node->vec_lhs, context);
+            const Vec drhs = forward_vec_node(node->vec_rhs, context);
+            return add(is_zero(dlhs) ? zero_scalar() : dot(dlhs, rhs), is_zero(drhs) ? zero_scalar() : dot(lhs, drhs));
+        }
+        default:
+            throw std::runtime_error("unsupported scalar graph node while building forward derivative");
     }
 
-    std::vector<Expr> out;
-    out.reserve(static_cast<std::size_t>(input_group_size(f, wrt_input_name)));
-    for (auto id : f.inputs) {
-        const auto &n = f.graph.nodes[static_cast<std::size_t>(id)];
-        if (n.op == Op::Input && n.name == wrt_input_name) {
-            out.push_back(sum_terms(adj_terms[static_cast<std::size_t>(id)]));
-        }
-    }
-    return out;
+    throw std::runtime_error("unhandled scalar graph node while building forward derivative");
 }
 
-struct ReverseVectorBuilder {
-    OptimizingBuilder &builder;
-    std::vector<FunctionVectorNode> nodes;
-    std::vector<std::vector<Expr>> lowered;
-
-    int add_values(const std::vector<Expr> &values) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Values;
-        node.size = static_cast<int>(values.size());
-        node.values.reserve(values.size());
-        for (const auto &value : values) {
-            node.values.push_back(value.id);
-        }
-        infer_direct_values_group(node, builder.g);
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
+Vec forward_through_function_call(const std::shared_ptr<const detail::VecNode> &node, const ForwardContext &context) {
+    if (!node->function) {
+        throw std::runtime_error("function call node is missing callee while building forward derivative");
     }
 
-    int import_primal(const GraphFunction &f, int vector_id, const std::vector<Expr> &primal, std::vector<int> &memo) {
-        if (vector_id < 0 || vector_id >= static_cast<int>(f.vector_nodes.size())) {
-            throw std::runtime_error("invalid vector id during reverse differentiation");
-        }
-        int &cached = memo[static_cast<std::size_t>(vector_id)];
-        if (cached >= 0) {
-            return cached;
-        }
-        const auto &src = f.vector_nodes[static_cast<std::size_t>(vector_id)];
-        FunctionVectorNode node;
-        node.op = src.op;
-        node.size = src.size;
-        node.scale = src.scale;
-        node.power = src.power;
-        node.scalar_op = src.scalar_op;
-        node.matrix = src.matrix;
-        node.sparse_matrix = src.sparse_matrix;
-        node.eye_size = src.eye_size;
-        node.start = src.start;
-        node.stride = src.stride;
-        node.name = src.name;
-        node.is_input_group = src.is_input_group;
-        node.is_param_group = src.is_param_group;
-        if (src.op == VectorOp::Values) {
-            node.values.reserve(src.values.size());
-            for (NodeId value : src.values) {
-                node.values.push_back(primal[static_cast<std::size_t>(value)].id);
+    std::vector<Vec> arguments = function_call_arguments(node);
+    arguments.reserve(arguments.size() + node->arguments.size());
+    for (const auto &argument : node->arguments) {
+        arguments.push_back(forward_vec_node(argument, context));
+    }
+    return detail::function_from_core(node->function).forward_function().call(std::move(arguments));
+}
+
+Vec forward_mapped_function_call(const std::shared_ptr<const detail::VecNode> &node, const ForwardContext &context) {
+    if (!node->function) {
+        throw std::runtime_error("mapped function call node is missing callee while building forward derivative");
+    }
+
+    Function transformed = detail::function_from_core(node->function).forward_function();
+    const std::shared_ptr<const detail::FunctionCore> &transformed_core = detail::function_core(transformed);
+    const int input_count = node->function->info.input_count;
+    if (static_cast<int>(node->mapped_bindings.size()) != input_count) {
+        throw std::runtime_error("mapped function call binding count does not match callee input count");
+    }
+    if (transformed_core->info.input_count != input_count * 2) {
+        throw std::runtime_error("mapped forward transformed function has unexpected input count");
+    }
+
+    std::vector<detail::MappedBindingNode> bindings;
+    bindings.reserve(static_cast<std::size_t>(input_count * 2));
+    for (int i = 0; i < input_count; ++i) {
+        const detail::MappedBindingNode &binding = node->mapped_bindings[static_cast<std::size_t>(i)];
+        bindings.push_back(mapped_binding_like(transformed_core->inputs[static_cast<std::size_t>(i)],
+                                               binding.source,
+                                               binding));
+    }
+    for (int i = 0; i < input_count; ++i) {
+        const detail::MappedBindingNode &binding = node->mapped_bindings[static_cast<std::size_t>(i)];
+        Vec source_tangent = forward_vec_node(binding.source, context);
+        bindings.push_back(mapped_binding_like(transformed_core->inputs[static_cast<std::size_t>(input_count + i)],
+                                               source_tangent,
+                                               binding));
+    }
+
+    return detail::mapped_call_from_bindings(transformed_core, std::move(bindings), node->reps, node->mapped_output);
+}
+
+Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const ForwardContext &context) {
+    if (!node) {
+        throw std::runtime_error("invalid vector graph node while building forward derivative");
+    }
+
+    switch (node->kind) {
+        case GraphNodeKind::VectorVariable:
+            return forward_vector_variable(*node, context);
+        case GraphNodeKind::VectorParameter:
+        case GraphNodeKind::VectorConstant:
+            return zero_vec(node->size);
+        case GraphNodeKind::VectorFromElements: {
+            std::vector<Expr> elements;
+            elements.reserve(node->elements.size());
+            for (const auto &element : node->elements) {
+                elements.push_back(forward_scalar_node(element, context));
             }
-            infer_direct_values_group(node, builder.g);
-        } else {
-            node.a = import_primal(f, src.a, primal, memo);
-            if (src.b >= 0) {
-                node.b = import_primal(f, src.b, primal, memo);
+            return vec(std::move(elements));
+        }
+        case GraphNodeKind::VectorUnary: {
+            const Vec arg = as_vec(node->lhs);
+            const Vec darg = forward_vec_node(node->lhs, context);
+            if (is_zero(darg)) {
+                return zero_vec(node->size);
             }
-        }
-        cached = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return cached;
-    }
-
-    int add_add(int lhs, int rhs) {
-        return add_binary(VectorOp::Add, lhs, rhs);
-    }
-
-    int add_sub(int lhs, int rhs) {
-        return add_binary(VectorOp::Sub, lhs, rhs);
-    }
-
-    int add_mul(int lhs, int rhs) {
-        return add_binary(VectorOp::Mul, lhs, rhs);
-    }
-
-    int add_div(int lhs, int rhs) {
-        return add_binary(VectorOp::Div, lhs, rhs);
-    }
-
-    int add_concat(int lhs, int rhs) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Concat;
-        node.size = nodes[static_cast<std::size_t>(lhs)].size + nodes[static_cast<std::size_t>(rhs)].size;
-        node.a = lhs;
-        node.b = rhs;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_scale(double scale, int rhs) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Scale;
-        node.size = nodes[static_cast<std::size_t>(rhs)].size;
-        node.a = rhs;
-        node.scale = scale;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_pow_const(int rhs, double power) {
-        FunctionVectorNode node;
-        node.op = VectorOp::PowConst;
-        node.size = nodes[static_cast<std::size_t>(rhs)].size;
-        node.a = rhs;
-        node.power = power;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_unary(Op op, int rhs) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Unary;
-        node.size = nodes[static_cast<std::size_t>(rhs)].size;
-        node.a = rhs;
-        node.scalar_op = op;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_constant(int size, double value) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Values;
-        node.size = size;
-        node.values.assign(static_cast<std::size_t>(size), builder.constant(value).id);
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_dense_matvec(DenseMatrix matrix, int rhs) {
-        if (matrix.cols != nodes[static_cast<std::size_t>(rhs)].size) {
-            throw std::runtime_error("reverse vector dense matvec dimension mismatch");
-        }
-        FunctionVectorNode node;
-        node.op = VectorOp::DenseMatVec;
-        node.size = matrix.rows;
-        node.a = rhs;
-        node.matrix = std::move(matrix);
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_sparse_matvec(SparseMatrix matrix, int rhs) {
-        if (matrix.cols != nodes[static_cast<std::size_t>(rhs)].size) {
-            throw std::runtime_error("reverse vector sparse matvec dimension mismatch");
-        }
-        FunctionVectorNode node;
-        node.op = VectorOp::SparseMatVec;
-        node.size = matrix.rows;
-        node.a = rhs;
-        node.sparse_matrix = std::move(matrix);
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_kron_eye_matvec(DenseMatrix matrix, int eye_size, int rhs) {
-        if (matrix.cols * eye_size != nodes[static_cast<std::size_t>(rhs)].size) {
-            throw std::runtime_error("reverse vector kron-eye matvec dimension mismatch");
-        }
-        FunctionVectorNode node;
-        node.op = VectorOp::KronEyeMatVec;
-        node.size = matrix.rows * eye_size;
-        node.a = rhs;
-        node.matrix = std::move(matrix);
-        node.eye_size = eye_size;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int add_scatter_slice(int source_size, int start, int stride, int adj) {
-        auto adj_values = lower(adj);
-        std::vector<Expr> values(static_cast<std::size_t>(source_size), builder.constant(0.0));
-        for (int i = 0; i < static_cast<int>(adj_values.size()); ++i) {
-            values[static_cast<std::size_t>(start + i * stride)] = adj_values[static_cast<std::size_t>(i)];
-        }
-        return add_values(values);
-    }
-
-    int add_slice(int source, int start, int length, int stride = 1) {
-        FunctionVectorNode node;
-        node.op = VectorOp::Slice;
-        node.size = length;
-        node.a = source;
-        node.start = start;
-        node.stride = stride;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-
-    int combine(const std::vector<int> &terms) {
-        if (terms.empty()) {
-            return -1;
-        }
-        int out = terms.front();
-        for (std::size_t i = 1; i < terms.size(); ++i) {
-            out = add_add(out, terms[i]);
-        }
-        return out;
-    }
-
-    std::vector<Expr> lower(int id) {
-        auto &cached = lowered[static_cast<std::size_t>(id)];
-        if (!cached.empty() || nodes[static_cast<std::size_t>(id)].size == 0) {
-            return cached;
-        }
-        const auto &node = nodes[static_cast<std::size_t>(id)];
-        switch (node.op) {
-            case VectorOp::Values:
-                cached.reserve(node.values.size());
-                for (NodeId value : node.values) {
-                    cached.emplace_back(&builder.g, value);
+            switch (node->unary) {
+                case detail::VecUnaryOp::Sin:
+                    return mul(cos(arg), darg);
+                case detail::VecUnaryOp::Cos:
+                    return scale(constant(-1.0), mul(sin(arg), darg));
+                case detail::VecUnaryOp::Tan:
+                    return mul(one_vec(node->size) + tan(arg) * tan(arg), darg);
+                case detail::VecUnaryOp::Exp:
+                    return mul(exp(arg), darg);
+                case detail::VecUnaryOp::Log:
+                    return div(darg, arg);
+                case detail::VecUnaryOp::Sigmoid: {
+                    const Vec sig = sigmoid(arg);
+                    return mul(mul(sig, one_vec(node->size) - sig), darg);
                 }
-                break;
-            case VectorOp::Add:
-                cached = vector_add(lower(node.a), lower(node.b));
-                break;
-            case VectorOp::Sub:
-                cached = vector_sub(lower(node.a), lower(node.b));
-                break;
-            case VectorOp::Mul:
-                cached = vector_mul(lower(node.a), lower(node.b));
-                break;
-            case VectorOp::Div:
-                cached = vector_div(lower(node.a), lower(node.b));
-                break;
-            case VectorOp::Scale:
-                cached = vector_scale(node.scale, lower(node.a));
-                break;
-            case VectorOp::PowConst:
-                cached = vector_pow_const(lower(node.a), node.power);
-                break;
-            case VectorOp::Unary:
-                cached = vector_unary(node.scalar_op, lower(node.a));
-                break;
-            case VectorOp::DenseMatVec:
-                cached = dense_matvec(node.matrix, lower(node.a));
-                break;
-            case VectorOp::SparseMatVec:
-                cached = sparse_matvec(node.sparse_matrix, lower(node.a));
-                break;
-            case VectorOp::KronEyeMatVec:
-                cached = kron_eye_matvec(node.matrix, node.eye_size, lower(node.a));
-                break;
-            case VectorOp::Slice: {
-                auto base = lower(node.a);
-                cached.reserve(static_cast<std::size_t>(node.size));
-                for (int i = 0; i < node.size; ++i) {
-                    cached.push_back(base[static_cast<std::size_t>(node.start + i * node.stride)]);
-                }
-                break;
             }
-            case VectorOp::Concat: {
-                auto lhs = lower(node.a);
-                auto rhs = lower(node.b);
-                cached.reserve(lhs.size() + rhs.size());
-                cached.insert(cached.end(), lhs.begin(), lhs.end());
-                cached.insert(cached.end(), rhs.begin(), rhs.end());
-                break;
+            break;
+        }
+        case GraphNodeKind::VectorBinary: {
+            const Vec lhs = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Vec dlhs = forward_vec_node(node->lhs, context);
+            const Vec drhs = forward_vec_node(node->rhs, context);
+            switch (node->binary) {
+                case detail::VecBinaryOp::Add:
+                    return add(dlhs, drhs);
+                case detail::VecBinaryOp::Sub:
+                    return sub(dlhs, drhs);
+                case detail::VecBinaryOp::Mul:
+                    return add(mul(dlhs, rhs), mul(lhs, drhs));
+                case detail::VecBinaryOp::Div:
+                    return div(sub(mul(dlhs, rhs), mul(lhs, drhs)), rhs * rhs);
             }
+            break;
         }
-        return cached;
-    }
-
-private:
-    int add_binary(VectorOp op, int lhs, int rhs) {
-        if (nodes[static_cast<std::size_t>(lhs)].size != nodes[static_cast<std::size_t>(rhs)].size) {
-            throw std::runtime_error("reverse vector binary dimension mismatch");
+        case GraphNodeKind::VectorScale: {
+            const Expr scale_expr = as_expr(node->scale);
+            const Vec vec_arg = as_vec(node->lhs);
+            return add(scale(forward_scalar_node(node->scale, context), vec_arg), scale(scale_expr, forward_vec_node(node->lhs, context)));
         }
-        FunctionVectorNode node;
-        node.op = op;
-        node.size = nodes[static_cast<std::size_t>(lhs)].size;
-        node.a = lhs;
-        node.b = rhs;
-        int id = static_cast<int>(nodes.size());
-        nodes.push_back(std::move(node));
-        lowered.emplace_back();
-        return id;
-    }
-};
-
-struct ReverseVectorOutput {
-    int output = -1;
-    int input = -1;
-    std::vector<int> params;
-    std::vector<FunctionVectorNode> nodes;
-};
-
-ReverseVectorOutput reverse_vector_output(const GraphFunction &f,
-                                          OptimizingBuilder &builder,
-                                          const std::vector<Expr> &primal,
-                                          const std::string &lambda_name,
-                                          const std::string &wrt_input_name) {
-    ReverseVectorOutput result;
-    if (!f.has_vector_structure()) {
-        return result;
-    }
-    if (f.output_vector < 0 || f.output_vector >= static_cast<int>(f.vector_nodes.size())) {
-        return result;
-    }
-    if (f.vector_nodes[static_cast<std::size_t>(f.output_vector)].op == VectorOp::Values) {
-        return result;
+        case GraphNodeKind::DenseMatVec:
+            return matvec(node->dense, forward_vec_node(node->lhs, context));
+        case GraphNodeKind::SparseMatVec:
+            return matvec(node->sparse, forward_vec_node(node->lhs, context));
+        case GraphNodeKind::Slice:
+            return forward_vec_node(node->lhs, context).slice(node->start, node->size);
+        case GraphNodeKind::ScatterSlice:
+            return scatter_slice(forward_vec_node(node->lhs, context), node->start, node->size);
+        case GraphNodeKind::Gather:
+            return gather(forward_vec_node(node->lhs, context), node->indices);
+        case GraphNodeKind::ScatterAdd:
+            return scatter_add(forward_vec_node(node->lhs, context), node->indices, node->size);
+        case GraphNodeKind::Concat:
+            return concat(forward_vec_node(node->lhs, context), forward_vec_node(node->rhs, context));
+        case GraphNodeKind::FunctionCall:
+            return forward_through_function_call(node, context);
+        case GraphNodeKind::MappedFunctionCall:
+            return forward_mapped_function_call(node, context);
+        default:
+            throw std::runtime_error("unsupported vector graph node while building forward derivative");
     }
 
-    ReverseVectorBuilder vb{builder};
-    std::vector<Expr> lambda_values;
-    lambda_values.reserve(static_cast<std::size_t>(f.output_size()));
-    for (int i = 0; i < f.output_size(); ++i) {
-        lambda_values.push_back(builder.param(lambda_name, i));
+    throw std::runtime_error("unhandled vector graph node while building forward derivative");
+}
+
+Vec reverse_scalar_variable(const Var &var, const Expr &adjoint, const ReverseContext &context) {
+    const auto found = context.adjoint_index.find(var.id());
+    if (found == context.adjoint_index.end()) {
+        return zero_vec(context.wrt.size());
+    }
+    return scatter_slice(vec({adjoint}), found->second, context.wrt.size());
+}
+
+Vec reverse_vector_variable(const detail::VecNode &node, const Vec &adjoint, const ReverseContext &context) {
+    if (node.size == 0 || context.wrt.size() == 0) {
+        return zero_vec(context.wrt.size());
     }
 
-    std::vector<std::vector<int>> adj_terms(f.vector_nodes.size());
-    adj_terms[static_cast<std::size_t>(f.output_vector)].push_back(vb.add_values(lambda_values));
-    std::vector<int> primal_vector_memo(f.vector_nodes.size(), -1);
-    int wrt_output = -1;
-    bool ok = true;
-
-    for (int vector_id = static_cast<int>(f.vector_nodes.size()) - 1; vector_id >= 0; --vector_id) {
-        if (!ok || adj_terms[static_cast<std::size_t>(vector_id)].empty()) {
-            continue;
+    std::vector<int> indices(static_cast<std::size_t>(node.size), -1);
+    int matched = 0;
+    for (int i = 0; i < node.size; ++i) {
+        const auto found = context.adjoint_index.find(node.vars[static_cast<std::size_t>(i)].id());
+        if (found != context.adjoint_index.end()) {
+            indices[static_cast<std::size_t>(i)] = found->second;
+            ++matched;
         }
-        const auto &node = f.vector_nodes[static_cast<std::size_t>(vector_id)];
-        for (int term : adj_terms[static_cast<std::size_t>(vector_id)]) {
-            if (vb.nodes[static_cast<std::size_t>(term)].size != node.size) {
-                throw std::runtime_error("reverse vector adjoint size mismatch at vector node " + std::to_string(vector_id) + ": node size " + std::to_string(node.size) +
-                                         ", adjoint size " + std::to_string(vb.nodes[static_cast<std::size_t>(term)].size));
-            }
-        }
-        int adj = vb.combine(adj_terms[static_cast<std::size_t>(vector_id)]);
-        switch (node.op) {
-            case VectorOp::Values:
-                if (direct_values_group(f, node, Op::Input, wrt_input_name) && node.size == input_group_size(f, wrt_input_name)) {
-                    wrt_output = wrt_output < 0 ? adj : vb.add_add(wrt_output, adj);
-                } else if (!node.is_input_group && !node.is_param_group) {
-                    auto scalar_grad = scalar_vjp_for_values(f, builder, primal, node.values, vb.lower(adj), wrt_input_name);
-                    if (static_cast<int>(scalar_grad.size()) != input_group_size(f, wrt_input_name)) {
-                        ok = false;
-                    } else {
-                        int scalar_adj = vb.add_values(scalar_grad);
-                        wrt_output = wrt_output < 0 ? scalar_adj : vb.add_add(wrt_output, scalar_adj);
-                    }
-                }
-                break;
-            case VectorOp::Add:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(adj);
-                adj_terms[static_cast<std::size_t>(node.b)].push_back(adj);
-                break;
-            case VectorOp::Sub:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(adj);
-                adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_scale(-1.0, adj));
-                break;
-            case VectorOp::Mul:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.import_primal(f, node.b, primal, primal_vector_memo)));
-                adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_mul(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)));
-                break;
-            case VectorOp::Div:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_div(adj, vb.import_primal(f, node.b, primal, primal_vector_memo)));
-                adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_scale(-1.0, vb.add_div(vb.add_mul(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)),
-                                                                                                  vb.add_pow_const(vb.import_primal(f, node.b, primal, primal_vector_memo), 2.0))));
-                break;
-            case VectorOp::Scale:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(node.scale, adj));
-                break;
-            case VectorOp::PowConst:
-                if (!exactly(node.power, 0.0)) {
-                    int p = vb.add_pow_const(vb.import_primal(f, node.a, primal, primal_vector_memo), node.power - 1.0);
-                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(node.power, vb.add_mul(adj, p)));
-                }
-                break;
-            case VectorOp::Unary:
-                if (node.scalar_op == Op::Sin) {
-                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.add_unary(Op::Cos, vb.import_primal(f, node.a, primal, primal_vector_memo))));
-                } else if (node.scalar_op == Op::Cos) {
-                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scale(-1.0, vb.add_mul(adj, vb.add_unary(Op::Sin, vb.import_primal(f, node.a, primal, primal_vector_memo)))));
-                } else if (node.scalar_op == Op::Tan) {
-                    int tan_x = vb.import_primal(f, vector_id, primal, primal_vector_memo);
-                    int factor = vb.add_add(vb.add_constant(node.size, 1.0), vb.add_pow_const(tan_x, 2.0));
-                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, factor));
-                } else if (node.scalar_op == Op::Exp) {
-                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_mul(adj, vb.import_primal(f, vector_id, primal, primal_vector_memo)));
-                } else if (node.scalar_op == Op::Log) {
-                    adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_div(adj, vb.import_primal(f, node.a, primal, primal_vector_memo)));
-                }
-                break;
-            case VectorOp::DenseMatVec:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_dense_matvec(transpose(node.matrix), adj));
-                break;
-            case VectorOp::SparseMatVec:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_sparse_matvec(transpose(node.sparse_matrix), adj));
-                break;
-            case VectorOp::KronEyeMatVec:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_kron_eye_matvec(transpose(node.matrix), node.eye_size, adj));
-                break;
-            case VectorOp::Slice:
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_scatter_slice(f.vector_nodes[static_cast<std::size_t>(node.a)].size, node.start, node.stride, adj));
-                break;
-            case VectorOp::Concat: {
-                const int lhs_size = f.vector_nodes[static_cast<std::size_t>(node.a)].size;
-                const int rhs_size = f.vector_nodes[static_cast<std::size_t>(node.b)].size;
-                adj_terms[static_cast<std::size_t>(node.a)].push_back(vb.add_slice(adj, 0, lhs_size));
-                adj_terms[static_cast<std::size_t>(node.b)].push_back(vb.add_slice(adj, lhs_size, rhs_size));
+    }
+
+    if (matched == 0) {
+        return zero_vec(context.wrt.size());
+    }
+
+    if (matched == node.size) {
+        const int start = indices.front();
+        bool contiguous = true;
+        for (int i = 0; i < node.size; ++i) {
+            if (indices[static_cast<std::size_t>(i)] != start + i) {
+                contiguous = false;
                 break;
             }
         }
+        if (contiguous) {
+            return scatter_slice(adjoint, start, context.wrt.size());
+        }
     }
 
-    if (!ok || wrt_output < 0 || vb.nodes[static_cast<std::size_t>(wrt_output)].size != input_group_size(f, wrt_input_name)) {
-        return result;
+    Vec total = zero_vec(context.wrt.size());
+    for (int i = 0; i < node.size; ++i) {
+        const int index = indices[static_cast<std::size_t>(i)];
+        if (index >= 0) {
+            total = add(total, scatter_slice(vec({adjoint[i]}), index, context.wrt.size()));
+        }
+    }
+    return total;
+}
+
+Vec call_reverse_transformed_function(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint) {
+    if (!node->function) {
+        throw std::runtime_error("function call node is missing callee while building reverse derivative");
+    }
+    if (!adjoint.valid() || adjoint.size() != node->function->info.output_size) {
+        throw std::runtime_error("function reverse-call seed size must match callee output size");
     }
 
-    result.input = vb.import_primal(f, f.input_vector, primal, primal_vector_memo);
-    result.params.reserve(f.param_vectors.size());
-    for (int param_vector_id : f.param_vectors) {
-        result.params.push_back(vb.import_primal(f, param_vector_id, primal, primal_vector_memo));
+    std::vector<Vec> arguments = function_call_arguments(node);
+    if (node->function->info.output_size > 0) {
+        arguments.push_back(adjoint);
     }
-    result.output = wrt_output;
-    result.nodes = std::move(vb.nodes);
-    return result;
+    return detail::function_from_core(node->function).reverse_function().call(std::move(arguments));
+}
+
+Vec reverse_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, const Expr &adjoint, const ReverseContext &context) {
+    if (!node) {
+        throw std::runtime_error("invalid scalar graph node while building reverse derivative");
+    }
+    if (!adjoint.valid()) {
+        throw std::runtime_error("scalar reverse adjoint must be a valid expression");
+    }
+
+    switch (node->kind) {
+        case GraphNodeKind::ScalarConstant:
+        case GraphNodeKind::ScalarParameter:
+            return zero_vec(context.wrt.size());
+        case GraphNodeKind::ScalarVariable:
+            return reverse_scalar_variable(node->var, adjoint, context);
+        case GraphNodeKind::ScalarUnary: {
+            const Expr arg = as_expr(node->lhs);
+            switch (node->unary) {
+                case detail::ScalarUnaryOp::Neg:
+                    return reverse_scalar_node(node->lhs, -adjoint, context);
+                case detail::ScalarUnaryOp::Sin:
+                    return reverse_scalar_node(node->lhs, mul(adjoint, cos(arg)), context);
+                case detail::ScalarUnaryOp::Cos:
+                    return reverse_scalar_node(node->lhs, mul(adjoint, -sin(arg)), context);
+                case detail::ScalarUnaryOp::Tan:
+                    return reverse_scalar_node(node->lhs, mul(adjoint, add(one_scalar(), tan(arg) * tan(arg))), context);
+                case detail::ScalarUnaryOp::Exp:
+                    return reverse_scalar_node(node->lhs, mul(adjoint, exp(arg)), context);
+                case detail::ScalarUnaryOp::Log:
+                    return reverse_scalar_node(node->lhs, div(adjoint, arg), context);
+                case detail::ScalarUnaryOp::PowConst:
+                    return node->value == 0.0 ? zero_vec(context.wrt.size()) : reverse_scalar_node(node->lhs, mul(adjoint, mul(constant(node->value), pow(arg, node->value - 1.0))), context);
+            }
+            break;
+        }
+        case GraphNodeKind::ScalarBinary: {
+            const Expr lhs = as_expr(node->lhs);
+            const Expr rhs = as_expr(node->rhs);
+            switch (node->binary) {
+                case detail::ScalarBinaryOp::Add:
+                    return add(reverse_scalar_node(node->lhs, adjoint, context), reverse_scalar_node(node->rhs, adjoint, context));
+                case detail::ScalarBinaryOp::Sub:
+                    return add(reverse_scalar_node(node->lhs, adjoint, context), reverse_scalar_node(node->rhs, -adjoint, context));
+                case detail::ScalarBinaryOp::Mul:
+                    return add(reverse_scalar_node(node->lhs, mul(adjoint, rhs), context), reverse_scalar_node(node->rhs, mul(adjoint, lhs), context));
+                case detail::ScalarBinaryOp::Div:
+                    return add(reverse_scalar_node(node->lhs, div(adjoint, rhs), context),
+                               reverse_scalar_node(node->rhs, div(mul(-adjoint, lhs), rhs * rhs), context));
+            }
+            break;
+        }
+        case GraphNodeKind::VectorElement:
+            return reverse_vec_node(node->vec, scatter_slice(vec({adjoint}), node->index, node->vec->size), context);
+        case GraphNodeKind::Sum:
+            return reverse_vec_node(node->vec, scale(adjoint, one_vec(node->vec->size)), context);
+        case GraphNodeKind::Dot: {
+            const Vec lhs = as_vec(node->vec_lhs);
+            const Vec rhs = as_vec(node->vec_rhs);
+            return add(reverse_vec_node(node->vec_lhs, scale(adjoint, rhs), context),
+                       reverse_vec_node(node->vec_rhs, scale(adjoint, lhs), context));
+        }
+        default:
+            throw std::runtime_error("unsupported scalar graph node while building reverse derivative");
+    }
+
+    throw std::runtime_error("unhandled scalar graph node while building reverse derivative");
+}
+
+Vec reverse_function_call(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context) {
+    const Vec local_adjoint = call_reverse_transformed_function(node, adjoint);
+    Vec total = zero_vec(context.wrt.size());
+    int offset = 0;
+    for (std::size_t i = 0; i < node->arguments.size(); ++i) {
+        const int input_size = node->function->info.inputs[i].size;
+        const Vec argument_adjoint = local_adjoint.slice(offset, input_size);
+        total = add(total, reverse_vec_node(node->arguments[i], argument_adjoint, context));
+        offset += input_size;
+    }
+    return total;
+}
+
+Vec reverse_mapped_function_call(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context) {
+    if (!node->function) {
+        throw std::runtime_error("mapped function call node is missing callee while building reverse derivative");
+    }
+    if (adjoint.size() != node->size) {
+        throw std::runtime_error("mapped reverse adjoint size must match mapped output size");
+    }
+
+    Function transformed = detail::function_from_core(node->function).reverse_function();
+    const std::shared_ptr<const detail::FunctionCore> &transformed_core = detail::function_core(transformed);
+    const int input_count = node->function->info.input_count;
+    if (static_cast<int>(node->mapped_bindings.size()) != input_count) {
+        throw std::runtime_error("mapped function call binding count does not match callee input count");
+    }
+    const int expected_transformed_inputs = input_count + (node->function->info.output_size > 0 ? 1 : 0);
+    if (transformed_core->info.input_count != expected_transformed_inputs) {
+        throw std::runtime_error("mapped reverse transformed function has unexpected input count");
+    }
+
+    std::vector<detail::MappedBindingNode> bindings;
+    bindings.reserve(static_cast<std::size_t>(expected_transformed_inputs));
+    for (int i = 0; i < input_count; ++i) {
+        const detail::MappedBindingNode &binding = node->mapped_bindings[static_cast<std::size_t>(i)];
+        bindings.push_back(mapped_binding_like(transformed_core->inputs[static_cast<std::size_t>(i)],
+                                               binding.source,
+                                               binding));
+    }
+    if (node->function->info.output_size > 0) {
+        const int local_output_size = node->function->info.output_size;
+        Vec lambda_source = adjoint;
+        int lambda_local_size = local_output_size;
+        std::vector<int> lambda_indices;
+        MapKind lambda_kind = MapKind::Blocks;
+        int lambda_rep_stride = local_output_size;
+
+        if (node->mapped_output.mode() == OutputMode::Concat) {
+            lambda_indices = {};
+            lambda_kind = MapKind::Blocks;
+            lambda_rep_stride = local_output_size;
+        } else if (node->mapped_output.mode() == OutputMode::Sum) {
+            lambda_indices = {};
+            lambda_kind = MapKind::Stride;
+            lambda_rep_stride = 0;
+        } else if (node->mapped_output.mode() == OutputMode::Scatter) {
+            lambda_source = gather(adjoint, node->mapped_output.indices());
+            lambda_indices = {};
+            lambda_kind = MapKind::Blocks;
+            lambda_rep_stride = local_output_size;
+        } else if (node->mapped_output.mode() == OutputMode::WeightedSum) {
+            lambda_source = weighted_repeated_lambda(adjoint, node->reps, local_output_size, node->mapped_output.weights());
+            lambda_indices = {};
+            lambda_kind = MapKind::Blocks;
+            lambda_rep_stride = local_output_size;
+        }
+
+        bindings.push_back(mapped_binding(transformed_core->inputs[static_cast<std::size_t>(input_count)],
+                                          lambda_source,
+                                          node->reps,
+                                          lambda_local_size,
+                                          lambda_indices,
+                                          lambda_kind,
+                                          0,
+                                          lambda_rep_stride,
+                                          1,
+                                          0,
+                                          {}));
+    }
+
+    const Vec local_input_adjoints = detail::mapped_call_from_bindings(transformed_core, std::move(bindings), node->reps);
+
+    Vec total = zero_vec(context.wrt.size());
+    int input_offset = 0;
+    for (int i = 0; i < input_count; ++i) {
+        const detail::MappedBindingNode &binding = node->mapped_bindings[static_cast<std::size_t>(i)];
+        const Vec repeated_local_adjoint = gather(local_input_adjoints,
+                                                  repeated_local_adjoint_indices(node->reps,
+                                                                                 binding.local_size,
+                                                                                 node->function->info.input_size,
+                                                                                 input_offset));
+        const Vec source_adjoint = scatter_add(repeated_local_adjoint, detail::materialize_indices(binding, node->reps), binding.source->size);
+        total = add(total, reverse_vec_node(binding.source, source_adjoint, context));
+        input_offset += binding.local_size;
+    }
+    return total;
+}
+
+Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context) {
+    if (!node) {
+        throw std::runtime_error("invalid vector graph node while building reverse derivative");
+    }
+    if (!adjoint.valid()) {
+        throw std::runtime_error("vector reverse adjoint must be a valid vector expression");
+    }
+    if (adjoint.size() != node->size) {
+        throw std::runtime_error("vector reverse adjoint size must match vector output size");
+    }
+
+    switch (node->kind) {
+        case GraphNodeKind::VectorVariable:
+            return reverse_vector_variable(*node, adjoint, context);
+        case GraphNodeKind::VectorParameter:
+        case GraphNodeKind::VectorConstant:
+            return zero_vec(context.wrt.size());
+        case GraphNodeKind::VectorFromElements: {
+            Vec total = zero_vec(context.wrt.size());
+            for (int i = 0; i < node->size; ++i) {
+                total = add(total, reverse_scalar_node(node->elements[static_cast<std::size_t>(i)], adjoint[i], context));
+            }
+            return total;
+        }
+        case GraphNodeKind::VectorUnary: {
+            const Vec arg = as_vec(node->lhs);
+            switch (node->unary) {
+                case detail::VecUnaryOp::Sin:
+                    return reverse_vec_node(node->lhs, mul(adjoint, cos(arg)), context);
+                case detail::VecUnaryOp::Cos:
+                    return reverse_vec_node(node->lhs, scale(constant(-1.0), mul(adjoint, sin(arg))), context);
+                case detail::VecUnaryOp::Tan:
+                    return reverse_vec_node(node->lhs, mul(adjoint, one_vec(node->size) + tan(arg) * tan(arg)), context);
+                case detail::VecUnaryOp::Exp:
+                    return reverse_vec_node(node->lhs, mul(adjoint, exp(arg)), context);
+                case detail::VecUnaryOp::Log:
+                    return reverse_vec_node(node->lhs, div(adjoint, arg), context);
+                case detail::VecUnaryOp::Sigmoid: {
+                    const Vec sig = sigmoid(arg);
+                    return reverse_vec_node(node->lhs, mul(adjoint, mul(sig, one_vec(node->size) - sig)), context);
+                }
+            }
+            break;
+        }
+        case GraphNodeKind::VectorBinary: {
+            const Vec lhs = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            switch (node->binary) {
+                case detail::VecBinaryOp::Add:
+                    return add(reverse_vec_node(node->lhs, adjoint, context), reverse_vec_node(node->rhs, adjoint, context));
+                case detail::VecBinaryOp::Sub:
+                    return add(reverse_vec_node(node->lhs, adjoint, context), reverse_vec_node(node->rhs, scale(constant(-1.0), adjoint), context));
+                case detail::VecBinaryOp::Mul:
+                    return add(reverse_vec_node(node->lhs, mul(adjoint, rhs), context), reverse_vec_node(node->rhs, mul(adjoint, lhs), context));
+                case detail::VecBinaryOp::Div:
+                    return add(reverse_vec_node(node->lhs, div(adjoint, rhs), context),
+                               reverse_vec_node(node->rhs, div(scale(constant(-1.0), mul(adjoint, lhs)), rhs * rhs), context));
+            }
+            break;
+        }
+        case GraphNodeKind::VectorScale: {
+            const Expr scale_expr = as_expr(node->scale);
+            const Vec vec_arg = as_vec(node->lhs);
+            return add(reverse_vec_node(node->lhs, scale(scale_expr, adjoint), context),
+                       reverse_scalar_node(node->scale, dot(adjoint, vec_arg), context));
+        }
+        case GraphNodeKind::DenseMatVec:
+            return reverse_vec_node(node->lhs, transpose(node->dense) * adjoint, context);
+        case GraphNodeKind::SparseMatVec:
+            return reverse_vec_node(node->lhs, transpose(node->sparse) * adjoint, context);
+        case GraphNodeKind::Slice:
+            return reverse_vec_node(node->lhs, scatter_slice(adjoint, node->start, node->lhs->size), context);
+        case GraphNodeKind::ScatterSlice:
+            return reverse_vec_node(node->lhs, adjoint.slice(node->start, node->lhs->size), context);
+        case GraphNodeKind::Gather:
+            return reverse_vec_node(node->lhs, scatter_add(adjoint, node->indices, node->lhs->size), context);
+        case GraphNodeKind::ScatterAdd:
+            return reverse_vec_node(node->lhs, gather(adjoint, node->indices), context);
+        case GraphNodeKind::Concat:
+            return add(reverse_vec_node(node->lhs, adjoint.slice(0, node->lhs->size), context),
+                       reverse_vec_node(node->rhs, adjoint.slice(node->lhs->size, node->rhs->size), context));
+        case GraphNodeKind::FunctionCall:
+            return reverse_function_call(node, adjoint, context);
+        case GraphNodeKind::MappedFunctionCall:
+            return reverse_mapped_function_call(node, adjoint, context);
+        default:
+            throw std::runtime_error("unsupported vector graph node while building reverse derivative");
+    }
+
+    throw std::runtime_error("unhandled vector graph node while building reverse derivative");
 }
 
 } // namespace
 
-GraphFunction forward_diff(const GraphFunction &f, const std::string &wrt_input_name, const std::string &direction_name) {
-    OptimizingBuilder b;
-    auto primal = clone_nodes(f.graph, b);
-    std::vector<Expr> tangent(f.graph.nodes.size());
-    auto zero = b.constant(0.0);
-
-    for (NodeId i = 0; i < static_cast<NodeId>(f.graph.nodes.size()); ++i) {
-        const auto &n = f.graph.nodes[i];
-        switch (n.op) {
-            case Op::Constant:
-            case Op::Param:
-                tangent[i] = zero;
-                break;
-            case Op::Input:
-                if (n.name == wrt_input_name) {
-                    tangent[i] = b.param(direction_name, n.index);
-                } else {
-                    tangent[i] = zero;
-                }
-                break;
-            case Op::Add:
-                tangent[i] = b.add(tangent[n.a], tangent[n.b]);
-                break;
-            case Op::Sub:
-                tangent[i] = b.sub(tangent[n.a], tangent[n.b]);
-                break;
-            case Op::Mul:
-                tangent[i] = b.add(b.mul(tangent[n.a], primal[n.b]), b.mul(primal[n.a], tangent[n.b]));
-                break;
-            case Op::Div: {
-                auto num = b.sub(b.mul(tangent[n.a], primal[n.b]), b.mul(primal[n.a], tangent[n.b]));
-                auto den = b.mul(primal[n.b], primal[n.b]);
-                tangent[i] = b.div(num, den);
-                break;
-            }
-            case Op::Neg:
-                tangent[i] = b.neg(tangent[n.a]);
-                break;
-            case Op::Sin:
-                tangent[i] = b.mul(b.unary(Op::Cos, primal[n.a]), tangent[n.a]);
-                break;
-            case Op::Cos:
-                tangent[i] = b.neg(b.mul(b.unary(Op::Sin, primal[n.a]), tangent[n.a]));
-                break;
-            case Op::Tan:
-                tangent[i] = b.mul(tangent[n.a], b.add(b.constant(1.0), b.mul(primal[i], primal[i])));
-                break;
-            case Op::Exp:
-                tangent[i] = b.mul(primal[i], tangent[n.a]);
-                break;
-            case Op::Log:
-                tangent[i] = b.div(tangent[n.a], primal[n.a]);
-                break;
-            case Op::PowConst: {
-                if (exactly(n.value, 0.0)) {
-                    tangent[i] = zero;
-                } else {
-                    auto c = b.constant(n.value);
-                    auto p = b.pow_const(primal[n.a], n.value - 1.0);
-                    tangent[i] = b.mul(b.mul(c, p), tangent[n.a]);
-                }
-                break;
-            }
-        }
+Expr Expr::forward_diff(const Vars &wrt, const Vec &seed) const {
+    if (!valid()) {
+        throw std::runtime_error("cannot build forward derivative of invalid scalar expression");
     }
-
-    GraphFunction out;
-    for (auto id : f.inputs) {
-        out.inputs.push_back(primal[id].id);
-    }
-
-    for (auto id : f.params) {
-        out.params.push_back(primal[id].id);
-    }
-
-    for (auto [name, size] : f.param_groups) {
-        add_unique_group(out.param_groups, name, size);
-    }
-
-    for (auto [name, size] : f.input_groups) {
-        add_unique_group(out.input_groups, name, size);
-    }
-
-    int wrt_size = 0;
-    for (auto [name, size] : f.input_groups) {
-        if (name == wrt_input_name) {
-            wrt_size = size;
-        }
-    }
-    add_unique_group(out.param_groups, direction_name, wrt_size);
-
-    for (auto id : f.outputs) {
-        out.outputs.push_back(tangent[id].id);
-    }
-    if (f.has_vector_structure() && f.output_vector >= 0 && f.output_vector < static_cast<int>(f.vector_nodes.size()) &&
-        f.vector_nodes[static_cast<std::size_t>(f.output_vector)].op != VectorOp::Values) {
-        auto vector_output = tangent_vector_nodes(f, b.g, primal, tangent);
-        out.vector_nodes = std::move(vector_output.nodes);
-        out.input_vector = vector_output.input_vector;
-        out.output_vector = vector_output.output_vector;
-        out.param_vectors = std::move(vector_output.param_vectors);
-        out.vector_structure_valid = true;
-    }
-    out.graph = std::move(b.g);
-    return optimize(out);
+    const ForwardContext context = make_context(wrt, seed);
+    return forward_scalar_node(detail::scalar_node(*this), context);
 }
 
-// -----------------------------------------------------------------------------
-// Reverse-mode graph transform: VJP for vector-valued functions.
-// Returns grad_x(lambda^T f(x)).
-// -----------------------------------------------------------------------------
-
-GraphFunction reverse_diff(const GraphFunction &f, const std::string &lambda_name, const std::string &wrt_input_name) {
-    OptimizingBuilder b;
-    auto primal = clone_nodes(f.graph, b);
-    auto zero = b.constant(0.0);
-
-    std::vector<std::vector<Expr>> adj_terms(f.graph.nodes.size());
-    auto add_adj = [&](NodeId id, Expr term) {
-        if (id >= 0) {
-            adj_terms[id].push_back(term);
-        }
-    };
-
-    for (int i = 0; i < static_cast<int>(f.outputs.size()); ++i) {
-        add_adj(f.outputs[i], b.param(lambda_name, i));
+Vec Vec::forward_diff(const Vars &wrt, const Vec &seed) const {
+    if (!valid()) {
+        throw std::runtime_error("cannot build forward derivative of invalid vector expression");
     }
-
-    auto sum_terms = [&](const std::vector<Expr> &terms) -> Expr {
-        if (terms.empty()) {
-            return zero;
-        }
-        Expr s = terms[0];
-        for (std::size_t i = 1; i < terms.size(); ++i) {
-            s = b.add(s, terms[i]);
-        }
-        return s;
-    };
-
-    for (NodeId i = static_cast<NodeId>(f.graph.nodes.size()) - 1; i >= 0; --i) {
-        if (adj_terms[i].empty()) {
-            continue;
-        }
-        const auto &n = f.graph.nodes[i];
-        Expr adj = sum_terms(adj_terms[i]);
-        switch (n.op) {
-            case Op::Constant:
-            case Op::Input:
-            case Op::Param:
-                break;
-            case Op::Add:
-                add_adj(n.a, adj);
-                add_adj(n.b, adj);
-                break;
-            case Op::Sub:
-                add_adj(n.a, adj);
-                add_adj(n.b, b.neg(adj));
-                break;
-            case Op::Mul:
-                add_adj(n.a, b.mul(adj, primal[n.b]));
-                add_adj(n.b, b.mul(adj, primal[n.a]));
-                break;
-            case Op::Div:
-                add_adj(n.a, b.div(adj, primal[n.b]));
-                add_adj(n.b, b.neg(b.div(b.mul(adj, primal[n.a]), b.mul(primal[n.b], primal[n.b]))));
-                break;
-            case Op::Neg:
-                add_adj(n.a, b.neg(adj));
-                break;
-            case Op::Sin:
-                add_adj(n.a, b.mul(adj, b.unary(Op::Cos, primal[n.a])));
-                break;
-            case Op::Cos:
-                add_adj(n.a, b.neg(b.mul(adj, b.unary(Op::Sin, primal[n.a]))));
-                break;
-            case Op::Tan:
-                add_adj(n.a, b.mul(adj, b.add(b.constant(1.0), b.mul(primal[i], primal[i]))));
-                break;
-            case Op::Exp:
-                add_adj(n.a, b.mul(adj, primal[i]));
-                break;
-            case Op::Log:
-                add_adj(n.a, b.div(adj, primal[n.a]));
-                break;
-            case Op::PowConst:
-                add_adj(n.a, b.mul(adj, b.mul(b.constant(n.value), b.pow_const(primal[n.a], n.value - 1.0))));
-                break;
-        }
-        if (i == 0) {
-            break;
-        }
-    }
-
-    GraphFunction out;
-
-    int out_size = static_cast<int>(f.outputs.size());
-    add_unique_group(out.param_groups, lambda_name, out_size);
-    for (int i = 0; i < out_size; ++i) {
-        // lambda seed nodes were created while seeding output adjoints.
-        // They do not need to be duplicated here.
-    }
-    for (auto [name, size] : f.param_groups) {
-        add_unique_group(out.param_groups, name, size);
-    }
-    for (auto [name, size] : f.input_groups) {
-        add_unique_group(out.input_groups, name, size);
-    }
-
-    for (auto id : f.inputs) {
-        out.inputs.push_back(primal[id].id);
-    }
-    for (auto id : f.params) {
-        out.params.push_back(primal[id].id);
-    }
-
-    for (auto id : f.inputs) {
-        const auto &n = f.graph.nodes[id];
-        if (n.op == Op::Input && n.name == wrt_input_name) {
-            out.outputs.push_back(sum_terms(adj_terms[id]).id);
-        }
-    }
-    auto vector_output = reverse_vector_output(f, b, primal, lambda_name, wrt_input_name);
-    if (vector_output.output >= 0) {
-        out.vector_nodes = std::move(vector_output.nodes);
-        out.input_vector = vector_output.input;
-        out.output_vector = vector_output.output;
-        out.param_vectors = std::move(vector_output.params);
-        out.vector_structure_valid = true;
-    }
-    out.graph = std::move(b.g);
-    return optimize(out);
+    const ForwardContext context = make_context(wrt, seed);
+    return forward_vec_node(detail::vec_node(*this), context);
 }
 
+Vec Expr::reverse_diff(const Vars &wrt) const {
+    if (!valid()) {
+        throw std::runtime_error("cannot build reverse derivative of invalid scalar expression");
+    }
+    const ReverseContext context = make_reverse_context(wrt);
+    return reverse_scalar_node(detail::scalar_node(*this), one_scalar(), context);
+}
+
+Vec Vec::reverse_diff(const Vars &wrt, const Vec &lambda) const {
+    if (!valid()) {
+        throw std::runtime_error("cannot build reverse derivative of invalid vector expression");
+    }
+    if (!lambda.valid()) {
+        throw std::runtime_error("reverse seed must be a valid vector expression");
+    }
+    if (lambda.size() != size()) {
+        throw std::runtime_error("reverse seed size must match vector expression size");
+    }
+    const ReverseContext context = make_reverse_context(wrt);
+    return reverse_vec_node(detail::vec_node(*this), lambda, context);
+}
 
 } // namespace ad

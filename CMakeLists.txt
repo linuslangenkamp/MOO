@@ -10,7 +10,6 @@ option(MOO_WITH_RADAU "Enable RADAU build and linking" ON)
 option(MOO_WITH_C_INTERFACE "Build MOO with C-interface support" ON)
 option(MOO_WITH_FMI_INTERFACE "Build MOO with FMI-interface support" ON)
 option(MOO_TESTS "Build MOO with test executables" ON)
-option(MOO_WITH_PYTHON_BINDINGS "Build experimental Python bindings for MOO AD" ON)
 
 message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER}")
@@ -139,13 +138,18 @@ if(MOO_WITH_RADAU)
 endif()
 
 add_library(mooad SHARED
-    src/ad/graph.cpp
-    src/ad/optimize.cpp
     src/ad/diff.cpp
-    src/ad/sparse_derivatives.cpp
-    src/ad/vm.cpp
-    src/ad/codegen.cpp
+    src/ad/detail/traversal.cpp
+    src/ad/eval.cpp
+    src/ad/expr.cpp
+    src/ad/function.cpp
+    src/ad/graph_info.cpp
+    src/ad/map.cpp
+    src/ad/matrix.cpp
     src/ad/sparsity.cpp
+    src/ad/symbol.cpp
+    src/ad/values.cpp
+    src/ad/vec.cpp
 )
 target_include_directories(mooad
     PUBLIC
@@ -153,16 +157,6 @@ target_include_directories(mooad
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_options(mooad PRIVATE ${MOO_COMPILE_OPTIONS})
-
-if(MOO_WITH_PYTHON_BINDINGS)
-    add_subdirectory(third-party/pybind11)
-    pybind11_add_module(_ad src/ad/python_bindings.cpp)
-    target_link_libraries(_ad PRIVATE mooad)
-    set_target_properties(_ad PROPERTIES
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/moo
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/moo
-    )
-endif()
 
 # DLL export / hide symbols
 if(WIN32)
@@ -185,13 +179,17 @@ install(TARGETS moo mooad
 
 install(FILES
         src/ad/ad.h
-        src/ad/core.h
-        src/ad/optimize.h
-        src/ad/diff.h
-        src/ad/sparse_derivatives.h
-        src/ad/vm.h
-        src/ad/codegen.h
+        src/ad/codegen_options.h
+        src/ad/expr.h
+        src/ad/function.h
+        src/ad/graph_info.h
+        src/ad/map.h
+        src/ad/map_kind.h
+        src/ad/matrix.h
         src/ad/sparsity.h
+        src/ad/symbol.h
+        src/ad/values.h
+        src/ad/vec.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Tests

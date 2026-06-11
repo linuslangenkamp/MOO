@@ -5,13 +5,11 @@
 
 # MOO: Modelica / Model Optimizer
 
-MOO: Modelica / Model Optimizer v0.1.0 is a flexible and extensible C++ and Python framework
-for nonlinear optimization, with a focus on dynamic optimization in the Modelica ecosystem.
-It provides a generic Nonlinear Programming (NLP) layer with built-in scaling support,
-solver-independent interfaces, direct-collocation-based GDOP transcription, consistent-initialization
-and standard NLP formulations, and an in-tree symbolic AD/code-generation layer with Python bindings.
-Through its Python frontend, MOO models can generate exact derivative callbacks, compile them against
-`libmoo`, run the selected solver, and read structured result outputs.
+MOO: Modelica / Model Optimizer v0.1.0 is being refactored around a C++ AD
+core first. The active AD library currently exposes a small expression API for
+scalar and vector expressions, value evaluation, derivatives, Hessian-vector
+products, and sparsity. Legacy Python modeling/codegen code has been moved to
+`archive/python_legacy/` while the C++ AD foundation is rebuilt.
 
 ## Working with this repository
 
@@ -48,10 +46,6 @@ Install with your favorite package manager
   - Debian / Ubuntu: `apt install liblapack-dev`
   - Latest OpenBLAS build from source: add `-DUSE_SYSTEM_LAPACK=OFF -DDOWNLOAD_LAPACK=ON` to the CMake configure command
 
-- Python 3.10 or newer when using the Python frontend
-
-- pybind11 submodule when building Python AD bindings
-
 #### Optional
 
 - METIS
@@ -77,15 +71,7 @@ Possible configuration arguments:
 - `MOO_WITH_RADAU`: Build with RADAU fortran code to perform simulations (default: `ON`)
 - `MOO_WITH_C_INTERFACE`: Build C interfaces used by generated problems (default: `ON`)
 - `MOO_WITH_FMI_INTERFACE`: Build FMI interface support with fmi4c (default: `ON`)
-- `MOO_WITH_PYTHON_BINDINGS`: Build Python bindings for MOO AD (default: `ON`)
 - `MOO_TESTS`: Build tests (default: `ON`)
-
-For Python modeling and code generation, configure with:
-
-```bash
-cmake -S . -B build -DMOO_WITH_PYTHON_BINDINGS=ON
-cmake --build build --target moo mooad _ad
-```
 
 ### Build
 
@@ -95,91 +81,18 @@ cmake --build build --parallel <Nr. of cores> --target all
 
 ## Python Frontend
 
-Use the Python package from a source checkout with:
-
-```bash
-PYTHONPATH=python python3 examples/moo/hello.py
-```
-
-For normal local use, install it editable in a venv:
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-```
-
-The main factories are:
-
-```python
-from moo import gdop_model, nlp_model
-```
-
-A minimal dynamic optimization problem:
-
-```python
-from moo import gdop_model
-
-m = gdop_model("hello")
-x = m.add_state("x", start=1.0, final=0.0)
-u = m.add_control("u")
-
-m.set_time_fixed(t0=0.0, tf=1.0)
-m.mesh(intervals=25, nodes=3)
-m.set_dynamics(x, x + u)
-m.add_lagrange(u * u + x * x)
-m.solver(tolerance=1e-12, derivative_test=True)
-
-run = m.run("build/moo/hello")
-print(run.result.states["x"])
-```
-
-The shared lifecycle is:
-
-```python
-model.generate("build/moo/problem")
-model.compile("build/moo/problem")
-run = model.optimize("build/moo/problem")
-```
-
-or simply:
-
-```python
-run = model.run("build/moo/problem")
-```
-
-`run.result` is a typed result view. GDOP results expose time-series states,
-controls, and costates. NLP results expose flat variable,
-constraint, multiplier, and bound-dual mappings. Result CSV files can also be
-read directly with `moo.read_results(...)`.
-
-See `python/README.md` for the Python user guide and `examples/moo/` for
-complete examples.
+The Python package and Python examples are not active during the C++ AD
+refactor. Legacy files are archived under `archive/python_legacy/` for later
+inspection.
 
 ## Native AD
 
-MOO AD lives in `src/ad`. It is a symbolic expression-graph AD layer with C++
-and Python APIs. The public C++ include is `ad.h`; C++ users link the
-`mooad` library. It supports graph evaluation, forward and reverse AD,
-Hessian-vector products, sparsity extraction, one-shot C emission, direct
-sparse derivative emission, greedy coloring metadata, and staged C emission
-for repeated Hessian-vector products.
-
-The Python frontend uses these bindings directly during code generation.
-Generated derivative callbacks use direct sparse AD graph functions by default. NLP,
-NLP and GDOP share the same local expression layer for scalar, vector, block
-vector, and matrix expressions. Problem frontends keep their own high-level
-APIs, but expressions such as `M @ x`, `D @ x`, and
-`matrix(D).otimes_eye(nx) @ blockvec(X)` are common local graph-function syntax.
-Raw NLP additionally exposes mapped blocks over `range(...)`, stepped ranges,
-and explicit index lists. Explicit mapped blocks remain C loops because they are
-model structure, not a codegen mode. `model.codegen("auto")` keeps small and
-medium local derivative blocks on direct sparse graph functions and can switch
-highly-compressible local blocks to colored compressed JVP/HVP evaluation. Use
-`model.codegen("direct")` or `model.codegen("colored")` to force derivative
-callback generation. Every generated model writes a `codegen_report.txt` beside
-the C file.
-
-See `src/ad/README.md` for the AD user guide.
+MOO AD lives in `src/ad`. The active public C++ modeling handles are `ad::Expr`
+and `ad::Vec`; C++ users include `ad.h` and link `mooad`. The first clean slice
+supports scalar/vector value evaluation, symbolic derivative transforms, and
+structural sparsity. Derivatives are constructed as expression graphs first:
+`derivative`, `gradient_expr`, `jvp_expr`, `vjp_expr`, and `hvp_expr` return
+`Expr` or `Vec`. HVP is built symbolically as `jvp(vjp(f, x, lambda), x, v)`.
 
 ### Test
 
