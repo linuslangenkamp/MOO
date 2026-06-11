@@ -132,7 +132,7 @@ bool test_mapped_reverse_block_rhs() {
     bool ok = true;
     ok &= check(adj.size() == 12, "mapped reverse adjoint size is wrong");
     ok &= check(contains_kind(info, ad::GraphNodeKind::MappedFunctionCall), "mapped reverse should call a mapped local reverse kernel");
-    ok &= check(contains_kind(info, ad::GraphNodeKind::ScatterAdd), "mapped reverse should scatter-add local input adjoints");
+    ok &= check(!contains_kind(info, ad::GraphNodeKind::ScatterAdd), "mapped reverse with identity block maps should simplify scatter_add");
     ok &= check(contains_var(adj.variables(), lambda.variables()[0]), "mapped reverse should depend on output adjoint lambda");
     ok &= check(!contains_var(adj.variables(), x.variables()[0]) && !contains_var(adj.variables(), u.variables()[0]), "mapped reverse should not leak local variables");
     return ok;
@@ -174,7 +174,7 @@ bool test_mapped_reverse_expression_source() {
     bool ok = true;
     ok &= check(adj.size() == X.size(), "mapped expression-source reverse size is wrong");
     ok &= check(contains_kind(info, ad::GraphNodeKind::DenseMatVec), "mapped expression-source reverse should propagate through transpose matvec");
-    ok &= check(contains_kind(info, ad::GraphNodeKind::ScatterAdd), "mapped expression-source reverse should scatter-add mapped local adjoints");
+    ok &= check(!contains_kind(info, ad::GraphNodeKind::ScatterAdd), "mapped expression-source reverse with identity block maps should simplify scatter_add");
     return ok;
 }
 

@@ -114,3 +114,34 @@ target_compile_definitions(test_ad_eval
         MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad")
 target_link_libraries(test_ad_eval PRIVATE mooad)
 add_test(NAME test_ad_eval COMMAND test_ad_eval)
+
+add_executable(test_ad_codegen codegen.cpp)
+target_include_directories(test_ad_codegen PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_codegen
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}")
+target_link_libraries(test_ad_codegen PRIVATE mooad)
+add_test(NAME test_ad_codegen COMMAND test_ad_codegen)
+
+add_executable(test_ad_simplification simplification.cpp)
+target_include_directories(test_ad_simplification PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_simplification
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad")
+target_link_libraries(test_ad_simplification PRIVATE mooad)
+add_test(NAME test_ad_simplification COMMAND test_ad_simplification)
+
+add_executable(test_ad_elementary_ops elementary_ops.cpp)
+target_include_directories(test_ad_elementary_ops PRIVATE ${CMAKE_SOURCE_DIR}/src/ad)
+target_compile_definitions(test_ad_elementary_ops
+    PRIVATE
+        MOO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        MOO_AD_SOURCE_DIR="${CMAKE_SOURCE_DIR}/src/ad"
+        MOO_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        MOO_C_COMPILER="${CMAKE_C_COMPILER}")
+target_link_libraries(test_ad_elementary_ops PRIVATE mooad)
+add_test(NAME test_ad_elementary_ops COMMAND test_ad_elementary_ops)

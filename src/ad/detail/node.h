@@ -26,30 +26,56 @@ enum class ScalarUnaryOp {
     Tan,
     Exp,
     Log,
-    PowConst
+    PowConst,
+    Abs,
+    Sqrt,
+    Asin,
+    Acos,
+    Atan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Log10,
+    Sigmoid
 };
 
 enum class ScalarBinaryOp {
     Add,
     Sub,
     Mul,
-    Div
+    Div,
+    Pow,
+    Min,
+    Max
 };
 
 enum class VecUnaryOp {
+    Neg,
     Sin,
     Cos,
     Tan,
     Exp,
     Log,
-    Sigmoid
+    Sigmoid,
+    Abs,
+    Sqrt,
+    Asin,
+    Acos,
+    Atan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Log10
 };
 
 enum class VecBinaryOp {
     Add,
     Sub,
     Mul,
-    Div
+    Div,
+    Pow,
+    Min,
+    Max
 };
 
 struct VecNode;

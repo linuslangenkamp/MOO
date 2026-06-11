@@ -69,7 +69,20 @@ Expr cos(const Expr &expr);
 Expr tan(const Expr &expr);
 Expr exp(const Expr &expr);
 Expr log(const Expr &expr);
+Expr abs(const Expr &expr);
+Expr sqrt(const Expr &expr);
+Expr asin(const Expr &expr);
+Expr acos(const Expr &expr);
+Expr atan(const Expr &expr);
+Expr sinh(const Expr &expr);
+Expr cosh(const Expr &expr);
+Expr tanh(const Expr &expr);
+Expr log10(const Expr &expr);
+Expr sigmoid(const Expr &expr);
 Expr pow(const Expr &expr, double exponent);
+Expr pow(const Expr &base, const Expr &exponent);
+Expr min(const Expr &lhs, const Expr &rhs);
+Expr max(const Expr &lhs, const Expr &rhs);
 
 } // namespace ad
 

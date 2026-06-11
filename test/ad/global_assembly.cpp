@@ -38,10 +38,10 @@ bool equals_entries(const ad::SparsityPattern &pattern, std::vector<std::pair<in
     return pattern.entries() == expected;
 }
 
-ad::DenseMatrix diagonal_dense(int size) {
+ad::DenseMatrix diagonal_dense(int size, double diagonal_value = 1.0) {
     std::vector<double> values(static_cast<std::size_t>(size * size), 0.0);
     for (int i = 0; i < size; ++i) {
-        values[static_cast<std::size_t>(i * size + i)] = 1.0;
+        values[static_cast<std::size_t>(i * size + i)] = diagonal_value;
     }
     return ad::DenseMatrix(size, size, std::move(values));
 }
@@ -83,7 +83,7 @@ bool test_rhs_map_global_collocation_residual() {
         ad::bind(x, ad::Map::blocks(X, 3, 2)),
         ad::bind(u, ad::Map::blocks(U, 3, 2)),
     });
-    ad::Vec defects = diagonal_dense(6) * X - h * F;
+    ad::Vec defects = diagonal_dense(6, 2.0) * X - h * F;
     ad::Vec ic = X.slice(0, 2) - ad::vec_constant(std::vector<double>{1.0, 2.0});
     ad::Vec fc = X.slice(4, 2);
     ad::Vec residual = ad::concat(ad::concat(ad::concat(ic, defects), fc), ad::Vec{ad::dot(F, F)});

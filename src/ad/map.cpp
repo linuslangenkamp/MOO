@@ -4,6 +4,7 @@
 #include "detail/function_core.h"
 #include "detail/mapping.h"
 #include "detail/node.h"
+#include "detail/simplify.h"
 #include "detail/traversal.h"
 
 #include <limits>
@@ -303,6 +304,7 @@ Map::Map(Vec source,
       shift_(shift),
       offsets_(std::move(offsets)) {
     require_valid_source(source_);
+    source_ = detail::simplify_vec(source_);
     validate_descriptor_indices(source_, reps_, local_size_, indices_, kind_, base_, rep_stride_, component_stride_, shift_, offsets_);
 }
 
@@ -563,13 +565,14 @@ Vec mapped_call_from_bindings(std::shared_ptr<const FunctionCore> function,
     }
 
     for (std::size_t i = 0; i < bindings.size(); ++i) {
-        const MappedBindingNode &binding = bindings[i];
+        MappedBindingNode &binding = bindings[i];
         if (!binding.local_input) {
             throw std::runtime_error("mapped call binding is missing local input");
         }
         if (!binding.source) {
             throw std::runtime_error("mapped call binding is missing source");
         }
+        binding.source = vec_node(simplify_vec(vec_from_node(binding.source)));
         const Vec &expected_input = function->inputs[i];
         if (binding.local_input->id != expected_input.node_id()) {
             throw std::runtime_error("mapped call binding local input does not match function input order");

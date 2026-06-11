@@ -3,6 +3,7 @@
 
 #include "detail/function_core.h"
 #include "detail/node.h"
+#include "detail/simplify.h"
 #include "detail/traversal.h"
 
 #include <mutex>
@@ -57,7 +58,7 @@ std::shared_ptr<const detail::FunctionCore> make_function_core(std::vector<Vec> 
 
     auto core = std::make_shared<detail::FunctionCore>();
     core->inputs = std::move(inputs);
-    core->output = std::move(output);
+    core->output = detail::simplify_vec(output);
 
     std::set<NodeId> input_nodes;
     std::set<VarId> input_var_ids;
@@ -237,7 +238,7 @@ Vec Function::call(std::vector<Vec> arguments) const {
     node->arguments.reserve(arguments.size());
 
     for (std::size_t i = 0; i < arguments.size(); ++i) {
-        const Vec &argument = arguments[i];
+        Vec argument = detail::simplify_vec(arguments[i]);
         if (!argument.valid()) {
             throw std::runtime_error("function call argument must be a valid vector expression");
         }

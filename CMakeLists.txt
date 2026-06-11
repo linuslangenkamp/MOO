@@ -138,7 +138,9 @@ if(MOO_WITH_RADAU)
 endif()
 
 add_library(mooad SHARED
+    src/ad/codegen.cpp
     src/ad/diff.cpp
+    src/ad/detail/simplify.cpp
     src/ad/detail/traversal.cpp
     src/ad/eval.cpp
     src/ad/expr.cpp
@@ -179,6 +181,7 @@ install(TARGETS moo mooad
 
 install(FILES
         src/ad/ad.h
+        src/ad/codegen.h
         src/ad/codegen_options.h
         src/ad/expr.h
         src/ad/function.h
@@ -186,6 +189,7 @@ install(FILES
         src/ad/map.h
         src/ad/map_kind.h
         src/ad/matrix.h
+        src/ad/optimize.h
         src/ad/sparsity.h
         src/ad/symbol.h
         src/ad/values.h

@@ -56,7 +56,7 @@ bool test_scalar_reverse_basics() {
     ok &= check(grad.size() == 2, "scalar reverse gradient size is wrong");
     ok &= check(contains_kind(info, ad::GraphNodeKind::ScatterSlice), "scalar reverse should scatter scalar adjoints into wrt layout");
     ok &= check(contains_op(info, ad::GraphNodeKind::ScalarUnary, "cos"), "sin reverse should introduce cos");
-    ok &= check(contains_kind(info, ad::GraphNodeKind::ScalarBinary), "scalar reverse should use symbolic scalar product rules");
+    ok &= check(ad::count_nodes(info, ad::GraphNodeKind::VectorElement) == 0, "scalar reverse should not scalar-lower vector adjoints");
     return ok;
 }
 
@@ -196,10 +196,10 @@ bool test_sum_and_dot_reverse() {
 
     bool ok = true;
     ok &= check(sum_adj.size() == 2, "sum reverse size is wrong");
-    ok &= check(sum_info.kind == ad::GraphNodeKind::VectorScale, "sum reverse should broadcast scalar adjoint structurally");
+    ok &= check(sum_info.kind == ad::GraphNodeKind::VectorConstant, "sum reverse with implicit unit adjoint should simplify to ones");
     ok &= check(ad::count_nodes(sum_info, ad::GraphNodeKind::VectorElement) == 0, "sum reverse should not scalar-lower");
     ok &= check(dot_adj.size() == 4, "dot reverse size is wrong");
-    ok &= check(contains_kind(dot_info, ad::GraphNodeKind::VectorScale), "dot reverse should use structured scalar-vector product rules");
+    ok &= check(!contains_kind(dot_info, ad::GraphNodeKind::VectorScale), "dot reverse with implicit unit adjoint should remove unit scale nodes");
     ok &= check(contains_kind(dot_info, ad::GraphNodeKind::ScatterSlice), "dot reverse should scatter into flattened wrt layout");
     ok &= check(ad::count_nodes(dot_info, ad::GraphNodeKind::VectorElement) == 0, "dot reverse should not scalar-lower");
     return ok;
@@ -214,7 +214,7 @@ bool test_dot_shared_variable_reverse_accumulates() {
     bool ok = true;
     ok &= check(adj.size() == 2, "shared-variable dot reverse size is wrong");
     ok &= check(info.kind == ad::GraphNodeKind::VectorBinary, "shared-variable dot reverse should add both operand contributions");
-    ok &= check(ad::count_nodes(info, ad::GraphNodeKind::VectorScale) == 2, "shared-variable dot reverse should keep two structured scale contributions");
+    ok &= check(ad::count_nodes(info, ad::GraphNodeKind::VectorScale) == 0, "shared-variable dot reverse should remove unit scale contributions");
     ok &= check(ad::count_nodes(info, ad::GraphNodeKind::VectorElement) == 0, "shared-variable dot reverse should not scalar-lower");
     return ok;
 }

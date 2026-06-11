@@ -190,6 +190,26 @@ double eval_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, E
                     return std::log(arg);
                 case detail::ScalarUnaryOp::PowConst:
                     return std::pow(arg, node->value);
+                case detail::ScalarUnaryOp::Abs:
+                    return std::fabs(arg);
+                case detail::ScalarUnaryOp::Sqrt:
+                    return std::sqrt(arg);
+                case detail::ScalarUnaryOp::Asin:
+                    return std::asin(arg);
+                case detail::ScalarUnaryOp::Acos:
+                    return std::acos(arg);
+                case detail::ScalarUnaryOp::Atan:
+                    return std::atan(arg);
+                case detail::ScalarUnaryOp::Sinh:
+                    return std::sinh(arg);
+                case detail::ScalarUnaryOp::Cosh:
+                    return std::cosh(arg);
+                case detail::ScalarUnaryOp::Tanh:
+                    return std::tanh(arg);
+                case detail::ScalarUnaryOp::Log10:
+                    return std::log10(arg);
+                case detail::ScalarUnaryOp::Sigmoid:
+                    return 1.0 / (1.0 + std::exp(-arg));
             }
             break;
         }
@@ -205,6 +225,12 @@ double eval_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, E
                     return lhs * rhs;
                 case detail::ScalarBinaryOp::Div:
                     return lhs / rhs;
+                case detail::ScalarBinaryOp::Pow:
+                    return std::pow(lhs, rhs);
+                case detail::ScalarBinaryOp::Min:
+                    return std::fmin(lhs, rhs);
+                case detail::ScalarBinaryOp::Max:
+                    return std::fmax(lhs, rhs);
             }
             break;
         }
@@ -252,6 +278,8 @@ double eval_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, E
 
 double eval_vec_unary(detail::VecUnaryOp op, double value) {
     switch (op) {
+        case detail::VecUnaryOp::Neg:
+            return -value;
         case detail::VecUnaryOp::Sin:
             return std::sin(value);
         case detail::VecUnaryOp::Cos:
@@ -264,6 +292,24 @@ double eval_vec_unary(detail::VecUnaryOp op, double value) {
             return std::log(value);
         case detail::VecUnaryOp::Sigmoid:
             return 1.0 / (1.0 + std::exp(-value));
+        case detail::VecUnaryOp::Abs:
+            return std::fabs(value);
+        case detail::VecUnaryOp::Sqrt:
+            return std::sqrt(value);
+        case detail::VecUnaryOp::Asin:
+            return std::asin(value);
+        case detail::VecUnaryOp::Acos:
+            return std::acos(value);
+        case detail::VecUnaryOp::Atan:
+            return std::atan(value);
+        case detail::VecUnaryOp::Sinh:
+            return std::sinh(value);
+        case detail::VecUnaryOp::Cosh:
+            return std::cosh(value);
+        case detail::VecUnaryOp::Tanh:
+            return std::tanh(value);
+        case detail::VecUnaryOp::Log10:
+            return std::log10(value);
     }
     throw std::runtime_error("unsupported vector unary op in evaluation");
 }
@@ -278,6 +324,12 @@ double eval_vec_binary(detail::VecBinaryOp op, double lhs, double rhs) {
             return lhs * rhs;
         case detail::VecBinaryOp::Div:
             return lhs / rhs;
+        case detail::VecBinaryOp::Pow:
+            return std::pow(lhs, rhs);
+        case detail::VecBinaryOp::Min:
+            return std::fmin(lhs, rhs);
+        case detail::VecBinaryOp::Max:
+            return std::fmax(lhs, rhs);
     }
     throw std::runtime_error("unsupported vector binary op in evaluation");
 }

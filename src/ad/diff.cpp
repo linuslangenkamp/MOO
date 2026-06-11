@@ -6,9 +6,11 @@
 #include "detail/function_core.h"
 #include "detail/mapping.h"
 #include "detail/node.h"
+#include "detail/simplify.h"
 
 #include <limits>
 #include <map>
+#include <cmath>
 #include <set>
 #include <stdexcept>
 #include <utility>
@@ -244,22 +246,7 @@ Vec reverse_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, c
 Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const Vec &adjoint, const ReverseContext &context);
 
 Vec scatter_slice(const Vec &values, int start, int output_size) {
-    if (!values.valid()) {
-        throw std::runtime_error("scatter-slice values must be a valid vector expression");
-    }
-    if (start < 0 || output_size < 0 || start + values.size() > output_size) {
-        throw std::runtime_error("invalid scatter-slice bounds");
-    }
-    if (start == 0 && values.size() == output_size) {
-        return values;
-    }
-
-    auto node = std::make_shared<detail::VecNode>();
-    node->kind = GraphNodeKind::ScatterSlice;
-    node->size = output_size;
-    node->start = start;
-    node->lhs = detail::vec_node(values);
-    return detail::vec_from_node(node);
+    return detail::make_scatter_slice(values, start, output_size);
 }
 
 std::vector<Vec> function_call_arguments(const std::shared_ptr<const detail::VecNode> &node) {
@@ -461,6 +448,30 @@ Expr forward_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, 
                     return div(darg, arg);
                 case detail::ScalarUnaryOp::PowConst:
                     return node->value == 0.0 ? zero_scalar() : mul(mul(constant(node->value), pow(arg, node->value - 1.0)), darg);
+                case detail::ScalarUnaryOp::Abs:
+                    throw std::runtime_error("forward derivative of nonsmooth abs is not supported");
+                case detail::ScalarUnaryOp::Sqrt:
+                    return div(darg, mul(constant(2.0), sqrt(arg)));
+                case detail::ScalarUnaryOp::Asin:
+                    return div(darg, sqrt(sub(one_scalar(), arg * arg)));
+                case detail::ScalarUnaryOp::Acos:
+                    return -div(darg, sqrt(sub(one_scalar(), arg * arg)));
+                case detail::ScalarUnaryOp::Atan:
+                    return div(darg, add(one_scalar(), arg * arg));
+                case detail::ScalarUnaryOp::Sinh:
+                    return mul(cosh(arg), darg);
+                case detail::ScalarUnaryOp::Cosh:
+                    return mul(sinh(arg), darg);
+                case detail::ScalarUnaryOp::Tanh: {
+                    const Expr t = tanh(arg);
+                    return mul(sub(one_scalar(), t * t), darg);
+                }
+                case detail::ScalarUnaryOp::Log10:
+                    return div(darg, mul(arg, constant(std::log(10.0))));
+                case detail::ScalarUnaryOp::Sigmoid: {
+                    const Expr sig = sigmoid(arg);
+                    return mul(mul(sig, sub(one_scalar(), sig)), darg);
+                }
             }
             break;
         }
@@ -478,6 +489,14 @@ Expr forward_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, 
                     return add(mul(dlhs, rhs), mul(lhs, drhs));
                 case detail::ScalarBinaryOp::Div:
                     return div(sub(mul(dlhs, rhs), mul(lhs, drhs)), rhs * rhs);
+                case detail::ScalarBinaryOp::Pow: {
+                    const Expr value = pow(lhs, rhs);
+                    return mul(value, add(mul(drhs, log(lhs)), div(mul(rhs, dlhs), lhs)));
+                }
+                case detail::ScalarBinaryOp::Min:
+                    throw std::runtime_error("forward derivative of nonsmooth min is not supported");
+                case detail::ScalarBinaryOp::Max:
+                    throw std::runtime_error("forward derivative of nonsmooth max is not supported");
             }
             break;
         }
@@ -572,6 +591,8 @@ Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const F
                 return zero_vec(node->size);
             }
             switch (node->unary) {
+                case detail::VecUnaryOp::Neg:
+                    return -darg;
                 case detail::VecUnaryOp::Sin:
                     return mul(cos(arg), darg);
                 case detail::VecUnaryOp::Cos:
@@ -586,6 +607,26 @@ Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const F
                     const Vec sig = sigmoid(arg);
                     return mul(mul(sig, one_vec(node->size) - sig), darg);
                 }
+                case detail::VecUnaryOp::Abs:
+                    throw std::runtime_error("forward derivative of nonsmooth abs is not supported");
+                case detail::VecUnaryOp::Sqrt:
+                    return div(darg, scale(constant(2.0), sqrt(arg)));
+                case detail::VecUnaryOp::Asin:
+                    return div(darg, sqrt(one_vec(node->size) - arg * arg));
+                case detail::VecUnaryOp::Acos:
+                    return scale(constant(-1.0), div(darg, sqrt(one_vec(node->size) - arg * arg)));
+                case detail::VecUnaryOp::Atan:
+                    return div(darg, one_vec(node->size) + arg * arg);
+                case detail::VecUnaryOp::Sinh:
+                    return mul(cosh(arg), darg);
+                case detail::VecUnaryOp::Cosh:
+                    return mul(sinh(arg), darg);
+                case detail::VecUnaryOp::Tanh: {
+                    const Vec t = tanh(arg);
+                    return mul(one_vec(node->size) - t * t, darg);
+                }
+                case detail::VecUnaryOp::Log10:
+                    return div(darg, scale(constant(std::log(10.0)), arg));
             }
             break;
         }
@@ -603,6 +644,14 @@ Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const F
                     return add(mul(dlhs, rhs), mul(lhs, drhs));
                 case detail::VecBinaryOp::Div:
                     return div(sub(mul(dlhs, rhs), mul(lhs, drhs)), rhs * rhs);
+                case detail::VecBinaryOp::Pow: {
+                    const Vec value = pow(lhs, rhs);
+                    return mul(value, add(mul(drhs, log(lhs)), div(mul(rhs, dlhs), lhs)));
+                }
+                case detail::VecBinaryOp::Min:
+                    throw std::runtime_error("forward derivative of nonsmooth min is not supported");
+                case detail::VecBinaryOp::Max:
+                    throw std::runtime_error("forward derivative of nonsmooth max is not supported");
             }
             break;
         }
@@ -733,6 +782,30 @@ Vec reverse_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, c
                     return reverse_scalar_node(node->lhs, div(adjoint, arg), context);
                 case detail::ScalarUnaryOp::PowConst:
                     return node->value == 0.0 ? zero_vec(context.wrt.size()) : reverse_scalar_node(node->lhs, mul(adjoint, mul(constant(node->value), pow(arg, node->value - 1.0))), context);
+                case detail::ScalarUnaryOp::Abs:
+                    throw std::runtime_error("reverse derivative of nonsmooth abs is not supported");
+                case detail::ScalarUnaryOp::Sqrt:
+                    return reverse_scalar_node(node->lhs, div(adjoint, mul(constant(2.0), sqrt(arg))), context);
+                case detail::ScalarUnaryOp::Asin:
+                    return reverse_scalar_node(node->lhs, div(adjoint, sqrt(sub(one_scalar(), arg * arg))), context);
+                case detail::ScalarUnaryOp::Acos:
+                    return reverse_scalar_node(node->lhs, -div(adjoint, sqrt(sub(one_scalar(), arg * arg))), context);
+                case detail::ScalarUnaryOp::Atan:
+                    return reverse_scalar_node(node->lhs, div(adjoint, add(one_scalar(), arg * arg)), context);
+                case detail::ScalarUnaryOp::Sinh:
+                    return reverse_scalar_node(node->lhs, mul(adjoint, cosh(arg)), context);
+                case detail::ScalarUnaryOp::Cosh:
+                    return reverse_scalar_node(node->lhs, mul(adjoint, sinh(arg)), context);
+                case detail::ScalarUnaryOp::Tanh: {
+                    const Expr t = tanh(arg);
+                    return reverse_scalar_node(node->lhs, mul(adjoint, sub(one_scalar(), t * t)), context);
+                }
+                case detail::ScalarUnaryOp::Log10:
+                    return reverse_scalar_node(node->lhs, div(adjoint, mul(arg, constant(std::log(10.0)))), context);
+                case detail::ScalarUnaryOp::Sigmoid: {
+                    const Expr sig = sigmoid(arg);
+                    return reverse_scalar_node(node->lhs, mul(adjoint, mul(sig, sub(one_scalar(), sig))), context);
+                }
             }
             break;
         }
@@ -749,6 +822,15 @@ Vec reverse_scalar_node(const std::shared_ptr<const detail::ScalarNode> &node, c
                 case detail::ScalarBinaryOp::Div:
                     return add(reverse_scalar_node(node->lhs, div(adjoint, rhs), context),
                                reverse_scalar_node(node->rhs, div(mul(-adjoint, lhs), rhs * rhs), context));
+                case detail::ScalarBinaryOp::Pow: {
+                    const Expr value = pow(lhs, rhs);
+                    return add(reverse_scalar_node(node->lhs, mul(adjoint, div(mul(value, rhs), lhs)), context),
+                               reverse_scalar_node(node->rhs, mul(adjoint, mul(value, log(lhs))), context));
+                }
+                case detail::ScalarBinaryOp::Min:
+                    throw std::runtime_error("reverse derivative of nonsmooth min is not supported");
+                case detail::ScalarBinaryOp::Max:
+                    throw std::runtime_error("reverse derivative of nonsmooth max is not supported");
             }
             break;
         }
@@ -895,6 +977,8 @@ Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const V
         case GraphNodeKind::VectorUnary: {
             const Vec arg = as_vec(node->lhs);
             switch (node->unary) {
+                case detail::VecUnaryOp::Neg:
+                    return reverse_vec_node(node->lhs, -adjoint, context);
                 case detail::VecUnaryOp::Sin:
                     return reverse_vec_node(node->lhs, mul(adjoint, cos(arg)), context);
                 case detail::VecUnaryOp::Cos:
@@ -909,6 +993,26 @@ Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const V
                     const Vec sig = sigmoid(arg);
                     return reverse_vec_node(node->lhs, mul(adjoint, mul(sig, one_vec(node->size) - sig)), context);
                 }
+                case detail::VecUnaryOp::Abs:
+                    throw std::runtime_error("reverse derivative of nonsmooth abs is not supported");
+                case detail::VecUnaryOp::Sqrt:
+                    return reverse_vec_node(node->lhs, div(adjoint, scale(constant(2.0), sqrt(arg))), context);
+                case detail::VecUnaryOp::Asin:
+                    return reverse_vec_node(node->lhs, div(adjoint, sqrt(one_vec(node->size) - arg * arg)), context);
+                case detail::VecUnaryOp::Acos:
+                    return reverse_vec_node(node->lhs, scale(constant(-1.0), div(adjoint, sqrt(one_vec(node->size) - arg * arg))), context);
+                case detail::VecUnaryOp::Atan:
+                    return reverse_vec_node(node->lhs, div(adjoint, one_vec(node->size) + arg * arg), context);
+                case detail::VecUnaryOp::Sinh:
+                    return reverse_vec_node(node->lhs, mul(adjoint, cosh(arg)), context);
+                case detail::VecUnaryOp::Cosh:
+                    return reverse_vec_node(node->lhs, mul(adjoint, sinh(arg)), context);
+                case detail::VecUnaryOp::Tanh: {
+                    const Vec t = tanh(arg);
+                    return reverse_vec_node(node->lhs, mul(adjoint, one_vec(node->size) - t * t), context);
+                }
+                case detail::VecUnaryOp::Log10:
+                    return reverse_vec_node(node->lhs, div(adjoint, scale(constant(std::log(10.0)), arg)), context);
             }
             break;
         }
@@ -925,6 +1029,15 @@ Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const V
                 case detail::VecBinaryOp::Div:
                     return add(reverse_vec_node(node->lhs, div(adjoint, rhs), context),
                                reverse_vec_node(node->rhs, div(scale(constant(-1.0), mul(adjoint, lhs)), rhs * rhs), context));
+                case detail::VecBinaryOp::Pow: {
+                    const Vec value = pow(lhs, rhs);
+                    return add(reverse_vec_node(node->lhs, mul(adjoint, div(mul(value, rhs), lhs)), context),
+                               reverse_vec_node(node->rhs, mul(adjoint, mul(value, log(lhs))), context));
+                }
+                case detail::VecBinaryOp::Min:
+                    throw std::runtime_error("reverse derivative of nonsmooth min is not supported");
+                case detail::VecBinaryOp::Max:
+                    throw std::runtime_error("reverse derivative of nonsmooth max is not supported");
             }
             break;
         }
