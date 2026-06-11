@@ -595,6 +595,52 @@ private:
                 }
                 break;
             }
+            case GraphNodeKind::SymbolicSparseMatVec: {
+                const std::string values = emit_vec_temp(context, node->lhs, "symsmv_a");
+                const std::string rhs = emit_vec_temp(context, node->rhs, "symsmv_x");
+                for (int i = 0; i < node->size; ++i) {
+                    context.writer->line(out + "[" + std::to_string(i) + "] = 0.0;");
+                }
+                for (int k = 0; k < node->sparse.nnz(); ++k) {
+                    context.writer->line(out + "[" + std::to_string(node->sparse.row[static_cast<std::size_t>(k)]) + "] += " +
+                                         values + "[" + std::to_string(k) + "] * " +
+                                         rhs + "[" + std::to_string(node->sparse.col[static_cast<std::size_t>(k)]) + "];");
+                }
+                break;
+            }
+            case GraphNodeKind::SymbolicSparseMatMul: {
+                const std::string lhs = emit_vec_temp(context, node->lhs, "symsmm_l");
+                const std::string rhs = emit_vec_temp(context, node->rhs, "symsmm_r");
+                for (int i = 0; i < node->size; ++i) {
+                    context.writer->line(out + "[" + std::to_string(i) + "] = 0.0;");
+                }
+                if (node->symbolic_sparse_lhs) {
+                    for (int k = 0; k < node->sparse.nnz(); ++k) {
+                        const int row = node->sparse.row[static_cast<std::size_t>(k)];
+                        const int inner = node->sparse.col[static_cast<std::size_t>(k)];
+                        for (int col = 0; col < node->mat_rhs_cols; ++col) {
+                            const int output_index = detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+                            const int dense_index = detail::matrix_flat_index(inner, col, node->mat_rhs_rows, node->mat_rhs_cols, node->mat_rhs_layout);
+                            context.writer->line(out + "[" + std::to_string(output_index) + "] += " +
+                                                 lhs + "[" + std::to_string(k) + "] * " +
+                                                 rhs + "[" + std::to_string(dense_index) + "];");
+                        }
+                    }
+                } else {
+                    for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                        for (int k = 0; k < node->sparse.nnz(); ++k) {
+                            const int inner = node->sparse.row[static_cast<std::size_t>(k)];
+                            const int col = node->sparse.col[static_cast<std::size_t>(k)];
+                            const int output_index = detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+                            const int dense_index = detail::matrix_flat_index(row, inner, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+                            context.writer->line(out + "[" + std::to_string(output_index) + "] += " +
+                                                 lhs + "[" + std::to_string(dense_index) + "] * " +
+                                                 rhs + "[" + std::to_string(k) + "];");
+                        }
+                    }
+                }
+                break;
+            }
             case GraphNodeKind::OuterProduct: {
                 const std::string lhs = emit_vec_temp(context, node->lhs, "outer_l");
                 const std::string rhs = emit_vec_temp(context, node->rhs, "outer_r");

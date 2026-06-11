@@ -160,6 +160,8 @@ void collect_vec_vars(const std::shared_ptr<const VecNode> &node, Vars &out, std
         case GraphNodeKind::Concat:
         case GraphNodeKind::SymbolicMatVec:
         case GraphNodeKind::SymbolicMatMul:
+        case GraphNodeKind::SymbolicSparseMatVec:
+        case GraphNodeKind::SymbolicSparseMatMul:
         case GraphNodeKind::OuterProduct:
         case GraphNodeKind::LinearSolve:
             collect_vec_vars(node->lhs, out, seen);
@@ -222,6 +224,8 @@ void collect_vec_params(const std::shared_ptr<const VecNode> &node, Params &out,
         case GraphNodeKind::Concat:
         case GraphNodeKind::SymbolicMatVec:
         case GraphNodeKind::SymbolicMatMul:
+        case GraphNodeKind::SymbolicSparseMatVec:
+        case GraphNodeKind::SymbolicSparseMatMul:
         case GraphNodeKind::OuterProduct:
         case GraphNodeKind::LinearSolve:
             collect_vec_params(node->lhs, out, seen);

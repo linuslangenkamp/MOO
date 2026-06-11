@@ -119,6 +119,17 @@ bool sparse_is_zero(const SparseMatrix &matrix) {
     });
 }
 
+SparseMatrix make_sparse_pattern(int rows, int cols, std::vector<int> row, std::vector<int> col) {
+    if (rows < 0 || cols < 0) {
+        throw std::runtime_error("symbolic sparse matrix dimensions must be non-negative");
+    }
+    if (row.size() != col.size()) {
+        throw std::runtime_error("symbolic sparse matrix row and column arrays must have equal length");
+    }
+    std::vector<double> values(row.size(), 1.0);
+    return SparseMatrix(rows, cols, std::move(row), std::move(col), std::move(values));
+}
+
 double eval_scalar_unary(ScalarUnaryOp op, double value, double exponent) {
     switch (op) {
         case ScalarUnaryOp::Neg:
@@ -364,6 +375,29 @@ Vec simplify_vec_node(const std::shared_ptr<const VecNode> &node, SimplifyContex
                                           node->mat_rhs_cols,
                                           node->mat_rhs_layout,
                                           node->mat_result_layout);
+            break;
+        case GraphNodeKind::SymbolicSparseMatVec:
+            result = make_symbolic_sparse_matvec(simplify_vec_node(node->lhs, context),
+                                                 node->sparse.rows,
+                                                 node->sparse.cols,
+                                                 node->sparse.row,
+                                                 node->sparse.col,
+                                                 simplify_vec_node(node->rhs, context));
+            break;
+        case GraphNodeKind::SymbolicSparseMatMul:
+            result = make_symbolic_sparse_matmul(node->symbolic_sparse_lhs ? simplify_vec_node(node->lhs, context)
+                                                                           : simplify_vec_node(node->rhs, context),
+                                                 node->sparse.rows,
+                                                 node->sparse.cols,
+                                                 node->sparse.row,
+                                                 node->sparse.col,
+                                                 node->symbolic_sparse_lhs ? simplify_vec_node(node->rhs, context)
+                                                                           : simplify_vec_node(node->lhs, context),
+                                                 node->symbolic_sparse_lhs ? node->mat_rhs_rows : node->mat_lhs_rows,
+                                                 node->symbolic_sparse_lhs ? node->mat_rhs_cols : node->mat_lhs_cols,
+                                                 node->symbolic_sparse_lhs ? node->mat_rhs_layout : node->mat_lhs_layout,
+                                                 node->mat_result_layout,
+                                                 node->symbolic_sparse_lhs);
             break;
         case GraphNodeKind::OuterProduct:
             result = make_outer_product(simplify_vec_node(node->lhs, context),
@@ -1034,6 +1068,119 @@ Vec make_symbolic_matmul(const Vec &lhs, int lhs_rows, int lhs_cols, MatrixLayou
     node->mat_lhs_layout = lhs_layout;
     node->mat_rhs_layout = rhs_layout;
     node->mat_result_layout = result_layout;
+    return vec_from_node(node);
+}
+
+Vec make_symbolic_sparse_matvec(const Vec &values, int rows, int cols, std::vector<int> row, std::vector<int> col, const Vec &rhs) {
+    require_valid(values);
+    require_valid(rhs);
+    SparseMatrix pattern = make_sparse_pattern(rows, cols, std::move(row), std::move(col));
+    if (values.size() != pattern.nnz()) {
+        throw std::runtime_error("symbolic sparse matrix/vector value count does not match pattern");
+    }
+    if (cols != rhs.size()) {
+        throw std::runtime_error("symbolic sparse matrix/vector dimensions differ");
+    }
+    if (rows == 0) {
+        return make_vec_constant({});
+    }
+    if (vec_is_zero(values) || vec_is_zero(rhs) || pattern.nnz() == 0) {
+        return make_vec_constant(std::vector<double>(static_cast<std::size_t>(rows), 0.0));
+    }
+
+    const std::vector<double> *value_constants = nullptr;
+    const std::vector<double> *rhs_constants = nullptr;
+    if (vec_constant_values(values, &value_constants) && vec_constant_values(rhs, &rhs_constants)) {
+        std::vector<double> result(static_cast<std::size_t>(rows), 0.0);
+        for (int k = 0; k < pattern.nnz(); ++k) {
+            result[static_cast<std::size_t>(pattern.row[static_cast<std::size_t>(k)])] +=
+                (*value_constants)[static_cast<std::size_t>(k)] *
+                (*rhs_constants)[static_cast<std::size_t>(pattern.col[static_cast<std::size_t>(k)])];
+        }
+        return make_vec_constant(std::move(result));
+    }
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::SymbolicSparseMatVec;
+    node->size = rows;
+    node->lhs = vec_node(values);
+    node->rhs = vec_node(rhs);
+    node->sparse = std::move(pattern);
+    return vec_from_node(node);
+}
+
+Vec make_symbolic_sparse_matmul(const Vec &sparse_values, int sparse_rows, int sparse_cols,
+                                std::vector<int> sparse_row, std::vector<int> sparse_col,
+                                const Vec &dense, int dense_rows, int dense_cols, MatrixLayout dense_layout,
+                                MatrixLayout result_layout, bool sparse_lhs) {
+    require_valid(sparse_values);
+    require_valid(dense);
+    SparseMatrix pattern = make_sparse_pattern(sparse_rows, sparse_cols, std::move(sparse_row), std::move(sparse_col));
+    if (sparse_values.size() != pattern.nnz()) {
+        throw std::runtime_error("symbolic sparse matrix/matrix value count does not match pattern");
+    }
+    if (checked_matrix_size(dense_rows, dense_cols) != dense.size()) {
+        throw std::runtime_error("symbolic sparse matrix/matrix dense payload size does not match dimensions");
+    }
+    if (sparse_lhs) {
+        if (sparse_cols != dense_rows) {
+            throw std::runtime_error("symbolic sparse lhs matrix/matrix dimensions differ");
+        }
+    } else if (dense_cols != sparse_rows) {
+        throw std::runtime_error("symbolic sparse rhs matrix/matrix dimensions differ");
+    }
+    const int output_rows = sparse_lhs ? sparse_rows : dense_rows;
+    const int output_cols = sparse_lhs ? dense_cols : sparse_cols;
+    const int output_size = checked_matrix_size(output_rows, output_cols);
+    if (output_size == 0) {
+        return make_vec_constant({});
+    }
+    if (vec_is_zero(sparse_values) || vec_is_zero(dense) || pattern.nnz() == 0) {
+        return make_vec_constant(std::vector<double>(static_cast<std::size_t>(output_size), 0.0));
+    }
+
+    const std::vector<double> *sparse_constants = nullptr;
+    const std::vector<double> *dense_constants = nullptr;
+    if (vec_constant_values(sparse_values, &sparse_constants) && vec_constant_values(dense, &dense_constants)) {
+        std::vector<double> result(static_cast<std::size_t>(output_size), 0.0);
+        if (sparse_lhs) {
+            for (int k = 0; k < pattern.nnz(); ++k) {
+                const int row_index = pattern.row[static_cast<std::size_t>(k)];
+                const int inner = pattern.col[static_cast<std::size_t>(k)];
+                for (int col_index = 0; col_index < dense_cols; ++col_index) {
+                    result[static_cast<std::size_t>(matrix_flat_index(row_index, col_index, output_rows, output_cols, result_layout))] +=
+                        (*sparse_constants)[static_cast<std::size_t>(k)] *
+                        (*dense_constants)[static_cast<std::size_t>(matrix_flat_index(inner, col_index, dense_rows, dense_cols, dense_layout))];
+                }
+            }
+        } else {
+            for (int row_index = 0; row_index < dense_rows; ++row_index) {
+                for (int k = 0; k < pattern.nnz(); ++k) {
+                    const int inner = pattern.row[static_cast<std::size_t>(k)];
+                    const int col_index = pattern.col[static_cast<std::size_t>(k)];
+                    result[static_cast<std::size_t>(matrix_flat_index(row_index, col_index, output_rows, output_cols, result_layout))] +=
+                        (*dense_constants)[static_cast<std::size_t>(matrix_flat_index(row_index, inner, dense_rows, dense_cols, dense_layout))] *
+                        (*sparse_constants)[static_cast<std::size_t>(k)];
+                }
+            }
+        }
+        return make_vec_constant(std::move(result));
+    }
+
+    auto node = std::make_shared<VecNode>();
+    node->kind = GraphNodeKind::SymbolicSparseMatMul;
+    node->size = output_size;
+    node->lhs = sparse_lhs ? vec_node(sparse_values) : vec_node(dense);
+    node->rhs = sparse_lhs ? vec_node(dense) : vec_node(sparse_values);
+    node->sparse = std::move(pattern);
+    node->mat_lhs_rows = sparse_lhs ? sparse_rows : dense_rows;
+    node->mat_lhs_cols = sparse_lhs ? sparse_cols : dense_cols;
+    node->mat_rhs_rows = sparse_lhs ? dense_rows : sparse_rows;
+    node->mat_rhs_cols = sparse_lhs ? dense_cols : sparse_cols;
+    node->mat_lhs_layout = sparse_lhs ? MatrixLayout::ColumnMajor : dense_layout;
+    node->mat_rhs_layout = sparse_lhs ? dense_layout : MatrixLayout::ColumnMajor;
+    node->mat_result_layout = result_layout;
+    node->symbolic_sparse_lhs = sparse_lhs;
     return vec_from_node(node);
 }
 

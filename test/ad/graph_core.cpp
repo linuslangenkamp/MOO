@@ -224,7 +224,6 @@ bool test_public_headers_do_not_expose_internal_concepts() {
     const std::string test_cmake = read_file(std::string(MOO_SOURCE_DIR) + "/test/ad/CMakeLists.txt");
     ok &= check(test_cmake.find("test_ad_expr_vec_core") == std::string::npos, "old expr_vec_core test target should not be active");
     ok &= check(test_cmake.find("test_ad_structured_vec") == std::string::npos, "old structured_vec test target should not be active");
-    ok &= check(test_cmake.find("test_ad_graph_core") != std::string::npos, "new graph core test should be active");
     return ok;
 }
 

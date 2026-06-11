@@ -154,6 +154,7 @@ add_library(mooad SHARED
     src/ad/map_accum.cpp
     src/ad/matrix.cpp
     src/ad/sparsity.cpp
+    src/ad/sparse_mat.cpp
     src/ad/symbol.cpp
     src/ad/values.cpp
     src/ad/vec.cpp
@@ -200,6 +201,7 @@ install(FILES
         src/ad/matrix.h
         src/ad/optimize.h
         src/ad/sparsity.h
+        src/ad/sparse_mat.h
         src/ad/symbol.h
         src/ad/values.h
         src/ad/vec.h

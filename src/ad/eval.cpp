@@ -480,6 +480,55 @@ void eval_vec_node(const std::shared_ptr<const detail::VecNode> &node, EvalConte
             detail::EvalWorkspaceAccess::release(context.workspace, mark);
             break;
         }
+        case GraphNodeKind::SymbolicSparseMatVec: {
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            double *values = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);
+            double *rhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->rhs->size);
+            eval_vec_node(node->lhs, context, values, node->lhs->size);
+            eval_vec_node(node->rhs, context, rhs, node->rhs->size);
+            std::fill(out, out + node->size, 0.0);
+            for (int k = 0; k < node->sparse.nnz(); ++k) {
+                out[node->sparse.row[static_cast<std::size_t>(k)]] +=
+                    values[k] * rhs[node->sparse.col[static_cast<std::size_t>(k)]];
+            }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
+        case GraphNodeKind::SymbolicSparseMatMul: {
+            const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
+            double *lhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);
+            double *rhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->rhs->size);
+            eval_vec_node(node->lhs, context, lhs, node->lhs->size);
+            eval_vec_node(node->rhs, context, rhs, node->rhs->size);
+            std::fill(out, out + node->size, 0.0);
+            if (node->symbolic_sparse_lhs) {
+                const double *sparse_values = lhs;
+                const double *dense = rhs;
+                for (int k = 0; k < node->sparse.nnz(); ++k) {
+                    const int row = node->sparse.row[static_cast<std::size_t>(k)];
+                    const int inner = node->sparse.col[static_cast<std::size_t>(k)];
+                    for (int col = 0; col < node->mat_rhs_cols; ++col) {
+                        out[detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout)] +=
+                            sparse_values[k] *
+                            dense[detail::matrix_flat_index(inner, col, node->mat_rhs_rows, node->mat_rhs_cols, node->mat_rhs_layout)];
+                    }
+                }
+            } else {
+                const double *dense = lhs;
+                const double *sparse_values = rhs;
+                for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                    for (int k = 0; k < node->sparse.nnz(); ++k) {
+                        const int inner = node->sparse.row[static_cast<std::size_t>(k)];
+                        const int col = node->sparse.col[static_cast<std::size_t>(k)];
+                        out[detail::matrix_flat_index(row, col, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout)] +=
+                            dense[detail::matrix_flat_index(row, inner, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout)] *
+                            sparse_values[k];
+                    }
+                }
+            }
+            detail::EvalWorkspaceAccess::release(context.workspace, mark);
+            break;
+        }
         case GraphNodeKind::OuterProduct: {
             const auto mark = detail::EvalWorkspaceAccess::mark(context.workspace);
             double *lhs = detail::EvalWorkspaceAccess::allocate(context.workspace, node->lhs->size);

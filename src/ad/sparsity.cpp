@@ -543,6 +543,75 @@ SparsityPattern vec_sparsity(const std::shared_ptr<const detail::VecNode> &node,
             }
             return builder.build();
         }
+        case GraphNodeKind::SymbolicSparseMatVec: {
+            const SparsityPattern values = vec_sparsity(node->lhs, context);
+            const SparsityPattern rhs = vec_sparsity(node->rhs, context);
+            const auto value_rows = row_support(values);
+            const auto rhs_rows = row_support(rhs);
+            PatternBuilder builder(node->size, context.wrt.size());
+            for (int k = 0; k < node->sparse.nnz(); ++k) {
+                const int row = node->sparse.row[static_cast<std::size_t>(k)];
+                const int col = node->sparse.col[static_cast<std::size_t>(k)];
+                if (!literal_zero_entry(node->rhs, col)) {
+                    for (int pattern_col : value_rows[static_cast<std::size_t>(k)]) {
+                        builder.add(row, pattern_col);
+                    }
+                }
+                if (!literal_zero_entry(node->lhs, k)) {
+                    for (int pattern_col : rhs_rows[static_cast<std::size_t>(col)]) {
+                        builder.add(row, pattern_col);
+                    }
+                }
+            }
+            return builder.build();
+        }
+        case GraphNodeKind::SymbolicSparseMatMul: {
+            const SparsityPattern lhs = vec_sparsity(node->lhs, context);
+            const SparsityPattern rhs = vec_sparsity(node->rhs, context);
+            const auto lhs_rows = row_support(lhs);
+            const auto rhs_rows = row_support(rhs);
+            PatternBuilder builder(node->size, context.wrt.size());
+            if (node->symbolic_sparse_lhs) {
+                for (int k = 0; k < node->sparse.nnz(); ++k) {
+                    const int row = node->sparse.row[static_cast<std::size_t>(k)];
+                    const int inner = node->sparse.col[static_cast<std::size_t>(k)];
+                    for (int col_index = 0; col_index < node->mat_rhs_cols; ++col_index) {
+                        const int output_row = detail::matrix_flat_index(row, col_index, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+                        const int dense_index = detail::matrix_flat_index(inner, col_index, node->mat_rhs_rows, node->mat_rhs_cols, node->mat_rhs_layout);
+                        if (!literal_zero_entry(node->rhs, dense_index)) {
+                            for (int pattern_col : lhs_rows[static_cast<std::size_t>(k)]) {
+                                builder.add(output_row, pattern_col);
+                            }
+                        }
+                        if (!literal_zero_entry(node->lhs, k)) {
+                            for (int pattern_col : rhs_rows[static_cast<std::size_t>(dense_index)]) {
+                                builder.add(output_row, pattern_col);
+                            }
+                        }
+                    }
+                }
+            } else {
+                for (int row = 0; row < node->mat_lhs_rows; ++row) {
+                    for (int k = 0; k < node->sparse.nnz(); ++k) {
+                        const int inner = node->sparse.row[static_cast<std::size_t>(k)];
+                        const int col_index = node->sparse.col[static_cast<std::size_t>(k)];
+                        const int output_row = detail::matrix_flat_index(row, col_index, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+                        const int dense_index = detail::matrix_flat_index(row, inner, node->mat_lhs_rows, node->mat_lhs_cols, node->mat_lhs_layout);
+                        if (!literal_zero_entry(node->rhs, k)) {
+                            for (int pattern_col : lhs_rows[static_cast<std::size_t>(dense_index)]) {
+                                builder.add(output_row, pattern_col);
+                            }
+                        }
+                        if (!literal_zero_entry(node->lhs, dense_index)) {
+                            for (int pattern_col : rhs_rows[static_cast<std::size_t>(k)]) {
+                                builder.add(output_row, pattern_col);
+                            }
+                        }
+                    }
+                }
+            }
+            return builder.build();
+        }
         case GraphNodeKind::OuterProduct: {
             const SparsityPattern lhs = vec_sparsity(node->lhs, context);
             const SparsityPattern rhs = vec_sparsity(node->rhs, context);

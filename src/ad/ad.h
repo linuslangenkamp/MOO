@@ -15,6 +15,7 @@
 #include "matrix.h"
 #include "optimize.h"
 #include "sparsity.h"
+#include "sparse_mat.h"
 #include "symbol.h"
 #include "values.h"
 #include "vec.h"

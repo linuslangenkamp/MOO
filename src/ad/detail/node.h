@@ -134,6 +134,7 @@ struct VecNode {
     MatrixLayout mat_lhs_layout = MatrixLayout::ColumnMajor;
     MatrixLayout mat_rhs_layout = MatrixLayout::ColumnMajor;
     MatrixLayout mat_result_layout = MatrixLayout::ColumnMajor;
+    bool symbolic_sparse_lhs = true;
     LinearSolverKind linear_solver = LinearSolverKind::LapackLU;
     bool linear_solve_transpose = false;
     int start = 0;

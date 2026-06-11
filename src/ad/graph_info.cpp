@@ -102,6 +102,16 @@ GraphInfo inspect_vec_node(const std::shared_ptr<const detail::VecNode> &node) {
             info.children.push_back(inspect_vec_node(node->lhs));
             info.children.push_back(inspect_vec_node(node->rhs));
             break;
+        case GraphNodeKind::SymbolicSparseMatVec:
+            info.op = "symbolic_sparse_matvec";
+            info.children.push_back(inspect_vec_node(node->lhs));
+            info.children.push_back(inspect_vec_node(node->rhs));
+            break;
+        case GraphNodeKind::SymbolicSparseMatMul:
+            info.op = node->symbolic_sparse_lhs ? "symbolic_sparse_dense_matmul" : "symbolic_dense_sparse_matmul";
+            info.children.push_back(inspect_vec_node(node->lhs));
+            info.children.push_back(inspect_vec_node(node->rhs));
+            break;
         case GraphNodeKind::OuterProduct:
             info.op = "outer_product";
             info.children.push_back(inspect_vec_node(node->lhs));
@@ -217,6 +227,10 @@ const char *to_string(GraphNodeKind kind) {
             return "SymbolicMatVec";
         case GraphNodeKind::SymbolicMatMul:
             return "SymbolicMatMul";
+        case GraphNodeKind::SymbolicSparseMatVec:
+            return "SymbolicSparseMatVec";
+        case GraphNodeKind::SymbolicSparseMatMul:
+            return "SymbolicSparseMatMul";
         case GraphNodeKind::OuterProduct:
             return "OuterProduct";
         case GraphNodeKind::LinearSolve:

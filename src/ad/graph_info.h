@@ -34,6 +34,8 @@ enum class GraphNodeKind {
     SparseMatVec,
     SymbolicMatVec,
     SymbolicMatMul,
+    SymbolicSparseMatVec,
+    SymbolicSparseMatMul,
     OuterProduct,
     LinearSolve,
     Slice,

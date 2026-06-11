@@ -36,6 +36,11 @@ Vec make_symbolic_matvec(const Vec &matrix, int rows, int cols, MatrixLayout lay
 Vec make_symbolic_matmul(const Vec &lhs, int lhs_rows, int lhs_cols, MatrixLayout lhs_layout,
                          const Vec &rhs, int rhs_rows, int rhs_cols, MatrixLayout rhs_layout,
                          MatrixLayout result_layout);
+Vec make_symbolic_sparse_matvec(const Vec &values, int rows, int cols, std::vector<int> row, std::vector<int> col, const Vec &rhs);
+Vec make_symbolic_sparse_matmul(const Vec &sparse_values, int sparse_rows, int sparse_cols,
+                                std::vector<int> sparse_row, std::vector<int> sparse_col,
+                                const Vec &dense, int dense_rows, int dense_cols, MatrixLayout dense_layout,
+                                MatrixLayout result_layout, bool sparse_lhs);
 Vec make_outer_product(const Vec &lhs, const Vec &rhs, MatrixLayout result_layout);
 Vec make_linear_solve(const Vec &matrix, int rows, int cols, MatrixLayout layout, const Vec &rhs,
                       LinearSolveOptions options, bool transpose);

@@ -3,6 +3,7 @@
 
 #include "function.h"
 #include "mat.h"
+#include "sparse_mat.h"
 #include "vec.h"
 #include "detail/function_core.h"
 #include "detail/mapping.h"
@@ -799,6 +800,57 @@ Vec forward_vec_node(const std::shared_ptr<const detail::VecNode> &node, const F
                                                     node->mat_rhs_layout,
                                                     node->mat_result_layout));
         }
+        case GraphNodeKind::SymbolicSparseMatVec: {
+            const Vec values = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            const Vec dvalues = forward_vec_node(node->lhs, context);
+            const Vec drhs = forward_vec_node(node->rhs, context);
+            return add(detail::make_symbolic_sparse_matvec(dvalues,
+                                                           node->sparse.rows,
+                                                           node->sparse.cols,
+                                                           node->sparse.row,
+                                                           node->sparse.col,
+                                                           rhs),
+                       detail::make_symbolic_sparse_matvec(values,
+                                                           node->sparse.rows,
+                                                           node->sparse.cols,
+                                                           node->sparse.row,
+                                                           node->sparse.col,
+                                                           drhs));
+        }
+        case GraphNodeKind::SymbolicSparseMatMul: {
+            const Vec sparse_values = node->symbolic_sparse_lhs ? as_vec(node->lhs) : as_vec(node->rhs);
+            const Vec dense = node->symbolic_sparse_lhs ? as_vec(node->rhs) : as_vec(node->lhs);
+            const Vec dsparse_values = node->symbolic_sparse_lhs ? forward_vec_node(node->lhs, context)
+                                                                 : forward_vec_node(node->rhs, context);
+            const Vec ddense = node->symbolic_sparse_lhs ? forward_vec_node(node->rhs, context)
+                                                         : forward_vec_node(node->lhs, context);
+            const int dense_rows = node->symbolic_sparse_lhs ? node->mat_rhs_rows : node->mat_lhs_rows;
+            const int dense_cols = node->symbolic_sparse_lhs ? node->mat_rhs_cols : node->mat_lhs_cols;
+            const MatrixLayout dense_layout = node->symbolic_sparse_lhs ? node->mat_rhs_layout : node->mat_lhs_layout;
+            return add(detail::make_symbolic_sparse_matmul(dsparse_values,
+                                                           node->sparse.rows,
+                                                           node->sparse.cols,
+                                                           node->sparse.row,
+                                                           node->sparse.col,
+                                                           dense,
+                                                           dense_rows,
+                                                           dense_cols,
+                                                           dense_layout,
+                                                           node->mat_result_layout,
+                                                           node->symbolic_sparse_lhs),
+                       detail::make_symbolic_sparse_matmul(sparse_values,
+                                                           node->sparse.rows,
+                                                           node->sparse.cols,
+                                                           node->sparse.row,
+                                                           node->sparse.col,
+                                                           ddense,
+                                                           dense_rows,
+                                                           dense_cols,
+                                                           dense_layout,
+                                                           node->mat_result_layout,
+                                                           node->symbolic_sparse_lhs));
+        }
         case GraphNodeKind::OuterProduct: {
             const Vec lhs = as_vec(node->lhs);
             const Vec rhs = as_vec(node->rhs);
@@ -1305,6 +1357,69 @@ Vec reverse_vec_node(const std::shared_ptr<const detail::VecNode> &node, const V
             const Vec rhs_adjoint = (lhs.transpose() * lambda).as_layout(node->mat_rhs_layout).vec();
             return add(reverse_vec_node(node->lhs, lhs_adjoint, context),
                        reverse_vec_node(node->rhs, rhs_adjoint, context));
+        }
+        case GraphNodeKind::SymbolicSparseMatVec: {
+            const Vec values = as_vec(node->lhs);
+            const Vec rhs = as_vec(node->rhs);
+            std::vector<Expr> value_elements;
+            value_elements.reserve(static_cast<std::size_t>(node->sparse.nnz()));
+            for (int k = 0; k < node->sparse.nnz(); ++k) {
+                const int row = node->sparse.row[static_cast<std::size_t>(k)];
+                const int col = node->sparse.col[static_cast<std::size_t>(k)];
+                value_elements.push_back(adjoint[row] * rhs[col]);
+            }
+            const Vec value_adjoint = vec(std::move(value_elements));
+            const Vec rhs_adjoint = detail::make_symbolic_sparse_matvec(values,
+                                                                        node->sparse.cols,
+                                                                        node->sparse.rows,
+                                                                        node->sparse.col,
+                                                                        node->sparse.row,
+                                                                        adjoint);
+            return add(reverse_vec_node(node->lhs, value_adjoint, context),
+                       reverse_vec_node(node->rhs, rhs_adjoint, context));
+        }
+        case GraphNodeKind::SymbolicSparseMatMul: {
+            const Vec sparse_values = node->symbolic_sparse_lhs ? as_vec(node->lhs) : as_vec(node->rhs);
+            const int dense_rows = node->symbolic_sparse_lhs ? node->mat_rhs_rows : node->mat_lhs_rows;
+            const int dense_cols = node->symbolic_sparse_lhs ? node->mat_rhs_cols : node->mat_lhs_cols;
+            const MatrixLayout dense_layout = node->symbolic_sparse_lhs ? node->mat_rhs_layout : node->mat_lhs_layout;
+            const Mat dense(node->symbolic_sparse_lhs ? as_vec(node->rhs) : as_vec(node->lhs),
+                            dense_rows,
+                            dense_cols,
+                            dense_layout);
+            const Mat lambda(adjoint, node->mat_lhs_rows, node->mat_rhs_cols, node->mat_result_layout);
+
+            std::vector<Expr> value_elements;
+            value_elements.reserve(static_cast<std::size_t>(node->sparse.nnz()));
+            if (node->symbolic_sparse_lhs) {
+                for (int k = 0; k < node->sparse.nnz(); ++k) {
+                    const int row = node->sparse.row[static_cast<std::size_t>(k)];
+                    const int inner = node->sparse.col[static_cast<std::size_t>(k)];
+                    value_elements.push_back(dot(lambda.row(row), dense.row(inner)));
+                }
+                const Vec value_adjoint = vec(std::move(value_elements));
+                const Vec dense_adjoint = (SparseMat(sparse_values,
+                                                     node->sparse.rows,
+                                                     node->sparse.cols,
+                                                     node->sparse.row,
+                                                     node->sparse.col).transpose() * lambda).as_layout(dense_layout).vec();
+                return add(reverse_vec_node(node->lhs, value_adjoint, context),
+                           reverse_vec_node(node->rhs, dense_adjoint, context));
+            }
+
+            for (int k = 0; k < node->sparse.nnz(); ++k) {
+                const int inner = node->sparse.row[static_cast<std::size_t>(k)];
+                const int col = node->sparse.col[static_cast<std::size_t>(k)];
+                value_elements.push_back(dot(dense.col(inner), lambda.col(col)));
+            }
+            const Vec value_adjoint = vec(std::move(value_elements));
+            const Vec dense_adjoint = (lambda * SparseMat(sparse_values,
+                                                          node->sparse.rows,
+                                                          node->sparse.cols,
+                                                          node->sparse.row,
+                                                          node->sparse.col).transpose()).as_layout(dense_layout).vec();
+            return add(reverse_vec_node(node->lhs, dense_adjoint, context),
+                       reverse_vec_node(node->rhs, value_adjoint, context));
         }
         case GraphNodeKind::OuterProduct: {
             const Vec lhs = as_vec(node->lhs);
